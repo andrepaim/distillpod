@@ -46,7 +46,7 @@ function GistCard({ gist, podcastImage, onDelete }: { gist: Gist; podcastImage?:
 
   const handlePlay = () => {
     nav(`/player/${gist.episode_id}`, {
-      state: { seekTo: gist.start_seconds, podcast_image: podcastImage },
+      state: { seekTo: gist.start_seconds, podcast_image: podcastImage, podcast_title: gist.podcast_title },
     });
   };
 
@@ -133,7 +133,7 @@ function EpisodeGists({
           <div className="font-semibold text-sm leading-snug line-clamp-2">{episodeTitle}</div>
         </div>
         <button
-          onClick={() => nav(`/player/${episodeId}`, { state: { podcast_image: podcastImage } })}
+          onClick={() => nav(`/player/${episodeId}`, { state: { podcast_image: podcastImage, podcast_title: podcastTitle } })}
           className="text-xs bg-indigo-700 hover:bg-indigo-600 text-white px-3 py-1.5 rounded-lg flex-shrink-0"
         >
           ▶ Play

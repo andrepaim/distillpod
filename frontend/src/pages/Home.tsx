@@ -87,7 +87,7 @@ function EpisodeCard({
       {/* Content */}
       <div
         className="flex-1 min-w-0 cursor-pointer"
-        onClick={() => nav(`/player/${ep.id}`, { state: { ...ep, podcast_image: ep.podcastImage } })}
+        onClick={() => nav(`/player/${ep.id}`, { state: { ...ep, podcast_image: ep.podcastImage, podcast_title: ep.podcastTitle } })}
       >
         <div className="text-xs text-gray-500 mb-0.5 truncate">{ep.podcastTitle}</div>
         <div className="text-sm font-medium leading-snug line-clamp-2">{ep.title}</div>

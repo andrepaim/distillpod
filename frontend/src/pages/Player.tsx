@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useLocation } from "react-router-dom";
-import { startPlay, createGist, listGists, audioStreamUrl, getTranscriptStatus, getEpisode, Gist, Episode } from "../api/client";
+import { createGist, listGists, getTranscriptStatus, Gist, Episode } from "../api/client";
+import { useAudio, type PlayableEpisode } from "../context/AudioContext";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function fmtTime(secs: number) {
@@ -37,11 +38,10 @@ function TranscriptBadge({ status }: { status: string }) {
   );
 }
 
-// ─── Custom player widget ─────────────────────────────────────────────────────
+// ─── Player widget ────────────────────────────────────────────────────────────
 function PlayerWidget({
-  audioRef, gists, transcriptStatus, onGist, gisting, gistFlash, withSummary, onToggleSummary,
+  gists, transcriptStatus, onGist, gisting, gistFlash, withSummary, onToggleSummary,
 }: {
-  audioRef: React.RefObject<HTMLAudioElement>;
   gists: Gist[];
   transcriptStatus: string;
   onGist: () => void;
@@ -50,83 +50,35 @@ function PlayerWidget({
   withSummary: boolean;
   onToggleSummary: () => void;
 }) {
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
+  const { audioRef, isPlaying, currentTime, duration, togglePlay, skipBy, setRate } = useAudio();
   const [speedIdx, setSpeedIdx] = useState(0);
-  const progressRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
-
-    const onTimeUpdate = () => setCurrentTime(audio.currentTime);
-    const onLoaded = () => setDuration(audio.duration || 0);
-    const onPlay = () => setIsPlaying(true);
-    const onPause = () => setIsPlaying(false);
-    const onEnded = () => setIsPlaying(false);
-
-    audio.addEventListener("timeupdate", onTimeUpdate);
-    audio.addEventListener("loadedmetadata", onLoaded);
-    audio.addEventListener("durationchange", onLoaded);
-    audio.addEventListener("play", onPlay);
-    audio.addEventListener("pause", onPause);
-    audio.addEventListener("ended", onEnded);
-
-    return () => {
-      audio.removeEventListener("timeupdate", onTimeUpdate);
-      audio.removeEventListener("loadedmetadata", onLoaded);
-      audio.removeEventListener("durationchange", onLoaded);
-      audio.removeEventListener("play", onPlay);
-      audio.removeEventListener("pause", onPause);
-      audio.removeEventListener("ended", onEnded);
-    };
-  }, []);
-
-  const togglePlay = () => {
-    const audio = audioRef.current;
-    if (!audio) return;
-    isPlaying ? audio.pause() : audio.play().catch(() => {});
-  };
-
-  const skip = (secs: number) => {
-    const audio = audioRef.current;
-    if (!audio) return;
-    audio.currentTime = Math.max(0, Math.min(audio.currentTime + secs, duration));
-  };
 
   const cycleSpeed = () => {
-    const audio = audioRef.current;
-    if (!audio) return;
     const next = (speedIdx + 1) % SPEEDS.length;
     setSpeedIdx(next);
-    audio.playbackRate = SPEEDS[next];
+    setRate(SPEEDS[next]);
   };
 
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
     const audio = audioRef.current;
-    if (!audio) return;
-    audio.currentTime = Number(e.target.value);
+    if (audio) audio.currentTime = Number(e.target.value);
   };
 
-  const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
-  const remaining = duration - currentTime;
-  const speed = SPEEDS[speedIdx];
+  const progress   = duration > 0 ? (currentTime / duration) * 100 : 0;
+  const remaining  = duration - currentTime;
+  const speed      = SPEEDS[speedIdx];
 
   return (
     <div className="bg-gray-900 rounded-2xl p-5 space-y-4">
 
-      {/* Progress bar + shot markers */}
+      {/* Progress bar + gist markers */}
       <div className="space-y-1">
         <div className="relative h-1.5">
-          {/* Track background */}
           <div className="absolute inset-0 rounded-full bg-gray-700" />
-          {/* Fill */}
           <div
             className="absolute left-0 top-0 h-full rounded-full bg-indigo-500 pointer-events-none"
             style={{ width: `${progress}%` }}
           />
-          {/* Gist markers */}
           {duration > 0 && gists.map(s => (
             <div
               key={s.id}
@@ -134,20 +86,12 @@ function PlayerWidget({
               style={{ left: `${(s.start_seconds / duration) * 100}%` }}
             />
           ))}
-          {/* Invisible range input over the top for interaction */}
           <input
-            ref={progressRef}
-            type="range"
-            min={0}
-            max={duration || 100}
-            step={1}
-            value={currentTime}
+            type="range" min={0} max={duration || 100} step={1} value={currentTime}
             onChange={handleSeek}
             className="absolute inset-0 w-full opacity-0 cursor-pointer h-full"
           />
         </div>
-
-        {/* Time row */}
         <div className="flex justify-between text-xs text-gray-400 font-mono">
           <span>{fmtTime(currentTime)}</span>
           <span>-{fmtTime(remaining)}</span>
@@ -156,8 +100,6 @@ function PlayerWidget({
 
       {/* Controls */}
       <div className="flex items-center justify-between px-2">
-
-        {/* Speed */}
         <button
           onClick={cycleSpeed}
           className="w-10 h-10 flex items-center justify-center text-gray-300 hover:text-white text-sm font-bold rounded-full hover:bg-gray-800 transition-colors"
@@ -165,19 +107,16 @@ function PlayerWidget({
           {speed === 1 ? "1x" : `${speed}x`}
         </button>
 
-        {/* -10s */}
         <button
-          onClick={() => skip(-10)}
+          onClick={() => skipBy(-10)}
           className="w-12 h-12 flex items-center justify-center text-gray-300 hover:text-white rounded-full hover:bg-gray-800 transition-colors"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="w-8 h-8">
-            <path d="M2.5 12a9.5 9.5 0 1 1 2.3 6.2" />
-            <path d="M2.5 7v5h5" />
+            <path d="M2.5 12a9.5 9.5 0 1 1 2.3 6.2" /><path d="M2.5 7v5h5" />
             <text x="7.5" y="15" fontSize="6" fill="currentColor" stroke="none" fontWeight="bold">10</text>
           </svg>
         </button>
 
-        {/* Play / Pause */}
         <button
           onClick={togglePlay}
           className="w-16 h-16 bg-indigo-600 hover:bg-indigo-500 active:scale-95 rounded-full flex items-center justify-center transition-all shadow-lg"
@@ -194,19 +133,16 @@ function PlayerWidget({
           )}
         </button>
 
-        {/* +30s */}
         <button
-          onClick={() => skip(30)}
+          onClick={() => skipBy(30)}
           className="w-12 h-12 flex items-center justify-center text-gray-300 hover:text-white rounded-full hover:bg-gray-800 transition-colors"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="w-8 h-8">
-            <path d="M21.5 12a9.5 9.5 0 1 0-2.3 6.2" />
-            <path d="M21.5 7v5h-5" />
+            <path d="M21.5 12a9.5 9.5 0 1 0-2.3 6.2" /><path d="M21.5 7v5h-5" />
             <text x="6.5" y="15" fontSize="6" fill="currentColor" stroke="none" fontWeight="bold">30</text>
           </svg>
         </button>
 
-        {/* Gist count */}
         <button
           onClick={onGist}
           disabled={gisting || transcriptStatus !== "done"}
@@ -214,7 +150,6 @@ function PlayerWidget({
         >
           <span className="text-lg">✂️</span>
         </button>
-
       </div>
 
       {/* AI summary toggle */}
@@ -255,13 +190,13 @@ function PlayerWidget({
 }
 
 // ─── Gist card ────────────────────────────────────────────────────────────────
-function parseGistSummary(summary: string | undefined): { quote?: string; insight?: string } | null {
-  if (!summary) return null;
+function parseGistSummary(s: string | undefined): { quote?: string; insight?: string } | null {
+  if (!s) return null;
   try {
-    const parsed = JSON.parse(summary);
-    if (parsed.quote || parsed.insight) return parsed;
+    const p = JSON.parse(s);
+    if (p.quote || p.insight) return p;
   } catch {}
-  return { insight: summary }; // fallback for old plain-text summaries
+  return { insight: s };
 }
 
 function GistCard({ gist }: { gist: Gist }) {
@@ -289,12 +224,8 @@ function GistCard({ gist }: { gist: Gist }) {
       </div>
       {ai ? (
         <>
-          {ai.quote && (
-            <p className="text-sm italic text-gray-100 border-l-2 border-indigo-500 pl-3">"{ai.quote}"</p>
-          )}
-          {ai.insight && (
-            <p className="text-indigo-300 text-sm leading-relaxed">{ai.insight}</p>
-          )}
+          {ai.quote && <p className="text-sm italic text-gray-100 border-l-2 border-indigo-500 pl-3">"{ai.quote}"</p>}
+          {ai.insight && <p className="text-indigo-300 text-sm leading-relaxed">{ai.insight}</p>}
         </>
       ) : (
         <p className="text-sm leading-relaxed text-gray-100">{gist.text}</p>
@@ -306,69 +237,33 @@ function GistCard({ gist }: { gist: Gist }) {
 // ─── Player page ──────────────────────────────────────────────────────────────
 export default function Player() {
   const { episodeId } = useParams<{ episodeId: string }>();
-  const location = useLocation();
-  const routeState = location.state as (Episode & { podcast_image?: string; seekTo?: number }) | null;
-  const audioRef = useRef<HTMLAudioElement>(null);
+  const location      = useLocation();
+  const routeState    = location.state as (PlayableEpisode & { seekTo?: number }) | null;
 
-  const [episode, setEpisode] = useState<(Episode & { podcast_image?: string }) | null>(routeState);
-  const seekTo = routeState?.seekTo;  // derived directly — always reflects current navigation state
+  const { loadEpisode, audioReady, audioRef, episode } = useAudio();
+
+  // seekTo comes only from current navigation state (gist → player link)
+  const seekTo = routeState?.seekTo;
+
   const [transcriptStatus, setTranscriptStatus] = useState("none");
-  const [gists, setGists] = useState<Gist[]>([]);
-  const [gisting, setGisting] = useState(false);
-  const [gistFlash, setGistFlash] = useState(false);
+  const [gists,    setGists]    = useState<Gist[]>([]);
+  const [gisting,  setGisting]  = useState(false);
+  const [gistFlash,setGistFlash]= useState(false);
   const [withSummary, setWithSummary] = useState(true);
-  const [audioReady, setAudioReady] = useState(false);
-  const [error, setError] = useState("");
+  const [error,    setError]    = useState("");
 
-  // Load episode + start playback
+  // Display episode: prefer what's already in context (avoids blank header flash on same episode)
+  const displayEpisode = episode?.id === episodeId ? episode : routeState;
+
+  // Load episode into audio context
   useEffect(() => {
     if (!episodeId) return;
-    const init = async () => {
-      let ep = episode;
-      if (!ep?.audio_url) {
-        const savedImage = ep?.podcast_image;
-        try {
-          ep = await getEpisode(episodeId);
-          ep = { ...ep, podcast_image: savedImage };
-          setEpisode(ep);
-        } catch (e: any) { setError("Could not load episode: " + e.message); return; }
-      }
-      try {
-        await startPlay(episodeId, ep.audio_url);
-        setAudioReady(true);
-        try {
-          const key = "podgist:played";
-          const played = new Set(JSON.parse(localStorage.getItem(key) || "[]"));
-          played.add(episodeId);
-          localStorage.setItem(key, JSON.stringify([...played]));
-        } catch {}
-      } catch (e: any) { setError(e.message); }
-    };
-    init();
+    const ep: PlayableEpisode | null = routeState
+      ? { ...routeState, podcast_image: routeState.podcast_image, podcast_title: routeState.podcast_title }
+      : null;
+    loadEpisode(episodeId, ep, seekTo).catch(e => setError(e.message));
     listGists(episodeId).then(setGists);
-  }, [episodeId]);
-
-  // Seek + autoplay after audio ready
-  useEffect(() => {
-    if (!audioReady || seekTo == null || !audioRef.current) return;
-    const audio = audioRef.current;
-
-    const doSeekAndPlay = () => {
-      audio.currentTime = seekTo;
-      // Play on `seeked` (preferred) — fires once the seek completes
-      audio.addEventListener("seeked", () => audio.play().catch(() => {}), { once: true });
-      // Fallback: if seeked never fires (some browsers skip it when buffering),
-      // play on canplay instead
-      audio.addEventListener("canplay", () => audio.play().catch(() => {}), { once: true });
-    };
-
-    if (audio.readyState >= 1) {
-      doSeekAndPlay();
-    } else {
-      audio.addEventListener("loadedmetadata", doSeekAndPlay, { once: true });
-      return () => audio.removeEventListener("loadedmetadata", doSeekAndPlay);
-    }
-  }, [audioReady, seekTo]);
+  }, [episodeId]); // intentionally only re-run on episodeId change
 
   // Poll transcript status
   useEffect(() => {
@@ -380,6 +275,12 @@ export default function Player() {
     }, 5000);
     return () => clearInterval(timer);
   }, [episodeId, transcriptStatus]);
+
+  // Also fetch transcript status immediately when episode loads
+  useEffect(() => {
+    if (!episodeId) return;
+    getTranscriptStatus(episodeId).then(({ status }) => setTranscriptStatus(status));
+  }, [episodeId]);
 
   const handleGist = async () => {
     if (!audioRef.current || !episodeId) return;
@@ -398,13 +299,13 @@ export default function Player() {
 
       {/* Episode header */}
       <div className="flex gap-3 items-start">
-        {episode?.podcast_image
-          ? <img src={episode.podcast_image} className="w-14 h-14 rounded-xl object-cover flex-shrink-0" alt="" />
+        {displayEpisode?.podcast_image
+          ? <img src={displayEpisode.podcast_image} className="w-14 h-14 rounded-xl object-cover flex-shrink-0" alt="" />
           : <div className="w-14 h-14 rounded-xl bg-gray-800 flex-shrink-0 animate-pulse" />
         }
         <div className="min-w-0 flex-1">
-          {episode?.title
-            ? <h1 className="text-sm font-bold leading-snug line-clamp-3">{episode.title}</h1>
+          {displayEpisode?.title
+            ? <h1 className="text-sm font-bold leading-snug line-clamp-3">{displayEpisode.title}</h1>
             : <div className="h-4 bg-gray-800 rounded animate-pulse w-3/4" />
           }
           {seekTo !== undefined && (
@@ -416,15 +317,9 @@ export default function Player() {
 
       {error && <div className="bg-red-900 text-red-300 rounded-xl p-3 text-sm">{error}</div>}
 
-      {/* Hidden audio element */}
-      {audioReady && (
-        <audio ref={audioRef} src={audioStreamUrl(episodeId!)} preload="auto" className="hidden" />
-      )}
-
-      {/* Player widget */}
-      {audioReady && (
+      {/* Player widget — shown once audio is ready */}
+      {audioReady && episodeId && episode?.id === episodeId && (
         <PlayerWidget
-          audioRef={audioRef}
           gists={gists}
           transcriptStatus={transcriptStatus}
           onGist={handleGist}
@@ -435,7 +330,7 @@ export default function Player() {
         />
       )}
 
-      {!audioReady && !error && (
+      {(!audioReady || episode?.id !== episodeId) && !error && (
         <div className="bg-gray-900 rounded-2xl p-5 flex items-center justify-center h-44">
           <div className="text-gray-500 text-sm flex items-center gap-2">
             <span className="w-4 h-4 border-2 border-gray-500 border-t-indigo-400 rounded-full animate-spin inline-block" />

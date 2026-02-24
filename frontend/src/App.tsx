@@ -1,4 +1,6 @@
 import { BrowserRouter, Routes, Route, useLocation, useNavigate } from "react-router-dom";
+import { AudioProvider, useAudio } from "./context/AudioContext";
+import MiniPlayer from "./components/MiniPlayer";
 import Home from "./pages/Home";
 import Search from "./pages/Search";
 import Subscriptions from "./pages/Subscriptions";
@@ -9,7 +11,6 @@ import Gists from "./pages/Gists";
 const HomeIcon = ({ active }: { active: boolean }) => (
   <svg viewBox="0 0 24 24" fill={active ? "currentColor" : "none"} stroke="currentColor" strokeWidth={active ? 0 : 2} strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6">
     <path d="M3 9.75L12 3l9 6.75V21a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V9.75z" />
-    <path d="M9 22V12h6v10" fill="white" stroke={active ? "white" : "none"} strokeWidth={active ? 0 : 0} />
     <rect x="9" y="12" width="6" height="10" fill={active ? "white" : "none"} opacity={active ? 0.3 : 0} />
   </svg>
 );
@@ -49,7 +50,6 @@ const tabs = [
 function BottomNav() {
   const location = useLocation();
   const navigate = useNavigate();
-
   const isActive = (to: string) =>
     to === "/" ? location.pathname === "/" : location.pathname.startsWith(to);
 
@@ -82,27 +82,43 @@ function BottomNav() {
   );
 }
 
-// ─── App ──────────────────────────────────────────────────────────────────────
+// ─── App shell (needs useAudio → must be inside AudioProvider) ────────────────
+function AppShell() {
+  const { audioReady } = useAudio();
+
+  return (
+    <div className="min-h-screen bg-gray-950 text-white flex flex-col">
+      <header className="bg-gray-900 border-b border-gray-800 px-4 py-3">
+        <span className="font-bold text-indigo-400 text-lg tracking-tight">🎧 PodGist</span>
+      </header>
+
+      {/* Extra bottom padding when mini player is visible */}
+      <main className={`flex-1 p-4 max-w-3xl mx-auto w-full transition-[padding] ${
+        audioReady ? "pb-36" : "pb-24"
+      }`}>
+        <Routes>
+          <Route path="/" element={<Home />} />
+          <Route path="/search" element={<Search />} />
+          <Route path="/subscriptions" element={<Subscriptions />} />
+          <Route path="/player/:episodeId" element={<Player />} />
+          <Route path="/gists" element={<Gists />} />
+          <Route path="*" element={<Home />} />
+        </Routes>
+      </main>
+
+      <MiniPlayer />   {/* sits above BottomNav when active */}
+      <BottomNav />
+    </div>
+  );
+}
+
+// ─── Root ─────────────────────────────────────────────────────────────────────
 export default function App() {
   return (
     <BrowserRouter>
-      <div className="min-h-screen bg-gray-950 text-white flex flex-col">
-        <header className="bg-gray-900 border-b border-gray-800 px-4 py-3">
-          <span className="font-bold text-indigo-400 text-lg tracking-tight">🎧 PodGist</span>
-        </header>
-
-        <main className="flex-1 p-4 pb-24 max-w-3xl mx-auto w-full">
-          <Routes>
-            <Route path="/" element={<Home />} />
-            <Route path="/search" element={<Search />} />
-            <Route path="/subscriptions" element={<Subscriptions />} />
-            <Route path="/player/:episodeId" element={<Player />} />
-            <Route path="/gists" element={<Gists />} />
-          </Routes>
-        </main>
-
-        <BottomNav />
-      </div>
+      <AudioProvider>
+        <AppShell />
+      </AudioProvider>
     </BrowserRouter>
   );
 }

@@ -124,7 +124,7 @@ function EpisodeList({ sub, onBack, onUnsubscribed }: { sub: Subscription; onBac
       {!loading && episodes.map(ep => (
         <div
           key={ep.id}
-          onClick={() => nav(`/player/${ep.id}`, { state: { ...ep, podcast_image: sub.image_url } })}
+          onClick={() => nav(`/player/${ep.id}`, { state: { ...ep, podcast_image: sub.image_url, podcast_title: sub.title } })}
           className="bg-gray-900 hover:bg-gray-800 active:bg-gray-700 rounded-xl p-4 cursor-pointer transition-colors"
         >
           <div className="flex justify-between items-start gap-3">
