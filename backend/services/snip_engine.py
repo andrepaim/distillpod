@@ -24,7 +24,7 @@ def _claude_summarize_sync(text: str) -> str | None:
         f"Excerpt:\n{text}"
     )
     result = subprocess.run(
-        ["claude", "--print", prompt],
+        ["/root/.local/bin/claude", "--print", prompt],
         capture_output=True,
         text=True,
         timeout=60,

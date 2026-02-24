@@ -39,7 +39,7 @@ function TranscriptBadge({ status }: { status: string }) {
 
 // ─── Custom player widget ─────────────────────────────────────────────────────
 function PlayerWidget({
-  audioRef, snips, transcriptStatus, onSnip, snipping, snipFlash,
+  audioRef, snips, transcriptStatus, onSnip, snipping, snipFlash, withSummary, onToggleSummary,
 }: {
   audioRef: React.RefObject<HTMLAudioElement>;
   snips: Snip[];
@@ -47,6 +47,8 @@ function PlayerWidget({
   onSnip: () => void;
   snipping: boolean;
   snipFlash: boolean;
+  withSummary: boolean;
+  onToggleSummary: () => void;
 }) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -215,6 +217,20 @@ function PlayerWidget({
 
       </div>
 
+      {/* AI summary toggle */}
+      <div className="flex items-center justify-between px-1">
+        <span className="text-xs text-gray-400">
+          ✨ AI summary
+          {withSummary && <span className="text-gray-600 ml-1">(~30s)</span>}
+        </span>
+        <button
+          onClick={onToggleSummary}
+          className={`relative w-10 h-5 rounded-full transition-colors ${withSummary ? "bg-indigo-600" : "bg-gray-700"}`}
+        >
+          <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${withSummary ? "translate-x-5" : "translate-x-0.5"}`} />
+        </button>
+      </div>
+
       {/* Snip button */}
       <button
         onClick={onSnip}
@@ -227,7 +243,11 @@ function PlayerWidget({
               : "bg-gray-800 text-gray-500 cursor-not-allowed"
         }`}
       >
-        {snipping ? "Creating snip…" : transcriptStatus === "done" ? "✂️  Snip this moment" : "⏳  Waiting for transcript…"}
+        {snipping
+          ? (withSummary ? "Summarising…" : "Creating snip…")
+          : transcriptStatus === "done"
+            ? (withSummary ? "✂️  Snip + summarise" : "✂️  Snip this moment")
+            : "⏳  Waiting for transcript…"}
       </button>
 
     </div>
@@ -273,6 +293,7 @@ export default function Player() {
   const [snips, setSnips] = useState<Snip[]>([]);
   const [snipping, setSnipping] = useState(false);
   const [snipFlash, setSnipFlash] = useState(false);
+  const [withSummary, setWithSummary] = useState(false);
   const [audioReady, setAudioReady] = useState(false);
   const [error, setError] = useState("");
 
@@ -341,7 +362,7 @@ export default function Player() {
     if (!audioRef.current || !episodeId) return;
     setSnipping(true);
     try {
-      const snip = await createSnip(episodeId, audioRef.current.currentTime, false);
+      const snip = await createSnip(episodeId, audioRef.current.currentTime, withSummary);
       setSnips(prev => [snip, ...prev]);
       setSnipFlash(true);
       setTimeout(() => setSnipFlash(false), 600);
@@ -386,6 +407,8 @@ export default function Player() {
           onSnip={handleSnip}
           snipping={snipping}
           snipFlash={snipFlash}
+          withSummary={withSummary}
+          onToggleSummary={() => setWithSummary(v => !v)}
         />
       )}
 
