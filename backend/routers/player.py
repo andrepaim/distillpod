@@ -1,7 +1,7 @@
 import asyncio
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
-from models import PlayRequest, TranscriptStatus
+from models import PlayRequest, TranscriptStatus, Episode
 from services.downloader import download_episode, episode_local_path
 from services.transcriber import transcribe_episode
 from database import get_db
@@ -74,6 +74,19 @@ async def stream_audio(episode_id: str):
     if not row or not row["local_path"]:
         raise HTTPException(404, "Audio not downloaded yet")
     return FileResponse(row["local_path"], media_type="audio/mpeg")
+
+
+@router.get("/episode/{episode_id}")
+async def get_episode(episode_id: str) -> Episode:
+    """Fetch a single episode by ID from the DB."""
+    db = await get_db()
+    row = await db.execute_fetchone(
+        "SELECT * FROM episodes WHERE id = ?", (episode_id,)
+    )
+    await db.close()
+    if not row:
+        raise HTTPException(404, "Episode not found")
+    return Episode(**dict(row))
 
 
 @router.get("/transcript-status/{episode_id}")

@@ -35,6 +35,9 @@ export const startPlay = (episodeId: string, audioUrl: string) =>
 export const getTranscriptStatus = (episodeId: string) =>
   req<{ status: string }>("GET", `/player/transcript-status/${episodeId}`);
 
+export const getEpisode = (episodeId: string) =>
+  req<Episode>("GET", `/player/episode/${episodeId}`);
+
 export const audioStreamUrl = (episodeId: string) => `${BASE}/player/audio/${episodeId}`;
 
 // --- Snips ---

@@ -13,7 +13,8 @@ function fmtDate(iso: string) {
 }
 
 // ─── Individual snip card ─────────────────────────────────────────────────────
-function SnipCard({ snip, onDelete }: { snip: Snip; onDelete: () => void }) {
+function SnipCard({ snip, podcastImage, onDelete }: { snip: Snip; podcastImage?: string; onDelete: () => void }) {
+  const nav = useNavigate();
   const [copied, setCopied] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -30,12 +31,24 @@ function SnipCard({ snip, onDelete }: { snip: Snip; onDelete: () => void }) {
     finally { setDeleting(false); }
   };
 
+  const handlePlay = () => {
+    nav(`/player/${snip.episode_id}`, {
+      state: { seekTo: snip.start_seconds, podcast_image: podcastImage },
+    });
+  };
+
   return (
     <div className="bg-gray-900 rounded-xl p-4 space-y-2">
       <div className="flex items-center justify-between">
-        <span className="text-xs text-gray-500 font-mono">
+        <button
+          onClick={handlePlay}
+          className="flex items-center gap-1.5 text-xs text-indigo-400 hover:text-indigo-300 font-mono transition-colors"
+        >
+          <svg viewBox="0 0 24 24" fill="currentColor" className="w-3.5 h-3.5">
+            <polygon points="5 3 19 12 5 21 5 3" />
+          </svg>
           {fmtTime(snip.start_seconds)} → {fmtTime(snip.end_seconds)}
-        </span>
+        </button>
         <div className="flex gap-2">
           <button
             onClick={copy}
@@ -62,11 +75,12 @@ function SnipCard({ snip, onDelete }: { snip: Snip; onDelete: () => void }) {
 
 // ─── Episode snips view ───────────────────────────────────────────────────────
 function EpisodeSnips({
-  episodeId, episodeTitle, podcastTitle, snips: initial, onBack, onAllDeleted,
+  episodeId, episodeTitle, podcastTitle, podcastImage, snips: initial, onBack, onAllDeleted,
 }: {
   episodeId: string;
   episodeTitle: string;
   podcastTitle: string;
+  podcastImage?: string;
   snips: Snip[];
   onBack: () => void;
   onAllDeleted: () => void;
@@ -98,7 +112,7 @@ function EpisodeSnips({
           <div className="font-semibold text-sm leading-snug line-clamp-2">{episodeTitle}</div>
         </div>
         <button
-          onClick={() => nav(`/player/${episodeId}`)}
+          onClick={() => nav(`/player/${episodeId}`, { state: { podcast_image: podcastImage } })}
           className="text-xs bg-indigo-700 hover:bg-indigo-600 text-white px-3 py-1.5 rounded-lg flex-shrink-0"
         >
           ▶ Play
@@ -110,7 +124,7 @@ function EpisodeSnips({
       </div>
 
       {snips.map(s => (
-        <SnipCard key={s.id} snip={s} onDelete={() => handleDelete(s.id)} />
+        <SnipCard key={s.id} snip={s} podcastImage={podcastImage} onDelete={() => handleDelete(s.id)} />
       ))}
     </div>
   );
@@ -192,6 +206,7 @@ export default function Snips() {
         episodeId={selectedEpisode}
         episodeTitle={snips[0].episode_title}
         podcastTitle={snips[0].podcast_title}
+        podcastImage={imageMap[snips[0].podcast_id]}
         snips={snips}
         onBack={() => setSelectedEpisode(null)}
         onAllDeleted={() => {

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams, useLocation } from "react-router-dom";
-import { startPlay, createSnip, listSnips, audioStreamUrl, getTranscriptStatus, Snip, Episode } from "../api/client";
+import { startPlay, createSnip, listSnips, audioStreamUrl, getTranscriptStatus, getEpisode, Snip, Episode } from "../api/client";
 
 function fmtTime(secs: number) {
   const m = Math.floor(secs / 60);
@@ -65,9 +65,11 @@ function SnipCard({ snip }: { snip: Snip }) {
 export default function Player() {
   const { episodeId } = useParams<{ episodeId: string }>();
   const location = useLocation();
-  const episode = location.state as Episode & { podcast_image?: string };
+  const routeState = location.state as (Episode & { podcast_image?: string; seekTo?: number }) | null;
   const audioRef = useRef<HTMLAudioElement>(null);
 
+  const [episode, setEpisode] = useState<(Episode & { podcast_image?: string }) | null>(routeState);
+  const [seekTo] = useState<number | undefined>(routeState?.seekTo);
   const [transcriptStatus, setTranscriptStatus] = useState("none");
   const [snips, setSnips] = useState<Snip[]>([]);
   const [snipping, setSnipping] = useState(false);
@@ -76,19 +78,30 @@ export default function Player() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    if (!episodeId || !episode) return;
-    startPlay(episodeId, episode.audio_url)
-      .then(() => {
+    if (!episodeId) return;
+
+    // Fetch episode from backend if not passed via router state
+    const init = async () => {
+      let ep = episode;
+      if (!ep?.audio_url) {
+        try { ep = await getEpisode(episodeId); setEpisode(ep); }
+        catch (e: any) { setError("Could not load episode: " + e.message); return; }
+      }
+
+      try {
+        await startPlay(episodeId, ep.audio_url);
         setAudioReady(true);
-        // Mark as played in localStorage
+        // Mark as played
         try {
           const key = "podsnip:played";
           const played = new Set(JSON.parse(localStorage.getItem(key) || "[]"));
           played.add(episodeId);
           localStorage.setItem(key, JSON.stringify([...played]));
         } catch {}
-      })
-      .catch(e => setError(e.message));
+      } catch (e: any) { setError(e.message); }
+    };
+
+    init();
     listSnips(episodeId).then(setSnips);
   }, [episodeId]);
 
@@ -121,11 +134,18 @@ export default function Player() {
     <div className="space-y-5">
       {/* Header */}
       <div className="flex gap-4 items-start">
-        {episode?.podcast_image && (
-          <img src={episode.podcast_image} className="w-16 h-16 rounded-lg object-cover flex-shrink-0" alt="" />
-        )}
-        <div className="min-w-0">
-          <h1 className="text-base font-bold leading-snug line-clamp-2">{episode?.title ?? "Loading…"}</h1>
+        {episode?.podcast_image
+          ? <img src={episode.podcast_image} className="w-16 h-16 rounded-lg object-cover flex-shrink-0" alt="" />
+          : <div className="w-16 h-16 rounded-lg bg-gray-800 flex-shrink-0 animate-pulse" />
+        }
+        <div className="min-w-0 flex-1">
+          {episode?.title
+            ? <h1 className="text-base font-bold leading-snug line-clamp-2">{episode.title}</h1>
+            : <div className="h-5 bg-gray-800 rounded animate-pulse w-3/4 mb-1" />
+          }
+          {seekTo !== undefined && (
+            <div className="text-xs text-indigo-400 mt-0.5">▶ Playing from {fmtTime(seekTo)}</div>
+          )}
           <div className="mt-1.5">
             <TranscriptBadge status={transcriptStatus} />
           </div>
@@ -143,6 +163,11 @@ export default function Player() {
             src={audioStreamUrl(episodeId!)}
             controls
             className="w-full rounded"
+            onCanPlay={() => {
+              if (seekTo && audioRef.current && audioRef.current.currentTime < 1) {
+                audioRef.current.currentTime = seekTo;
+              }
+            }}
           />
           <button
             onClick={handleSnip}
