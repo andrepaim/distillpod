@@ -54,6 +54,18 @@ CREATE TABLE IF NOT EXISTS snips (
 async def get_db() -> aiosqlite.Connection:
     db = await aiosqlite.connect(DB_PATH)
     db.row_factory = aiosqlite.Row
+
+    # Convenience helpers (aiosqlite doesn't have these natively)
+    async def _fetchone(sql, params=()):
+        cursor = await db.execute(sql, params)
+        return await cursor.fetchone()
+
+    async def _fetchall(sql, params=()):
+        cursor = await db.execute(sql, params)
+        return await cursor.fetchall()
+
+    db.execute_fetchone = _fetchone
+    db.execute_fetchall = _fetchall
     return db
 
 async def init_db():

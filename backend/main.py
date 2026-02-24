@@ -10,7 +10,7 @@ app = FastAPI(title="PodSnip API", version="0.1.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.frontend_origin, "http://localhost:5173"],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -19,11 +19,6 @@ app.add_middleware(
 app.include_router(podcasts.router)
 app.include_router(player.router)
 app.include_router(snips.router)
-
-# Serve built frontend (production)
-frontend_dist = Path(__file__).parent.parent / "frontend" / "dist"
-if frontend_dist.exists():
-    app.mount("/", StaticFiles(directory=str(frontend_dist), html=True), name="static")
 
 
 @app.on_event("startup")
@@ -35,3 +30,9 @@ async def startup():
 @app.get("/health")
 async def health():
     return {"status": "ok", "version": "0.1.0"}
+
+
+# Serve built frontend — mount LAST so API routes take priority
+frontend_dist = Path(__file__).parent.parent / "frontend" / "dist"
+if frontend_dist.exists():
+    app.mount("/", StaticFiles(directory=str(frontend_dist), html=True), name="static")
