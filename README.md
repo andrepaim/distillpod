@@ -53,7 +53,7 @@ You open the app in your phone's browser. Everything else — downloading audio,
 └──────────┬─────────────────────────┬────────────────┘
            │                         │
      iTunes Search API         faster-whisper (local)
-     RSS feeds                 OpenAI API (optional)
+     RSS feeds                 Claude CLI (Max subscription)
      Podcast Index API (opt.)
 ```
 
@@ -131,7 +131,7 @@ When you tap ✂️ Snip:
 
 The 60-second context window is configurable via `SNIP_CONTEXT_SECONDS` in `.env`.
 
-Optionally, pass `?summary=true` to get a GPT-4o-mini summary of the snip (requires `OPENAI_API_KEY`).
+Optionally, pass `?summary=true` to get a Claude summary of the snip. Uses `claude --print` as a subprocess — no API key required, routes through your existing Claude Max subscription session (`claude login`).
 
 ---
 
@@ -169,8 +169,8 @@ Edit `.env`:
 PODCAST_INDEX_API_KEY=your_key_here
 PODCAST_INDEX_API_SECRET=your_secret_here
 
-# Optional: GPT summaries on snips
-OPENAI_API_KEY=sk-...
+# Summaries use Claude CLI (claude --print) — no API key needed
+# Requires: claude CLI installed + authenticated via `claude login`
 
 # Whisper model: base | small | medium | large-v3
 WHISPER_MODEL=base

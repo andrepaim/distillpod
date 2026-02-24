@@ -60,7 +60,7 @@ class Snip(BaseModel):
     start_seconds: float
     end_seconds: float
     text: str                     # extracted from transcript
-    summary: Optional[str] = None  # GPT-4o-mini summary (optional)
+    summary: Optional[str] = None  # Claude summary (optional, via CLI subprocess)
     created_at: datetime
 
 

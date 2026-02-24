@@ -268,7 +268,7 @@ export default function Player() {
   const audioRef = useRef<HTMLAudioElement>(null);
 
   const [episode, setEpisode] = useState<(Episode & { podcast_image?: string }) | null>(routeState);
-  const [seekTo] = useState<number | undefined>(routeState?.seekTo);
+  const seekTo = routeState?.seekTo;  // derived directly — always reflects current navigation state
   const [transcriptStatus, setTranscriptStatus] = useState("none");
   const [snips, setSnips] = useState<Snip[]>([]);
   const [snipping, setSnipping] = useState(false);
@@ -306,13 +306,24 @@ export default function Player() {
 
   // Seek + autoplay after audio ready
   useEffect(() => {
-    if (!audioReady || !seekTo || !audioRef.current) return;
+    if (!audioReady || seekTo == null || !audioRef.current) return;
     const audio = audioRef.current;
-    const doPlay = () => { audio.play().catch(() => {}); audio.removeEventListener("seeked", doPlay); };
-    const doSeek = () => { audio.currentTime = seekTo; audio.addEventListener("seeked", doPlay); audio.removeEventListener("loadedmetadata", doSeek); };
-    if (audio.readyState >= 1) doSeek();
-    else audio.addEventListener("loadedmetadata", doSeek);
-    return () => { audio.removeEventListener("loadedmetadata", doSeek); audio.removeEventListener("seeked", doPlay); };
+
+    const doSeekAndPlay = () => {
+      audio.currentTime = seekTo;
+      // Play on `seeked` (preferred) — fires once the seek completes
+      audio.addEventListener("seeked", () => audio.play().catch(() => {}), { once: true });
+      // Fallback: if seeked never fires (some browsers skip it when buffering),
+      // play on canplay instead
+      audio.addEventListener("canplay", () => audio.play().catch(() => {}), { once: true });
+    };
+
+    if (audio.readyState >= 1) {
+      doSeekAndPlay();
+    } else {
+      audio.addEventListener("loadedmetadata", doSeekAndPlay, { once: true });
+      return () => audio.removeEventListener("loadedmetadata", doSeekAndPlay);
+    }
   }, [audioReady, seekTo]);
 
   // Poll transcript status

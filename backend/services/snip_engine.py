@@ -1,13 +1,35 @@
 """
 Snip engine — extracts text from pre-computed transcript by timestamp range.
-Zero latency, zero cost. Optionally generates a GPT-4o-mini summary.
+Zero latency, zero cost. Optionally generates a Claude summary via CLI subprocess.
 """
+import asyncio
+import subprocess
 import uuid
 from datetime import datetime, timezone
-from openai import AsyncOpenAI
+
 from config import settings
 from models import Snip
 from services.transcriber import get_transcript_words
+
+
+def _claude_summarize_sync(text: str) -> str | None:
+    """
+    Blocking subprocess call to `claude --print`. Runs in a thread pool
+    so it doesn't block the async event loop.
+    Uses the Claude Max subscription already authenticated on this VPS.
+    """
+    prompt = (
+        "In 1-2 sentences, capture the core insight from this podcast excerpt. "
+        "Be direct, no fluff.\n\n"
+        f"Excerpt:\n{text}"
+    )
+    result = subprocess.run(
+        ["claude", "--print", prompt],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    return result.stdout.strip() if result.returncode == 0 else None
 
 
 async def create_snip(
@@ -20,7 +42,7 @@ async def create_snip(
 ) -> Snip:
     """
     Extract the last N seconds of transcript up to current_seconds.
-    Optionally generates a short GPT-4o-mini summary.
+    Optionally generates a Claude summary (via CLI subprocess, free with Max subscription).
     """
     context = settings.snip_context_seconds
     start = max(0.0, current_seconds - context)
@@ -37,19 +59,10 @@ async def create_snip(
     if not text:
         raise ValueError("No transcribed content in the selected time range")
 
-    # Optional: GPT-4o-mini summary
+    # Optional: Claude summary via subprocess (non-blocking, runs in thread pool)
     summary = None
-    if with_summary and settings.openai_api_key:
-        client = AsyncOpenAI(api_key=settings.openai_api_key)
-        response = await client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant that summarizes podcast quotes in 1-2 sentences. Be concise and capture the core insight."},
-                {"role": "user", "content": f"Summarize this podcast quote:\n\n{text}"},
-            ],
-            max_tokens=100,
-        )
-        summary = response.choices[0].message.content.strip()
+    if with_summary:
+        summary = await asyncio.to_thread(_claude_summarize_sync, text)
 
     snip = Snip(
         id=str(uuid.uuid4()),

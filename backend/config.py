@@ -6,8 +6,8 @@ class Settings(BaseSettings):
     podcast_index_api_key: str = ""
     podcast_index_secret: str = ""
 
-    # OpenAI (optional — for snip summaries)
-    openai_api_key: str = ""
+    # Snip summaries use Claude CLI (claude --print) — no API key needed
+    # Requires: `claude` CLI installed and authenticated via `claude login`
 
     # Storage
     media_dir: Path = Path("/root/podsnip/media")

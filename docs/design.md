@@ -14,7 +14,7 @@ Snipd's snip feature works by calling Whisper API for each clip (~$0.01/snip plu
 1. **Search** — find podcasts by keyword
 2. **Subscribe** — follow a podcast and get new episodes via RSS
 3. **Listen** — play episodes in the browser (audio served from VPS)
-4. **Snip** — tap a button at any moment → instantly get the last 60s of transcript + optional GPT-4o-mini summary
+4. **Snip** — tap a button at any moment → instantly get the last 60s of transcript + optional Claude summary (via CLI subprocess, free with Max subscription)
 
 Everything else is out of scope for MVP.
 
@@ -53,7 +53,7 @@ Everything else is out of scope for MVP.
          │                        │
     Podcast Index API         faster-whisper
     RSS feeds                 (local, CPU)
-    OpenAI API (optional)
+    Claude CLI (Max subscription, subprocess)
 ```
 
 ### Component responsibilities
@@ -67,7 +67,7 @@ Everything else is out of scope for MVP.
 | rss.py | RSS feed parsing to extract episode list + metadata |
 | downloader.py | Async MP3 download to VPS `/media/` directory |
 | transcriber.py | faster-whisper integration, word-level timestamps, background processing |
-| snip_engine.py | Timestamp window lookup in transcript + optional GPT summary |
+| snip_engine.py | Timestamp window lookup in transcript + optional Claude summary (via CLI subprocess) |
 
 ---
 
@@ -174,7 +174,7 @@ Delete a snip.
 | start_seconds | float | Start of snip window |
 | end_seconds | float | End of snip window (= playback position when tapped) |
 | text | string | Extracted transcript text |
-| summary | string? | GPT-4o-mini summary (optional) |
+| summary | string? | Claude summary (optional, via CLI subprocess) |
 | created_at | datetime | Creation time |
 
 ---
@@ -239,12 +239,30 @@ The `+1.0` buffer on `end` catches words that started just before the current po
 ### Context window
 Default: **60 seconds**. Configurable via `SNIP_CONTEXT_SECONDS` env var. Enough for a complete thought in a podcast conversation. Can be adjusted per-snip in future.
 
-### Optional summary (GPT-4o-mini)
+### Optional summary (Claude via CLI subprocess)
 ```
-Cost per summary: ~$0.001–0.002 (60s of speech = ~150-200 words)
-Latency: ~1-2 seconds
+Cost: $0 — uses Claude Max subscription already authenticated on VPS
+Latency: ~2-4 seconds (CLI startup ~1s + inference)
 ```
-Called only if `?summary=true` is passed and `OPENAI_API_KEY` is set. The prompt asks for a 1-2 sentence capture of the core insight.
+Called only if `?summary=true` is passed. Uses `claude --print` as a subprocess — no API key required, routes through the existing Max subscription session. The prompt asks for a 1-2 sentence capture of the core insight.
+
+```python
+import subprocess
+
+def claude_summarize(text: str) -> str:
+    prompt = (
+        "In 1-2 sentences, capture the core insight from this podcast excerpt. "
+        "Be direct, no fluff.\n\n"
+        f"Excerpt:\n{text}"
+    )
+    result = subprocess.run(
+        ["claude", "--print", prompt],
+        capture_output=True, text=True, timeout=60
+    )
+    return result.stdout.strip() if result.returncode == 0 else None
+```
+
+**Why not OpenAI:** Claude Max is already paid for and authenticated on the VPS. OpenAI would require a separate API key and separate billing.
 
 ### Why not real-time transcription per snip?
 - **Whisper API cost:** $0.006/min → $0.006 per 60s snip. Small but cumulative.
@@ -337,7 +355,8 @@ npm run build  # outputs to frontend/dist/
 ```bash
 cp .env.example .env
 # Edit .env with your Podcast Index API key
-# Optional: add OPENAI_API_KEY for summaries
+# Summaries use Claude CLI (claude --print) — no extra key needed
+# Requires: claude CLI installed + authenticated via `claude login`
 ```
 
 Get free Podcast Index API credentials at: https://api.podcastindex.com/
@@ -430,3 +449,4 @@ WantedBy=multi-user.target
 | No auth | Single-user, VPS-local, behind SSH tunnel if sensitive |
 | Native `<audio>` element | FileResponse + Range headers = browser handles seeking natively |
 | Podcast Index API over iTunes | Better data quality, open ecosystem, more fields |
+| Claude CLI subprocess for summaries | Claude Max already paid + authenticated on VPS; $0 marginal cost vs OpenAI API billing; `claude --print` is officially supported for scripting |
