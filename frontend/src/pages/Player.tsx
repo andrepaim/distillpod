@@ -246,7 +246,7 @@ function PlayerWidget({
         {gisting
           ? (withSummary ? "Summarising…" : "Gisting…")
           : transcriptStatus === "done"
-            ? (withSummary ? "✂️  Shot + summarise" : "✂️  Gist this moment")
+            ? (withSummary ? "✂️  Gist + summarise" : "✂️  Gist this moment")
             : "⏳  Waiting for transcript…"}
       </button>
 
