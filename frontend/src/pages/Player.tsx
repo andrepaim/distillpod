@@ -225,7 +225,7 @@ function PlayerWidget({
         </span>
         <button
           onClick={onToggleSummary}
-          className={`relative w-10 h-5 rounded-full transition-colors ${withSummary ? "bg-indigo-600" : "bg-gray-700"}`}
+          className={`relative w-10 h-5 rounded-full transition-colors overflow-hidden ${withSummary ? "bg-indigo-600" : "bg-gray-700"}`}
         >
           <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${withSummary ? "translate-x-5" : "translate-x-0.5"}`} />
         </button>
@@ -316,7 +316,7 @@ export default function Player() {
   const [gists, setGists] = useState<Gist[]>([]);
   const [gisting, setGisting] = useState(false);
   const [gistFlash, setGistFlash] = useState(false);
-  const [withSummary, setWithSummary] = useState(false);
+  const [withSummary, setWithSummary] = useState(true);
   const [audioReady, setAudioReady] = useState(false);
   const [error, setError] = useState("");
 
