@@ -1,5 +1,5 @@
 """
-Snip engine — extracts text from pre-computed transcript by timestamp range.
+Shot engine — extracts text from pre-computed transcript by timestamp range.
 Zero latency, zero cost. Optionally generates a Claude summary via CLI subprocess.
 """
 import asyncio
@@ -8,7 +8,7 @@ import uuid
 from datetime import datetime, timezone
 
 from config import settings
-from models import Snip
+from models import Shot
 from services.transcriber import get_transcript_words
 
 
@@ -35,19 +35,19 @@ def _claude_summarize_sync(text: str) -> str | None:
     return result.stdout.strip() if result.returncode == 0 else None
 
 
-async def create_snip(
+async def create_shot(
     episode_id: str,
     podcast_id: str,
     episode_title: str,
     podcast_title: str,
     current_seconds: float,
     with_summary: bool = False,
-) -> Snip:
+) -> Shot:
     """
     Extract the last N seconds of transcript up to current_seconds.
     Optionally generates a Claude summary (via CLI subprocess, free with Max subscription).
     """
-    context = settings.snip_context_seconds
+    context = settings.shot_context_seconds
     start = max(0.0, current_seconds - context)
     end = current_seconds
 
@@ -56,8 +56,8 @@ async def create_snip(
         raise ValueError(f"No transcript available for episode {episode_id}")
 
     # Filter words in time window
-    snip_words = [w for w in words if w["start"] >= start and w["end"] <= end + 1.0]
-    text = " ".join(w["word"].strip() for w in snip_words).strip()
+    shot_words = [w for w in words if w["start"] >= start and w["end"] <= end + 1.0]
+    text = " ".join(w["word"].strip() for w in shot_words).strip()
 
     if not text:
         raise ValueError("No transcribed content in the selected time range")
@@ -67,7 +67,7 @@ async def create_snip(
     if with_summary:
         summary = await asyncio.to_thread(_claude_summarize_sync, text)
 
-    snip = Snip(
+    shot = Shot(
         id=str(uuid.uuid4()),
         episode_id=episode_id,
         podcast_id=podcast_id,
@@ -79,4 +79,4 @@ async def create_snip(
         summary=summary,
         created_at=datetime.now(timezone.utc),
     )
-    return snip
+    return shot

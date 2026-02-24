@@ -1,13 +1,13 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { getSubscriptions, getEpisodes, listSnips, Episode, Subscription } from "../api/client";
+import { getSubscriptions, getEpisodes, listShots, Episode, Subscription } from "../api/client";
 import { getCached, setCached } from "../cache";
 
 const FEED_CACHE_KEY = "home:feed";
-const SNIPS_CACHE_KEY = "home:snipCounts";
+const SHOTS_CACHE_KEY = "home:shotCounts";
 
 // ─── Listened state (localStorage) ───────────────────────────────────────────
-const STORAGE_KEY = "podsnip:played";
+const STORAGE_KEY = "earshot:played";
 
 function getPlayed(): Set<string> {
   try { return new Set(JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]")); }
@@ -63,10 +63,10 @@ function SkeletonCard() {
 
 // ─── Episode card ─────────────────────────────────────────────────────────────
 function EpisodeCard({
-  ep, snipCount, played, onTogglePlayed,
+  ep, shotCount, played, onTogglePlayed,
 }: {
   ep: FeedEpisode;
-  snipCount: number;
+  shotCount: number;
   played: boolean;
   onTogglePlayed: () => void;
 }) {
@@ -100,9 +100,9 @@ function EpisodeCard({
           {fmtDuration(ep.duration_seconds) && (
             <span className="text-xs text-gray-600">· {fmtDuration(ep.duration_seconds)}</span>
           )}
-          {snipCount > 0 && (
+          {shotCount > 0 && (
             <span className="text-xs bg-indigo-900 text-indigo-300 px-1.5 py-0.5 rounded-full font-medium">
-              ✂️ {snipCount}
+              ✂️ {shotCount}
             </span>
           )}
         </div>
@@ -132,7 +132,7 @@ function EpisodeCard({
 export default function Home() {
   const nav = useNavigate();
   const [feed, setFeed] = useState<FeedEpisode[]>(() => getCached<FeedEpisode[]>(FEED_CACHE_KEY) || []);
-  const [snipCounts, setSnipCounts] = useState<Record<string, number>>(() => getCached<Record<string, number>>(SNIPS_CACHE_KEY) || {});
+  const [shotCounts, setShotCounts] = useState<Record<string, number>>(() => getCached<Record<string, number>>(SHOTS_CACHE_KEY) || {});
   const [played, setPlayed] = useState<Set<string>>(getPlayed());
   const [loading, setLoading] = useState(() => !getCached(FEED_CACHE_KEY)); // skip spinner if cache hit
   const [refreshing, setRefreshing] = useState(false);
@@ -144,7 +144,7 @@ export default function Home() {
       const subs = await getSubscriptions();
       if (subs.length === 0) { setNoSubs(true); return; }
 
-      const [episodeLists, snips] = await Promise.all([
+      const [episodeLists, shots] = await Promise.all([
         Promise.all(
           subs.map((s: Subscription) =>
             getEpisodes(s.podcast_id, false)
@@ -156,11 +156,11 @@ export default function Home() {
               .catch(() => [] as FeedEpisode[])
           )
         ),
-        listSnips().catch(() => []),
+        listShots().catch(() => []),
       ]);
 
       const counts: Record<string, number> = {};
-      snips.forEach(s => { counts[s.episode_id] = (counts[s.episode_id] || 0) + 1; });
+      shots.forEach(s => { counts[s.episode_id] = (counts[s.episode_id] || 0) + 1; });
 
       const all = episodeLists.flat().sort((a, b) => {
         if (!a.published_at) return 1;
@@ -169,9 +169,9 @@ export default function Home() {
       }).slice(0, 50);
 
       setFeed(all);
-      setSnipCounts(counts);
+      setShotCounts(counts);
       setCached(FEED_CACHE_KEY, all);
-      setCached(SNIPS_CACHE_KEY, counts);
+      setCached(SHOTS_CACHE_KEY, counts);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -224,7 +224,7 @@ export default function Home() {
         <EpisodeCard
           key={ep.id}
           ep={ep}
-          snipCount={snipCounts[ep.id] || 0}
+          shotCount={shotCounts[ep.id] || 0}
           played={played.has(ep.id)}
           onTogglePlayed={() => handleTogglePlayed(ep.id)}
         />

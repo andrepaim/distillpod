@@ -1,4 +1,4 @@
-const PREFIX = "podsnip:cache:";
+const PREFIX = "earshot:cache:";
 const TTL_MS = 30 * 60 * 1000; // 30 minutes
 
 export function getCached<T>(key: string): T | null {

@@ -10,8 +10,8 @@ class Settings(BaseSettings):
     # Requires: `claude` CLI installed and authenticated via `claude login`
 
     # Storage
-    media_dir: Path = Path("/root/podsnip/media")
-    db_path: Path = Path("/root/podsnip/podsnip.db")
+    media_dir: Path = Path("/root/earshot/media")
+    db_path: Path = Path("/root/earshot/earshot.db")
 
     # Server
     host: str = "127.0.0.1"
@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     # Transcription
     whisper_model: str = "base"           # base / small / medium / large-v3
     whisper_device: str = "cpu"
-    snip_context_seconds: int = 60        # seconds of audio captured per snip
+    shot_context_seconds: int = 60        # seconds of audio captured per shot
 
     class Config:
         env_file = ".env"

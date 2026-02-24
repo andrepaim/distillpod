@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS transcripts (
     created_at  TEXT NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS snips (
+CREATE TABLE IF NOT EXISTS shots (
     id             TEXT PRIMARY KEY,
     episode_id     TEXT NOT NULL,
     podcast_id     TEXT NOT NULL,

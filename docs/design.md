@@ -1,14 +1,14 @@
-# PodSnip — Design Document
+# EarShot — Design Document
 _Version 0.1 · February 2026_
 
 ---
 
 ## 1. Overview
 
-PodSnip is a minimal, self-hosted podcast app where **Botler acts as the backend**. Instead of relying on cloud services or a mobile app, the user opens a React web app in their browser, and all heavy lifting — downloading audio, transcribing, extracting snips — happens on the VPS running Botler.
+EarShot is a minimal, self-hosted podcast app where **Botler acts as the backend**. Instead of relying on cloud services or a mobile app, the user opens a React web app in their browser, and all heavy lifting — downloading audio, transcribing, extracting snips — happens on the VPS running Botler.
 
 ### Core insight
-Snipd's snip feature works by calling Whisper API for each clip (~$0.01/snip plus latency). PodSnip inverts this: **transcribe the whole episode once** (free, using faster-whisper already installed on VPS), and each snip becomes a zero-cost, zero-latency timestamp lookup in the pre-computed word-level transcript.
+The core insight: instead of calling an API for each clip, **transcribe the whole episode once** (free, using faster-whisper already installed on VPS), and each snip becomes a zero-cost, zero-latency timestamp lookup in the pre-computed word-level transcript.
 
 ### Feature scope (MVP)
 1. **Search** — find podcasts by keyword
@@ -320,7 +320,7 @@ FastAPI's `FileResponse` handles HTTP Range requests automatically (needed for b
 - Episode title header
 - Transcript status indicator (polls every 5s if not done)
 - Native `<audio>` element (src = `/player/audio/{id}`)
-- **✂️ Snip button** — full width, disabled until transcript ready
+- **✂️ Shot button** — full width, disabled until transcript ready
 - Snip list below player: each card shows timestamp range + transcript text + summary
 
 ### Snip interaction
@@ -342,11 +342,11 @@ The whole interaction takes < 200ms (DB read + array slice). No spinner needed.
 ### Prerequisites
 ```bash
 # Backend deps
-cd /root/podsnip/backend
+cd /root/earshot/backend
 pip install -r requirements.txt
 
 # Frontend deps
-cd /root/podsnip/frontend
+cd /root/earshot/frontend
 npm install
 npm run build  # outputs to frontend/dist/
 ```
@@ -364,21 +364,21 @@ Get free Podcast Index API credentials at: https://api.podcastindex.com/
 ### Running (development)
 ```bash
 # Terminal 1 — backend
-cd /root/podsnip/backend
+cd /root/earshot/backend
 uvicorn main:app --host 127.0.0.1 --port 8124 --reload
 
 # Terminal 2 — frontend dev server
-cd /root/podsnip/frontend
+cd /root/earshot/frontend
 npm run dev  # http://localhost:5173
 ```
 
 ### Running (production)
 ```bash
 # Build frontend
-cd /root/podsnip/frontend && npm run build
+cd /root/earshot/frontend && npm run build
 
 # Run backend (serves built frontend at /)
-cd /root/podsnip/backend
+cd /root/earshot/backend
 uvicorn main:app --host 127.0.0.1 --port 8124
 ```
 
@@ -394,7 +394,7 @@ server {
     }
 
     location / {
-        root /root/podsnip/frontend/dist;
+        root /root/earshot/frontend/dist;
         try_files $uri $uri/ /index.html;
     }
 }
@@ -405,14 +405,14 @@ Or simpler: FastAPI serves the built frontend directly (already configured in `m
 ### Systemd service
 ```ini
 [Unit]
-Description=PodSnip Backend
+Description=EarShot Backend
 After=network.target
 
 [Service]
-WorkingDirectory=/root/podsnip/backend
+WorkingDirectory=/root/earshot/backend
 ExecStart=/usr/bin/uvicorn main:app --host 127.0.0.1 --port 8124
 Restart=on-failure
-EnvironmentFile=/root/podsnip/.env
+EnvironmentFile=/root/earshot/.env
 
 [Install]
 WantedBy=multi-user.target

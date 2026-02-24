@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams, useLocation } from "react-router-dom";
-import { startPlay, createSnip, listSnips, audioStreamUrl, getTranscriptStatus, getEpisode, Snip, Episode } from "../api/client";
+import { startPlay, createShot, listShots, audioStreamUrl, getTranscriptStatus, getEpisode, Shot, Episode } from "../api/client";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function fmtTime(secs: number) {
@@ -39,14 +39,14 @@ function TranscriptBadge({ status }: { status: string }) {
 
 // ─── Custom player widget ─────────────────────────────────────────────────────
 function PlayerWidget({
-  audioRef, snips, transcriptStatus, onSnip, snipping, snipFlash, withSummary, onToggleSummary,
+  audioRef, shots, transcriptStatus, onShot, shotting, shotFlash, withSummary, onToggleSummary,
 }: {
   audioRef: React.RefObject<HTMLAudioElement>;
-  snips: Snip[];
+  shots: Shot[];
   transcriptStatus: string;
-  onSnip: () => void;
-  snipping: boolean;
-  snipFlash: boolean;
+  onShot: () => void;
+  shotting: boolean;
+  shotFlash: boolean;
   withSummary: boolean;
   onToggleSummary: () => void;
 }) {
@@ -116,7 +116,7 @@ function PlayerWidget({
   return (
     <div className="bg-gray-900 rounded-2xl p-5 space-y-4">
 
-      {/* Progress bar + snip markers */}
+      {/* Progress bar + shot markers */}
       <div className="space-y-1">
         <div className="relative h-1.5">
           {/* Track background */}
@@ -126,8 +126,8 @@ function PlayerWidget({
             className="absolute left-0 top-0 h-full rounded-full bg-indigo-500 pointer-events-none"
             style={{ width: `${progress}%` }}
           />
-          {/* Snip markers */}
-          {duration > 0 && snips.map(s => (
+          {/* Shot markers */}
+          {duration > 0 && shots.map(s => (
             <div
               key={s.id}
               className="absolute top-1/2 -translate-y-1/2 w-0.5 h-3 bg-indigo-300 rounded-full pointer-events-none opacity-80"
@@ -206,10 +206,10 @@ function PlayerWidget({
           </svg>
         </button>
 
-        {/* Snip count */}
+        {/* Shot count */}
         <button
-          onClick={onSnip}
-          disabled={snipping || transcriptStatus !== "done"}
+          onClick={onShot}
+          disabled={shotting || transcriptStatus !== "done"}
           className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-800 transition-colors disabled:opacity-30"
         >
           <span className="text-lg">✂️</span>
@@ -231,22 +231,22 @@ function PlayerWidget({
         </button>
       </div>
 
-      {/* Snip button */}
+      {/* Shot button */}
       <button
-        onClick={onSnip}
-        disabled={snipping || transcriptStatus !== "done"}
+        onClick={onShot}
+        disabled={shotting || transcriptStatus !== "done"}
         className={`w-full py-3.5 rounded-xl font-semibold text-base transition-all ${
-          snipFlash
+          shotFlash
             ? "bg-green-600 scale-95"
             : transcriptStatus === "done"
               ? "bg-indigo-600 hover:bg-indigo-500 active:scale-95"
               : "bg-gray-800 text-gray-500 cursor-not-allowed"
         }`}
       >
-        {snipping
-          ? (withSummary ? "Summarising…" : "Creating snip…")
+        {shotting
+          ? (withSummary ? "Summarising…" : "Creating shot…")
           : transcriptStatus === "done"
-            ? (withSummary ? "✂️  Snip + summarise" : "✂️  Snip this moment")
+            ? (withSummary ? "✂️  Shot + summarise" : "✂️  Take a shot")
             : "⏳  Waiting for transcript…"}
       </button>
 
@@ -254,8 +254,8 @@ function PlayerWidget({
   );
 }
 
-// ─── Snip card ────────────────────────────────────────────────────────────────
-function parseSnipSummary(summary: string | undefined): { quote?: string; insight?: string } | null {
+// ─── Shot card ────────────────────────────────────────────────────────────────
+function parseShotSummary(summary: string | undefined): { quote?: string; insight?: string } | null {
   if (!summary) return null;
   try {
     const parsed = JSON.parse(summary);
@@ -264,14 +264,14 @@ function parseSnipSummary(summary: string | undefined): { quote?: string; insigh
   return { insight: summary }; // fallback for old plain-text summaries
 }
 
-function SnipCard({ snip }: { snip: Snip }) {
+function ShotCard({ shot }: { shot: Shot }) {
   const [copied, setCopied] = useState(false);
-  const ai = parseSnipSummary(snip.summary);
+  const ai = parseShotSummary(shot.summary);
 
   const copy = async () => {
     const text = ai
       ? [ai.quote && `"${ai.quote}"`, ai.insight].filter(Boolean).join("\n\n")
-      : snip.text;
+      : shot.text;
     await navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -281,7 +281,7 @@ function SnipCard({ snip }: { snip: Snip }) {
     <div className="bg-gray-900 rounded-xl p-4 space-y-2">
       <div className="flex items-center justify-between">
         <span className="text-xs text-gray-500 font-mono">
-          {fmtTime(snip.start_seconds)} → {fmtTime(snip.end_seconds)}
+          {fmtTime(shot.start_seconds)} → {fmtTime(shot.end_seconds)}
         </span>
         <button onClick={copy} className="text-xs text-gray-400 hover:text-white px-2 py-0.5 rounded hover:bg-gray-700 transition-colors">
           {copied ? "✓ Copied" : "📋 Copy"}
@@ -297,7 +297,7 @@ function SnipCard({ snip }: { snip: Snip }) {
           )}
         </>
       ) : (
-        <p className="text-sm leading-relaxed text-gray-100">{snip.text}</p>
+        <p className="text-sm leading-relaxed text-gray-100">{shot.text}</p>
       )}
     </div>
   );
@@ -313,9 +313,9 @@ export default function Player() {
   const [episode, setEpisode] = useState<(Episode & { podcast_image?: string }) | null>(routeState);
   const seekTo = routeState?.seekTo;  // derived directly — always reflects current navigation state
   const [transcriptStatus, setTranscriptStatus] = useState("none");
-  const [snips, setSnips] = useState<Snip[]>([]);
-  const [snipping, setSnipping] = useState(false);
-  const [snipFlash, setSnipFlash] = useState(false);
+  const [shots, setShots] = useState<Shot[]>([]);
+  const [shotting, setShotting] = useState(false);
+  const [shotFlash, setShotFlash] = useState(false);
   const [withSummary, setWithSummary] = useState(false);
   const [audioReady, setAudioReady] = useState(false);
   const [error, setError] = useState("");
@@ -337,7 +337,7 @@ export default function Player() {
         await startPlay(episodeId, ep.audio_url);
         setAudioReady(true);
         try {
-          const key = "podsnip:played";
+          const key = "earshot:played";
           const played = new Set(JSON.parse(localStorage.getItem(key) || "[]"));
           played.add(episodeId);
           localStorage.setItem(key, JSON.stringify([...played]));
@@ -345,7 +345,7 @@ export default function Player() {
       } catch (e: any) { setError(e.message); }
     };
     init();
-    listSnips(episodeId).then(setSnips);
+    listShots(episodeId).then(setShots);
   }, [episodeId]);
 
   // Seek + autoplay after audio ready
@@ -381,16 +381,16 @@ export default function Player() {
     return () => clearInterval(timer);
   }, [episodeId, transcriptStatus]);
 
-  const handleSnip = async () => {
+  const handleShot = async () => {
     if (!audioRef.current || !episodeId) return;
-    setSnipping(true);
+    setShotting(true);
     try {
-      const snip = await createSnip(episodeId, audioRef.current.currentTime, withSummary);
-      setSnips(prev => [snip, ...prev]);
-      setSnipFlash(true);
-      setTimeout(() => setSnipFlash(false), 600);
+      const shot = await createShot(episodeId, audioRef.current.currentTime, withSummary);
+      setShots(prev => [shot, ...prev]);
+      setShotFlash(true);
+      setTimeout(() => setShotFlash(false), 600);
     } catch (e: any) { setError(e.message); }
-    finally { setSnipping(false); }
+    finally { setShotting(false); }
   };
 
   return (
@@ -425,11 +425,11 @@ export default function Player() {
       {audioReady && (
         <PlayerWidget
           audioRef={audioRef}
-          snips={snips}
+          shots={shots}
           transcriptStatus={transcriptStatus}
-          onSnip={handleSnip}
-          snipping={snipping}
-          snipFlash={snipFlash}
+          onShot={handleShot}
+          shotting={shotting}
+          shotFlash={shotFlash}
           withSummary={withSummary}
           onToggleSummary={() => setWithSummary(v => !v)}
         />
@@ -444,13 +444,13 @@ export default function Player() {
         </div>
       )}
 
-      {/* Snips list */}
-      {snips.length > 0 && (
+      {/* Shots list */}
+      {shots.length > 0 && (
         <div className="space-y-3">
           <h2 className="text-gray-400 font-medium text-xs uppercase tracking-wide">
-            Snips ({snips.length})
+            Shots ({shots.length})
           </h2>
-          {snips.map(s => <SnipCard key={s.id} snip={s} />)}
+          {shots.map(s => <ShotCard key={s.id} shot={s} />)}
         </div>
       )}
     </div>

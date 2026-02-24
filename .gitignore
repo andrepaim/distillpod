@@ -5,7 +5,9 @@ __pycache__/
 *.pyo
 .venv/
 media/
-podsnip.db
+earshot.db
 server.log
 frontend/node_modules/
 frontend/dist/
+wa-service/node_modules/
+wa-service-v2/node_modules/

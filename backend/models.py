@@ -51,7 +51,7 @@ class Transcript(BaseModel):
     created_at: datetime
 
 
-class Snip(BaseModel):
+class Shot(BaseModel):
     id: str
     episode_id: str
     podcast_id: str
@@ -66,9 +66,9 @@ class Snip(BaseModel):
 
 # Request / Response schemas
 
-class SnipRequest(BaseModel):
+class ShotRequest(BaseModel):
     episode_id: str
-    current_seconds: float        # playback position when user tapped Snip
+    current_seconds: float        # playback position when user tapped Shot
 
 
 class PlayRequest(BaseModel):

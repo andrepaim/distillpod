@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { listSnips, deleteSnip, getSubscriptions, Snip, Subscription } from "../api/client";
+import { listShots, deleteShot, getSubscriptions, Shot, Subscription } from "../api/client";
 
 function fmtTime(secs: number) {
   const m = Math.floor(secs / 60);
@@ -12,8 +12,8 @@ function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
-// ─── Individual snip card ─────────────────────────────────────────────────────
-function parseSnipSummary(summary: string | undefined): { quote?: string; insight?: string } | null {
+// ─── Individual shot card ─────────────────────────────────────────────────────
+function parseShotSummary(summary: string | undefined): { quote?: string; insight?: string } | null {
   if (!summary) return null;
   try {
     const parsed = JSON.parse(summary);
@@ -22,31 +22,31 @@ function parseSnipSummary(summary: string | undefined): { quote?: string; insigh
   return { insight: summary };
 }
 
-function SnipCard({ snip, podcastImage, onDelete }: { snip: Snip; podcastImage?: string; onDelete: () => void }) {
+function ShotCard({ shot, podcastImage, onDelete }: { shot: Shot; podcastImage?: string; onDelete: () => void }) {
   const nav = useNavigate();
   const [copied, setCopied] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const ai = parseSnipSummary(snip.summary);
+  const ai = parseShotSummary(shot.summary);
 
   const copy = async () => {
     const text = ai
       ? [ai.quote && `"${ai.quote}"`, ai.insight].filter(Boolean).join("\n\n")
-      : snip.text;
+      : shot.text;
     await navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
   const handleDelete = async () => {
-    if (!confirm("Delete this snip?")) return;
+    if (!confirm("Delete this shot?")) return;
     setDeleting(true);
-    try { await deleteSnip(snip.id); onDelete(); }
+    try { await deleteShot(shot.id); onDelete(); }
     finally { setDeleting(false); }
   };
 
   const handlePlay = () => {
-    nav(`/player/${snip.episode_id}`, {
-      state: { seekTo: snip.start_seconds, podcast_image: podcastImage },
+    nav(`/player/${shot.episode_id}`, {
+      state: { seekTo: shot.start_seconds, podcast_image: podcastImage },
     });
   };
 
@@ -60,7 +60,7 @@ function SnipCard({ snip, podcastImage, onDelete }: { snip: Snip; podcastImage?:
           <svg viewBox="0 0 24 24" fill="currentColor" className="w-3.5 h-3.5">
             <polygon points="5 3 19 12 5 21 5 3" />
           </svg>
-          {fmtTime(snip.start_seconds)} → {fmtTime(snip.end_seconds)}
+          {fmtTime(shot.start_seconds)} → {fmtTime(shot.end_seconds)}
         </button>
         <div className="flex gap-2">
           <button
@@ -88,30 +88,30 @@ function SnipCard({ snip, podcastImage, onDelete }: { snip: Snip; podcastImage?:
           )}
         </>
       ) : (
-        <p className="text-sm leading-relaxed text-gray-100">{snip.text}</p>
+        <p className="text-sm leading-relaxed text-gray-100">{shot.text}</p>
       )}
     </div>
   );
 }
 
-// ─── Episode snips view ───────────────────────────────────────────────────────
-function EpisodeSnips({
-  episodeId, episodeTitle, podcastTitle, podcastImage, snips: initial, onBack, onAllDeleted,
+// ─── Episode shots view ───────────────────────────────────────────────────────
+function EpisodeShots({
+  episodeId, episodeTitle, podcastTitle, podcastImage, shots: initial, onBack, onAllDeleted,
 }: {
   episodeId: string;
   episodeTitle: string;
   podcastTitle: string;
   podcastImage?: string;
-  snips: Snip[];
+  shots: Shot[];
   onBack: () => void;
   onAllDeleted: () => void;
 }) {
   const nav = useNavigate();
-  const [snips, setSnips] = useState(initial);
+  const [shots, setShots] = useState(initial);
 
   const handleDelete = (id: string) => {
-    const updated = snips.filter(s => s.id !== id);
-    setSnips(updated);
+    const updated = shots.filter(s => s.id !== id);
+    setShots(updated);
     if (updated.length === 0) onAllDeleted();
   };
 
@@ -126,7 +126,7 @@ function EpisodeSnips({
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
             <polyline points="15 18 9 12 15 6" />
           </svg>
-          <span className="text-sm font-medium">Snips</span>
+          <span className="text-sm font-medium">Shots</span>
         </button>
         <div className="flex-1 min-w-0">
           <div className="text-xs text-gray-500 mb-0.5">{podcastTitle}</div>
@@ -141,19 +141,19 @@ function EpisodeSnips({
       </div>
 
       <div className="text-xs text-gray-500 pb-1">
-        {snips.length} snip{snips.length !== 1 ? "s" : ""}
+        {shots.length} shot{shots.length !== 1 ? "s" : ""}
       </div>
 
-      {snips.map(s => (
-        <SnipCard key={s.id} snip={s} podcastImage={podcastImage} onDelete={() => handleDelete(s.id)} />
+      {shots.map(s => (
+        <ShotCard key={s.id} shot={s} podcastImage={podcastImage} onDelete={() => handleDelete(s.id)} />
       ))}
     </div>
   );
 }
 
 // ─── Episode summary row ──────────────────────────────────────────────────────
-function EpisodeRow({ episodeId, snips, imageUrl, onClick }: { episodeId: string; snips: Snip[]; imageUrl?: string; onClick: () => void }) {
-  const latest = snips.reduce((a, b) => a.created_at > b.created_at ? a : b);
+function EpisodeRow({ episodeId, shots, imageUrl, onClick }: { episodeId: string; shots: Shot[]; imageUrl?: string; onClick: () => void }) {
+  const latest = shots.reduce((a, b) => a.created_at > b.created_at ? a : b);
 
   return (
     <div
@@ -172,33 +172,33 @@ function EpisodeRow({ episodeId, snips, imageUrl, onClick }: { episodeId: string
             <div className="min-w-0">
               <div className="text-xs text-gray-500 mb-0.5">{latest.podcast_title}</div>
               <div className="text-sm font-medium leading-snug line-clamp-2">{latest.episode_title}</div>
-              <div className="text-xs text-gray-600 mt-1">Last snipped {fmtDate(latest.created_at)}</div>
+              <div className="text-xs text-gray-600 mt-1">Last shot {fmtDate(latest.created_at)}</div>
             </div>
             <div className="flex-shrink-0 flex flex-col items-end gap-1">
               <span className="bg-indigo-900 text-indigo-300 text-xs font-semibold px-2.5 py-1 rounded-full">
-                {snips.length} snip{snips.length !== 1 ? "s" : ""}
+                {shots.length} shot{shots.length !== 1 ? "s" : ""}
               </span>
               <span className="text-gray-600 text-lg">›</span>
             </div>
           </div>
-          <p className="text-xs text-gray-500 mt-2 line-clamp-2 italic">"{snips[0].text}"</p>
+          <p className="text-xs text-gray-500 mt-2 line-clamp-2 italic">"{shots[0].text}"</p>
         </div>
       </div>
     </div>
   );
 }
 
-// ─── Main Snips page ──────────────────────────────────────────────────────────
-export default function Snips() {
-  const [allSnips, setAllSnips] = useState<Snip[]>([]);
+// ─── Main Shots page ──────────────────────────────────────────────────────────
+export default function Shots() {
+  const [allShots, setAllShots] = useState<Shot[]>([]);
   const [imageMap, setImageMap] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [selectedEpisode, setSelectedEpisode] = useState<string | null>(null);
 
   const load = () => {
     setLoading(true);
-    Promise.all([listSnips(), getSubscriptions()]).then(([snips, subs]) => {
-      setAllSnips(snips);
+    Promise.all([listShots(), getSubscriptions()]).then(([shots, subs]) => {
+      setAllShots(shots);
       setImageMap(Object.fromEntries(subs.filter(s => s.image_url).map(s => [s.podcast_id, s.image_url!])));
     }).finally(() => setLoading(false));
   };
@@ -206,13 +206,13 @@ export default function Snips() {
   useEffect(() => { load(); }, []);
 
   // Group by episode
-  const byEpisode = allSnips.reduce<Record<string, Snip[]>>((acc, snip) => {
-    if (!acc[snip.episode_id]) acc[snip.episode_id] = [];
-    acc[snip.episode_id].push(snip);
+  const byEpisode = allShots.reduce<Record<string, Shot[]>>((acc, shot) => {
+    if (!acc[shot.episode_id]) acc[shot.episode_id] = [];
+    acc[shot.episode_id].push(shot);
     return acc;
   }, {});
 
-  // Sort episodes by most recent snip
+  // Sort episodes by most recent shot
   const episodeIds = Object.keys(byEpisode).sort((a, b) => {
     const latestA = Math.max(...byEpisode[a].map(s => new Date(s.created_at).getTime()));
     const latestB = Math.max(...byEpisode[b].map(s => new Date(s.created_at).getTime()));
@@ -221,17 +221,17 @@ export default function Snips() {
 
   // Drill-down view
   if (selectedEpisode && byEpisode[selectedEpisode]) {
-    const snips = byEpisode[selectedEpisode];
+    const shots = byEpisode[selectedEpisode];
     return (
-      <EpisodeSnips
+      <EpisodeShots
         episodeId={selectedEpisode}
-        episodeTitle={snips[0].episode_title}
-        podcastTitle={snips[0].podcast_title}
-        podcastImage={imageMap[snips[0].podcast_id]}
-        snips={snips}
+        episodeTitle={shots[0].episode_title}
+        podcastTitle={shots[0].podcast_title}
+        podcastImage={imageMap[shots[0].podcast_id]}
+        shots={shots}
         onBack={() => setSelectedEpisode(null)}
         onAllDeleted={() => {
-          setAllSnips(prev => prev.filter(s => s.episode_id !== selectedEpisode));
+          setAllShots(prev => prev.filter(s => s.episode_id !== selectedEpisode));
           setSelectedEpisode(null);
         }}
       />
@@ -242,10 +242,10 @@ export default function Snips() {
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <h1 className="text-lg font-bold">Snips</h1>
-        {allSnips.length > 0 && (
+        <h1 className="text-lg font-bold">Shots</h1>
+        {allShots.length > 0 && (
           <span className="text-sm text-gray-500">
-            {allSnips.length} across {episodeIds.length} episode{episodeIds.length !== 1 ? "s" : ""}
+            {allShots.length} across {episodeIds.length} episode{episodeIds.length !== 1 ? "s" : ""}
           </span>
         )}
       </div>
@@ -261,8 +261,8 @@ export default function Snips() {
       {!loading && episodeIds.length === 0 && (
         <div className="text-center py-12 text-gray-500">
           <div className="text-4xl mb-3">✂️</div>
-          <p>No snips yet.</p>
-          <p className="text-sm mt-1">Play an episode and tap Snip to capture a moment.</p>
+          <p>No shots yet.</p>
+          <p className="text-sm mt-1">Play an episode and tap Shot to capture a moment.</p>
         </div>
       )}
 
@@ -270,7 +270,7 @@ export default function Snips() {
         <EpisodeRow
           key={epId}
           episodeId={epId}
-          snips={byEpisode[epId]}
+          shots={byEpisode[epId]}
           imageUrl={imageMap[byEpisode[epId][0].podcast_id]}
           onClick={() => setSelectedEpisode(epId)}
         />

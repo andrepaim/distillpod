@@ -1,14 +1,14 @@
-# PodSnip 🎙✂️
+# EarShot 🎧
 
-A minimal, self-hosted podcast app with instant transcript snipping. No cloud services, no subscriptions, no per-use API costs. Your VPS does all the heavy lifting.
+A minimal, self-hosted podcast app with instant audio shot capturing. No cloud services, no subscriptions, no per-use API costs. Your VPS does all the heavy lifting.
 
 ---
 
 ## What is this?
 
-PodSnip is a mobile-first web app that lets you listen to podcasts and **capture moments** from them — a feature popularized by [Snipd](https://www.snipd.com/), but self-hosted and free.
+EarShot is a mobile-first web app that lets you listen to podcasts and **capture moments** from them.
 
-The core insight: Snipd calls the Whisper API for each clip (~$0.01/snip + latency). PodSnip flips this — it **transcribes the whole episode once** using [faster-whisper](https://github.com/SYSTRAN/faster-whisper) (free, runs locally on CPU), and each snip becomes a zero-cost, near-instant timestamp lookup in the pre-computed word-level transcript.
+The core insight: most podcast apps call an API for each clip (~$0.01 + latency). EarShot flips this — it **transcribes the whole episode once** using [faster-whisper](https://github.com/SYSTRAN/faster-whisper) (free, runs locally on CPU), and each shot becomes a zero-cost, near-instant timestamp lookup in the pre-computed word-level transcript.
 
 You open the app in your phone's browser. Everything else — downloading audio, transcribing, serving — happens on your VPS.
 
@@ -16,12 +16,12 @@ You open the app in your phone's browser. Everything else — downloading audio,
 
 ## Features
 
-- **📰 Home feed** — unified list of the latest episodes across all your subscribed podcasts, sorted by date. Shows whether you've listened and whether you have snips.
+- **📰 Home feed** — unified list of the latest episodes across all your subscribed podcasts, sorted by date. Shows whether you've listened and whether you have shots.
 - **🔍 Search** — find podcasts via the iTunes Search API (no key needed). Subscribe with one tap.
 - **📚 Library** — browse your subscribed podcasts and their episodes. Transcript status shown per episode.
 - **▶️ Player** — stream audio directly from your VPS. Transcription kicks off automatically in the background when you press play.
-- **✂️ Snip** — tap the Snip button at any moment while listening. Instantly extracts the last 60 seconds of transcript. No spinner, no wait.
-- **📋 Snips library** — browse all your snips grouped by episode. Copy to clipboard, delete, or jump back to the episode.
+- **✂️ Shot** — tap the Shot button at any moment while listening. Instantly extracts the last 60 seconds of transcript. Toggle **✨ AI summary** for a verbatim quote + Claude insight instead of raw text (~30s, uses Claude Max subscription).
+- **📋 Shots library** — browse all your shots grouped by episode. Copy to clipboard, delete, or jump back to the episode.
 - **⚡ Stale-while-revalidate caching** — the app feels instant on return visits. Data is cached in localStorage with a 30-minute TTL and refreshed silently in the background.
 
 ---
@@ -32,7 +32,7 @@ You open the app in your phone's browser. Everything else — downloading audio,
 ┌─────────────────────────────────────────────────────┐
 │  Browser (React + Vite + Tailwind CSS)               │
 │                                                       │
-│  Home · Search · Library · Player · Snips            │
+│  Home · Search · Library · Player · Shots            │
 │                                                       │
 │  localStorage cache (stale-while-revalidate, 30min)  │
 └───────────────────────┬─────────────────────────────┘
@@ -40,16 +40,16 @@ You open the app in your phone's browser. Everything else — downloading audio,
 ┌───────────────────────▼─────────────────────────────┐
 │  FastAPI backend (port 8124)                         │
 │                                                       │
-│  /podcasts   /player   /snips                        │
+│  /podcasts   /player   /shots                        │
 │                                                       │
 │  ┌──────────────────────────────────────────────┐   │
 │  │  Services                                     │   │
 │  │  podcast_index · rss · downloader             │   │
-│  │  transcriber · snip_engine                    │   │
+│  │  transcriber · shot_engine                    │   │
 │  └──────────────────────────────────────────────┘   │
 │                                                       │
 │  SQLite (aiosqlite) — subscriptions, episodes,       │
-│                        transcripts, snips            │
+│                        transcripts, shots            │
 └──────────┬─────────────────────────┬────────────────┘
            │                         │
      iTunes Search API         faster-whisper (local)
@@ -65,12 +65,12 @@ You open the app in your phone's browser. Everything else — downloading audio,
 | `backend/main.py` | FastAPI app entry point, serves built frontend |
 | `backend/routers/podcasts.py` | Search, subscribe, episode listing |
 | `backend/routers/player.py` | Play trigger, audio streaming, transcript status |
-| `backend/routers/snips.py` | Create, list, delete snips |
+| `backend/routers/shots.py` | Create, list, delete shots |
 | `backend/services/podcast_index.py` | iTunes Search API + optional Podcast Index |
 | `backend/services/rss.py` | RSS feed parsing via feedparser |
 | `backend/services/downloader.py` | Async MP3 download to `/media/` |
 | `backend/services/transcriber.py` | faster-whisper, word-level timestamps, async background task |
-| `backend/services/snip_engine.py` | Timestamp window lookup in transcript |
+| `backend/services/shot_engine.py` | Timestamp window lookup in transcript |
 | `backend/database.py` | SQLite connection + schema init |
 
 ---
@@ -100,7 +100,7 @@ When you press play on an episode:
 2. The episode MP3 is downloaded to `/media/` on the VPS (if not already cached)
 3. A background asyncio task starts transcribing using `faster-whisper` with `word_timestamps=True`
 4. The frontend polls `GET /player/transcript-status/{episode_id}` every 5 seconds
-5. When status is `done`, the ✂️ Snip button unlocks
+5. When status is `done`, the ✂️ Shot button unlocks
 
 Transcription runs on CPU. With the `base` model, a 1-hour podcast takes roughly 15–25 minutes — typically finishing before you're halfway through the episode.
 
@@ -117,21 +117,37 @@ Set via `WHISPER_MODEL` in `.env`.
 
 ---
 
-## How Snipping Works
+## How Shots Work
 
-When you tap ✂️ Snip:
+### Basic shot (instant)
+
+When you tap ✂️ **Take a moment**:
 
 1. The frontend reads `audioRef.current.currentTime` (current playback position in seconds)
-2. Sends `POST /snips/ { episode_id, current_seconds }`
+2. Sends `POST /shots/ { episode_id, current_seconds }`
 3. The backend scans the pre-computed word array for words in the window `[current_seconds - 60, current_seconds]`
 4. Returns the extracted text immediately (no API call, no processing — just an array slice)
-5. A new snip card appears at the top of the list
+5. A new shot card appears at the top of the list with the raw transcript text
 
 **Total latency: < 200ms.** No spinner needed.
 
-The 60-second context window is configurable via `SNIP_CONTEXT_SECONDS` in `.env`.
+The 60-second context window is configurable via `SHOT_CONTEXT_SECONDS` in `.env`.
 
-Optionally, pass `?summary=true` to get a Claude summary of the snip. Uses `claude --print` as a subprocess — no API key required, routes through your existing Claude Max subscription session (`claude login`).
+### AI shot (quote + insight)
+
+Toggle **✨ AI summary** in the player before shooting. The button changes to **✂️ Shot + summarise**.
+
+When enabled:
+1. Same transcript extraction as above
+2. Backend calls `claude --print` as a subprocess with the extracted text
+3. Claude returns a JSON `{ "quote": "...", "insight": "..." }`:
+   - **quote** — the single most memorable verbatim sentence from the excerpt
+   - **insight** — 1-2 sentence takeaway capturing the core idea
+4. Shot card shows the quote (italic, indigo border) + insight — raw transcript is hidden
+
+**Latency: ~30s** (Claude CLI startup + inference). Uses your Claude Max subscription — no extra API cost.
+
+Requires `claude` CLI installed and authenticated (`claude login`) on the server.
 
 ---
 
@@ -151,8 +167,8 @@ For production: a Linux VPS (tested on Ubuntu 22.04).
 ### 1. Clone
 
 ```bash
-git clone https://github.com/andrepaim/podsnip.git
-cd podsnip
+git clone https://github.com/andrepaim/earshot.git
+cd earshot
 ```
 
 ### 2. Configure
@@ -175,8 +191,8 @@ PODCAST_INDEX_API_SECRET=your_secret_here
 # Whisper model: base | small | medium | large-v3
 WHISPER_MODEL=base
 
-# Snip context window in seconds (default 60)
-SNIP_CONTEXT_SECONDS=60
+# Shot context window in seconds (default 60)
+SHOT_CONTEXT_SECONDS=60
 
 # Media storage path
 MEDIA_DIR=../media
@@ -214,21 +230,21 @@ The FastAPI backend automatically serves `frontend/dist/` at `/` when it exists,
 
 ### systemd service
 
-Create `/etc/systemd/system/podsnip.service`:
+Create `/etc/systemd/system/earshot.service`:
 
 ```ini
 [Unit]
-Description=PodSnip — self-hosted podcast app
+Description=EarShot — self-hosted podcast app
 After=network.target
 
 [Service]
 Type=simple
 User=root
-WorkingDirectory=/path/to/podsnip/backend
+WorkingDirectory=/path/to/earshot/backend
 ExecStart=/usr/bin/python3 -m uvicorn main:app --host 127.0.0.1 --port 8124
 Restart=always
 RestartSec=5
-EnvironmentFile=/path/to/podsnip/.env
+EnvironmentFile=/path/to/earshot/.env
 
 [Install]
 WantedBy=multi-user.target
@@ -236,13 +252,13 @@ WantedBy=multi-user.target
 
 ```bash
 systemctl daemon-reload
-systemctl enable podsnip
-systemctl start podsnip
+systemctl enable earshot
+systemctl start earshot
 ```
 
 ### Firewall
 
-PodSnip binds to `127.0.0.1` by default — not accessible from the outside. There are two ways to access it remotely:
+EarShot binds to `127.0.0.1` by default — not accessible from the outside. There are two ways to access it remotely:
 
 **Option A — SSH tunnel (most secure):**
 ```bash
@@ -271,7 +287,7 @@ Each card shows:
 - Podcast cover art
 - Podcast name + episode title
 - Relative date ("Today", "Yesterday", "3d ago") + duration
-- ✂️ N badge if you have snips for that episode
+- ✂️ N badge if you have shots for that episode
 - Circle button to mark as played/unplayed (stored in localStorage)
 
 Tap any episode to open the Player.
@@ -294,18 +310,19 @@ In the episode list:
 - Episode cover art + title header
 - Animated transcript status badge (pulsing while transcribing, green checkmark when done)
 - Native `<audio>` element with full browser controls (seek, speed, etc.)
-- ✂️ Snip button — disabled until transcript is ready, flashes green when a snip is created
-- All snips for this episode listed below
+- **✨ AI summary toggle** — off by default; when on, shots return a quote + insight via Claude instead of raw transcript
+- **✂️ Shot button** — disabled until transcript is ready, flashes green when created
+- All shots for this episode listed below the player
 
-### Snips
-All your snips, grouped by episode. Each episode group shows:
+### Shots
+All your shots, grouped by episode. Each episode group shows:
 - Podcast cover art
 - Podcast name + episode title
-- Number of snips (indigo pill)
-- Date of last snip
-- Preview of the first snip text
+- Number of shots (indigo pill)
+- Date of last shot
+- Preview of the first shot text
 
-Tap an episode to see all its snips with copy-to-clipboard and delete per snip. ▶ Play button jumps back to the Player.
+Tap an episode to see all its shots with copy-to-clipboard and delete per shot. ▶ Play button jumps back to the Player.
 
 ---
 
@@ -335,9 +352,9 @@ The Home feed and episode lists are cached in localStorage with a 30-minute TTL 
 | `POST` | `/player/play` | Trigger download + transcription |
 | `GET` | `/player/audio/{episode_id}` | Stream MP3 (Range-request capable) |
 | `GET` | `/player/transcript-status/{episode_id}` | Poll transcription progress |
-| `POST` | `/snips/?summary=` | Create a snip at current playback position |
-| `GET` | `/snips/?episode_id=` | List snips (optionally filtered) |
-| `DELETE` | `/snips/{snip_id}` | Delete a snip |
+| `POST` | `/shots/?summary=` | Create a shot at current playback position |
+| `GET` | `/shots/?episode_id=` | List shots (optionally filtered) |
+| `DELETE` | `/shots/{shot_id}` | Delete a shot |
 
 ---
 
@@ -345,7 +362,7 @@ The Home feed and episode lists are cached in localStorage with a 30-minute TTL 
 
 | Path | Contents |
 |---|---|
-| `podsnip.db` | SQLite database (subscriptions, episodes, transcripts, snips) |
+| `earshot.db` | SQLite database (subscriptions, episodes, transcripts, shots) |
 | `media/` | Downloaded episode MP3s (named by MD5 of episode ID) |
 
 Media files accumulate over time. For MVP, cleanup is manual. A future improvement would be an LRU cache with a configurable size limit.
@@ -356,12 +373,12 @@ Media files accumulate over time. For MVP, cleanup is manual. A future improveme
 
 - **Full-text search** in transcripts (SQLite FTS5)
 - **Auto-discovery** of new episodes via cron (poll RSS feeds periodically)
-- **Export snips** to Markdown / Notion / Obsidian
+- **Export shots** to Markdown / Notion / Obsidian
 - **Speaker diarization** (pyannote.audio) — know who said what
 - **Chapter navigation** from faster-whisper segments
 - **Progressive transcription** — stream words as they come
 - **PWA / offline support** — manifest.json + service worker
-- **Snip sharing** — image cards for social sharing
+- **Shot sharing** — image cards for social sharing
 
 ---
 
