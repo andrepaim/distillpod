@@ -84,7 +84,12 @@ export default function Player() {
     const init = async () => {
       let ep = episode;
       if (!ep?.audio_url) {
-        try { ep = await getEpisode(episodeId); setEpisode(ep); }
+        const savedImage = ep?.podcast_image; // preserve image from route state
+        try {
+          ep = await getEpisode(episodeId);
+          ep = { ...ep, podcast_image: savedImage };
+          setEpisode(ep);
+        }
         catch (e: any) { setError("Could not load episode: " + e.message); return; }
       }
 
@@ -163,9 +168,10 @@ export default function Player() {
             src={audioStreamUrl(episodeId!)}
             controls
             className="w-full rounded"
-            onCanPlay={() => {
-              if (seekTo && audioRef.current && audioRef.current.currentTime < 1) {
+            onLoadedMetadata={() => {
+              if (seekTo && audioRef.current) {
                 audioRef.current.currentTime = seekTo;
+                audioRef.current.play().catch(() => {}); // auto-play from snip position
               }
             }}
           />
