@@ -45,3 +45,20 @@ export function navTab(page: Page, tab: string) {
 export async function clearPlayed(page: Page) {
   await page.evaluate(() => localStorage.removeItem("podgist:played"));
 }
+
+/** Seed saved progress in localStorage — call AFTER page.goto() */
+export async function seedProgress(page: Page, episodeId: string, currentTime: number, duration = 3600) {
+  await page.evaluate(
+    ([key, id, t, d]) => {
+      const map = JSON.parse(localStorage.getItem(key as string) || "{}");
+      map[id as string] = { currentTime: t, duration: d, savedAt: Date.now() };
+      localStorage.setItem(key as string, JSON.stringify(map));
+    },
+    ["podgist:progress", episodeId, currentTime, duration] as const,
+  );
+}
+
+/** Clear all saved progress from localStorage — call AFTER page.goto() */
+export async function clearProgress(page: Page) {
+  await page.evaluate(() => localStorage.removeItem("podgist:progress"));
+}

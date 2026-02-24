@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useLocation } from "react-router-dom";
 import { createGist, listGists, getTranscriptStatus, Gist, Episode } from "../api/client";
-import { useAudio, type PlayableEpisode } from "../context/AudioContext";
+import { useAudio, readProgress, type PlayableEpisode } from "../context/AudioContext";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function fmtTime(secs: number) {
@@ -231,9 +231,10 @@ export default function Player() {
 
   const [transcriptStatus, setTranscriptStatus] = useState("none");
   const [gists,    setGists]    = useState<Gist[]>([]);
-  const [gisting,  setGisting]  = useState(false);
-  const [gistFlash,setGistFlash]= useState(false);
-  const [error,    setError]    = useState("");
+  const [gisting,    setGisting]    = useState(false);
+  const [gistFlash,  setGistFlash]  = useState(false);
+  const [resumedFrom,setResumedFrom]= useState<number | null>(null);
+  const [error,      setError]      = useState("");
 
   // Display episode: prefer what's already in context (avoids blank header flash on same episode)
   const displayEpisode = episode?.id === episodeId ? episode : routeState;
@@ -244,7 +245,18 @@ export default function Player() {
     const ep: PlayableEpisode | null = routeState
       ? { ...routeState, podcast_image: routeState.podcast_image, podcast_title: routeState.podcast_title }
       : null;
-    loadEpisode(episodeId, ep, seekTo).catch(e => setError(e.message));
+
+    // If no explicit seekTo from nav state, check for saved progress
+    let resolvedSeekTo = seekTo;
+    if (resolvedSeekTo == null) {
+      const saved = readProgress()[episodeId];
+      if (saved && saved.currentTime > 10) {
+        resolvedSeekTo = saved.currentTime;
+        setResumedFrom(resolvedSeekTo);
+      }
+    }
+
+    loadEpisode(episodeId, ep, resolvedSeekTo).catch(e => setError(e.message));
     listGists(episodeId).then(setGists);
   }, [episodeId]); // intentionally only re-run on episodeId change
 
@@ -291,8 +303,11 @@ export default function Player() {
             ? <h1 className="text-sm font-bold leading-snug line-clamp-3">{displayEpisode.title}</h1>
             : <div className="h-4 bg-gray-800 rounded animate-pulse w-3/4" />
           }
-          {seekTo !== undefined && (
+          {seekTo != null && (
             <div className="text-xs text-indigo-400 mt-1">▶ From {fmtTime(seekTo)}</div>
+          )}
+          {seekTo == null && resumedFrom != null && (
+            <div className="text-xs text-indigo-400 mt-1">⏩ Resuming from {fmtTime(resumedFrom)}</div>
           )}
           <div className="mt-1.5"><TranscriptBadge status={transcriptStatus} /></div>
         </div>

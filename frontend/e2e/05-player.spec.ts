@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { clearGists, createGist, EPISODE_DONE_ID, EPISODE_PROC_ID } from "./helpers";
+import { clearGists, createGist, clearProgress, seedProgress, EPISODE_DONE_ID, EPISODE_PROC_ID } from "./helpers";
 
 // Navigate to player — do NOT use networkidle (audio streaming keeps network busy forever)
 async function goToPlayer(page: any, episodeId: string) {
@@ -109,6 +109,42 @@ test.describe("Suite 5 — Player", () => {
     await expect(page.locator(".bg-gray-900.rounded-xl").first()).toBeVisible({ timeout: 60_000 });
     await expect(page.locator("text=/Gists \\(\\d+\\)/")).toBeVisible({ timeout: 5_000 });
     await clearGists(request);
+  });
+
+  test("5.24 no saved progress → no resume indicator", async ({ page }) => {
+    await page.goto(`/player/${EPISODE_DONE_ID}`);
+    await clearProgress(page);
+    await page.reload();
+    await page.waitForLoadState("domcontentloaded");
+    await expect(page.locator("text=/Resuming from/")).not.toBeVisible({ timeout: 15_000 });
+  });
+
+  test("5.25 saved progress → shows ⏩ Resuming from indicator", async ({ page }) => {
+    await page.goto(`/player/${EPISODE_DONE_ID}`);
+    await seedProgress(page, EPISODE_DONE_ID, 364); // 6:04 into episode
+    await page.reload();
+    await page.waitForLoadState("domcontentloaded");
+    await expect(page.locator("text=/⏩ Resuming from/")).toBeVisible({ timeout: 20_000 });
+    await clearProgress(page);
+  });
+
+  test("5.26 progress is saved to localStorage during playback", async ({ page }) => {
+    test.setTimeout(90_000); // audio must play 10s then wait up to 5s for throttled save
+    await page.goto(`/player/${EPISODE_DONE_ID}`);
+    await clearProgress(page);
+    // Wait for audio element to attach
+    await expect(page.locator("audio")).toBeAttached({ timeout: 20_000 });
+    // Wait for first throttled progress save (currentTime > 10s + up to 5s throttle window)
+    await page.waitForFunction(
+      () => Object.keys(JSON.parse(localStorage.getItem("podgist:progress") || "{}")).length > 0,
+      undefined,                           // no script arg
+      { timeout: 60_000, polling: 1_000 }, // now correctly passed as options
+    );
+    const saved = await page.evaluate(() =>
+      JSON.parse(localStorage.getItem("podgist:progress") || "{}")
+    );
+    expect(Object.keys(saved).length).toBeGreaterThan(0);
+    await clearProgress(page);
   });
 
   test("5.22 SPA reload /player/:id → app shell loads", async ({ page }) => {

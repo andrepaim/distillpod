@@ -4,6 +4,49 @@ import {
 } from "react";
 import { startPlay, getEpisode, audioStreamUrl, type Episode } from "../api/client";
 
+// ─── Progress persistence ─────────────────────────────────────────────────────
+const PROGRESS_KEY = "podgist:progress";
+
+export interface ProgressEntry {
+  currentTime:    number;
+  duration:       number;
+  title?:         string;
+  podcast_image?: string;
+  podcast_title?: string;
+  savedAt:        number;
+}
+
+export function readProgress(): Record<string, ProgressEntry> {
+  try { return JSON.parse(localStorage.getItem(PROGRESS_KEY) || "{}"); } catch { return {}; }
+}
+
+function writeProgress(id: string, time: number, dur: number, ep: PlayableEpisode | null) {
+  // Don't save if nearly finished (within 30s of end)
+  if (dur > 0 && time > dur - 30) return;
+  // Don't save if barely started (under 10s)
+  if (time < 10) return;
+  try {
+    const map = readProgress();
+    map[id] = {
+      currentTime:   time,
+      duration:      dur,
+      title:         ep?.title,
+      podcast_image: ep?.podcast_image,
+      podcast_title: ep?.podcast_title,
+      savedAt:       Date.now(),
+    };
+    localStorage.setItem(PROGRESS_KEY, JSON.stringify(map));
+  } catch {}
+}
+
+function clearProgress(id: string) {
+  try {
+    const map = readProgress();
+    delete map[id];
+    localStorage.setItem(PROGRESS_KEY, JSON.stringify(map));
+  } catch {}
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 export type PlayableEpisode = Episode & {
   podcast_image?: string;
@@ -28,8 +71,10 @@ const Ctx = createContext<AudioContextValue | null>(null);
 
 // ─── Provider ─────────────────────────────────────────────────────────────────
 export function AudioProvider({ children }: { children: ReactNode }) {
-  const audioRef = useRef<HTMLAudioElement>(null);
-  const loadedIdRef = useRef<string | null>(null); // prevents double-loading same episode
+  const audioRef     = useRef<HTMLAudioElement>(null);
+  const loadedIdRef  = useRef<string | null>(null); // prevents double-loading same episode
+  const episodeRef   = useRef<PlayableEpisode | null>(null); // for access inside event listeners
+  const lastSaveRef  = useRef<number>(0);            // throttle: last progress-save timestamp
 
   const [episode,     setEpisode]     = useState<PlayableEpisode | null>(null);
   const [isPlaying,   setIsPlaying]   = useState(false);
@@ -37,15 +82,35 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   const [duration,    setDuration]    = useState(0);
   const [audioReady,  setAudioReady]  = useState(false);
 
+  // Keep episodeRef in sync for use inside event listeners
+  useEffect(() => { episodeRef.current = episode; }, [episode]);
+
   // Wire up persistent audio event listeners once on mount
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
-    const onTime  = () => setCurrentTime(audio.currentTime);
+
+    const onTime = () => {
+      setCurrentTime(audio.currentTime);
+      // Throttled progress save (every 5 s)
+      const now = Date.now();
+      if (
+        loadedIdRef.current &&
+        now - lastSaveRef.current > 5_000
+      ) {
+        lastSaveRef.current = now;
+        writeProgress(loadedIdRef.current, audio.currentTime, audio.duration || 0, episodeRef.current);
+      }
+    };
     const onMeta  = () => setDuration(audio.duration || 0);
     const onPlay  = () => setIsPlaying(true);
     const onPause = () => setIsPlaying(false);
-    const onEnded = () => setIsPlaying(false);
+    const onEnded = () => {
+      setIsPlaying(false);
+      // Episode finished — clear saved progress
+      if (loadedIdRef.current) clearProgress(loadedIdRef.current);
+    };
+
     audio.addEventListener("timeupdate",     onTime);
     audio.addEventListener("loadedmetadata", onMeta);
     audio.addEventListener("durationchange", onMeta);
