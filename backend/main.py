@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from pathlib import Path
 from config import settings
 from database import init_db
@@ -32,7 +33,13 @@ async def health():
     return {"status": "ok", "version": "0.1.0"}
 
 
-# Serve built frontend — mount LAST so API routes take priority
+# Serve built frontend
 frontend_dist = Path(__file__).parent.parent / "frontend" / "dist"
 if frontend_dist.exists():
-    app.mount("/", StaticFiles(directory=str(frontend_dist), html=True), name="static")
+    # Serve hashed JS/CSS/image assets directly
+    app.mount("/assets", StaticFiles(directory=str(frontend_dist / "assets")), name="assets")
+
+    # Catch-all: return index.html for any unmatched path (SPA client-side routing)
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        return FileResponse(str(frontend_dist / "index.html"))
