@@ -40,15 +40,13 @@ function TranscriptBadge({ status }: { status: string }) {
 
 // ─── Player widget ────────────────────────────────────────────────────────────
 function PlayerWidget({
-  gists, transcriptStatus, onGist, gisting, gistFlash, withSummary, onToggleSummary,
+  gists, transcriptStatus, onGist, gisting, gistFlash,
 }: {
   gists: Gist[];
   transcriptStatus: string;
   onGist: () => void;
   gisting: boolean;
   gistFlash: boolean;
-  withSummary: boolean;
-  onToggleSummary: () => void;
 }) {
   const { audioRef, isPlaying, currentTime, duration, togglePlay, skipBy, setRate } = useAudio();
   const [speedIdx, setSpeedIdx] = useState(0);
@@ -152,20 +150,6 @@ function PlayerWidget({
         </button>
       </div>
 
-      {/* AI summary toggle */}
-      <div className="flex items-center justify-between px-1">
-        <span className="text-xs text-gray-400">
-          ✨ AI summary
-          {withSummary && <span className="text-gray-600 ml-1">(~30s)</span>}
-        </span>
-        <button
-          onClick={onToggleSummary}
-          className={`relative w-10 h-5 rounded-full transition-colors overflow-hidden ${withSummary ? "bg-indigo-600" : "bg-gray-700"}`}
-        >
-          <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${withSummary ? "translate-x-5" : "translate-x-0.5"}`} />
-        </button>
-      </div>
-
       {/* Gist button */}
       <button
         onClick={onGist}
@@ -179,9 +163,9 @@ function PlayerWidget({
         }`}
       >
         {gisting
-          ? (withSummary ? "Summarising…" : "Gisting…")
+          ? "Summarising…"
           : transcriptStatus === "done"
-            ? (withSummary ? "✂️  Gist + summarise" : "✂️  Gist this moment")
+            ? "✂️  Gist + summarise"
             : "⏳  Waiting for transcript…"}
       </button>
 
@@ -249,7 +233,6 @@ export default function Player() {
   const [gists,    setGists]    = useState<Gist[]>([]);
   const [gisting,  setGisting]  = useState(false);
   const [gistFlash,setGistFlash]= useState(false);
-  const [withSummary, setWithSummary] = useState(true);
   const [error,    setError]    = useState("");
 
   // Display episode: prefer what's already in context (avoids blank header flash on same episode)
@@ -286,7 +269,7 @@ export default function Player() {
     if (!audioRef.current || !episodeId) return;
     setGisting(true);
     try {
-      const gist = await createGist(episodeId, audioRef.current.currentTime, withSummary);
+      const gist = await createGist(episodeId, audioRef.current.currentTime, true);
       setGists(prev => [gist, ...prev]);
       setGistFlash(true);
       setTimeout(() => setGistFlash(false), 600);
@@ -325,8 +308,6 @@ export default function Player() {
           onGist={handleGist}
           gisting={gisting}
           gistFlash={gistFlash}
-          withSummary={withSummary}
-          onToggleSummary={() => setWithSummary(v => !v)}
         />
       )}
 

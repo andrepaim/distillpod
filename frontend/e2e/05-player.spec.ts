@@ -11,9 +11,6 @@ async function goToPlayer(page: any, episodeId: string) {
   ).toBeVisible({ timeout: 20_000 });
 }
 
-// Toggle: unique overflow-hidden class on the pill button
-const aiToggle = (page: any) => page.locator("button.overflow-hidden");
-
 test.describe("Suite 5 — Player", () => {
 
   test("5.1 episode title appears in header", async ({ page }) => {
@@ -56,69 +53,21 @@ test.describe("Suite 5 — Player", () => {
     await expect(gistBtn).toBeEnabled({ timeout: 20_000 });
   });
 
-  test("5.10 AI toggle visible", async ({ page }) => {
+  test("5.10 gist button text is 'Gist + summarise'", async ({ page }) => {
     await goToPlayer(page, EPISODE_DONE_ID);
-    await expect(page.locator("text=✨ AI summary")).toBeVisible({ timeout: 20_000 });
-    await expect(aiToggle(page)).toBeVisible();
-  });
-
-  test("5.11 AI toggle default ON", async ({ page }) => {
-    await goToPlayer(page, EPISODE_DONE_ID);
-    await expect(aiToggle(page)).toHaveClass(/bg-indigo-600/, { timeout: 20_000 });
-  });
-
-  test("5.12 toggle OFF → gray, button text → Gist this moment", async ({ page }) => {
-    await goToPlayer(page, EPISODE_DONE_ID);
-    await expect(aiToggle(page)).toBeVisible({ timeout: 20_000 });
-    await aiToggle(page).click();
-    await expect(aiToggle(page)).toHaveClass(/bg-gray-700/);
-    await expect(page.locator("button:has-text('Gist this moment')")).toBeVisible();
-  });
-
-  test("5.13 toggle ON → ~30s hint appears", async ({ page }) => {
-    await goToPlayer(page, EPISODE_DONE_ID);
-    await expect(aiToggle(page)).toBeVisible({ timeout: 20_000 });
-    await aiToggle(page).click();                 // off
-    await aiToggle(page).click();                 // back on
-    await expect(aiToggle(page)).toHaveClass(/bg-indigo-600/);
-    await expect(page.locator("text=~30s")).toBeVisible();
-  });
-
-  test("5.14 toggle pill has overflow-hidden", async ({ page }) => {
-    await goToPlayer(page, EPISODE_DONE_ID);
-    await expect(aiToggle(page)).toHaveClass(/overflow-hidden/);
-  });
-
-  test("5.15 gist without AI → card with transcript text", async ({ page, request }) => {
-    await clearGists(request);
-    await goToPlayer(page, EPISODE_DONE_ID);
-
-    await expect(aiToggle(page)).toBeVisible({ timeout: 20_000 });
-    await aiToggle(page).click(); // AI off
-
-    const gistBtn = page.locator("button:has-text('Gist this moment')");
-    await expect(gistBtn).toBeEnabled({ timeout: 20_000 });
-    await gistBtn.click();
-
-    // Non-AI gist card shows plain gray text
-    const textEl = page.locator("p.text-sm.leading-relaxed.text-gray-100");
-    await expect(textEl.first()).toBeVisible({ timeout: 5_000 });
-    await expect(textEl.first()).not.toBeEmpty();
-    await clearGists(request);
+    await expect(page.locator("button:has-text('Gist + summarise')").last()).toBeVisible({ timeout: 20_000 });
   });
 
   test("5.17 gist flash — button turns green briefly", async ({ page, request }) => {
     await clearGists(request);
     await goToPlayer(page, EPISODE_DONE_ID);
 
-    await expect(aiToggle(page)).toBeVisible({ timeout: 20_000 });
-    await aiToggle(page).click(); // AI off for speed
-
-    const gistBtn = page.locator("button:has-text('Gist this moment')");
+    const gistBtn = page.locator("button:has-text('Gist + summarise')").last();
     await expect(gistBtn).toBeEnabled({ timeout: 20_000 });
     await gistBtn.click();
 
-    await expect(page.locator("button.bg-green-600")).toBeVisible({ timeout: 3_000 });
+    // AI summary takes ~30s; flash appears after completion
+    await expect(page.locator("button.bg-green-600")).toBeVisible({ timeout: 60_000 });
     await clearGists(request);
   });
 
@@ -153,15 +102,12 @@ test.describe("Suite 5 — Player", () => {
     await clearGists(request);
     await goToPlayer(page, EPISODE_DONE_ID);
 
-    await expect(aiToggle(page)).toBeVisible({ timeout: 20_000 });
-    await aiToggle(page).click();
-
-    const gistBtn = page.locator("button:has-text('Gist this moment')");
+    const gistBtn = page.locator("button:has-text('Gist + summarise')").last();
     await expect(gistBtn).toBeEnabled({ timeout: 20_000 });
     await gistBtn.click();
-    await page.waitForTimeout(500);
-
-    await expect(page.locator("text=Gists (1)")).toBeVisible({ timeout: 5_000 });
+    // AI summary takes ~30s; just confirm the gist card appears (count in header)
+    await expect(page.locator(".bg-gray-900.rounded-xl").first()).toBeVisible({ timeout: 60_000 });
+    await expect(page.locator("text=/Gists \\(\\d+\\)/")).toBeVisible({ timeout: 5_000 });
     await clearGists(request);
   });
 
