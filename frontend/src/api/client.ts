@@ -41,17 +41,17 @@ export const getEpisode = (episodeId: string) =>
 export const audioStreamUrl = (episodeId: string) => `${BASE}/player/audio/${episodeId}`;
 
 // --- Shots ---
-export const createShot = (episodeId: string, currentSeconds: number, withSummary = false) =>
-  req<Shot>("POST", `/shots/?summary=${withSummary}`, {
+export const createGist = (episodeId: string, currentSeconds: number, withSummary = false) =>
+  req<Gist>("POST", `/gists/?summary=${withSummary}`, {
     episode_id: episodeId,
     current_seconds: currentSeconds,
   });
 
-export const listShots = (episodeId?: string) =>
-  req<Shot[]>("GET", episodeId ? `/shots/?episode_id=${episodeId}` : "/shots/");
+export const listGists = (episodeId?: string) =>
+  req<Gist[]>("GET", episodeId ? `/gists/?episode_id=${episodeId}` : "/gists/");
 
-export const deleteShot = (snipId: string) =>
-  req("DELETE", `/shots/${snipId}`);
+export const deleteGist = (snipId: string) =>
+  req("DELETE", `/gists/${snipId}`);
 
 // --- Types ---
 export interface Podcast {
@@ -67,7 +67,7 @@ export interface Episode {
   audio_url: string; duration_seconds?: number; published_at?: string;
   image_url?: string; downloaded: boolean; transcript_status: string;
 }
-export interface Shot {
+export interface Gist {
   id: string; episode_id: string; podcast_id: string;
   episode_title: string; podcast_title: string;
   start_seconds: number; end_seconds: number;

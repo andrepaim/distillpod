@@ -1,4 +1,4 @@
-# EarShot 🎧
+# PodGist 🎧
 
 A minimal, self-hosted podcast app with instant audio shot capturing. No cloud services, no subscriptions, no per-use API costs. Your VPS does all the heavy lifting.
 
@@ -6,9 +6,9 @@ A minimal, self-hosted podcast app with instant audio shot capturing. No cloud s
 
 ## What is this?
 
-EarShot is a mobile-first web app that lets you listen to podcasts and **capture moments** from them.
+PodGist is a mobile-first web app that lets you listen to podcasts and **capture moments** from them.
 
-The core insight: most podcast apps call an API for each clip (~$0.01 + latency). EarShot flips this — it **transcribes the whole episode once** using [faster-whisper](https://github.com/SYSTRAN/faster-whisper) (free, runs locally on CPU), and each shot becomes a zero-cost, near-instant timestamp lookup in the pre-computed word-level transcript.
+The core insight: most podcast apps call an API for each clip (~$0.01 + latency). PodGist flips this — it **transcribes the whole episode once** using [faster-whisper](https://github.com/SYSTRAN/faster-whisper) (free, runs locally on CPU), and each gist becomes a zero-cost, near-instant timestamp lookup in the pre-computed word-level transcript.
 
 You open the app in your phone's browser. Everything else — downloading audio, transcribing, serving — happens on your VPS.
 
@@ -21,7 +21,7 @@ You open the app in your phone's browser. Everything else — downloading audio,
 - **📚 Library** — browse your subscribed podcasts and their episodes. Transcript status shown per episode.
 - **▶️ Player** — stream audio directly from your VPS. Transcription kicks off automatically in the background when you press play.
 - **✂️ Shot** — tap the Shot button at any moment while listening. Instantly extracts the last 60 seconds of transcript. Toggle **✨ AI summary** for a verbatim quote + Claude insight instead of raw text (~30s, uses Claude Max subscription).
-- **📋 Shots library** — browse all your shots grouped by episode. Copy to clipboard, delete, or jump back to the episode.
+- **📋 Gists library** — browse all your gists grouped by episode. Copy to clipboard, delete, or jump back to the episode.
 - **⚡ Stale-while-revalidate caching** — the app feels instant on return visits. Data is cached in localStorage with a 30-minute TTL and refreshed silently in the background.
 
 ---
@@ -124,14 +124,14 @@ Set via `WHISPER_MODEL` in `.env`.
 When you tap ✂️ **Take a moment**:
 
 1. The frontend reads `audioRef.current.currentTime` (current playback position in seconds)
-2. Sends `POST /shots/ { episode_id, current_seconds }`
+2. Sends `POST /gists/ { episode_id, current_seconds }`
 3. The backend scans the pre-computed word array for words in the window `[current_seconds - 60, current_seconds]`
 4. Returns the extracted text immediately (no API call, no processing — just an array slice)
 5. A new shot card appears at the top of the list with the raw transcript text
 
 **Total latency: < 200ms.** No spinner needed.
 
-The 60-second context window is configurable via `SHOT_CONTEXT_SECONDS` in `.env`.
+The 60-second context window is configurable via `GIST_CONTEXT_SECONDS` in `.env`.
 
 ### AI shot (quote + insight)
 
@@ -167,8 +167,8 @@ For production: a Linux VPS (tested on Ubuntu 22.04).
 ### 1. Clone
 
 ```bash
-git clone https://github.com/andrepaim/earshot.git
-cd earshot
+git clone https://github.com/andrepaim/podgist.git
+cd podgist
 ```
 
 ### 2. Configure
@@ -192,7 +192,7 @@ PODCAST_INDEX_API_SECRET=your_secret_here
 WHISPER_MODEL=base
 
 # Shot context window in seconds (default 60)
-SHOT_CONTEXT_SECONDS=60
+GIST_CONTEXT_SECONDS=60
 
 # Media storage path
 MEDIA_DIR=../media
@@ -230,21 +230,21 @@ The FastAPI backend automatically serves `frontend/dist/` at `/` when it exists,
 
 ### systemd service
 
-Create `/etc/systemd/system/earshot.service`:
+Create `/etc/systemd/system/podgist.service`:
 
 ```ini
 [Unit]
-Description=EarShot — self-hosted podcast app
+Description=PodGist — self-hosted podcast app
 After=network.target
 
 [Service]
 Type=simple
 User=root
-WorkingDirectory=/path/to/earshot/backend
+WorkingDirectory=/path/to/podgist/backend
 ExecStart=/usr/bin/python3 -m uvicorn main:app --host 127.0.0.1 --port 8124
 Restart=always
 RestartSec=5
-EnvironmentFile=/path/to/earshot/.env
+EnvironmentFile=/path/to/podgist/.env
 
 [Install]
 WantedBy=multi-user.target
@@ -252,13 +252,13 @@ WantedBy=multi-user.target
 
 ```bash
 systemctl daemon-reload
-systemctl enable earshot
-systemctl start earshot
+systemctl enable podgist
+systemctl start podgist
 ```
 
 ### Firewall
 
-EarShot binds to `127.0.0.1` by default — not accessible from the outside. There are two ways to access it remotely:
+PodGist binds to `127.0.0.1` by default — not accessible from the outside. There are two ways to access it remotely:
 
 **Option A — SSH tunnel (most secure):**
 ```bash
@@ -314,8 +314,8 @@ In the episode list:
 - **✂️ Shot button** — disabled until transcript is ready, flashes green when created
 - All shots for this episode listed below the player
 
-### Shots
-All your shots, grouped by episode. Each episode group shows:
+### Gists
+All your gists, grouped by episode. Each episode group shows:
 - Podcast cover art
 - Podcast name + episode title
 - Number of shots (indigo pill)
@@ -352,9 +352,9 @@ The Home feed and episode lists are cached in localStorage with a 30-minute TTL 
 | `POST` | `/player/play` | Trigger download + transcription |
 | `GET` | `/player/audio/{episode_id}` | Stream MP3 (Range-request capable) |
 | `GET` | `/player/transcript-status/{episode_id}` | Poll transcription progress |
-| `POST` | `/shots/?summary=` | Create a shot at current playback position |
-| `GET` | `/shots/?episode_id=` | List shots (optionally filtered) |
-| `DELETE` | `/shots/{shot_id}` | Delete a shot |
+| `POST` | `/gists/?summary=` | Create a gist at current playback position |
+| `GET` | `/gists/?episode_id=` | List shots (optionally filtered) |
+| `DELETE` | `/gists/{shot_id}` | Delete a gist |
 
 ---
 
@@ -362,7 +362,7 @@ The Home feed and episode lists are cached in localStorage with a 30-minute TTL 
 
 | Path | Contents |
 |---|---|
-| `earshot.db` | SQLite database (subscriptions, episodes, transcripts, shots) |
+| `podgist.db` | SQLite database (subscriptions, episodes, transcripts, shots) |
 | `media/` | Downloaded episode MP3s (named by MD5 of episode ID) |
 
 Media files accumulate over time. For MVP, cleanup is manual. A future improvement would be an LRU cache with a configurable size limit.

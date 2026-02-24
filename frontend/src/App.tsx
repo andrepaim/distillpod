@@ -3,7 +3,7 @@ import Home from "./pages/Home";
 import Search from "./pages/Search";
 import Subscriptions from "./pages/Subscriptions";
 import Player from "./pages/Player";
-import Shots from "./pages/Shots";
+import Gists from "./pages/Gists";
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
 const HomeIcon = ({ active }: { active: boolean }) => (
@@ -28,7 +28,7 @@ const LibraryIcon = ({ active }: { active: boolean }) => (
   </svg>
 );
 
-const ShotsIcon = ({ active }: { active: boolean }) => (
+const GistsIcon = ({ active }: { active: boolean }) => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? 2.5 : 2} strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6">
     <circle cx="6" cy="6" r="3" />
     <circle cx="6" cy="18" r="3" />
@@ -43,7 +43,7 @@ const tabs = [
   { to: "/",              label: "Home",    Icon: HomeIcon    },
   { to: "/search",        label: "Search",  Icon: SearchIcon  },
   { to: "/subscriptions", label: "Library", Icon: LibraryIcon },
-  { to: "/shots",         label: "Shots",   Icon: ShotsIcon   },
+  { to: "/gists",         label: "Gists",   Icon: GistsIcon   },
 ];
 
 function BottomNav() {
@@ -88,7 +88,7 @@ export default function App() {
     <BrowserRouter>
       <div className="min-h-screen bg-gray-950 text-white flex flex-col">
         <header className="bg-gray-900 border-b border-gray-800 px-4 py-3">
-          <span className="font-bold text-indigo-400 text-lg tracking-tight">🎧 EarShot</span>
+          <span className="font-bold text-indigo-400 text-lg tracking-tight">🎧 PodGist</span>
         </header>
 
         <main className="flex-1 p-4 pb-24 max-w-3xl mx-auto w-full">
@@ -97,7 +97,7 @@ export default function App() {
             <Route path="/search" element={<Search />} />
             <Route path="/subscriptions" element={<Subscriptions />} />
             <Route path="/player/:episodeId" element={<Player />} />
-            <Route path="/shots" element={<Shots />} />
+            <Route path="/gists" element={<Gists />} />
           </Routes>
         </main>
 

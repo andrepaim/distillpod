@@ -4,9 +4,9 @@ from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 from config import settings
 from database import init_db
-from routers import podcasts, player, shots
+from routers import podcasts, player, gists
 
-app = FastAPI(title="EarShot API", version="0.1.0")
+app = FastAPI(title="PodGist API", version="0.1.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -18,7 +18,7 @@ app.add_middleware(
 
 app.include_router(podcasts.router)
 app.include_router(player.router)
-app.include_router(shots.router)
+app.include_router(gists.router)
 
 
 @app.on_event("startup")

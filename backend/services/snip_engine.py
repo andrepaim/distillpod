@@ -1,5 +1,5 @@
 """
-Shot engine — extracts text from pre-computed transcript by timestamp range.
+Gist engine — extracts text from pre-computed transcript by timestamp range.
 Zero latency, zero cost. Optionally generates a Claude summary via CLI subprocess.
 """
 import asyncio
@@ -8,7 +8,7 @@ import uuid
 from datetime import datetime, timezone
 
 from config import settings
-from models import Shot
+from models import Gist
 from services.transcriber import get_transcript_words
 
 
@@ -35,19 +35,19 @@ def _claude_summarize_sync(text: str) -> str | None:
     return result.stdout.strip() if result.returncode == 0 else None
 
 
-async def create_shot(
+async def create_gist(
     episode_id: str,
     podcast_id: str,
     episode_title: str,
     podcast_title: str,
     current_seconds: float,
     with_summary: bool = False,
-) -> Shot:
+) -> Gist:
     """
     Extract the last N seconds of transcript up to current_seconds.
     Optionally generates a Claude summary (via CLI subprocess, free with Max subscription).
     """
-    context = settings.shot_context_seconds
+    context = settings.gist_context_seconds
     start = max(0.0, current_seconds - context)
     end = current_seconds
 
@@ -67,7 +67,7 @@ async def create_shot(
     if with_summary:
         summary = await asyncio.to_thread(_claude_summarize_sync, text)
 
-    shot = Shot(
+    gist = Gist(
         id=str(uuid.uuid4()),
         episode_id=episode_id,
         podcast_id=podcast_id,
@@ -79,4 +79,4 @@ async def create_shot(
         summary=summary,
         created_at=datetime.now(timezone.utc),
     )
-    return shot
+    return gist

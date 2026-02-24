@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams, useLocation } from "react-router-dom";
-import { startPlay, createShot, listShots, audioStreamUrl, getTranscriptStatus, getEpisode, Shot, Episode } from "../api/client";
+import { startPlay, createGist, listGists, audioStreamUrl, getTranscriptStatus, getEpisode, Gist, Episode } from "../api/client";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function fmtTime(secs: number) {
@@ -39,14 +39,14 @@ function TranscriptBadge({ status }: { status: string }) {
 
 // ─── Custom player widget ─────────────────────────────────────────────────────
 function PlayerWidget({
-  audioRef, shots, transcriptStatus, onShot, shotting, shotFlash, withSummary, onToggleSummary,
+  audioRef, gists, transcriptStatus, onGist, gisting, gistFlash, withSummary, onToggleSummary,
 }: {
   audioRef: React.RefObject<HTMLAudioElement>;
-  shots: Shot[];
+  gists: Gist[];
   transcriptStatus: string;
-  onShot: () => void;
-  shotting: boolean;
-  shotFlash: boolean;
+  onGist: () => void;
+  gisting: boolean;
+  gistFlash: boolean;
   withSummary: boolean;
   onToggleSummary: () => void;
 }) {
@@ -126,8 +126,8 @@ function PlayerWidget({
             className="absolute left-0 top-0 h-full rounded-full bg-indigo-500 pointer-events-none"
             style={{ width: `${progress}%` }}
           />
-          {/* Shot markers */}
-          {duration > 0 && shots.map(s => (
+          {/* Gist markers */}
+          {duration > 0 && gists.map(s => (
             <div
               key={s.id}
               className="absolute top-1/2 -translate-y-1/2 w-0.5 h-3 bg-indigo-300 rounded-full pointer-events-none opacity-80"
@@ -206,10 +206,10 @@ function PlayerWidget({
           </svg>
         </button>
 
-        {/* Shot count */}
+        {/* Gist count */}
         <button
-          onClick={onShot}
-          disabled={shotting || transcriptStatus !== "done"}
+          onClick={onGist}
+          disabled={gisting || transcriptStatus !== "done"}
           className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-800 transition-colors disabled:opacity-30"
         >
           <span className="text-lg">✂️</span>
@@ -231,22 +231,22 @@ function PlayerWidget({
         </button>
       </div>
 
-      {/* Shot button */}
+      {/* Gist button */}
       <button
-        onClick={onShot}
-        disabled={shotting || transcriptStatus !== "done"}
+        onClick={onGist}
+        disabled={gisting || transcriptStatus !== "done"}
         className={`w-full py-3.5 rounded-xl font-semibold text-base transition-all ${
-          shotFlash
+          gistFlash
             ? "bg-green-600 scale-95"
             : transcriptStatus === "done"
               ? "bg-indigo-600 hover:bg-indigo-500 active:scale-95"
               : "bg-gray-800 text-gray-500 cursor-not-allowed"
         }`}
       >
-        {shotting
-          ? (withSummary ? "Summarising…" : "Creating shot…")
+        {gisting
+          ? (withSummary ? "Summarising…" : "Gisting…")
           : transcriptStatus === "done"
-            ? (withSummary ? "✂️  Shot + summarise" : "✂️  Take a shot")
+            ? (withSummary ? "✂️  Shot + summarise" : "✂️  Gist this moment")
             : "⏳  Waiting for transcript…"}
       </button>
 
@@ -254,8 +254,8 @@ function PlayerWidget({
   );
 }
 
-// ─── Shot card ────────────────────────────────────────────────────────────────
-function parseShotSummary(summary: string | undefined): { quote?: string; insight?: string } | null {
+// ─── Gist card ────────────────────────────────────────────────────────────────
+function parseGistSummary(summary: string | undefined): { quote?: string; insight?: string } | null {
   if (!summary) return null;
   try {
     const parsed = JSON.parse(summary);
@@ -264,14 +264,14 @@ function parseShotSummary(summary: string | undefined): { quote?: string; insigh
   return { insight: summary }; // fallback for old plain-text summaries
 }
 
-function ShotCard({ shot }: { shot: Shot }) {
+function GistCard({ gist }: { gist: Gist }) {
   const [copied, setCopied] = useState(false);
-  const ai = parseShotSummary(shot.summary);
+  const ai = parseGistSummary(gist.summary);
 
   const copy = async () => {
     const text = ai
       ? [ai.quote && `"${ai.quote}"`, ai.insight].filter(Boolean).join("\n\n")
-      : shot.text;
+      : gist.text;
     await navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -281,7 +281,7 @@ function ShotCard({ shot }: { shot: Shot }) {
     <div className="bg-gray-900 rounded-xl p-4 space-y-2">
       <div className="flex items-center justify-between">
         <span className="text-xs text-gray-500 font-mono">
-          {fmtTime(shot.start_seconds)} → {fmtTime(shot.end_seconds)}
+          {fmtTime(gist.start_seconds)} → {fmtTime(gist.end_seconds)}
         </span>
         <button onClick={copy} className="text-xs text-gray-400 hover:text-white px-2 py-0.5 rounded hover:bg-gray-700 transition-colors">
           {copied ? "✓ Copied" : "📋 Copy"}
@@ -297,7 +297,7 @@ function ShotCard({ shot }: { shot: Shot }) {
           )}
         </>
       ) : (
-        <p className="text-sm leading-relaxed text-gray-100">{shot.text}</p>
+        <p className="text-sm leading-relaxed text-gray-100">{gist.text}</p>
       )}
     </div>
   );
@@ -313,9 +313,9 @@ export default function Player() {
   const [episode, setEpisode] = useState<(Episode & { podcast_image?: string }) | null>(routeState);
   const seekTo = routeState?.seekTo;  // derived directly — always reflects current navigation state
   const [transcriptStatus, setTranscriptStatus] = useState("none");
-  const [shots, setShots] = useState<Shot[]>([]);
-  const [shotting, setShotting] = useState(false);
-  const [shotFlash, setShotFlash] = useState(false);
+  const [gists, setGists] = useState<Gist[]>([]);
+  const [gisting, setGisting] = useState(false);
+  const [gistFlash, setGistFlash] = useState(false);
   const [withSummary, setWithSummary] = useState(false);
   const [audioReady, setAudioReady] = useState(false);
   const [error, setError] = useState("");
@@ -337,7 +337,7 @@ export default function Player() {
         await startPlay(episodeId, ep.audio_url);
         setAudioReady(true);
         try {
-          const key = "earshot:played";
+          const key = "podgist:played";
           const played = new Set(JSON.parse(localStorage.getItem(key) || "[]"));
           played.add(episodeId);
           localStorage.setItem(key, JSON.stringify([...played]));
@@ -345,7 +345,7 @@ export default function Player() {
       } catch (e: any) { setError(e.message); }
     };
     init();
-    listShots(episodeId).then(setShots);
+    listGists(episodeId).then(setGists);
   }, [episodeId]);
 
   // Seek + autoplay after audio ready
@@ -381,16 +381,16 @@ export default function Player() {
     return () => clearInterval(timer);
   }, [episodeId, transcriptStatus]);
 
-  const handleShot = async () => {
+  const handleGist = async () => {
     if (!audioRef.current || !episodeId) return;
-    setShotting(true);
+    setGisting(true);
     try {
-      const shot = await createShot(episodeId, audioRef.current.currentTime, withSummary);
-      setShots(prev => [shot, ...prev]);
-      setShotFlash(true);
-      setTimeout(() => setShotFlash(false), 600);
+      const gist = await createGist(episodeId, audioRef.current.currentTime, withSummary);
+      setGists(prev => [gist, ...prev]);
+      setGistFlash(true);
+      setTimeout(() => setGistFlash(false), 600);
     } catch (e: any) { setError(e.message); }
-    finally { setShotting(false); }
+    finally { setGisting(false); }
   };
 
   return (
@@ -425,11 +425,11 @@ export default function Player() {
       {audioReady && (
         <PlayerWidget
           audioRef={audioRef}
-          shots={shots}
+          gists={gists}
           transcriptStatus={transcriptStatus}
-          onShot={handleShot}
-          shotting={shotting}
-          shotFlash={shotFlash}
+          onGist={handleGist}
+          gisting={gisting}
+          gistFlash={gistFlash}
           withSummary={withSummary}
           onToggleSummary={() => setWithSummary(v => !v)}
         />
@@ -444,13 +444,13 @@ export default function Player() {
         </div>
       )}
 
-      {/* Shots list */}
-      {shots.length > 0 && (
+      {/* Gists list */}
+      {gists.length > 0 && (
         <div className="space-y-3">
           <h2 className="text-gray-400 font-medium text-xs uppercase tracking-wide">
-            Shots ({shots.length})
+            Gists ({gists.length})
           </h2>
-          {shots.map(s => <ShotCard key={s.id} shot={s} />)}
+          {gists.map(s => <GistCard key={s.id} gist={s} />)}
         </div>
       )}
     </div>

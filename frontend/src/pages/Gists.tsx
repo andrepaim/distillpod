@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { listShots, deleteShot, getSubscriptions, Shot, Subscription } from "../api/client";
+import { listGists, deleteGist, getSubscriptions, Gist, Subscription } from "../api/client";
 
 function fmtTime(secs: number) {
   const m = Math.floor(secs / 60);
@@ -13,7 +13,7 @@ function fmtDate(iso: string) {
 }
 
 // ─── Individual shot card ─────────────────────────────────────────────────────
-function parseShotSummary(summary: string | undefined): { quote?: string; insight?: string } | null {
+function parseGistSummary(summary: string | undefined): { quote?: string; insight?: string } | null {
   if (!summary) return null;
   try {
     const parsed = JSON.parse(summary);
@@ -22,16 +22,16 @@ function parseShotSummary(summary: string | undefined): { quote?: string; insigh
   return { insight: summary };
 }
 
-function ShotCard({ shot, podcastImage, onDelete }: { shot: Shot; podcastImage?: string; onDelete: () => void }) {
+function GistCard({ gist, podcastImage, onDelete }: { gist: Gist; podcastImage?: string; onDelete: () => void }) {
   const nav = useNavigate();
   const [copied, setCopied] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const ai = parseShotSummary(shot.summary);
+  const ai = parseGistSummary(gist.summary);
 
   const copy = async () => {
     const text = ai
       ? [ai.quote && `"${ai.quote}"`, ai.insight].filter(Boolean).join("\n\n")
-      : shot.text;
+      : gist.text;
     await navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -40,13 +40,13 @@ function ShotCard({ shot, podcastImage, onDelete }: { shot: Shot; podcastImage?:
   const handleDelete = async () => {
     if (!confirm("Delete this shot?")) return;
     setDeleting(true);
-    try { await deleteShot(shot.id); onDelete(); }
+    try { await deleteGist(gist.id); onDelete(); }
     finally { setDeleting(false); }
   };
 
   const handlePlay = () => {
-    nav(`/player/${shot.episode_id}`, {
-      state: { seekTo: shot.start_seconds, podcast_image: podcastImage },
+    nav(`/player/${gist.episode_id}`, {
+      state: { seekTo: gist.start_seconds, podcast_image: podcastImage },
     });
   };
 
@@ -60,7 +60,7 @@ function ShotCard({ shot, podcastImage, onDelete }: { shot: Shot; podcastImage?:
           <svg viewBox="0 0 24 24" fill="currentColor" className="w-3.5 h-3.5">
             <polygon points="5 3 19 12 5 21 5 3" />
           </svg>
-          {fmtTime(shot.start_seconds)} → {fmtTime(shot.end_seconds)}
+          {fmtTime(gist.start_seconds)} → {fmtTime(gist.end_seconds)}
         </button>
         <div className="flex gap-2">
           <button
@@ -88,30 +88,30 @@ function ShotCard({ shot, podcastImage, onDelete }: { shot: Shot; podcastImage?:
           )}
         </>
       ) : (
-        <p className="text-sm leading-relaxed text-gray-100">{shot.text}</p>
+        <p className="text-sm leading-relaxed text-gray-100">{gist.text}</p>
       )}
     </div>
   );
 }
 
 // ─── Episode shots view ───────────────────────────────────────────────────────
-function EpisodeShots({
-  episodeId, episodeTitle, podcastTitle, podcastImage, shots: initial, onBack, onAllDeleted,
+function EpisodeGists({
+  episodeId, episodeTitle, podcastTitle, podcastImage, gists: initial, onBack, onAllDeleted,
 }: {
   episodeId: string;
   episodeTitle: string;
   podcastTitle: string;
   podcastImage?: string;
-  shots: Shot[];
+  gists: Gist[];
   onBack: () => void;
   onAllDeleted: () => void;
 }) {
   const nav = useNavigate();
-  const [shots, setShots] = useState(initial);
+  const [gists, setGists] = useState(initial);
 
   const handleDelete = (id: string) => {
-    const updated = shots.filter(s => s.id !== id);
-    setShots(updated);
+    const updated = gists.filter(s => s.id !== id);
+    setGists(updated);
     if (updated.length === 0) onAllDeleted();
   };
 
@@ -126,7 +126,7 @@ function EpisodeShots({
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
             <polyline points="15 18 9 12 15 6" />
           </svg>
-          <span className="text-sm font-medium">Shots</span>
+          <span className="text-sm font-medium">Gists</span>
         </button>
         <div className="flex-1 min-w-0">
           <div className="text-xs text-gray-500 mb-0.5">{podcastTitle}</div>
@@ -141,19 +141,19 @@ function EpisodeShots({
       </div>
 
       <div className="text-xs text-gray-500 pb-1">
-        {shots.length} shot{shots.length !== 1 ? "s" : ""}
+        {gists.length} gist{gists.length !== 1 ? "s" : ""}
       </div>
 
-      {shots.map(s => (
-        <ShotCard key={s.id} shot={s} podcastImage={podcastImage} onDelete={() => handleDelete(s.id)} />
+      {gists.map(s => (
+        <GistCard key={s.id} gist={s} podcastImage={podcastImage} onDelete={() => handleDelete(s.id)} />
       ))}
     </div>
   );
 }
 
 // ─── Episode summary row ──────────────────────────────────────────────────────
-function EpisodeRow({ episodeId, shots, imageUrl, onClick }: { episodeId: string; shots: Shot[]; imageUrl?: string; onClick: () => void }) {
-  const latest = shots.reduce((a, b) => a.created_at > b.created_at ? a : b);
+function EpisodeRow({ episodeId, gists, imageUrl, onClick }: { episodeId: string; gists: Gist[]; imageUrl?: string; onClick: () => void }) {
+  const latest = gists.reduce((a, b) => a.created_at > b.created_at ? a : b);
 
   return (
     <div
@@ -172,33 +172,33 @@ function EpisodeRow({ episodeId, shots, imageUrl, onClick }: { episodeId: string
             <div className="min-w-0">
               <div className="text-xs text-gray-500 mb-0.5">{latest.podcast_title}</div>
               <div className="text-sm font-medium leading-snug line-clamp-2">{latest.episode_title}</div>
-              <div className="text-xs text-gray-600 mt-1">Last shot {fmtDate(latest.created_at)}</div>
+              <div className="text-xs text-gray-600 mt-1">Last gist {fmtDate(latest.created_at)}</div>
             </div>
             <div className="flex-shrink-0 flex flex-col items-end gap-1">
               <span className="bg-indigo-900 text-indigo-300 text-xs font-semibold px-2.5 py-1 rounded-full">
-                {shots.length} shot{shots.length !== 1 ? "s" : ""}
+                {gists.length} gist{gists.length !== 1 ? "s" : ""}
               </span>
               <span className="text-gray-600 text-lg">›</span>
             </div>
           </div>
-          <p className="text-xs text-gray-500 mt-2 line-clamp-2 italic">"{shots[0].text}"</p>
+          <p className="text-xs text-gray-500 mt-2 line-clamp-2 italic">"{gists[0].text}"</p>
         </div>
       </div>
     </div>
   );
 }
 
-// ─── Main Shots page ──────────────────────────────────────────────────────────
-export default function Shots() {
-  const [allShots, setAllShots] = useState<Shot[]>([]);
+// ─── Main Gists page ──────────────────────────────────────────────────────────
+export default function Gists() {
+  const [allGists, setAllGists] = useState<Gist[]>([]);
   const [imageMap, setImageMap] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [selectedEpisode, setSelectedEpisode] = useState<string | null>(null);
 
   const load = () => {
     setLoading(true);
-    Promise.all([listShots(), getSubscriptions()]).then(([shots, subs]) => {
-      setAllShots(shots);
+    Promise.all([listGists(), getSubscriptions()]).then(([shots, subs]) => {
+      setAllGists(shots);
       setImageMap(Object.fromEntries(subs.filter(s => s.image_url).map(s => [s.podcast_id, s.image_url!])));
     }).finally(() => setLoading(false));
   };
@@ -206,9 +206,9 @@ export default function Shots() {
   useEffect(() => { load(); }, []);
 
   // Group by episode
-  const byEpisode = allShots.reduce<Record<string, Shot[]>>((acc, shot) => {
-    if (!acc[shot.episode_id]) acc[shot.episode_id] = [];
-    acc[shot.episode_id].push(shot);
+  const byEpisode = allGists.reduce<Record<string, Gist[]>>((acc, g) => {
+    if (!acc[g.episode_id]) acc[g.episode_id] = [];
+    acc[g.episode_id].push(g);
     return acc;
   }, {});
 
@@ -221,17 +221,17 @@ export default function Shots() {
 
   // Drill-down view
   if (selectedEpisode && byEpisode[selectedEpisode]) {
-    const shots = byEpisode[selectedEpisode];
+    const selGists = byEpisode[selectedEpisode];
     return (
-      <EpisodeShots
+      <EpisodeGists
         episodeId={selectedEpisode}
-        episodeTitle={shots[0].episode_title}
-        podcastTitle={shots[0].podcast_title}
-        podcastImage={imageMap[shots[0].podcast_id]}
-        shots={shots}
+        episodeTitle={selGists[0].episode_title}
+        podcastTitle={selGists[0].podcast_title}
+        podcastImage={imageMap[selGists[0].podcast_id]}
+        gists={selGists}
         onBack={() => setSelectedEpisode(null)}
         onAllDeleted={() => {
-          setAllShots(prev => prev.filter(s => s.episode_id !== selectedEpisode));
+          setAllGists(prev => prev.filter(s => s.episode_id !== selectedEpisode));
           setSelectedEpisode(null);
         }}
       />
@@ -242,10 +242,10 @@ export default function Shots() {
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <h1 className="text-lg font-bold">Shots</h1>
-        {allShots.length > 0 && (
+        <h1 className="text-lg font-bold">Gists</h1>
+        {allGists.length > 0 && (
           <span className="text-sm text-gray-500">
-            {allShots.length} across {episodeIds.length} episode{episodeIds.length !== 1 ? "s" : ""}
+            {allGists.length} across {episodeIds.length} episode{episodeIds.length !== 1 ? "s" : ""}
           </span>
         )}
       </div>
@@ -261,8 +261,8 @@ export default function Shots() {
       {!loading && episodeIds.length === 0 && (
         <div className="text-center py-12 text-gray-500">
           <div className="text-4xl mb-3">✂️</div>
-          <p>No shots yet.</p>
-          <p className="text-sm mt-1">Play an episode and tap Shot to capture a moment.</p>
+          <p>No gists yet.</p>
+          <p className="text-sm mt-1">Play an episode and tap Gist to capture a moment.</p>
         </div>
       )}
 
@@ -270,7 +270,7 @@ export default function Shots() {
         <EpisodeRow
           key={epId}
           episodeId={epId}
-          shots={byEpisode[epId]}
+          gists={byEpisode[epId]}
           imageUrl={imageMap[byEpisode[epId][0].podcast_id]}
           onClick={() => setSelectedEpisode(epId)}
         />

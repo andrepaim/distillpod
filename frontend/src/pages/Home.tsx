@@ -1,13 +1,13 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { getSubscriptions, getEpisodes, listShots, Episode, Subscription } from "../api/client";
+import { getSubscriptions, getEpisodes, listGists, Episode, Subscription } from "../api/client";
 import { getCached, setCached } from "../cache";
 
 const FEED_CACHE_KEY = "home:feed";
 const SHOTS_CACHE_KEY = "home:shotCounts";
 
 // ─── Listened state (localStorage) ───────────────────────────────────────────
-const STORAGE_KEY = "earshot:played";
+const STORAGE_KEY = "podgist:played";
 
 function getPlayed(): Set<string> {
   try { return new Set(JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]")); }
@@ -156,7 +156,7 @@ export default function Home() {
               .catch(() => [] as FeedEpisode[])
           )
         ),
-        listShots().catch(() => []),
+        listGists().catch(() => []),
       ]);
 
       const counts: Record<string, number> = {};

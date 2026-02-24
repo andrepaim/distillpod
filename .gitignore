@@ -5,7 +5,7 @@ __pycache__/
 *.pyo
 .venv/
 media/
-earshot.db
+podgist.db
 server.log
 frontend/node_modules/
 frontend/dist/

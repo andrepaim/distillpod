@@ -18,7 +18,7 @@ def _pi_headers() -> dict:
         "X-Auth-Date": ts,
         "X-Auth-Key": api_key,
         "Authorization": auth_hash,
-        "User-Agent": "EarShot/1.0",
+        "User-Agent": "PodGist/1.0",
     }
 
 def _has_pi_keys() -> bool:
