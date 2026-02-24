@@ -110,6 +110,35 @@ export default function Player() {
     listSnips(episodeId).then(setSnips);
   }, [episodeId]);
 
+  // Seek + autoplay once audio is ready
+  useEffect(() => {
+    if (!audioReady || !seekTo || !audioRef.current) return;
+    const audio = audioRef.current;
+
+    const doPlay = () => {
+      audio.play().catch(() => {});
+      audio.removeEventListener("seeked", doPlay);
+    };
+
+    const doSeek = () => {
+      audio.currentTime = seekTo;
+      audio.addEventListener("seeked", doPlay);
+      audio.removeEventListener("loadedmetadata", doSeek);
+    };
+
+    // Metadata may already be loaded by the time this effect runs
+    if (audio.readyState >= 1) {
+      doSeek();
+    } else {
+      audio.addEventListener("loadedmetadata", doSeek);
+    }
+
+    return () => {
+      audio.removeEventListener("loadedmetadata", doSeek);
+      audio.removeEventListener("seeked", doPlay);
+    };
+  }, [audioReady, seekTo]);
+
   useEffect(() => {
     if (!episodeId || transcriptStatus === "done" || transcriptStatus === "error") return;
     const timer = setInterval(async () => {
@@ -168,12 +197,7 @@ export default function Player() {
             src={audioStreamUrl(episodeId!)}
             controls
             className="w-full rounded"
-            onLoadedMetadata={() => {
-              if (seekTo && audioRef.current) {
-                audioRef.current.currentTime = seekTo;
-                audioRef.current.play().catch(() => {}); // auto-play from snip position
-              }
-            }}
+
           />
           <button
             onClick={handleSnip}
