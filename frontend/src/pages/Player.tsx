@@ -2,27 +2,96 @@ import { useEffect, useRef, useState } from "react";
 import { useParams, useLocation } from "react-router-dom";
 import { startPlay, createSnip, listSnips, audioStreamUrl, getTranscriptStatus, Snip, Episode } from "../api/client";
 
+function fmtTime(secs: number) {
+  const m = Math.floor(secs / 60);
+  const s = Math.floor(secs % 60);
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+function TranscriptBadge({ status }: { status: string }) {
+  if (status === "done") return (
+    <span className="inline-flex items-center gap-1 text-xs bg-green-900 text-green-300 px-2 py-0.5 rounded-full">
+      <span>✓</span> Transcript ready
+    </span>
+  );
+  if (status === "error") return (
+    <span className="inline-flex items-center gap-1 text-xs bg-red-900 text-red-300 px-2 py-0.5 rounded-full">
+      ✗ Transcript error
+    </span>
+  );
+  if (status === "processing" || status === "queued") return (
+    <span className="inline-flex items-center gap-2 text-xs bg-yellow-900 text-yellow-300 px-2 py-0.5 rounded-full">
+      <span className="inline-block w-2 h-2 bg-yellow-400 rounded-full animate-pulse" />
+      Transcribing…
+    </span>
+  );
+  return (
+    <span className="inline-flex items-center gap-1 text-xs bg-gray-800 text-gray-400 px-2 py-0.5 rounded-full">
+      No transcript yet
+    </span>
+  );
+}
+
+function SnipCard({ snip }: { snip: Snip }) {
+  const [copied, setCopied] = useState(false);
+
+  const copy = async () => {
+    await navigator.clipboard.writeText(snip.text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="bg-gray-900 rounded-lg p-4 space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="text-xs text-gray-500 font-mono">
+          {fmtTime(snip.start_seconds)} → {fmtTime(snip.end_seconds)}
+        </span>
+        <button
+          onClick={copy}
+          className="text-xs text-gray-400 hover:text-white px-2 py-0.5 rounded hover:bg-gray-700 transition-colors"
+        >
+          {copied ? "✓ Copied" : "📋 Copy"}
+        </button>
+      </div>
+      <p className="text-sm leading-relaxed text-gray-100">{snip.text}</p>
+      {snip.summary && (
+        <p className="text-indigo-300 text-sm italic border-l-2 border-indigo-600 pl-3">{snip.summary}</p>
+      )}
+    </div>
+  );
+}
+
 export default function Player() {
   const { episodeId } = useParams<{ episodeId: string }>();
   const location = useLocation();
-  const episode = location.state as Episode;
+  const episode = location.state as Episode & { podcast_image?: string };
   const audioRef = useRef<HTMLAudioElement>(null);
 
   const [transcriptStatus, setTranscriptStatus] = useState("none");
   const [snips, setSnips] = useState<Snip[]>([]);
   const [snipping, setSnipping] = useState(false);
+  const [snipFlash, setSnipFlash] = useState(false);
   const [audioReady, setAudioReady] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
     if (!episodeId || !episode) return;
     startPlay(episodeId, episode.audio_url)
-      .then(() => setAudioReady(true))
+      .then(() => {
+        setAudioReady(true);
+        // Mark as played in localStorage
+        try {
+          const key = "podsnip:played";
+          const played = new Set(JSON.parse(localStorage.getItem(key) || "[]"));
+          played.add(episodeId);
+          localStorage.setItem(key, JSON.stringify([...played]));
+        } catch {}
+      })
       .catch(e => setError(e.message));
     listSnips(episodeId).then(setSnips);
   }, [episodeId]);
 
-  // Poll transcript status until done
   useEffect(() => {
     if (!episodeId || transcriptStatus === "done" || transcriptStatus === "error") return;
     const timer = setInterval(async () => {
@@ -37,9 +106,10 @@ export default function Player() {
     if (!audioRef.current || !episodeId) return;
     setSnipping(true);
     try {
-      const currentSec = audioRef.current.currentTime;
-      const snip = await createSnip(episodeId, currentSec, false);
+      const snip = await createSnip(episodeId, audioRef.current.currentTime, false);
       setSnips(prev => [snip, ...prev]);
+      setSnipFlash(true);
+      setTimeout(() => setSnipFlash(false), 600);
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -48,15 +118,23 @@ export default function Player() {
   };
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-lg font-bold">{episode?.title ?? "Loading…"}</h1>
-        <div className={`text-xs mt-1 ${transcriptStatus === "done" ? "text-green-400" : "text-yellow-400"}`}>
-          Transcript: {transcriptStatus}
+    <div className="space-y-5">
+      {/* Header */}
+      <div className="flex gap-4 items-start">
+        {episode?.podcast_image && (
+          <img src={episode.podcast_image} className="w-16 h-16 rounded-lg object-cover flex-shrink-0" alt="" />
+        )}
+        <div className="min-w-0">
+          <h1 className="text-base font-bold leading-snug line-clamp-2">{episode?.title ?? "Loading…"}</h1>
+          <div className="mt-1.5">
+            <TranscriptBadge status={transcriptStatus} />
+          </div>
         </div>
       </div>
 
-      {error && <div className="bg-red-900 text-red-300 rounded p-3 text-sm">{error}</div>}
+      {error && (
+        <div className="bg-red-900 text-red-300 rounded p-3 text-sm">{error}</div>
+      )}
 
       {audioReady && (
         <div className="space-y-3">
@@ -64,35 +142,35 @@ export default function Player() {
             ref={audioRef}
             src={audioStreamUrl(episodeId!)}
             controls
-            className="w-full"
+            className="w-full rounded"
           />
           <button
             onClick={handleSnip}
             disabled={snipping || transcriptStatus !== "done"}
-            className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed py-3 rounded-lg font-semibold text-lg"
+            className={`w-full py-3 rounded-lg font-semibold text-lg transition-all ${
+              snipFlash
+                ? "bg-green-600 scale-95"
+                : transcriptStatus === "done"
+                  ? "bg-indigo-600 hover:bg-indigo-500 active:scale-95"
+                  : "bg-gray-800 text-gray-500 cursor-not-allowed"
+            }`}
           >
             {snipping ? "Creating snip…" : "✂️ Snip"}
           </button>
-          {transcriptStatus !== "done" && (
-            <p className="text-center text-gray-500 text-sm">Snip available once transcript is ready</p>
+          {transcriptStatus !== "done" && transcriptStatus !== "error" && (
+            <p className="text-center text-gray-500 text-xs">
+              {transcriptStatus === "none" ? "Snip available once transcript is ready" : "Transcribing in background, snip available soon…"}
+            </p>
           )}
         </div>
       )}
 
       {snips.length > 0 && (
         <div className="space-y-3">
-          <h2 className="text-gray-400 font-medium">Snips</h2>
-          {snips.map(s => (
-            <div key={s.id} className="bg-gray-900 rounded-lg p-4 space-y-2">
-              <div className="text-xs text-gray-500">
-                {Math.floor(s.start_seconds / 60)}:{String(Math.floor(s.start_seconds % 60)).padStart(2, "0")}
-                {" → "}
-                {Math.floor(s.end_seconds / 60)}:{String(Math.floor(s.end_seconds % 60)).padStart(2, "0")}
-              </div>
-              <p className="text-sm leading-relaxed">{s.text}</p>
-              {s.summary && <p className="text-indigo-300 text-sm italic">{s.summary}</p>}
-            </div>
-          ))}
+          <h2 className="text-gray-400 font-medium text-sm uppercase tracking-wide">
+            Snips ({snips.length})
+          </h2>
+          {snips.map(s => <SnipCard key={s.id} snip={s} />)}
         </div>
       )}
     </div>

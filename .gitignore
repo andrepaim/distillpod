@@ -1,8 +1,11 @@
 .env
+frontend/.env
 __pycache__/
 *.pyc
+*.pyo
 .venv/
 media/
 podsnip.db
+server.log
 frontend/node_modules/
 frontend/dist/

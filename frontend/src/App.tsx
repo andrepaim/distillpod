@@ -1,25 +1,107 @@
-import { BrowserRouter, Routes, Route, NavLink } from "react-router-dom";
+import { BrowserRouter, Routes, Route, useLocation, useNavigate } from "react-router-dom";
+import Home from "./pages/Home";
 import Search from "./pages/Search";
 import Subscriptions from "./pages/Subscriptions";
 import Player from "./pages/Player";
+import Snips from "./pages/Snips";
 
+// ─── Icons ────────────────────────────────────────────────────────────────────
+const HomeIcon = ({ active }: { active: boolean }) => (
+  <svg viewBox="0 0 24 24" fill={active ? "currentColor" : "none"} stroke="currentColor" strokeWidth={active ? 0 : 2} strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6">
+    <path d="M3 9.75L12 3l9 6.75V21a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V9.75z" />
+    <path d="M9 22V12h6v10" fill="white" stroke={active ? "white" : "none"} strokeWidth={active ? 0 : 0} />
+    <rect x="9" y="12" width="6" height="10" fill={active ? "white" : "none"} opacity={active ? 0.3 : 0} />
+  </svg>
+);
+
+const SearchIcon = ({ active }: { active: boolean }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? 2.5 : 2} strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6">
+    <circle cx="11" cy="11" r="7" />
+    <line x1="21" y1="21" x2="16.65" y2="16.65" />
+  </svg>
+);
+
+const LibraryIcon = ({ active }: { active: boolean }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? 2.5 : 2} strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6">
+    <path d="M3 18v-6a9 9 0 0 1 18 0v6" />
+    <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z" />
+  </svg>
+);
+
+const SnipsIcon = ({ active }: { active: boolean }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? 2.5 : 2} strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6">
+    <circle cx="6" cy="6" r="3" />
+    <circle cx="6" cy="18" r="3" />
+    <line x1="20" y1="4" x2="8.12" y2="15.88" />
+    <line x1="14.47" y1="14.48" x2="20" y2="20" />
+    <line x1="8.12" y1="8.12" x2="12" y2="12" />
+  </svg>
+);
+
+// ─── Bottom nav ───────────────────────────────────────────────────────────────
+const tabs = [
+  { to: "/",              label: "Home",    Icon: HomeIcon    },
+  { to: "/search",        label: "Search",  Icon: SearchIcon  },
+  { to: "/subscriptions", label: "Library", Icon: LibraryIcon },
+  { to: "/snips",         label: "Snips",   Icon: SnipsIcon   },
+];
+
+function BottomNav() {
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  const isActive = (to: string) =>
+    to === "/" ? location.pathname === "/" : location.pathname.startsWith(to);
+
+  return (
+    <nav
+      className="fixed bottom-0 left-0 right-0 bg-gray-900 border-t border-gray-800 flex z-50"
+      style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+    >
+      {tabs.map(({ to, label, Icon }) => {
+        const active = isActive(to);
+        return (
+          <button
+            key={to}
+            onClick={() => navigate(to)}
+            className={`relative flex-1 flex flex-col items-center justify-center gap-1 py-2.5 transition-colors ${
+              active ? "text-indigo-400" : "text-gray-500 hover:text-gray-300"
+            }`}
+          >
+            <Icon active={active} />
+            <span className={`text-xs font-medium ${active ? "text-indigo-400" : "text-gray-500"}`}>
+              {label}
+            </span>
+            {active && (
+              <span className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 bg-indigo-400 rounded-b-full" />
+            )}
+          </button>
+        );
+      })}
+    </nav>
+  );
+}
+
+// ─── App ──────────────────────────────────────────────────────────────────────
 export default function App() {
   return (
     <BrowserRouter>
       <div className="min-h-screen bg-gray-950 text-white flex flex-col">
-        <nav className="bg-gray-900 border-b border-gray-800 px-4 py-3 flex gap-6">
-          <span className="font-bold text-indigo-400 text-lg">🎙 PodSnip</span>
-          <NavLink to="/" className={({ isActive }) => isActive ? "text-white" : "text-gray-400 hover:text-white"}>Search</NavLink>
-          <NavLink to="/subscriptions" className={({ isActive }) => isActive ? "text-white" : "text-gray-400 hover:text-white"}>Library</NavLink>
-          <NavLink to="/snips" className={({ isActive }) => isActive ? "text-white" : "text-gray-400 hover:text-white"}>Snips</NavLink>
-        </nav>
-        <main className="flex-1 p-4 max-w-3xl mx-auto w-full">
+        <header className="bg-gray-900 border-b border-gray-800 px-4 py-3">
+          <span className="font-bold text-indigo-400 text-lg tracking-tight">🎙 PodSnip</span>
+        </header>
+
+        <main className="flex-1 p-4 pb-24 max-w-3xl mx-auto w-full">
           <Routes>
-            <Route path="/" element={<Search />} />
+            <Route path="/" element={<Home />} />
+            <Route path="/search" element={<Search />} />
             <Route path="/subscriptions" element={<Subscriptions />} />
             <Route path="/player/:episodeId" element={<Player />} />
+            <Route path="/snips" element={<Snips />} />
           </Routes>
         </main>
+
+        <BottomNav />
       </div>
     </BrowserRouter>
   );
