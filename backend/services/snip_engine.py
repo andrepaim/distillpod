@@ -19,9 +19,12 @@ def _claude_summarize_sync(text: str) -> str | None:
     Uses the Claude Max subscription already authenticated on this VPS.
     """
     prompt = (
-        "In 1-2 sentences, capture the core insight from this podcast excerpt. "
-        "Be direct, no fluff.\n\n"
-        f"Excerpt:\n{text}"
+        "From this podcast transcript excerpt, extract two things:\n"
+        "1. The single most memorable/quotable sentence — pick verbatim from the text\n"
+        "2. A 1-2 sentence insight capturing the core idea\n\n"
+        "Respond with ONLY valid JSON, no markdown, no extra text:\n"
+        "{\"quote\": \"...\", \"insight\": \"...\"}\n\n"
+        f"Transcript:\n{text}"
     )
     result = subprocess.run(
         ["/root/.local/bin/claude", "--print", prompt],

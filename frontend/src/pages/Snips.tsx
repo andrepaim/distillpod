@@ -13,13 +13,26 @@ function fmtDate(iso: string) {
 }
 
 // ─── Individual snip card ─────────────────────────────────────────────────────
+function parseSnipSummary(summary: string | undefined): { quote?: string; insight?: string } | null {
+  if (!summary) return null;
+  try {
+    const parsed = JSON.parse(summary);
+    if (parsed.quote || parsed.insight) return parsed;
+  } catch {}
+  return { insight: summary };
+}
+
 function SnipCard({ snip, podcastImage, onDelete }: { snip: Snip; podcastImage?: string; onDelete: () => void }) {
   const nav = useNavigate();
   const [copied, setCopied] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const ai = parseSnipSummary(snip.summary);
 
   const copy = async () => {
-    await navigator.clipboard.writeText(snip.text);
+    const text = ai
+      ? [ai.quote && `"${ai.quote}"`, ai.insight].filter(Boolean).join("\n\n")
+      : snip.text;
+    await navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -65,9 +78,17 @@ function SnipCard({ snip, podcastImage, onDelete }: { snip: Snip; podcastImage?:
           </button>
         </div>
       </div>
-      <p className="text-sm leading-relaxed text-gray-100">{snip.text}</p>
-      {snip.summary && (
-        <p className="text-indigo-300 text-sm italic border-l-2 border-indigo-600 pl-3">{snip.summary}</p>
+      {ai ? (
+        <>
+          {ai.quote && (
+            <p className="text-sm italic text-gray-100 border-l-2 border-indigo-500 pl-3">"{ai.quote}"</p>
+          )}
+          {ai.insight && (
+            <p className="text-indigo-300 text-sm leading-relaxed">{ai.insight}</p>
+          )}
+        </>
+      ) : (
+        <p className="text-sm leading-relaxed text-gray-100">{snip.text}</p>
       )}
     </div>
   );
