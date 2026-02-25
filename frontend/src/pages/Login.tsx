@@ -5,7 +5,6 @@ import { useState, useRef } from "react";
 const SLIDES = [
   {
     emoji: "⚗️",
-    overlay: "🎧",
     headline: "DistillPod",
     sub: "Hundreds of hours of podcasts,\ndistilled into what actually matters.",
     bg: "from-indigo-950 via-gray-950 to-gray-950",
@@ -73,23 +72,13 @@ export default function Login() {
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
       >
-        {/* Emoji (optionally with overlay) */}
-        <div className="relative flex items-center justify-center" style={{ width: "9rem", height: "9rem" }}>
-          <span
-            className="text-8xl leading-none"
-            style={{ filter: `drop-shadow(0 0 32px ${slide.accent}66)` }}
-          >
-            {slide.emoji}
-          </span>
-          {"overlay" in slide && (
-            <span
-              className="absolute text-5xl leading-none pointer-events-none"
-              style={{ top: "4px", left: "50%", transform: "translateX(-50%)" }}
-            >
-              {(slide as { overlay: string }).overlay}
-            </span>
-          )}
-        </div>
+        {/* Emoji */}
+        <span
+          className="text-8xl leading-none"
+          style={{ filter: `drop-shadow(0 0 32px ${slide.accent}66)` }}
+        >
+          {slide.emoji}
+        </span>
 
         {/* Text */}
         <div className="flex flex-col items-center gap-3 text-center">
