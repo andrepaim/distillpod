@@ -5,7 +5,9 @@ from fastapi.responses import JSONResponse
 from jose import jwt, JWTError
 from config import settings
 
-EXEMPT_PREFIXES = ["/auth/", "/health", "/assets/"]
+# Only these API prefixes require a valid session.
+# Everything else (frontend SPA, static files, auth routes) passes through freely.
+PROTECTED_PREFIXES = ["/gists", "/podcasts", "/player"]
 
 
 def create_session_token(user: dict) -> str:
@@ -39,12 +41,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         path = request.url.path
 
-        # Exempt auth routes, health, and static assets
-        if any(path.startswith(p) for p in EXEMPT_PREFIXES):
-            return await call_next(request)
-
-        # Static files served by FastAPI (icons, manifest, etc.)
-        if path.startswith("/assets/") or "." in path.split("/")[-1]:
+        # Only protect API routes — frontend, auth, and static files pass freely
+        if not any(path.startswith(p) for p in PROTECTED_PREFIXES):
             return await call_next(request)
 
         # Validate session cookie
