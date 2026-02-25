@@ -20,7 +20,8 @@ const SLIDES = [
   {
     emoji: "🔒",
     headline: "How do I sign up?",
-    sub: "You can't. This is just for me.\n\nThere are many podcast apps.\nThis one is mine.",
+    sub: "You can't. This is just for me.",
+    tagline: "There are many podcast apps.\nThis one is mine.",
     bg: "from-gray-900 via-gray-950 to-gray-950",
     accent: "#9ca3af", // gray-400
   },
@@ -90,6 +91,11 @@ export default function Login() {
           <p className="text-gray-400 text-base leading-relaxed whitespace-pre-line">
             {slide.sub}
           </p>
+          {"tagline" in slide && (
+            <p className="text-gray-300 text-lg italic leading-snug whitespace-pre-line mt-2">
+              {slide.tagline}
+            </p>
+          )}
         </div>
 
 
