@@ -39,19 +39,19 @@ function GoogleLogo() {
 // ─── Carousel ─────────────────────────────────────────────────────────────────
 
 function Carousel({ index, onIndexChange }: { index: number; onIndexChange: (i: number) => void }) {
-  const touchStartX = useRef<number | null>(null);
+  const touchStartY = useRef<number | null>(null);
 
   const handleTouchStart = (e: React.TouchEvent) => {
-    touchStartX.current = e.touches[0].clientX;
+    touchStartY.current = e.touches[0].clientY;
   };
 
   const handleTouchEnd = (e: React.TouchEvent) => {
-    if (touchStartX.current === null) return;
-    const delta = e.changedTouches[0].clientX - touchStartX.current;
-    touchStartX.current = null;
+    if (touchStartY.current === null) return;
+    const delta = e.changedTouches[0].clientY - touchStartY.current;
+    touchStartY.current = null;
     if (Math.abs(delta) < 40) return;
-    if (delta < 0 && index < SLIDES.length - 1) onIndexChange(index + 1);
-    if (delta > 0 && index > 0) onIndexChange(index - 1);
+    if (delta < 0 && index < SLIDES.length - 1) onIndexChange(index + 1); // swipe up → next
+    if (delta > 0 && index > 0) onIndexChange(index - 1);                 // swipe down → prev
   };
 
   return (
@@ -62,18 +62,18 @@ function Carousel({ index, onIndexChange }: { index: number; onIndexChange: (i: 
     >
       {/* Slide track */}
       <div
-        className="flex h-full"
+        className="flex flex-col w-full"
         style={{
-          transform: `translateX(-${index * 100}%)`,
+          transform: `translateY(-${index * (100 / SLIDES.length)}%)`,
           transition: "transform 320ms cubic-bezier(0.4,0,0.2,1)",
-          width: `${SLIDES.length * 100}%`,
+          height: `${SLIDES.length * 100}%`,
         }}
       >
         {SLIDES.map((slide, i) => (
           <div
             key={i}
             className="flex flex-col items-center justify-center gap-5 px-8"
-            style={{ width: `${100 / SLIDES.length}%` }}
+            style={{ height: `${100 / SLIDES.length}%` }}
           >
             <span
               className="text-7xl"
@@ -94,26 +94,26 @@ function Carousel({ index, onIndexChange }: { index: number; onIndexChange: (i: 
         ))}
       </div>
 
-      {/* Left / right tap zones (desktop UX) */}
+      {/* Top / bottom tap zones (desktop UX) */}
       {index > 0 && (
         <button
           onClick={() => onIndexChange(index - 1)}
-          className="absolute left-0 top-0 h-full w-12 flex items-center justify-start pl-2 text-gray-600 hover:text-gray-400 transition-colors"
+          className="absolute top-0 left-0 right-0 h-12 flex items-start justify-center pt-2 text-gray-600 hover:text-gray-400 transition-colors"
           aria-label="Previous"
         >
           <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2}>
-            <path d="M15 18l-6-6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M18 15l-6-6-6 6" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </button>
       )}
       {index < SLIDES.length - 1 && (
         <button
           onClick={() => onIndexChange(index + 1)}
-          className="absolute right-0 top-0 h-full w-12 flex items-center justify-end pr-2 text-gray-600 hover:text-gray-400 transition-colors"
+          className="absolute bottom-0 left-0 right-0 h-12 flex items-end justify-center pb-2 text-gray-600 hover:text-gray-400 transition-colors"
           aria-label="Next"
         >
           <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2}>
-            <path d="M9 18l6-6-6-6" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </button>
       )}
