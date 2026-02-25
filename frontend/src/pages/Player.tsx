@@ -146,7 +146,7 @@ function PlayerWidget({
           disabled={gisting || transcriptStatus !== "done"}
           className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-800 transition-colors disabled:opacity-30"
         >
-          <span className="text-lg">✂️</span>
+          <span className="text-lg">⚗️</span>
         </button>
       </div>
 
@@ -165,7 +165,7 @@ function PlayerWidget({
         {gisting
           ? "Summarising…"
           : transcriptStatus === "done"
-            ? "✂️  Gist + summarise"
+            ? "⚗️  Distill this moment"
             : "⏳  Waiting for transcript…"}
       </button>
 
@@ -339,7 +339,7 @@ export default function Player() {
       {gists.length > 0 && (
         <div className="space-y-3">
           <h2 className="text-gray-400 font-medium text-xs uppercase tracking-wide">
-            Gists ({gists.length})
+            Distillations ({gists.length})
           </h2>
           {gists.map(s => <GistCard key={s.id} gist={s} />)}
         </div>

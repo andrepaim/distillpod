@@ -46,7 +46,7 @@ const tabs = [
   { to: "/",              label: "Home",    Icon: HomeIcon    },
   { to: "/search",        label: "Search",  Icon: SearchIcon  },
   { to: "/subscriptions", label: "Library", Icon: LibraryIcon },
-  { to: "/gists",         label: "Gists",   Icon: GistsIcon   },
+  { to: "/gists",         label: "Distills", Icon: GistsIcon   },
 ];
 
 function BottomNav() {

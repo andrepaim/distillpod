@@ -6,23 +6,23 @@ const SLIDES = [
   {
     emoji: "⚗️",
     headline: "DistillPod",
-    sub: "There are many podcast apps.\nThis one is mine.",
+    sub: "Hundreds of hours of podcasts,\ndistilled into what actually matters.",
     bg: "from-indigo-950 via-gray-950 to-gray-950",
     accent: "#818cf8", // indigo-400
   },
   {
-    emoji: "✂️",
-    headline: "Gist any episode",
-    sub: "AI summaries in seconds.\nGet the signal, skip the noise.",
+    emoji: "💧",
+    headline: "Distill any episode",
+    sub: "Tap Distill while you listen.\nAI extracts the key ideas — no fluff, no filler.",
     bg: "from-violet-950 via-gray-950 to-gray-950",
     accent: "#a78bfa", // violet-400
   },
   {
-    emoji: "🎧",
-    headline: "Your queue,\nyour rules",
-    sub: "Progress saved. Mini player always on.\nPick up right where you left off.",
-    bg: "from-sky-950 via-gray-950 to-gray-950",
-    accent: "#38bdf8", // sky-400
+    emoji: "🔒",
+    headline: "How do I sign up?",
+    sub: "You can't. This is just for me.\n\nThere are many podcast apps.\nThis one is mine.",
+    bg: "from-gray-900 via-gray-950 to-gray-950",
+    accent: "#9ca3af", // gray-400
   },
 ] as const;
 

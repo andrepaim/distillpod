@@ -126,7 +126,7 @@ function EpisodeGists({
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
             <polyline points="15 18 9 12 15 6" />
           </svg>
-          <span className="text-sm font-medium">Gists</span>
+          <span className="text-sm font-medium">Distillations</span>
         </button>
         <div className="flex-1 min-w-0">
           <div className="text-xs text-gray-500 mb-0.5">{podcastTitle}</div>
@@ -141,7 +141,7 @@ function EpisodeGists({
       </div>
 
       <div className="text-xs text-gray-500 pb-1">
-        {gists.length} gist{gists.length !== 1 ? "s" : ""}
+        {gists.length} distillation{gists.length !== 1 ? "s" : ""}
       </div>
 
       {gists.map(s => (
@@ -176,7 +176,7 @@ function EpisodeRow({ episodeId, gists, imageUrl, onClick }: { episodeId: string
             </div>
             <div className="flex-shrink-0 flex flex-col items-end gap-1">
               <span className="bg-indigo-900 text-indigo-300 text-xs font-semibold px-2.5 py-1 rounded-full">
-                {gists.length} gist{gists.length !== 1 ? "s" : ""}
+                {gists.length} distillation{gists.length !== 1 ? "s" : ""}
               </span>
               <span className="text-gray-600 text-lg">›</span>
             </div>
@@ -242,7 +242,7 @@ export default function Gists() {
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <h1 className="text-lg font-bold">Gists</h1>
+        <h1 className="text-lg font-bold">Distillations</h1>
         {allGists.length > 0 && (
           <span className="text-sm text-gray-500">
             {allGists.length} across {episodeIds.length} episode{episodeIds.length !== 1 ? "s" : ""}
@@ -260,9 +260,9 @@ export default function Gists() {
 
       {!loading && episodeIds.length === 0 && (
         <div className="text-center py-12 text-gray-500">
-          <div className="text-4xl mb-3">✂️</div>
-          <p>No gists yet.</p>
-          <p className="text-sm mt-1">Play an episode and tap Gist to capture a moment.</p>
+          <div className="text-4xl mb-3">⚗️</div>
+          <p>No distillations yet.</p>
+          <p className="text-sm mt-1">Play an episode and tap Distill to capture a moment.</p>
         </div>
       )}
 

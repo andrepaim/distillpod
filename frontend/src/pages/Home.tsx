@@ -102,7 +102,7 @@ function EpisodeCard({
           )}
           {shotCount > 0 && (
             <span className="text-xs bg-indigo-900 text-indigo-300 px-1.5 py-0.5 rounded-full font-medium">
-              ✂️ {shotCount}
+              ⚗️ {shotCount}
             </span>
           )}
         </div>
