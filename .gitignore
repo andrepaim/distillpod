@@ -11,3 +11,4 @@ frontend/node_modules/
 frontend/dist/
 wa-service/node_modules/
 wa-service-v2/node_modules/
+distillpod.db
