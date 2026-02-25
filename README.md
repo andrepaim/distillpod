@@ -1,4 +1,4 @@
-# PodGist 🎧
+# DistillPod 🎧
 
 A minimal, self-hosted podcast app with instant audio shot capturing. No cloud services, no subscriptions, no per-use API costs. Your VPS does all the heavy lifting.
 
@@ -6,9 +6,9 @@ A minimal, self-hosted podcast app with instant audio shot capturing. No cloud s
 
 ## What is this?
 
-PodGist is a mobile-first web app that lets you listen to podcasts and **capture moments** from them.
+DistillPod is a mobile-first web app that lets you listen to podcasts and **capture moments** from them.
 
-The core insight: most podcast apps call an API for each clip (~$0.01 + latency). PodGist flips this — it **transcribes the whole episode once** using [faster-whisper](https://github.com/SYSTRAN/faster-whisper) (free, runs locally on CPU), and each gist becomes a zero-cost, near-instant timestamp lookup in the pre-computed word-level transcript.
+The core insight: most podcast apps call an API for each clip (~$0.01 + latency). DistillPod flips this — it **transcribes the whole episode once** using [faster-whisper](https://github.com/SYSTRAN/faster-whisper) (free, runs locally on CPU), and each gist becomes a zero-cost, near-instant timestamp lookup in the pre-computed word-level transcript.
 
 You open the app in your phone's browser. Everything else — downloading audio, transcribing, serving — happens on your VPS.
 
@@ -167,8 +167,8 @@ For production: a Linux VPS (tested on Ubuntu 22.04).
 ### 1. Clone
 
 ```bash
-git clone https://github.com/andrepaim/podgist.git
-cd podgist
+git clone https://github.com/andrepaim/distillpod.git
+cd distillpod
 ```
 
 ### 2. Configure
@@ -230,21 +230,21 @@ The FastAPI backend automatically serves `frontend/dist/` at `/` when it exists,
 
 ### systemd service
 
-Create `/etc/systemd/system/podgist.service`:
+Create `/etc/systemd/system/distillpod.service`:
 
 ```ini
 [Unit]
-Description=PodGist — self-hosted podcast app
+Description=DistillPod — self-hosted podcast app
 After=network.target
 
 [Service]
 Type=simple
 User=root
-WorkingDirectory=/path/to/podgist/backend
+WorkingDirectory=/path/to/distillpod/backend
 ExecStart=/usr/bin/python3 -m uvicorn main:app --host 127.0.0.1 --port 8124
 Restart=always
 RestartSec=5
-EnvironmentFile=/path/to/podgist/.env
+EnvironmentFile=/path/to/distillpod/.env
 
 [Install]
 WantedBy=multi-user.target
@@ -252,13 +252,13 @@ WantedBy=multi-user.target
 
 ```bash
 systemctl daemon-reload
-systemctl enable podgist
-systemctl start podgist
+systemctl enable distillpod
+systemctl start distillpod
 ```
 
 ### Firewall
 
-PodGist binds to `127.0.0.1` by default — not accessible from the outside. There are two ways to access it remotely:
+DistillPod binds to `127.0.0.1` by default — not accessible from the outside. There are two ways to access it remotely:
 
 **Option A — SSH tunnel (most secure):**
 ```bash
@@ -362,7 +362,7 @@ The Home feed and episode lists are cached in localStorage with a 30-minute TTL 
 
 | Path | Contents |
 |---|---|
-| `podgist.db` | SQLite database (subscriptions, episodes, transcripts, shots) |
+| `distillpod.db` | SQLite database (subscriptions, episodes, transcripts, shots) |
 | `media/` | Downloaded episode MP3s (named by MD5 of episode ID) |
 
 Media files accumulate over time. For MVP, cleanup is manual. A future improvement would be an LRU cache with a configurable size limit.

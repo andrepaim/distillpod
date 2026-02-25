@@ -1,11 +1,11 @@
-# PodGist — Design Document
+# DistillPod — Design Document
 _Version 0.1 · February 2026_
 
 ---
 
 ## 1. Overview
 
-PodGist is a minimal, self-hosted podcast app where **Botler acts as the backend**. Instead of relying on cloud services or a mobile app, the user opens a React web app in their browser, and all heavy lifting — downloading audio, transcribing, extracting snips — happens on the VPS running Botler.
+DistillPod is a minimal, self-hosted podcast app where **Botler acts as the backend**. Instead of relying on cloud services or a mobile app, the user opens a React web app in their browser, and all heavy lifting — downloading audio, transcribing, extracting snips — happens on the VPS running Botler.
 
 ### Core insight
 The core insight: instead of calling an API for each clip, **transcribe the whole episode once** (free, using faster-whisper already installed on VPS), and each snip becomes a zero-cost, zero-latency timestamp lookup in the pre-computed word-level transcript.
@@ -342,11 +342,11 @@ The whole interaction takes < 200ms (DB read + array slice). No spinner needed.
 ### Prerequisites
 ```bash
 # Backend deps
-cd /root/podgist/backend
+cd /root/distillpod/backend
 pip install -r requirements.txt
 
 # Frontend deps
-cd /root/podgist/frontend
+cd /root/distillpod/frontend
 npm install
 npm run build  # outputs to frontend/dist/
 ```
@@ -364,21 +364,21 @@ Get free Podcast Index API credentials at: https://api.podcastindex.com/
 ### Running (development)
 ```bash
 # Terminal 1 — backend
-cd /root/podgist/backend
+cd /root/distillpod/backend
 uvicorn main:app --host 127.0.0.1 --port 8124 --reload
 
 # Terminal 2 — frontend dev server
-cd /root/podgist/frontend
+cd /root/distillpod/frontend
 npm run dev  # http://localhost:5173
 ```
 
 ### Running (production)
 ```bash
 # Build frontend
-cd /root/podgist/frontend && npm run build
+cd /root/distillpod/frontend && npm run build
 
 # Run backend (serves built frontend at /)
-cd /root/podgist/backend
+cd /root/distillpod/backend
 uvicorn main:app --host 127.0.0.1 --port 8124
 ```
 
@@ -394,7 +394,7 @@ server {
     }
 
     location / {
-        root /root/podgist/frontend/dist;
+        root /root/distillpod/frontend/dist;
         try_files $uri $uri/ /index.html;
     }
 }
@@ -405,14 +405,14 @@ Or simpler: FastAPI serves the built frontend directly (already configured in `m
 ### Systemd service
 ```ini
 [Unit]
-Description=PodGist Backend
+Description=DistillPod Backend
 After=network.target
 
 [Service]
-WorkingDirectory=/root/podgist/backend
+WorkingDirectory=/root/distillpod/backend
 ExecStart=/usr/bin/uvicorn main:app --host 127.0.0.1 --port 8124
 Restart=on-failure
-EnvironmentFile=/root/podgist/.env
+EnvironmentFile=/root/distillpod/.env
 
 [Install]
 WantedBy=multi-user.target

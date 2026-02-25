@@ -136,12 +136,12 @@ test.describe("Suite 5 — Player", () => {
     await expect(page.locator("audio")).toBeAttached({ timeout: 20_000 });
     // Wait for first throttled progress save (currentTime > 10s + up to 5s throttle window)
     await page.waitForFunction(
-      () => Object.keys(JSON.parse(localStorage.getItem("podgist:progress") || "{}")).length > 0,
+      () => Object.keys(JSON.parse(localStorage.getItem("distillpod:progress") || "{}")).length > 0,
       undefined,                           // no script arg
       { timeout: 60_000, polling: 1_000 }, // now correctly passed as options
     );
     const saved = await page.evaluate(() =>
-      JSON.parse(localStorage.getItem("podgist:progress") || "{}")
+      JSON.parse(localStorage.getItem("distillpod:progress") || "{}")
     );
     expect(Object.keys(saved).length).toBeGreaterThan(0);
     await clearProgress(page);
@@ -154,7 +154,7 @@ test.describe("Suite 5 — Player", () => {
     await page.waitForLoadState("domcontentloaded");
     const body = await page.textContent("body");
     expect(body).not.toContain('"detail":"Not Found"');
-    await expect(page.locator("text=🎧 PodGist")).toBeVisible();
+    await expect(page.locator("text=⚗️ DistillPod")).toBeVisible();
   });
 
   test("5.23 navigate from Gists → player shows ▶ From indicator", async ({ page, request }) => {

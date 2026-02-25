@@ -140,7 +140,7 @@ test.describe("Suite 6 — Gists Page", () => {
     await page.waitForLoadState("networkidle");
     const body = await page.textContent("body");
     expect(body).not.toContain('"detail"');
-    await expect(page.locator("text=🎧 PodGist")).toBeVisible();
+    await expect(page.locator("text=⚗️ DistillPod")).toBeVisible();
   });
 
 });

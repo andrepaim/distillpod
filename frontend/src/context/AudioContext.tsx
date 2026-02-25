@@ -5,7 +5,7 @@ import {
 import { startPlay, getEpisode, audioStreamUrl, type Episode } from "../api/client";
 
 // ─── Progress persistence ─────────────────────────────────────────────────────
-const PROGRESS_KEY = "podgist:progress";
+const PROGRESS_KEY = "distillpod:progress";
 
 export interface ProgressEntry {
   currentTime:    number;
@@ -184,9 +184,9 @@ export function AudioProvider({ children }: { children: ReactNode }) {
 
     // Mark as played in localStorage
     try {
-      const played = new Set(JSON.parse(localStorage.getItem("podgist:played") || "[]"));
+      const played = new Set(JSON.parse(localStorage.getItem("distillpod:played") || "[]"));
       played.add(id);
-      localStorage.setItem("podgist:played", JSON.stringify([...played]));
+      localStorage.setItem("distillpod:played", JSON.stringify([...played]));
     } catch {}
   }, [audioReady]);
 

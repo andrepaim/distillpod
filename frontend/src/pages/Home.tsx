@@ -7,7 +7,7 @@ const FEED_CACHE_KEY = "home:feed";
 const SHOTS_CACHE_KEY = "home:shotCounts";
 
 // ─── Listened state (localStorage) ───────────────────────────────────────────
-const STORAGE_KEY = "podgist:played";
+const STORAGE_KEY = "distillpod:played";
 
 function getPlayed(): Set<string> {
   try { return new Set(JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]")); }

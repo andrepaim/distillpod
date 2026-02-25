@@ -10,8 +10,8 @@ class Settings(BaseSettings):
     # Requires: `claude` CLI installed and authenticated via `claude login`
 
     # Storage
-    media_dir: Path = Path("/root/podgist/media")
-    db_path: Path = Path("/root/podgist/podgist.db")
+    media_dir: Path = Path("/root/distillpod/media")
+    db_path: Path = Path("/root/distillpod/distillpod.db")
 
     # Server
     host: str = "127.0.0.1"

@@ -5,7 +5,7 @@ test.describe("Suite 1 — Navigation & Shell", () => {
 
   test("1.1 header and 4 nav tabs visible", async ({ page }) => {
     await page.goto("/");
-    await expect(page.getByText("🎧 PodGist")).toBeVisible();
+    await expect(page.getByText("⚗️ DistillPod")).toBeVisible();
     await expect(navTab(page, "Home")).toBeVisible();
     await expect(navTab(page, "Search")).toBeVisible();
     await expect(navTab(page, "Library")).toBeVisible();

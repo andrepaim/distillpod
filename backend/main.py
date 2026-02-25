@@ -7,7 +7,7 @@ from config import settings
 from database import init_db
 from routers import podcasts, player, gists
 
-app = FastAPI(title="PodGist API", version="0.1.0")
+app = FastAPI(title="DistillPod API", version="0.1.0")
 
 app.add_middleware(
     CORSMiddleware,

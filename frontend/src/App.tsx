@@ -92,7 +92,7 @@ function AppShell() {
         className="bg-gray-900 border-b border-gray-800 px-4 py-3"
         style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top))" }}
       >
-        <span className="font-bold text-indigo-400 text-lg tracking-tight">🎧 PodGist</span>
+        <span className="font-bold text-indigo-400 text-lg tracking-tight">⚗️ DistillPod</span>
       </header>
 
       {/* Extra bottom padding when mini player is visible */}

@@ -1,6 +1,6 @@
 {
-  "name": "PodGist",
-  "short_name": "PodGist",
+  "name": "DistillPod",
+  "short_name": "DistillPod",
   "description": "Pocket podcast player with AI gists",
   "start_url": "/",
   "display": "standalone",
