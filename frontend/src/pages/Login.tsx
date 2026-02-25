@@ -7,19 +7,22 @@ const SLIDES = [
     emoji: "⚗️",
     headline: "DistillPod",
     sub: "There are many podcast apps.\nThis one is mine.",
-    accent: "text-indigo-400",
+    bg: "from-indigo-950 via-gray-950 to-gray-950",
+    accent: "#818cf8", // indigo-400
   },
   {
     emoji: "✂️",
     headline: "Gist any episode",
     sub: "AI summaries in seconds.\nGet the signal, skip the noise.",
-    accent: "text-violet-400",
+    bg: "from-violet-950 via-gray-950 to-gray-950",
+    accent: "#a78bfa", // violet-400
   },
   {
     emoji: "🎧",
-    headline: "Your queue, your rules",
-    sub: "Progress saved. Mini player always ready.\nOffline-friendly.",
-    accent: "text-sky-400",
+    headline: "Your queue,\nyour rules",
+    sub: "Progress saved. Mini player always on.\nPick up right where you left off.",
+    bg: "from-sky-950 via-gray-950 to-gray-950",
+    accent: "#38bdf8", // sky-400
   },
 ] as const;
 
@@ -36,145 +39,91 @@ function GoogleLogo() {
   );
 }
 
-// ─── Carousel ─────────────────────────────────────────────────────────────────
+// ─── Login page ───────────────────────────────────────────────────────────────
 
-function Carousel({ index, onIndexChange }: { index: number; onIndexChange: (i: number) => void }) {
+export default function Login() {
+  const [index, setIndex] = useState(0);
   const touchStartY = useRef<number | null>(null);
 
   const handleTouchStart = (e: React.TouchEvent) => {
     touchStartY.current = e.touches[0].clientY;
   };
-
   const handleTouchEnd = (e: React.TouchEvent) => {
     if (touchStartY.current === null) return;
     const delta = e.changedTouches[0].clientY - touchStartY.current;
     touchStartY.current = null;
     if (Math.abs(delta) < 40) return;
-    if (delta < 0 && index < SLIDES.length - 1) onIndexChange(index + 1); // swipe up → next
-    if (delta > 0 && index > 0) onIndexChange(index - 1);                 // swipe down → prev
+    if (delta < 0) setIndex(i => Math.min(i + 1, SLIDES.length - 1));
+    else setIndex(i => Math.max(i - 1, 0));
   };
 
-  return (
-    <div
-      className="flex-1 relative overflow-hidden select-none"
-      onTouchStart={handleTouchStart}
-      onTouchEnd={handleTouchEnd}
-    >
-      {/* Slide track */}
-      <div
-        className="flex flex-col w-full"
-        style={{
-          transform: `translateY(-${index * (100 / SLIDES.length)}%)`,
-          transition: "transform 320ms cubic-bezier(0.4,0,0.2,1)",
-          height: `${SLIDES.length * 100}%`,
-        }}
-      >
-        {SLIDES.map((slide, i) => (
-          <div
-            key={i}
-            className="flex flex-col items-center justify-center gap-5 px-8"
-            style={{ height: `${100 / SLIDES.length}%` }}
-          >
-            <span
-              className="text-7xl"
-              style={{ filter: "drop-shadow(0 0 24px rgba(99,102,241,0.35))" }}
-            >
-              {slide.emoji}
-            </span>
+  const slide = SLIDES[index];
 
-            <div className="flex flex-col items-center gap-2 text-center">
-              <h1 className={`text-3xl font-bold tracking-tight ${slide.accent}`}>
-                {slide.headline}
-              </h1>
-              <p className="text-gray-400 text-sm leading-relaxed whitespace-pre-line">
-                {slide.sub}
-              </p>
-            </div>
-          </div>
-        ))}
+  return (
+    // h-[100dvh] = dynamic viewport height (shrinks when mobile browser chrome hides)
+    <div
+      className={`h-[100dvh] flex flex-col bg-gradient-to-b ${slide.bg} transition-all duration-500`}
+      style={{ paddingBottom: "env(safe-area-inset-bottom)", paddingTop: "env(safe-area-inset-top)" }}
+    >
+      {/* ── Slide area (swipeable) ── */}
+      <div
+        className="flex-1 flex flex-col items-center justify-center gap-6 px-10 select-none"
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+      >
+        {/* Emoji */}
+        <span
+          className="text-8xl leading-none"
+          style={{ filter: `drop-shadow(0 0 32px ${slide.accent}66)` }}
+        >
+          {slide.emoji}
+        </span>
+
+        {/* Text */}
+        <div className="flex flex-col items-center gap-3 text-center">
+          <h1
+            className="text-3xl font-bold tracking-tight transition-colors duration-500 whitespace-pre-line"
+            style={{ color: slide.accent }}
+          >
+            {slide.headline}
+          </h1>
+          <p className="text-gray-400 text-base leading-relaxed whitespace-pre-line">
+            {slide.sub}
+          </p>
+        </div>
+
+
       </div>
 
-      {/* Top / bottom tap zones (desktop UX) */}
-      {index > 0 && (
+      {/* ── Bottom bar ── */}
+      <div className="flex flex-col items-center gap-5 px-6 pb-8">
+        {/* Dot indicators */}
+        <div className="flex items-center gap-2">
+          {SLIDES.map((_, i) => (
+            <button
+              key={i}
+              onClick={() => setIndex(i)}
+              aria-label={`Slide ${i + 1}`}
+              className="rounded-full transition-all duration-300"
+              style={{
+                width: i === index ? "20px" : "7px",
+                height: "7px",
+                background: i === index ? slide.accent : "#374151",
+              }}
+            />
+          ))}
+        </div>
+
+        {/* Google sign-in */}
         <button
-          onClick={() => onIndexChange(index - 1)}
-          className="absolute top-0 left-0 right-0 h-12 flex items-start justify-center pt-2 text-gray-600 hover:text-gray-400 transition-colors"
-          aria-label="Previous"
-        >
-          <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2}>
-            <path d="M18 15l-6-6-6 6" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </button>
-      )}
-      {index < SLIDES.length - 1 && (
-        <button
-          onClick={() => onIndexChange(index + 1)}
-          className="absolute bottom-0 left-0 right-0 h-12 flex items-end justify-center pb-2 text-gray-600 hover:text-gray-400 transition-colors"
-          aria-label="Next"
-        >
-          <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2}>
-            <path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </button>
-      )}
-    </div>
-  );
-}
-
-// ─── Dot indicators ───────────────────────────────────────────────────────────
-
-function Dots({ index, total, onDotClick }: { index: number; total: number; onDotClick: (i: number) => void }) {
-  return (
-    <div className="flex items-center justify-center gap-2 py-4">
-      {Array.from({ length: total }).map((_, i) => (
-        <button
-          key={i}
-          onClick={() => onDotClick(i)}
-          aria-label={`Go to slide ${i + 1}`}
-          className="transition-all duration-300 rounded-full"
-          style={{
-            width: i === index ? "20px" : "7px",
-            height: "7px",
-            background: i === index ? "#818cf8" : "#374151",
-          }}
-        />
-      ))}
-    </div>
-  );
-}
-
-// ─── Login page ───────────────────────────────────────────────────────────────
-
-export default function Login() {
-  const [index, setIndex] = useState(0);
-
-  const handleGoogleLogin = () => {
-    window.location.href = "/auth/google";
-  };
-
-  return (
-    <div
-      className="min-h-screen bg-gray-950 flex flex-col"
-      style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
-    >
-      {/* Carousel fills the upper portion */}
-      <Carousel index={index} onIndexChange={setIndex} />
-
-      {/* Bottom section — dots + CTA */}
-      <div className="flex flex-col items-center gap-4 px-6 pb-10">
-        <Dots index={index} total={SLIDES.length} onDotClick={setIndex} />
-
-        <button
-          onClick={handleGoogleLogin}
-          className="w-full max-w-sm flex items-center justify-center gap-3 bg-white text-gray-800 font-medium py-3.5 px-6 rounded-2xl shadow-lg hover:bg-gray-100 active:bg-gray-200 active:scale-95 transition-all"
+          onClick={() => { window.location.href = "/auth/google"; }}
+          className="w-full max-w-sm flex items-center justify-center gap-3 bg-white text-gray-800 font-semibold py-3.5 px-6 rounded-2xl shadow-xl hover:bg-gray-50 active:scale-95 transition-all"
         >
           <GoogleLogo />
           Sign in with Google
         </button>
 
-        <p className="text-gray-600 text-xs text-center">
-          Private. Just for you.
-        </p>
+        <p className="text-gray-600 text-xs">Private. Just for you.</p>
       </div>
     </div>
   );
