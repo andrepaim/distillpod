@@ -123,7 +123,7 @@ export default function Login() {
           Sign in with Google
         </button>
 
-        <p className="text-gray-600 text-xs">Private. Just for you.</p>
+
       </div>
     </div>
   );
