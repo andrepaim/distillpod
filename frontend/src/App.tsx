@@ -1,4 +1,3 @@
-import { useState, useEffect } from "react";
 import { BrowserRouter, Routes, Route, useLocation, useNavigate } from "react-router-dom";
 import { AudioProvider, useAudio } from "./context/AudioContext";
 import MiniPlayer from "./components/MiniPlayer";
@@ -7,7 +6,6 @@ import Search from "./pages/Search";
 import Subscriptions from "./pages/Subscriptions";
 import Player from "./pages/Player";
 import Gists from "./pages/Gists";
-import Login from "./pages/Login";
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
 const HomeIcon = ({ active }: { active: boolean }) => (
@@ -118,31 +116,7 @@ function AppShell() {
 }
 
 // ─── Root ─────────────────────────────────────────────────────────────────────
-interface User { email: string; name: string; picture: string; }
-
 export default function App() {
-  const [user, setUser] = useState<User | null | "loading">("loading");
-
-  useEffect(() => {
-    fetch("/auth/me", { credentials: "include" })
-      .then(r => (r.ok ? r.json() : null))
-      .then(u => setUser(u))
-      .catch(() => setUser(null));
-  }, []);
-
-  // Boot splash — avoid flash of login page on every load
-  if (user === "loading") {
-    return (
-      <div className="min-h-screen bg-gray-950 flex items-center justify-center">
-        <span className="text-4xl animate-pulse select-none">⚗️</span>
-      </div>
-    );
-  }
-
-  if (!user) {
-    return <Login />;
-  }
-
   return (
     <BrowserRouter>
       <AudioProvider>
