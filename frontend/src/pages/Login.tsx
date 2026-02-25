@@ -43,18 +43,18 @@ function GoogleLogo() {
 
 export default function Login() {
   const [index, setIndex] = useState(0);
-  const touchStartY = useRef<number | null>(null);
+  const touchStartX = useRef<number | null>(null);
 
   const handleTouchStart = (e: React.TouchEvent) => {
-    touchStartY.current = e.touches[0].clientY;
+    touchStartX.current = e.touches[0].clientX;
   };
   const handleTouchEnd = (e: React.TouchEvent) => {
-    if (touchStartY.current === null) return;
-    const delta = e.changedTouches[0].clientY - touchStartY.current;
-    touchStartY.current = null;
+    if (touchStartX.current === null) return;
+    const delta = e.changedTouches[0].clientX - touchStartX.current;
+    touchStartX.current = null;
     if (Math.abs(delta) < 40) return;
-    if (delta < 0) setIndex(i => Math.min(i + 1, SLIDES.length - 1));
-    else setIndex(i => Math.max(i - 1, 0));
+    if (delta < 0) setIndex(i => Math.min(i + 1, SLIDES.length - 1)); // swipe left → next
+    else setIndex(i => Math.max(i - 1, 0));                            // swipe right → prev
   };
 
   const slide = SLIDES[index];
