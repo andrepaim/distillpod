@@ -25,7 +25,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-# app.add_middleware(AuthMiddleware)  # Auth disabled
+app.add_middleware(AuthMiddleware)
 
 app.include_router(auth_router.router)
 app.include_router(podcasts.router)
