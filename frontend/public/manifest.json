@@ -2,7 +2,7 @@
   "name": "DistillPod",
   "short_name": "DistillPod",
   "description": "Pocket podcast player with AI gists",
-  "start_url": "/",
+  "start_url": "https://distillpod.duckdns.org/",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#111827",
