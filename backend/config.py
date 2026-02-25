@@ -23,6 +23,16 @@ class Settings(BaseSettings):
     whisper_device: str = "cpu"
     gist_context_seconds: int = 60        # seconds of audio captured per shot
 
+    # Auth — Google OAuth
+    google_client_id: str = ""
+    google_client_secret: str = ""
+    allowed_emails: str = "andrepaim@gmail.com"     # comma-separated allowlist
+    session_secret: str = "change-me-in-production"
+    session_max_age: int = 30 * 24 * 3600           # 30 days in seconds
+
+    # Test mode — bypass auth for E2E tests. NEVER true in prod.
+    test_mode: bool = False
+
     class Config:
         env_file = ".env"
 

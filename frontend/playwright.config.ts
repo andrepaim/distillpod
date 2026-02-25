@@ -2,6 +2,7 @@ import { defineConfig } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./e2e",
+  globalSetup: "./e2e/global.setup.ts",
   fullyParallel: false,
   retries: 1,
   workers: 1,
@@ -16,5 +17,6 @@ export default defineConfig({
     video: "off",
     actionTimeout: 15_000,
     navigationTimeout: 20_000,
+    storageState: "e2e/.auth/user.json",  // auth cookie injected into every test
   },
 });

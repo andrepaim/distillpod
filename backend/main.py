@@ -6,17 +6,28 @@ from pathlib import Path
 from config import settings
 from database import init_db
 from routers import podcasts, player, gists
+from routers import auth as auth_router
+from middleware.auth import AuthMiddleware
 
 app = FastAPI(title="DistillPod API", version="0.1.0")
 
+# Middleware order matters: added last = runs first (LIFO in Starlette)
+# AuthMiddleware added last so it wraps all requests after CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        settings.frontend_origin,
+        "https://distillpod.duckdns.org",
+        "http://localhost:8124",
+        "http://127.0.0.1:8124",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(AuthMiddleware)
 
+app.include_router(auth_router.router)
 app.include_router(podcasts.router)
 app.include_router(player.router)
 app.include_router(gists.router)

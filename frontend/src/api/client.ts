@@ -3,9 +3,15 @@ const BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8124";
 async function req<T>(method: string, path: string, body?: unknown): Promise<T> {
   const r = await fetch(`${BASE}${path}`, {
     method,
+    credentials: "include",
     headers: body ? { "Content-Type": "application/json" } : {},
     body: body ? JSON.stringify(body) : undefined,
   });
+  if (r.status === 401) {
+    // Session expired or missing — navigate to root to trigger auth check in App.tsx
+    window.location.href = "/";
+    throw new Error("Unauthorized");
+  }
   if (!r.ok) throw new Error(`${method} ${path} → ${r.status}`);
   return r.json();
 }
