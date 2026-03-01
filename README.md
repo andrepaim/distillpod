@@ -359,6 +359,36 @@ Media files accumulate over time. Cleanup is currently manual — a future impro
 
 ---
 
+## Testing
+
+DistillPod has a backend test suite covering the API layer and key script logic.
+
+### Backend tests (pytest)
+
+```bash
+cd /root/distillpod
+python3 -m pytest tests/ -v
+```
+
+24 tests across two files:
+
+| File | What it covers |
+|---|---|
+| `tests/test_api.py` | `GET /podcasts/feed` (distill counts, metadata, no description field), suggestions endpoints (list, dismiss, unknown ID), subscriptions list, auth middleware (browser → 302, API client → 401) |
+| `tests/test_suggest_podcasts.py` | `claude()` subprocess wrapper (JSON output, markdown fence stripping, error handling), deduplication filtering (subscribed feeds excluded, dismissed suggestions excluded, missing feed URLs skipped) |
+
+Tests run against an in-memory SQLite database seeded in `tests/conftest.py` — no production DB is touched. Auth is bypassed via a test session cookie injected by the `client` fixture.
+
+### Dependencies
+
+```bash
+pip install pytest pytest-asyncio httpx
+```
+
+Already listed in `backend/requirements.txt`.
+
+---
+
 ## Future Ideas
 
 - **Full-text search** across distillations and transcripts (SQLite FTS5)
