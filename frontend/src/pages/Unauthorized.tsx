@@ -35,13 +35,10 @@ export default function Unauthorized() {
           faster-whisper, then distills key moments into quotes and insights — zero per-call cost.
         </p>
         <p className="text-gray-400 text-xs leading-relaxed">
-          The AI trick: it shares a VPS with his{" "}
-          <a href="https://openclaw.ai" target="_blank" rel="noopener noreferrer"
-            className="text-indigo-400 underline underline-offset-2">OpenClaw</a>{" "}
-          bot, which already has the{" "}
+          The AI runs via the{" "}
           <code className="text-indigo-300 bg-gray-800 px-1 rounded">claude</code>{" "}
-          CLI authenticated via Claude Max. DistillPod just calls it as a subprocess.
-          No extra API key. Inspired by how OpenClaw works under the hood.
+          CLI — called as a subprocess, authenticated through a Claude subscription.
+          No separate API billing.
         </p>
       </div>
 
@@ -50,7 +47,7 @@ export default function Unauthorized() {
         <div className="text-center">
           <p className="text-white text-sm font-semibold">Want your own?</p>
           <p className="text-gray-500 text-xs mt-0.5">
-            The repo is public. Ask your OpenClaw bot to set it up for you.
+            The repo is public — self-hostable on any VPS.
           </p>
         </div>
 
