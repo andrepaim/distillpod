@@ -37,6 +37,19 @@ CREATE TABLE IF NOT EXISTS transcripts (
     created_at  TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS suggestions (
+    id                TEXT PRIMARY KEY,
+    podcast_index_id  TEXT,
+    title             TEXT NOT NULL,
+    author            TEXT,
+    description       TEXT,
+    image_url         TEXT,
+    feed_url          TEXT NOT NULL,
+    reason            TEXT,
+    suggested_at      TEXT NOT NULL,
+    dismissed         INTEGER DEFAULT 0
+);
+
 CREATE TABLE IF NOT EXISTS gists (
     id             TEXT PRIMARY KEY,
     episode_id     TEXT NOT NULL,

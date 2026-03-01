@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { getSubscriptions, getEpisodes, listGists, Episode, Subscription } from "../api/client";
+import { getFeed, FeedEpisode } from "../api/client";
 import { getCached, setCached } from "../cache";
 
 const FEED_CACHE_KEY = "home:feed";
@@ -40,12 +40,6 @@ function fmtDuration(secs?: number | null) {
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-interface FeedEpisode extends Episode {
-  podcastTitle: string;
-  podcastImage?: string;
-}
-
 // ─── Skeleton card ────────────────────────────────────────────────────────────
 function SkeletonCard() {
   return (
@@ -78,8 +72,8 @@ function EpisodeCard({
     >
       {/* Podcast art */}
       <div className="flex-shrink-0">
-        {ep.podcastImage
-          ? <img src={ep.podcastImage} className="w-12 h-12 rounded-lg object-cover" alt="" />
+        {ep.podcast_image
+          ? <img src={ep.podcast_image} className="w-12 h-12 rounded-lg object-cover" alt="" />
           : <div className="w-12 h-12 rounded-lg bg-gray-800 flex items-center justify-center text-xl">🎙</div>
         }
       </div>
@@ -87,9 +81,9 @@ function EpisodeCard({
       {/* Content */}
       <div
         className="flex-1 min-w-0 cursor-pointer"
-        onClick={() => nav(`/player/${ep.id}`, { state: { ...ep, podcast_image: ep.podcastImage, podcast_title: ep.podcastTitle } })}
+        onClick={() => nav(`/player/${ep.id}`, { state: ep })}
       >
-        <div className="text-xs text-gray-500 mb-0.5 truncate">{ep.podcastTitle}</div>
+        <div className="text-xs text-gray-500 mb-0.5 truncate">{ep.podcast_title}</div>
         <div className="text-sm font-medium leading-snug line-clamp-2">{ep.title}</div>
 
         {/* Meta row */}
@@ -141,36 +135,15 @@ export default function Home() {
   const fetchFeed = async (showRefreshing = false) => {
     if (showRefreshing) setRefreshing(true);
     try {
-      const subs = await getSubscriptions();
-      if (subs.length === 0) { setNoSubs(true); return; }
-
-      const [episodeLists, shots] = await Promise.all([
-        Promise.all(
-          subs.map((s: Subscription) =>
-            getEpisodes(s.podcast_id, false)
-              .then(eps => eps.map(ep => ({
-                ...ep,
-                podcastTitle: s.title,
-                podcastImage: s.image_url,
-              })))
-              .catch(() => [] as FeedEpisode[])
-          )
-        ),
-        listGists().catch(() => []),
-      ]);
+      const episodes = await getFeed();
+      if (episodes.length === 0) { setNoSubs(true); return; }
 
       const counts: Record<string, number> = {};
-      shots.forEach(s => { counts[s.episode_id] = (counts[s.episode_id] || 0) + 1; });
+      episodes.forEach(ep => { counts[ep.id] = ep.distill_count; });
 
-      const all = episodeLists.flat().sort((a, b) => {
-        if (!a.published_at) return 1;
-        if (!b.published_at) return -1;
-        return new Date(b.published_at).getTime() - new Date(a.published_at).getTime();
-      }).slice(0, 50);
-
-      setFeed(all);
+      setFeed(episodes);
       setShotCounts(counts);
-      setCached(FEED_CACHE_KEY, all);
+      setCached(FEED_CACHE_KEY, episodes);
       setCached(SHOTS_CACHE_KEY, counts);
     } finally {
       setLoading(false);
