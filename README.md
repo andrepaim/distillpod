@@ -10,7 +10,7 @@ No cloud services. No subscriptions. No per-use API costs. Your VPS does all the
 
 DistillPod is a mobile-first web app for listening to podcasts and capturing distillations from them.
 
-**A distillation** is a moment you flag while listening. Tap the ⚗️ Distill button at any point and DistillPod extracts the last 60 seconds of transcript around that moment — instantly, with no API call. Toggle AI mode and Claude turns that excerpt into a verbatim quote and a 1-2 sentence insight instead.
+**A distillation** is a moment you flag while listening. Tap the ⚗️ Distill button at any point and DistillPod extracts the last 60 seconds of transcript around that moment, then passes it to Claude, which returns a verbatim quote and a 1-2 sentence insight. Every distillation is AI-powered — no toggles, no modes.
 
 The core insight: most podcast apps call an LLM API per clip (~$0.01 to $0.05 per call). DistillPod flips this — it **transcribes the whole episode once** using [faster-whisper](https://github.com/SYSTRAN/faster-whisper) (free, runs locally on CPU), and each distillation becomes a near-instant timestamp lookup in the pre-computed word-level transcript. The AI step is free too — see [The OpenClaw Hack](#the-openclaw-hack-how-ai-works-for-free).
 
@@ -20,28 +20,19 @@ You open the app in your phone's browser. Everything else — downloading audio,
 
 ## What is a Distillation?
 
-A distillation is the core unit of DistillPod. It has two modes:
+A distillation is the core unit of DistillPod. Tap ⚗️ **Distill** at any moment while listening and the backend:
 
-### Basic distillation (instant, ~200ms)
-
-Tap ⚗️ **Distill** at any moment while listening. The backend:
 1. Reads the current playback position (in seconds)
 2. Slices the pre-computed word-level transcript for the window `[now - 60s, now]`
-3. Returns the raw transcript text immediately — no API call, no processing
-
-The result is a verbatim excerpt of what was said in the last 60 seconds around your tap. Fast, free, offline-friendly.
-
-### AI distillation (Claude, ~30s)
-
-Toggle **✨ AI** in the player before tapping Distill. The backend:
-1. Extracts the same 60-second transcript window
-2. Calls `claude --print` as a subprocess with the excerpt and a structured prompt
-3. Claude returns `{ "quote": "...", "insight": "..." }`:
+3. Calls `claude --print` as a subprocess with the excerpt and a structured prompt
+4. Claude returns `{ "quote": "...", "insight": "..." }`:
    - **quote** — the single most memorable verbatim sentence from the excerpt
    - **insight** — 1-2 sentence takeaway capturing the core idea
-4. The distillation card shows the quote (italic, styled) and insight — raw transcript is hidden
+5. The distillation card shows the quote (italic, styled) and insight
 
-**Latency: ~30s.** Uses your Claude Max subscription via the OpenClaw hack — no extra API cost.
+Every distillation is AI-powered. There are no modes or toggles — tap and get a distillation.
+
+**Latency: ~30s** (Claude CLI startup + inference). Uses your Claude Max subscription via the OpenClaw hack — no extra API cost.
 
 The 60-second context window is configurable via `GIST_CONTEXT_SECONDS` in `.env`.
 
@@ -53,7 +44,7 @@ The 60-second context window is configurable via `GIST_CONTEXT_SECONDS` in `.env
 - **🔍 Search** — find podcasts via the iTunes Search API (no key needed). Subscribe with one tap.
 - **📚 Library** — browse your subscribed podcasts and their episodes. Transcript status shown per episode.
 - **▶️ Player** — stream audio directly from your VPS. Transcription kicks off automatically in the background when you press play.
-- **⚗️ Distill** — tap at any moment while listening. Instantly captures the last 60 seconds of transcript. Toggle AI mode for a Claude-powered quote and insight (~30s, zero extra cost).
+- **⚗️ Distill** — tap at any moment while listening. Captures the last 60 seconds of transcript, passes it to Claude, and returns a verbatim quote and insight (~30s, zero extra API cost).
 - **📋 Distillations library** — browse all your distillations grouped by episode. Copy to clipboard, delete, or jump back to the episode.
 - **⚡ Stale-while-revalidate caching** — the app feels instant on return visits. Data is cached in localStorage with a 30-minute TTL and refreshed silently in the background.
 
@@ -317,8 +308,7 @@ Your subscribed podcasts. Tap into any podcast for its episode list with transcr
 - Episode header with cover art and title
 - Transcript status indicator (pulsing while transcribing, green when done)
 - Native `<audio>` player with full browser controls (seek, speed, etc.)
-- **✨ AI toggle** — off by default; when on, distillations return a Claude-powered quote and insight instead of raw transcript
-- **⚗️ Distill button** — disabled until transcript is ready; tap at any moment to capture the last 60 seconds
+- **⚗️ Distill button** — disabled until transcript is ready; tap at any moment to capture the last 60 seconds and get a Claude-powered quote and insight
 - All distillations for this episode listed below the player
 
 ### Distillations
@@ -352,7 +342,7 @@ Home feed and episode lists are cached with a 30-minute TTL using stale-while-re
 | `POST` | `/player/play` | Trigger download + transcription |
 | `GET` | `/player/audio/{episode_id}` | Stream MP3 (Range-request capable) |
 | `GET` | `/player/transcript-status/{episode_id}` | Poll transcription progress |
-| `POST` | `/gists/?summary=` | Create a distillation at current playback position |
+| `POST` | `/gists/` | Create an AI distillation at current playback position |
 | `GET` | `/gists/?episode_id=` | List distillations (optionally filtered by episode) |
 | `DELETE` | `/gists/{id}` | Delete a distillation |
 
