@@ -65,7 +65,7 @@ export default function Unauthorized() {
 
         {/* Prompt hint */}
         <div className="bg-gray-900 border border-dashed border-gray-800 rounded-xl px-4 py-2.5">
-          <p className="text-gray-600 text-xs mb-1">Ask your bot:</p>
+          <p className="text-gray-600 text-xs mb-1">If you have OpenClaw or any other AI bot, ask it:</p>
           <p className="text-gray-400 text-xs italic leading-relaxed">
             "Clone github.com/andrepaim/distillpod, set it up on my VPS and personalize it for me."
           </p>
