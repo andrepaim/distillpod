@@ -4,10 +4,17 @@ const REPO = "github.com/andrepaim/distillpod";
 
 export default function Unauthorized() {
   const [copied, setCopied] = useState(false);
+  const [copiedPrompt, setCopiedPrompt] = useState(false);
+  const PROMPT = `Clone ${REPO}, set it up on my VPS and personalize it for me.`;
   const copy = () => {
     navigator.clipboard.writeText(`https://${REPO}`);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+  const copyPrompt = () => {
+    navigator.clipboard.writeText(PROMPT);
+    setCopiedPrompt(true);
+    setTimeout(() => setCopiedPrompt(false), 2000);
   };
 
   return (
@@ -64,11 +71,20 @@ export default function Unauthorized() {
         </div>
 
         {/* Prompt hint */}
-        <div className="bg-gray-900 border border-dashed border-gray-800 rounded-xl px-4 py-2.5">
-          <p className="text-gray-600 text-xs mb-1">If you have OpenClaw or any other AI bot, ask it:</p>
-          <p className="text-gray-400 text-xs italic leading-relaxed">
-            "Clone github.com/andrepaim/distillpod, set it up on my VPS and personalize it for me."
-          </p>
+        <div className="bg-gray-900 border border-dashed border-gray-800 rounded-xl px-4 py-2.5 flex flex-col gap-1.5">
+          <p className="text-gray-600 text-xs">If you have OpenClaw or any other AI bot, ask it:</p>
+          <div className="flex items-start justify-between gap-3">
+            <p className="text-gray-400 text-xs italic leading-relaxed">
+              "{PROMPT}"
+            </p>
+            <button
+              onClick={copyPrompt}
+              className="flex-shrink-0 text-xs px-3 py-1 rounded-lg border transition-all"
+              style={{ borderColor: copiedPrompt ? "#818cf8" : "#374151", color: copiedPrompt ? "#818cf8" : "#6b7280" }}
+            >
+              {copiedPrompt ? "✓ copied" : "copy"}
+            </button>
+          </div>
         </div>
       </div>
 
