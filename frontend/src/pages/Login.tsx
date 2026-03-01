@@ -43,6 +43,21 @@ function GoogleLogo() {
 // ─── Login page ───────────────────────────────────────────────────────────────
 
 export default function Login() {
+  const isSharedLink = window.location.pathname.startsWith("/player/");
+
+  const slides = isSharedLink
+    ? [
+        {
+          emoji: "⚗️",
+          headline: "A distillation\nwas shared with you",
+          sub: "Someone sent you an AI-distilled podcast episode.\nSign in to read it — if you have access.",
+          bg: "from-indigo-950 via-gray-950 to-gray-950",
+          accent: "#818cf8",
+        },
+        ...SLIDES.slice(2),
+      ]
+    : [...SLIDES];
+
   const [index, setIndex] = useState(0);
   const touchStartX = useRef<number | null>(null);
 
@@ -54,11 +69,11 @@ export default function Login() {
     const delta = e.changedTouches[0].clientX - touchStartX.current;
     touchStartX.current = null;
     if (Math.abs(delta) < 40) return;
-    if (delta < 0) setIndex(i => Math.min(i + 1, SLIDES.length - 1)); // swipe left → next
+    if (delta < 0) setIndex(i => Math.min(i + 1, slides.length - 1)); // swipe left → next
     else setIndex(i => Math.max(i - 1, 0));                            // swipe right → prev
   };
 
-  const slide = SLIDES[index];
+  const slide = slides[index];
 
   return (
     // h-[100dvh] = dynamic viewport height (shrinks when mobile browser chrome hides)
@@ -105,7 +120,7 @@ export default function Login() {
       <div className="flex flex-col items-center gap-5 px-6 pb-8">
         {/* Dot indicators */}
         <div className="flex items-center gap-2">
-          {SLIDES.map((_, i) => (
+          {slides.map((_, i) => (
             <button
               key={i}
               onClick={() => setIndex(i)}

@@ -1,7 +1,7 @@
 import time
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from jose import jwt, JWTError
 from config import settings
 
@@ -48,10 +48,14 @@ class AuthMiddleware(BaseHTTPMiddleware):
         # Validate session cookie
         token = request.cookies.get("distillpod_session")
         if not token:
+            if "text/html" in request.headers.get("accept", ""):
+                return RedirectResponse(url="/unauthorized", status_code=302)
             return JSONResponse({"detail": "Unauthorized"}, status_code=401)
 
         user = verify_session_token(token)
         if not user:
+            if "text/html" in request.headers.get("accept", ""):
+                return RedirectResponse(url="/unauthorized", status_code=302)
             return JSONResponse({"detail": "Unauthorized"}, status_code=401)
 
         request.state.user = user
