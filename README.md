@@ -12,7 +12,7 @@ DistillPod is a mobile-first web app for listening to podcasts and capturing dis
 
 **A distillation** is a moment you flag while listening. Tap the ⚗️ Distill button at any point and DistillPod extracts the last 60 seconds of transcript around that moment, then passes it to the Claude Code CLI, which returns a verbatim quote and a 1-2 sentence insight. Every distillation is AI-powered — no toggles, no modes.
 
-The core insight: most podcast apps call an LLM API per clip (~$0.01 to $0.05 per call). DistillPod flips this — it **transcribes the whole episode once** using [faster-whisper](https://github.com/SYSTRAN/faster-whisper) (free, runs locally on CPU), and each distillation becomes a near-instant timestamp lookup in the pre-computed word-level transcript. The AI step is free too — see [How AI Works for Free](#how-ai-works-for-free).
+DistillPod **transcribes the whole episode once** using [faster-whisper](https://github.com/SYSTRAN/faster-whisper) (runs locally on CPU), and each distillation becomes a near-instant timestamp lookup in the pre-computed word-level transcript. The AI runs via the Claude CLI — see [How AI Works](#how-ai-works).
 
 You open the app in your phone's browser. Everything else — downloading audio, transcribing, serving — happens on your VPS.
 
@@ -32,7 +32,7 @@ A distillation is the core unit of DistillPod. Tap ⚗️ **Distill** at any mom
 
 Every distillation is AI-powered. There are no modes or toggles — tap and get a distillation.
 
-**Latency: ~30s** (Claude CLI startup + inference). Uses your Claude Max subscription — no extra API cost.
+**Latency: ~30s** (Claude CLI startup + inference). Runs via your Claude subscription — no separate API billing.
 
 The 60-second context window is configurable via `GIST_CONTEXT_SECONDS` in `.env`.
 
@@ -44,7 +44,7 @@ The 60-second context window is configurable via `GIST_CONTEXT_SECONDS` in `.env
 - **🔍 Search** — find podcasts via the iTunes Search API (no key needed). Subscribe with one tap. When the search box is empty, a **🤖 Suggested for you** section surfaces daily AI-generated recommendations based on your listening history — dismiss any you're not interested in.
 - **📚 Library** — browse your subscribed podcasts and their episodes. Transcript status shown per episode.
 - **▶️ Player** — stream audio directly from your VPS. Transcription kicks off automatically in the background when you press play.
-- **⚗️ Distill** — tap at any moment while listening. Captures the last 60 seconds of transcript, passes it to the Claude Code CLI, and returns a verbatim quote and insight (~30s, zero extra API cost).
+- **⚗️ Distill** — tap at any moment while listening. Captures the last 60 seconds of transcript, passes it to the Claude Code CLI, and returns a verbatim quote and insight (~30s).
 - **📋 Distillations library** — browse all your distillations grouped by episode. Copy to clipboard, delete, or jump back to the episode.
 - **⚡ Stale-while-revalidate caching** — the app feels instant on return visits. Data is cached in localStorage with a 30-minute TTL and refreshed silently in the background.
 
@@ -77,7 +77,7 @@ The 60-second context window is configurable via `GIST_CONTEXT_SECONDS` in `.env
 └──────────┬─────────────────────────┬────────────────┘
            │                         │
      iTunes Search API         faster-whisper (local)
-     RSS feeds                 Claude CLI (Max subscription)
+     RSS feeds                 Claude CLI (subscription)
      Podcast Index API (opt.)
 ```
 
@@ -141,11 +141,9 @@ Set via `WHISPER_MODEL` in `.env`.
 
 ---
 
-## How AI Works for Free
+## How AI Works
 
-Most podcast apps with AI features hit an LLM API per request — typically $0.01 to $0.05 per call, which adds up fast.
-
-DistillPod calls the `claude` CLI as a subprocess instead:
+DistillPod calls the `claude` CLI as a subprocess:
 
 ```python
 result = subprocess.run(
@@ -154,7 +152,7 @@ result = subprocess.run(
 )
 ```
 
-The CLI authenticates through your Claude Max subscription ($20/month flat, unlimited usage) — no API key, no per-call billing.
+The CLI authenticates through your Claude subscription — no API key, no per-call billing.
 
 **Setup:** install the Claude CLI and log in once:
 
@@ -163,7 +161,7 @@ npm install -g @anthropic-ai/claude-code
 claude login
 ```
 
-That's it. Every distillation and recommendation is free on top of your existing subscription.
+That's it. Every distillation and recommendation runs through your existing subscription.
 
 ---
 
@@ -398,10 +396,10 @@ DistillPod generates daily podcast suggestions tailored to your library, surface
 A background script (`scripts/suggest-podcasts.py`) runs once a day via cron:
 
 1. **Reads your context** — fetches your subscriptions and the last 8 episode titles per show from the SQLite DB
-2. **First Claude Code CLI call — query generation** — passes the context to the Claude Code CLI and asks for 4 iTunes search queries, each targeting a different angle (safety, engineering, research, a wildcard). Zero API cost.
+2. **First Claude Code CLI call — query generation** — passes the context to the Claude Code CLI and asks for 4 iTunes search queries, each targeting a different angle (safety, engineering, research, a wildcard).
 3. **Searches iTunes** — runs each query against the iTunes Search API and collects candidate shows
 4. **Deduplicates** — filters out shows already subscribed, already suggested (including dismissed), or missing a feed URL
-5. **Second Claude Code CLI call — reason writing** — passes the real show metadata (title, author, description) back to the Claude Code CLI and gets a ≤12 word personalised reason per pick. Again, zero API cost.
+5. **Second Claude Code CLI call — reason writing** — passes the real show metadata (title, author, description) back to the Claude Code CLI and gets a ≤12 word personalised reason per pick.
 6. **Stores up to 4 suggestions** in the `suggestions` table
 
 The frontend reads `GET /podcasts/suggestions` on Search mount and renders the results as interactive cards. Tapping a card subscribes immediately; tapping "Not interested" calls `POST /podcasts/suggestions/{id}/dismiss` and removes the card optimistically — dismissed suggestions are excluded from future runs.
