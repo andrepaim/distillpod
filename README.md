@@ -12,7 +12,7 @@ DistillPod is a mobile-first web app for listening to podcasts and capturing dis
 
 **A distillation** is a moment you flag while listening. Tap the ⚗️ Distill button at any point and DistillPod extracts the last 60 seconds of transcript around that moment, then passes it to the Claude Code CLI, which returns a verbatim quote and a 1-2 sentence insight. Every distillation is AI-powered — no toggles, no modes.
 
-The core insight: most podcast apps call an LLM API per clip (~$0.01 to $0.05 per call). DistillPod flips this — it **transcribes the whole episode once** using [faster-whisper](https://github.com/SYSTRAN/faster-whisper) (free, runs locally on CPU), and each distillation becomes a near-instant timestamp lookup in the pre-computed word-level transcript. The AI step is free too — see [The OpenClaw Hack](#the-openclaw-hack-how-ai-works-for-free).
+The core insight: most podcast apps call an LLM API per clip (~$0.01 to $0.05 per call). DistillPod flips this — it **transcribes the whole episode once** using [faster-whisper](https://github.com/SYSTRAN/faster-whisper) (free, runs locally on CPU), and each distillation becomes a near-instant timestamp lookup in the pre-computed word-level transcript. The AI step is free too — see [How AI Works for Free](#how-ai-works-for-free).
 
 You open the app in your phone's browser. Everything else — downloading audio, transcribing, serving — happens on your VPS.
 
@@ -32,7 +32,7 @@ A distillation is the core unit of DistillPod. Tap ⚗️ **Distill** at any mom
 
 Every distillation is AI-powered. There are no modes or toggles — tap and get a distillation.
 
-**Latency: ~30s** (Claude CLI startup + inference). Uses your Claude Max subscription via the OpenClaw hack — no extra API cost.
+**Latency: ~30s** (Claude CLI startup + inference). Uses your Claude Max subscription — no extra API cost.
 
 The 60-second context window is configurable via `GIST_CONTEXT_SECONDS` in `.env`.
 
@@ -141,15 +141,11 @@ Set via `WHISPER_MODEL` in `.env`.
 
 ---
 
-## The OpenClaw Hack (How AI Works for Free)
+## How AI Works for Free
 
 Most podcast apps with AI features hit an LLM API per request — typically $0.01 to $0.05 per call, which adds up fast.
 
-DistillPod does something different, made possible by running alongside [OpenClaw](https://openclaw.ai).
-
-OpenClaw is a personal AI assistant platform that runs on your VPS. Its primary mode calls the Anthropic API directly — but it also supports a `claude-cli` backend that spawns the `claude` CLI as a child process. That backend explicitly strips `ANTHROPIC_API_KEY` from the environment, forcing the CLI to authenticate through its own OAuth session (your Claude Max subscription, $20/month flat, unlimited usage) rather than an API key. As part of OpenClaw's setup, the `claude` binary ends up installed on your VPS and already logged in.
-
-DistillPod simply calls that same binary as a subprocess:
+DistillPod calls the `claude` CLI as a subprocess instead:
 
 ```python
 result = subprocess.run(
@@ -158,16 +154,16 @@ result = subprocess.run(
 )
 ```
 
-No API key. No per-call billing. The AI cost is zero on top of what OpenClaw already pays for.
+The CLI authenticates through your Claude Max subscription ($20/month flat, unlimited usage) — no API key, no per-call billing.
 
-This only works because:
-1. You already have OpenClaw running on the same machine
-2. The `claude` CLI is installed and authenticated via your Claude Max account as part of OpenClaw's setup
-3. DistillPod and OpenClaw share the same VPS process space
+**Setup:** install the Claude CLI and log in once:
 
-It is an unabashed hack. It is also completely free and takes 30 seconds to set up.
+```bash
+npm install -g @anthropic-ai/claude-code
+claude login
+```
 
-If you want to replicate this without OpenClaw, you can install the `claude` CLI directly (`npm install -g @anthropic-ai/claude-code`) and run `claude login` — same result.
+That's it. Every distillation and recommendation is free on top of your existing subscription.
 
 ---
 
@@ -402,7 +398,7 @@ DistillPod generates daily podcast suggestions tailored to your library, surface
 A background script (`scripts/suggest-podcasts.py`) runs once a day via cron:
 
 1. **Reads your context** — fetches your subscriptions and the last 8 episode titles per show from the SQLite DB
-2. **First Claude Code CLI call — query generation** — passes the context to the Claude Code CLI and asks for 4 iTunes search queries, each targeting a different angle (safety, engineering, research, a wildcard). This call uses the [OpenClaw Hack](#the-openclaw-hack-how-ai-works-for-free) — zero API cost.
+2. **First Claude Code CLI call — query generation** — passes the context to the Claude Code CLI and asks for 4 iTunes search queries, each targeting a different angle (safety, engineering, research, a wildcard). Zero API cost.
 3. **Searches iTunes** — runs each query against the iTunes Search API and collects candidate shows
 4. **Deduplicates** — filters out shows already subscribed, already suggested (including dismissed), or missing a feed URL
 5. **Second Claude Code CLI call — reason writing** — passes the real show metadata (title, author, description) back to the Claude Code CLI and gets a ≤12 word personalised reason per pick. Again, zero API cost.
@@ -425,7 +421,7 @@ The script is designed to run as a daily cron job. Example (3 AM UTC):
 0 3 * * * cd /root/distillpod && python3 scripts/suggest-podcasts.py >> logs/suggest.log 2>&1
 ```
 
-Both Claude calls go through the `claude --print` subprocess — the same OpenClaw hack used for distillations. No LLM API key, no per-call billing.
+Both Claude Code CLI calls go through the same `claude --print` subprocess used for distillations. No API key, no per-call billing.
 
 ---
 
