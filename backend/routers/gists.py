@@ -7,10 +7,10 @@ router = APIRouter(prefix="/gists", tags=["gists"])
 
 
 @router.post("/")
-async def make_gist(req: GistRequest, summary: bool = False) -> Gist:
+async def make_gist(req: GistRequest) -> Gist:
     """
-    Create a gist at the current playback position.
-    Looks up episode + podcast metadata, extracts transcript segment.
+    Create an AI distillation at the current playback position.
+    Extracts the transcript window and passes it to Claude for a quote + insight.
     """
     db = await get_db()
     row = await db.execute_fetchone(
@@ -33,7 +33,7 @@ async def make_gist(req: GistRequest, summary: bool = False) -> Gist:
         episode_title=row["title"],
         podcast_title=row["podcast_title"],
         current_seconds=req.current_seconds,
-        with_summary=summary,
+        with_summary=True,
     )
 
     # Persist shot

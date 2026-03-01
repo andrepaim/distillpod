@@ -85,6 +85,52 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   // Keep episodeRef in sync for use inside event listeners
   useEffect(() => { episodeRef.current = episode; }, [episode]);
 
+  // ── Media Session: update metadata when episode changes ─────────────────
+  useEffect(() => {
+    if (!episode || !("mediaSession" in navigator)) return;
+    // Proxy external artwork through our own domain so Chrome can load it
+    const artwork: MediaImage[] = [
+      { src: "/icon-512.png", sizes: "512x512", type: "image/png" }, // local fallback
+    ];
+    if (episode.podcast_image) {
+      const proxied = `/proxy/image?url=${encodeURIComponent(episode.podcast_image)}`;
+      artwork.unshift(
+        { src: proxied, sizes: "512x512", type: "image/jpeg" },
+        { src: proxied, sizes: "256x256", type: "image/jpeg" },
+      );
+    }
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title:  episode.title         || "Unknown Episode",
+      artist: episode.podcast_title  || "DistillPod",
+      album:  "DistillPod ⚗️",
+      artwork,
+    });
+  }, [episode]);
+
+  // ── Media Session: action handlers (mounted once — audio element is stable) ─
+  useEffect(() => {
+    if (!("mediaSession" in navigator)) return;
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    const handlers: [MediaSessionAction, MediaSessionActionHandler][] = [
+      ["play",           ()  => audio.play().catch(() => {})],
+      ["pause",          ()  => audio.pause()],
+      ["seekbackward",   (d) => { audio.currentTime = Math.max(0, audio.currentTime - (d.seekOffset ?? 10)); }],
+      ["seekforward",    (d) => { audio.currentTime = Math.min(audio.duration || Infinity, audio.currentTime + (d.seekOffset ?? 30)); }],
+      ["seekto",         (d) => { if (d.seekTime != null) audio.currentTime = d.seekTime; }],
+      // previoustrack / nexttrack: shown in compact Android notification as ⏮ ⏭
+      ["previoustrack",  ()  => { audio.currentTime = Math.max(0, audio.currentTime - 10); }],
+      ["nexttrack",      ()  => { audio.currentTime = Math.min(audio.duration || Infinity, audio.currentTime + 30); }],
+    ];
+    handlers.forEach(([action, handler]) =>
+      navigator.mediaSession.setActionHandler(action, handler)
+    );
+    return () => handlers.forEach(([action]) =>
+      navigator.mediaSession.setActionHandler(action, null)
+    );
+  }, []);
+
   // Wire up persistent audio event listeners once on mount
   useEffect(() => {
     const audio = audioRef.current;
@@ -94,19 +140,33 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       setCurrentTime(audio.currentTime);
       // Throttled progress save (every 5 s)
       const now = Date.now();
-      if (
-        loadedIdRef.current &&
-        now - lastSaveRef.current > 5_000
-      ) {
+      if (loadedIdRef.current && now - lastSaveRef.current > 5_000) {
         lastSaveRef.current = now;
         writeProgress(loadedIdRef.current, audio.currentTime, audio.duration || 0, episodeRef.current);
       }
+      // Keep lock-screen scrubber in sync
+      if ("mediaSession" in navigator && audio.duration > 0) {
+        try {
+          navigator.mediaSession.setPositionState({
+            duration:     audio.duration,
+            playbackRate: audio.playbackRate,
+            position:     audio.currentTime,
+          });
+        } catch {}
+      }
     };
     const onMeta  = () => setDuration(audio.duration || 0);
-    const onPlay  = () => setIsPlaying(true);
-    const onPause = () => setIsPlaying(false);
+    const onPlay  = () => {
+      setIsPlaying(true);
+      if ("mediaSession" in navigator) navigator.mediaSession.playbackState = "playing";
+    };
+    const onPause = () => {
+      setIsPlaying(false);
+      if ("mediaSession" in navigator) navigator.mediaSession.playbackState = "paused";
+    };
     const onEnded = () => {
       setIsPlaying(false);
+      if ("mediaSession" in navigator) navigator.mediaSession.playbackState = "paused";
       // Episode finished — clear saved progress
       if (loadedIdRef.current) clearProgress(loadedIdRef.current);
     };

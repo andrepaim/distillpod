@@ -3,6 +3,10 @@ import { useParams, useLocation } from "react-router-dom";
 import { createGist, listGists, getTranscriptStatus, Gist, Episode } from "../api/client";
 import { useAudio, readProgress, type PlayableEpisode } from "../context/AudioContext";
 
+function stripHtml(html: string): string {
+  return html.replace(/<[^>]*>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&nbsp;/g, " ").replace(/&#39;/g, "'").replace(/&quot;/g, '"').trim();
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function fmtTime(secs: number) {
   if (!isFinite(secs) || isNaN(secs)) return "0:00";
@@ -141,13 +145,6 @@ function PlayerWidget({
           </svg>
         </button>
 
-        <button
-          onClick={onGist}
-          disabled={gisting || transcriptStatus !== "done"}
-          className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-800 transition-colors disabled:opacity-30"
-        >
-          <span className="text-lg">⚗️</span>
-        </button>
       </div>
 
       {/* Gist button */}
@@ -176,24 +173,70 @@ function PlayerWidget({
 // ─── Gist card ────────────────────────────────────────────────────────────────
 function parseGistSummary(s: string | undefined): { quote?: string; insight?: string } | null {
   if (!s) return null;
+  // Strip markdown code fences: ```json ... ``` or ``` ... ```
+  const stripped = s.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "").trim();
   try {
-    const p = JSON.parse(s);
+    const p = JSON.parse(stripped);
     if (p.quote || p.insight) return p;
   } catch {}
   return { insight: s };
 }
 
-function GistCard({ gist }: { gist: Gist }) {
-  const [copied, setCopied] = useState(false);
+interface GistCardProps {
+  gist: Gist;
+  episodeTitle?: string;
+  podcastTitle?: string;
+}
+
+function GistCard({ gist, episodeTitle, podcastTitle }: GistCardProps) {
+  const [copied, setCopied]   = useState(false);
+  const [shared, setShared]   = useState(false);
   const ai = parseGistSummary(gist.summary);
 
+  const buildShareText = () => {
+    const lines: string[] = [];
+    if (ai?.quote)   lines.push(`"${ai.quote}"`);
+    if (ai?.insight) lines.push(`💡 ${ai.insight}`);
+    else if (!ai)    lines.push(gist.text);
+    lines.push("");
+    if (episodeTitle || podcastTitle) {
+      lines.push(`🎙️ ${[episodeTitle, podcastTitle].filter(Boolean).join(" — ")}`);
+      lines.push(`⏱ ${fmtTime(gist.start_seconds)} → ${fmtTime(gist.end_seconds)}`);
+      lines.push("");
+    }
+    lines.push("⚗️ Distilled with DistillPod");
+    lines.push(`https://distillpod.duckdns.org/player/${gist.episode_id}`);
+    lines.push("");
+    lines.push("Built for one. Shared by accident.");
+    return lines.join("\n");
+  };
+
   const copy = async () => {
-    const text = ai
-      ? [ai.quote && `"${ai.quote}"`, ai.insight].filter(Boolean).join("\n\n")
-      : gist.text;
-    await navigator.clipboard.writeText(text);
+    await navigator.clipboard.writeText(buildShareText());
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const share = async () => {
+    const text = buildShareText();
+    if (navigator.share) {
+      try {
+        await navigator.share({ text });
+        setShared(true);
+        setTimeout(() => setShared(false), 2000);
+      } catch (e: any) {
+        if (e?.name !== "AbortError") {
+          // User cancelled — silently ignore. Any other error → fall back to copy
+          await navigator.clipboard.writeText(text);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+        }
+      }
+    } else {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
   };
 
   return (
@@ -202,9 +245,25 @@ function GistCard({ gist }: { gist: Gist }) {
         <span className="text-xs text-gray-500 font-mono">
           {fmtTime(gist.start_seconds)} → {fmtTime(gist.end_seconds)}
         </span>
-        <button onClick={copy} className="text-xs text-gray-400 hover:text-white px-2 py-0.5 rounded hover:bg-gray-700 transition-colors">
-          {copied ? "✓ Copied" : "📋 Copy"}
-        </button>
+        <div className="flex gap-1">
+          <button onClick={copy} className="text-xs font-semibold text-gray-300 hover:text-white bg-gray-700 hover:bg-gray-600 active:bg-gray-500 px-3 py-1 rounded-full transition-colors">
+            {copied ? "✓ Copied" : "Copy"}
+          </button>
+          <button onClick={share} className="flex items-center gap-1 text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white px-3 py-1 rounded-full transition-colors">
+            {shared ? (
+              <span>✓ Shared</span>
+            ) : (
+              <>
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" />
+                  <polyline points="16 6 12 2 8 6" />
+                  <line x1="12" y1="2" x2="12" y2="15" />
+                </svg>
+                Share
+              </>
+            )}
+          </button>
+        </div>
       </div>
       {ai ? (
         <>
@@ -219,6 +278,29 @@ function GistCard({ gist }: { gist: Gist }) {
 }
 
 // ─── Player page ──────────────────────────────────────────────────────────────
+function EpisodeDescription({ html }: { html: string }) {
+  const [expanded, setExpanded] = useState(false);
+  // Estimate "short" by plain text length
+  const plainLen = html.replace(/<[^>]*>/g, "").length;
+  const isLong = plainLen > 300;
+  return (
+    <div className="bg-gray-900 rounded-xl px-4 py-3 text-[11px] text-gray-400 leading-relaxed">
+      <div
+        className={`prose prose-invert max-w-none [&_*]:text-[11px] [&_*]:leading-relaxed ${!expanded && isLong ? "line-clamp-6" : ""}`}
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
+      {isLong && (
+        <button
+          onClick={() => setExpanded(e => !e)}
+          className="mt-1.5 text-indigo-400 hover:text-indigo-300 font-medium"
+        >
+          {expanded ? "Show less" : "Show more"}
+        </button>
+      )}
+    </div>
+  );
+}
+
 export default function Player() {
   const { episodeId } = useParams<{ episodeId: string }>();
   const location      = useLocation();
@@ -281,7 +363,7 @@ export default function Player() {
     if (!audioRef.current || !episodeId) return;
     setGisting(true);
     try {
-      const gist = await createGist(episodeId, audioRef.current.currentTime, true);
+      const gist = await createGist(episodeId, audioRef.current.currentTime);
       setGists(prev => [gist, ...prev]);
       setGistFlash(true);
       setTimeout(() => setGistFlash(false), 600);
@@ -290,60 +372,79 @@ export default function Player() {
   };
 
   return (
-    <div className="space-y-4">
+    <div>
+      {/* ── STICKY: header + player ───────────────────────────────── */}
+      <div className="sticky top-0 z-10 -mx-4 px-4 pb-3 pt-1 bg-gray-950 border-b border-gray-800 space-y-4">
 
-      {/* Episode header */}
-      <div className="flex gap-3 items-start">
-        {displayEpisode?.podcast_image
-          ? <img src={displayEpisode.podcast_image} className="w-14 h-14 rounded-xl object-cover flex-shrink-0" alt="" />
-          : <div className="w-14 h-14 rounded-xl bg-gray-800 flex-shrink-0 animate-pulse" />
-        }
-        <div className="min-w-0 flex-1">
-          {displayEpisode?.title
-            ? <h1 className="text-sm font-bold leading-snug line-clamp-3">{displayEpisode.title}</h1>
-            : <div className="h-4 bg-gray-800 rounded animate-pulse w-3/4" />
+        {/* Episode header */}
+        <div className="flex gap-3 items-start">
+          {displayEpisode?.podcast_image
+            ? <img src={displayEpisode.podcast_image} className="w-14 h-14 rounded-xl object-cover flex-shrink-0" alt="" />
+            : <div className="w-14 h-14 rounded-xl bg-gray-800 flex-shrink-0 animate-pulse" />
           }
-          {seekTo != null && (
-            <div className="text-xs text-indigo-400 mt-1">▶ From {fmtTime(seekTo)}</div>
-          )}
-          {seekTo == null && resumedFrom != null && (
-            <div className="text-xs text-indigo-400 mt-1">⏩ Resuming from {fmtTime(resumedFrom)}</div>
-          )}
-          <div className="mt-1.5"><TranscriptBadge status={transcriptStatus} /></div>
-        </div>
-      </div>
-
-      {error && <div className="bg-red-900 text-red-300 rounded-xl p-3 text-sm">{error}</div>}
-
-      {/* Player widget — shown once audio is ready */}
-      {audioReady && episodeId && episode?.id === episodeId && (
-        <PlayerWidget
-          gists={gists}
-          transcriptStatus={transcriptStatus}
-          onGist={handleGist}
-          gisting={gisting}
-          gistFlash={gistFlash}
-        />
-      )}
-
-      {(!audioReady || episode?.id !== episodeId) && !error && (
-        <div className="bg-gray-900 rounded-2xl p-5 flex items-center justify-center h-44">
-          <div className="text-gray-500 text-sm flex items-center gap-2">
-            <span className="w-4 h-4 border-2 border-gray-500 border-t-indigo-400 rounded-full animate-spin inline-block" />
-            Loading episode…
+          <div className="min-w-0 flex-1">
+            {displayEpisode?.title
+              ? <h1 className="text-sm font-bold leading-snug line-clamp-3">{displayEpisode.title}</h1>
+              : <div className="h-4 bg-gray-800 rounded animate-pulse w-3/4" />
+            }
+            {seekTo != null && (
+              <div className="text-xs text-indigo-400 mt-1">▶ From {fmtTime(seekTo)}</div>
+            )}
+            {seekTo == null && resumedFrom != null && (
+              <div className="text-xs text-indigo-400 mt-1">⏩ Resuming from {fmtTime(resumedFrom)}</div>
+            )}
+            <div className="mt-1.5"><TranscriptBadge status={transcriptStatus} /></div>
           </div>
         </div>
-      )}
 
-      {/* Gists list */}
-      {gists.length > 0 && (
-        <div className="space-y-3">
-          <h2 className="text-gray-400 font-medium text-xs uppercase tracking-wide">
-            Distillations ({gists.length})
-          </h2>
-          {gists.map(s => <GistCard key={s.id} gist={s} />)}
-        </div>
-      )}
+        {error && <div className="bg-red-900 text-red-300 rounded-xl p-3 text-sm">{error}</div>}
+
+        {/* Player widget */}
+        {audioReady && episodeId && episode?.id === episodeId && (
+          <PlayerWidget
+            gists={gists}
+            transcriptStatus={transcriptStatus}
+            onGist={handleGist}
+            gisting={gisting}
+            gistFlash={gistFlash}
+          />
+        )}
+
+        {(!audioReady || episode?.id !== episodeId) && !error && (
+          <div className="bg-gray-900 rounded-2xl p-5 flex items-center justify-center h-44">
+            <div className="text-gray-500 text-sm flex items-center gap-2">
+              <span className="w-4 h-4 border-2 border-gray-500 border-t-indigo-400 rounded-full animate-spin inline-block" />
+              Loading episode…
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── SCROLLABLE: description + gists ──────────────────────── */}
+      <div className="space-y-4 mt-4">
+
+        {/* Episode description */}
+        {displayEpisode?.description && (
+          <EpisodeDescription html={displayEpisode.description} />
+        )}
+
+        {/* Gists list */}
+        {gists.length > 0 && (
+          <div className="space-y-3">
+            <h2 className="text-gray-400 font-medium text-xs uppercase tracking-wide">
+              Distillations ({gists.length})
+            </h2>
+            {gists.map(s => (
+              <GistCard
+                key={s.id}
+                gist={s}
+                episodeTitle={displayEpisode?.title}
+                podcastTitle={displayEpisode?.podcast_title}
+              />
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

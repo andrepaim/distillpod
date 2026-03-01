@@ -47,8 +47,8 @@ export const getEpisode = (episodeId: string) =>
 export const audioStreamUrl = (episodeId: string) => `${BASE}/player/audio/${episodeId}`;
 
 // --- Shots ---
-export const createGist = (episodeId: string, currentSeconds: number, withSummary = false) =>
-  req<Gist>("POST", `/gists/?summary=${withSummary}`, {
+export const createGist = (episodeId: string, currentSeconds: number) =>
+  req<Gist>("POST", `/gists/`, {
     episode_id: episodeId,
     current_seconds: currentSeconds,
   });

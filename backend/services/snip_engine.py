@@ -32,7 +32,15 @@ def _claude_summarize_sync(text: str) -> str | None:
         text=True,
         timeout=60,
     )
-    return result.stdout.strip() if result.returncode == 0 else None
+    if result.returncode != 0:
+        return None
+    out = result.stdout.strip()
+    # Strip markdown code fences if Claude ignores the "no markdown" instruction
+    if out.startswith("```"):
+        out = out.split("\n", 1)[-1]  # drop first line (```json)
+        if out.endswith("```"):
+            out = out.rsplit("```", 1)[0]
+    return out.strip() or None
 
 
 async def create_gist(

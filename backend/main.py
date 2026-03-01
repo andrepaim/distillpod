@@ -7,6 +7,7 @@ from config import settings
 from database import init_db
 from routers import podcasts, player, gists
 from routers import auth as auth_router
+import httpx
 from middleware.auth import AuthMiddleware
 
 app = FastAPI(title="DistillPod API", version="0.1.0")
@@ -37,6 +38,24 @@ app.include_router(gists.router)
 async def startup():
     await init_db()
     settings.media_dir.mkdir(parents=True, exist_ok=True)
+
+
+@app.get("/proxy/image")
+async def proxy_image(url: str):
+    """Proxy external podcast artwork so Media Session API can load it cross-origin."""
+    from fastapi.responses import Response as FastAPIResponse
+    try:
+        async with httpx.AsyncClient(follow_redirects=True, timeout=10) as client:
+            r = await client.get(url, headers={"User-Agent": "DistillPod/1.0"})
+            r.raise_for_status()
+        content_type = r.headers.get("content-type", "image/jpeg")
+        return FastAPIResponse(
+            content=r.content,
+            media_type=content_type,
+            headers={"Cache-Control": "public, max-age=86400"},
+        )
+    except Exception:
+        return FastAPIResponse(status_code=404)
 
 
 @app.get("/health")
