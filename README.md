@@ -41,7 +41,7 @@ The 60-second context window is configurable via `GIST_CONTEXT_SECONDS` in `.env
 ## Features
 
 - **📰 Home feed** — unified list of the latest episodes across all subscribed podcasts, sorted by date. Shows whether you've listened and how many distillations you have per episode.
-- **🔍 Search** — find podcasts via the iTunes Search API (no key needed). Subscribe with one tap.
+- **🔍 Search** — find podcasts via the iTunes Search API (no key needed). Subscribe with one tap. When the search box is empty, a **🤖 Suggested for you** section surfaces daily AI-generated recommendations based on your listening history — dismiss any you're not interested in.
 - **📚 Library** — browse your subscribed podcasts and their episodes. Transcript status shown per episode.
 - **▶️ Player** — stream audio directly from your VPS. Transcription kicks off automatically in the background when you press play.
 - **⚗️ Distill** — tap at any moment while listening. Captures the last 60 seconds of transcript, passes it to Claude, and returns a verbatim quote and insight (~30s, zero extra API cost).
@@ -301,6 +301,8 @@ Unified feed of the most recent episodes across all subscribed podcasts, newest 
 ### Search
 Type a podcast name and press Search or Enter. Uses the iTunes Search API — no key needed. Subscribe with one tap.
 
+When the search box is empty, a **🤖 Suggested for you** section appears with up to 4 daily AI recommendations. These are generated overnight by a background cron job (see [Podcast Recommendations](#podcast-recommendations)) and ranked by relevance to your subscriptions. Tap a card to subscribe, or dismiss suggestions you're not interested in — they won't reappear.
+
 ### Library
 Your subscribed podcasts. Tap into any podcast for its episode list with transcript status badges (green = done, yellow = processing, gray = none). Refresh RSS or unsubscribe per podcast.
 
@@ -342,6 +344,8 @@ Home feed and episode lists are cached with a 30-minute TTL using stale-while-re
 | `POST` | `/player/play` | Trigger download + transcription |
 | `GET` | `/player/audio/{episode_id}` | Stream MP3 (Range-request capable) |
 | `GET` | `/player/transcript-status/{episode_id}` | Poll transcription progress |
+| `GET` | `/podcasts/suggestions` | List undismissed podcast suggestions |
+| `POST` | `/podcasts/suggestions/{id}/dismiss` | Dismiss a suggestion |
 | `POST` | `/gists/` | Create an AI distillation at current playback position |
 | `GET` | `/gists/?episode_id=` | List distillations (optionally filtered by episode) |
 | `DELETE` | `/gists/{id}` | Delete a distillation |
@@ -352,7 +356,7 @@ Home feed and episode lists are cached with a 30-minute TTL using stale-while-re
 
 | Path | Contents |
 |---|---|
-| `distillpod.db` | SQLite database (subscriptions, episodes, transcripts, distillations) |
+| `distillpod.db` | SQLite database (subscriptions, episodes, transcripts, distillations, suggestions) |
 | `media/` | Downloaded episode MP3s (named by MD5 of episode ID) |
 
 Media files accumulate over time. Cleanup is currently manual — a future improvement would be an LRU cache with a configurable size limit.
@@ -386,6 +390,42 @@ pip install pytest pytest-asyncio httpx
 ```
 
 Already listed in `backend/requirements.txt`.
+
+---
+
+## Podcast Recommendations
+
+DistillPod generates daily podcast suggestions tailored to your library, surfaced in the Search tab when no query is typed.
+
+### How it works
+
+A background script (`scripts/suggest-podcasts.py`) runs once a day via cron:
+
+1. **Reads your context** — fetches your subscriptions and the last 8 episode titles per show from the SQLite DB
+2. **First Claude call — query generation** — passes the context to Claude and asks for 4 iTunes search queries, each targeting a different angle (safety, engineering, research, a wildcard). This call uses the [OpenClaw Hack](#the-openclaw-hack-how-ai-works-for-free) — zero API cost.
+3. **Searches iTunes** — runs each query against the iTunes Search API and collects candidate shows
+4. **Deduplicates** — filters out shows already subscribed, already suggested (including dismissed), or missing a feed URL
+5. **Second Claude call — reason writing** — passes the real show metadata (title, author, description) back to Claude and gets a ≤12 word personalised reason per pick. Again, zero API cost.
+6. **Stores up to 4 suggestions** in the `suggestions` table
+
+The frontend reads `GET /podcasts/suggestions` on Search mount and renders the results as interactive cards. Tapping a card subscribes immediately; tapping "Not interested" calls `POST /podcasts/suggestions/{id}/dismiss` and removes the card optimistically — dismissed suggestions are excluded from future runs.
+
+### Running the script manually
+
+```bash
+cd /root/distillpod
+python3 scripts/suggest-podcasts.py
+```
+
+### Scheduling
+
+The script is designed to run as a daily cron job. Example (3 AM UTC):
+
+```cron
+0 3 * * * cd /root/distillpod && python3 scripts/suggest-podcasts.py >> logs/suggest.log 2>&1
+```
+
+Both Claude calls go through the `claude --print` subprocess — the same OpenClaw hack used for distillations. No LLM API key, no per-call billing.
 
 ---
 
