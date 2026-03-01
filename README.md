@@ -145,11 +145,11 @@ Set via `WHISPER_MODEL` in `.env`.
 
 Most podcast apps with AI features hit an LLM API per request — typically $0.01 to $0.05 per call, which adds up fast.
 
-DistillPod does something different, directly inspired by how [OpenClaw](https://openclaw.ai) works internally.
+DistillPod does something different, made possible by running alongside [OpenClaw](https://openclaw.ai).
 
-OpenClaw is a personal AI assistant platform that runs on your VPS. Under the hood, it drives the `claude` CLI — authenticated against a Claude Max subscription ($20/month flat, unlimited usage). The insight: that CLI is just a binary sitting on your server, already logged in, callable by anything.
+OpenClaw is a personal AI assistant platform that runs on your VPS. Its primary mode calls the Anthropic API directly — but it also supports a `claude-cli` backend that spawns the `claude` CLI as a child process. That backend explicitly strips `ANTHROPIC_API_KEY` from the environment, forcing the CLI to authenticate through its own OAuth session (your Claude Max subscription, $20/month flat, unlimited usage) rather than an API key. As part of OpenClaw's setup, the `claude` binary ends up installed on your VPS and already logged in.
 
-So DistillPod calls it as a subprocess:
+DistillPod simply calls that same binary as a subprocess:
 
 ```python
 result = subprocess.run(
@@ -158,11 +158,11 @@ result = subprocess.run(
 )
 ```
 
-No API key. No per-call billing. The AI cost is zero on top of what OpenClaw already pays for. The idea came directly from seeing how OpenClaw piggybacks on the Claude Max subscription — if it works for a full AI assistant, it works for a podcast distillation feature too.
+No API key. No per-call billing. The AI cost is zero on top of what OpenClaw already pays for.
 
 This only works because:
 1. You already have OpenClaw running on the same machine
-2. The `claude` CLI is authenticated via your Claude Max account
+2. The `claude` CLI is installed and authenticated via your Claude Max account as part of OpenClaw's setup
 3. DistillPod and OpenClaw share the same VPS process space
 
 It is an unabashed hack. It is also completely free and takes 30 seconds to set up.
