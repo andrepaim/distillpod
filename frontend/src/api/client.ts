@@ -29,6 +29,15 @@ export const subscribe = (podcastId: string, feedUrl: string, title: string, ima
 export const unsubscribe = (podcastId: string) =>
   req("DELETE", `/podcasts/subscriptions/${podcastId}`);
 
+export const getFeed = () =>
+  req<FeedEpisode[]>("GET", "/podcasts/feed");
+
+export const getSuggestions = () =>
+  req<Suggestion[]>("GET", "/podcasts/suggestions");
+
+export const dismissSuggestion = (id: string) =>
+  req("POST", `/podcasts/suggestions/${id}/dismiss`);
+
 export const getEpisodes = (podcastId: string, refresh = false) =>
   req<Episode[]>("GET", `/podcasts/${podcastId}/episodes?refresh=${refresh}`);
 
@@ -72,6 +81,16 @@ export interface Episode {
   id: string; podcast_id: string; title: string; description?: string;
   audio_url: string; duration_seconds?: number; published_at?: string;
   image_url?: string; downloaded: boolean; transcript_status: string;
+}
+export interface FeedEpisode extends Episode {
+  podcast_title: string;
+  podcast_image?: string;
+  distill_count: number;
+}
+export interface Suggestion {
+  id: string; title: string; author?: string; description?: string;
+  image_url?: string; feed_url: string; podcast_index_id?: string;
+  reason?: string; suggested_at: string;
 }
 export interface Gist {
   id: string; episode_id: string; podcast_id: string;
