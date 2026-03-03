@@ -1,9 +1,11 @@
 import { useState, useEffect } from "react";
+import { useQueue } from "./stores/queueStore";
 import { BrowserRouter, Routes, Route, useLocation, useNavigate } from "react-router-dom";
 import { AudioProvider, useAudio } from "./context/AudioContext";
 import MiniPlayer from "./components/MiniPlayer";
 import Home from "./pages/Home";
 import Search from "./pages/Search";
+import Queue from './pages/Queue';
 import Subscriptions from "./pages/Subscriptions";
 import Player from "./pages/Player";
 import Gists from "./pages/Gists";
@@ -33,6 +35,13 @@ const LibraryIcon = ({ active }: { active: boolean }) => (
   </svg>
 );
 
+const QueueIcon = ({ active }: { active: boolean }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+    <line x1="8" y1="6" x2="21" y2="6" /><line x1="8" y1="12" x2="21" y2="12" /><line x1="8" y1="18" x2="21" y2="18" />
+    <line x1="3" y1="6" x2="3.01" y2="6" /><line x1="3" y1="12" x2="3.01" y2="12" /><line x1="3" y1="18" x2="3.01" y2="18" />
+  </svg>
+);
+
 const GistsIcon = ({ active }: { active: boolean }) => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? 2.5 : 2} strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6">
     <circle cx="6" cy="6" r="3" />
@@ -47,13 +56,15 @@ const GistsIcon = ({ active }: { active: boolean }) => (
 const tabs = [
   { to: "/",              label: "Home",    Icon: HomeIcon    },
   { to: "/search",        label: "Search",  Icon: SearchIcon  },
+  { to: "/queue",         label: "Queue",   Icon: QueueIcon   },
   { to: "/subscriptions", label: "Library", Icon: LibraryIcon },
-  { to: "/gists",         label: "Distills", Icon: GistsIcon   },
+  { to: "/gists",         label: "Distills",Icon: GistsIcon   },
 ];
 
 function BottomNav() {
   const location = useLocation();
   const navigate = useNavigate();
+  const { queue } = useQueue();
   const isActive = (to: string) =>
     to === "/" ? location.pathname === "/" : location.pathname.startsWith(to);
 

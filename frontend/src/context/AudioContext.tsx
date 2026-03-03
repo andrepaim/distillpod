@@ -3,6 +3,7 @@ import {
   type ReactNode, type RefObject,
 } from "react";
 import { startPlay, getEpisode, audioStreamUrl, type Episode } from "../api/client";
+import { useQueue } from "../stores/queueStore";
 
 // ─── Progress persistence ─────────────────────────────────────────────────────
 const PROGRESS_KEY = "distillpod:progress";
@@ -75,6 +76,8 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   const loadedIdRef  = useRef<string | null>(null); // prevents double-loading same episode
   const episodeRef   = useRef<PlayableEpisode | null>(null); // for access inside event listeners
   const lastSaveRef  = useRef<number>(0);            // throttle: last progress-save timestamp
+
+  const loadEpisodeRef = useRef<AudioContextValue["loadEpisode"] | null>(null);
 
   const [episode,     setEpisode]     = useState<PlayableEpisode | null>(null);
   const [isPlaying,   setIsPlaying]   = useState(false);
@@ -169,6 +172,21 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       if ("mediaSession" in navigator) navigator.mediaSession.playbackState = "paused";
       // Episode finished — clear saved progress
       if (loadedIdRef.current) clearProgress(loadedIdRef.current);
+      // Auto-advance: play next item from queue
+      const next = useQueue.getState().shift();
+      if (next && loadEpisodeRef.current) {
+        loadEpisodeRef.current(next.episodeId, {
+          id: next.episodeId,
+          title: next.title,
+          audio_url: next.audioUrl,
+          image_url: next.imageUrl,
+          podcast_image: next.imageUrl,
+          podcast_title: next.podcastTitle,
+          podcast_id: "",
+          downloaded: false,
+          transcript_status: "none",
+        } as PlayableEpisode, 0);
+      }
     };
 
     audio.addEventListener("timeupdate",     onTime);
@@ -249,6 +267,9 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       localStorage.setItem("distillpod:played", JSON.stringify([...played]));
     } catch {}
   }, [audioReady]);
+
+  // Keep ref in sync so onEnded can call loadEpisode
+  useEffect(() => { loadEpisodeRef.current = loadEpisode; }, [loadEpisode]);
 
   const togglePlay = useCallback(() => {
     const audio = audioRef.current;

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams, useLocation, useNavigate } from "react-router-dom";
 import { createGist, listGists, getTranscriptStatus, Gist, Episode } from "../api/client";
 import { useAudio, readProgress, type PlayableEpisode } from "../context/AudioContext";
+import { useQueue, type QueueItem } from "../stores/queueStore";
 
 function stripHtml(html: string): string {
   return html.replace(/<[^>]*>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&nbsp;/g, " ").replace(/&#39;/g, "'").replace(/&quot;/g, '"').trim();
@@ -318,6 +319,8 @@ export default function Player() {
   const [gistFlash,  setGistFlash]  = useState(false);
   const [resumedFrom,setResumedFrom]= useState<number | null>(null);
   const [error,      setError]      = useState("");
+  const [queueFeedback, setQueueFeedback] = useState<"next" | "end" | null>(null);
+  const { addNext, addToEnd } = useQueue();
 
   // Display episode: prefer what's already in context (avoids blank header flash on same episode)
   const displayEpisode = episode?.id === episodeId ? episode : routeState;
@@ -418,6 +421,56 @@ export default function Player() {
               >
                 <span>💬</span> Chat about this episode
               </button>
+            )}
+
+            {/* Queue actions */}
+            {displayEpisode && (
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    const item: QueueItem = {
+                      episodeId: displayEpisode.id,
+                      title: displayEpisode.title,
+                      podcastTitle: displayEpisode.podcast_title || "",
+                      audioUrl: displayEpisode.audio_url,
+                      imageUrl: displayEpisode.podcast_image || displayEpisode.image_url,
+                      durationSeconds: displayEpisode.duration_seconds,
+                    };
+                    addNext(item);
+                    setQueueFeedback("next");
+                    setTimeout(() => setQueueFeedback(null), 1200);
+                  }}
+                  className={`flex-1 py-2.5 rounded-xl font-semibold text-sm transition-all active:scale-95 ${
+                    queueFeedback === "next"
+                      ? "bg-green-600 text-white"
+                      : "bg-gray-800 text-gray-300 hover:bg-gray-700"
+                  }`}
+                >
+                  {queueFeedback === "next" ? "✓ Added!" : "⏭ Play next"}
+                </button>
+                <button
+                  onClick={() => {
+                    const item: QueueItem = {
+                      episodeId: displayEpisode.id,
+                      title: displayEpisode.title,
+                      podcastTitle: displayEpisode.podcast_title || "",
+                      audioUrl: displayEpisode.audio_url,
+                      imageUrl: displayEpisode.podcast_image || displayEpisode.image_url,
+                      durationSeconds: displayEpisode.duration_seconds,
+                    };
+                    addToEnd(item);
+                    setQueueFeedback("end");
+                    setTimeout(() => setQueueFeedback(null), 1200);
+                  }}
+                  className={`flex-1 py-2.5 rounded-xl font-semibold text-sm transition-all active:scale-95 ${
+                    queueFeedback === "end"
+                      ? "bg-green-600 text-white"
+                      : "bg-gray-800 text-gray-300 hover:bg-gray-700"
+                  }`}
+                >
+                  {queueFeedback === "end" ? "✓ Added!" : "+ Add to queue"}
+                </button>
+              </div>
             )}
           </>
         )}
