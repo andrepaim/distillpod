@@ -1,9 +1,32 @@
 import { useNavigate } from "react-router-dom";
+import { useState, useCallback } from "react";
 import { useAudio } from "../context/AudioContext";
+import { getTranscriptStatus, createGist } from "../api/client";
 
 export default function MiniPlayer() {
   const { episode, isPlaying, togglePlay, currentTime, duration, audioReady } = useAudio();
   const navigate = useNavigate();
+  const [distillState, setDistillState] = useState<"idle"|"loading"|"done"|"error">("idle");
+
+  const handleDistill = useCallback(async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!episode || distillState === "loading") return;
+    setDistillState("loading");
+    try {
+      const { status } = await getTranscriptStatus(episode.id);
+      if (status !== "done") {
+        setDistillState("error"); // no transcript yet
+        setTimeout(() => setDistillState("idle"), 2000);
+        return;
+      }
+      await createGist(episode.id, 0);
+      setDistillState("done");
+      setTimeout(() => setDistillState("idle"), 3000);
+    } catch {
+      setDistillState("error");
+      setTimeout(() => setDistillState("idle"), 2000);
+    }
+  }, [episode, distillState]);
 
   if (!episode || !audioReady) return null;
 
@@ -63,6 +86,25 @@ export default function MiniPlayer() {
         <span className="text-xs text-gray-500 font-mono flex-shrink-0 hidden xs:block">
           {fmt(currentTime)}
         </span>
+
+        {/* Distill button */}
+        <button
+          onClick={handleDistill}
+          title={distillState === "error" ? "No transcript yet" : "Distill this episode"}
+          className="w-9 h-9 flex items-center justify-center rounded-full transition-all flex-shrink-0 active:scale-95"
+          style={{ background: distillState === "done" ? "#22c55e22" : distillState === "error" ? "#ef444422" : "rgba(255,215,0,0.15)" }}
+          disabled={distillState === "loading"}
+        >
+          {distillState === "loading" ? (
+            <span className="w-4 h-4 border-2 border-gray-500 border-t-yellow-400 rounded-full animate-spin inline-block" />
+          ) : distillState === "done" ? (
+            <span className="text-green-400 text-base">✅</span>
+          ) : distillState === "error" ? (
+            <span className="text-red-400 text-base">🎙️</span>
+          ) : (
+            <span style={{ color: "#FFD700" }} className="text-base">⚗️</span>
+          )}
+        </button>
 
         {/* Play / Pause */}
         <button
