@@ -134,6 +134,7 @@ function AppShell() {
           <Route path="/subscriptions" element={<Subscriptions />} />
           <Route path="/player/:episodeId" element={<Player />} />
           <Route path="/player/:episodeId/chat" element={<Chat />} />
+          <Route path="/queue" element={<Queue />} />
           <Route path="/gists" element={<Gists />} />
           <Route path="*" element={<Home />} />
         </Routes>
