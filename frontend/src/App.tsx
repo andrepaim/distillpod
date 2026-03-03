@@ -1,4 +1,6 @@
 import { useState, useEffect } from "react";
+import { getCached, setCached } from "./cache";
+import { getSubscriptions, getEpisodes } from "./api/client";
 import { useQueue } from "./stores/queueStore";
 import { BrowserRouter, Routes, Route, useLocation, useNavigate } from "react-router-dom";
 import { AudioProvider, useAudio } from "./context/AudioContext";
@@ -100,6 +102,18 @@ function BottomNav() {
 // ─── App shell (needs useAudio → must be inside AudioProvider) ────────────────
 function AppShell() {
   const { audioReady } = useAudio();
+
+  // Prefetch all subscribed podcast episodes on mount (warm the cache silently)
+  useEffect(() => {
+    getSubscriptions().then(subs => {
+      subs.forEach(sub => {
+        const key = `episodes:${sub.podcast_id}`;
+        if (!getCached(key)) {
+          getEpisodes(sub.podcast_id).then(eps => setCached(key, eps)).catch(() => {});
+        }
+      });
+    }).catch(() => {});
+  }, []);
 
   return (
     <div className="min-h-screen bg-gray-950 text-white flex flex-col">
