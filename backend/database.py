@@ -62,6 +62,14 @@ CREATE TABLE IF NOT EXISTS gists (
     summary        TEXT,
     created_at     TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS episode_chats (
+    id         TEXT PRIMARY KEY,
+    episode_id TEXT NOT NULL,
+    role       TEXT NOT NULL,
+    content    TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
 """
 
 async def get_db() -> aiosqlite.Connection:

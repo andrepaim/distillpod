@@ -98,3 +98,20 @@ export interface Gist {
   start_seconds: number; end_seconds: number;
   text: string; summary?: string; created_at: string;
 }
+
+// --- Chat ---
+export interface ChatMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  created_at: string;
+}
+
+export const getChat = (episodeId: string) =>
+  req<ChatMessage[]>("GET", `/chat/${episodeId}`);
+
+export const initChat = (episodeId: string) =>
+  req<ChatMessage>("POST", `/chat/${episodeId}/init`);
+
+export const sendChatMessage = (episodeId: string, message: string) =>
+  req<ChatMessage>("POST", `/chat/${episodeId}/message`, { message });
