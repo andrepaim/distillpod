@@ -7,6 +7,7 @@ import Search from "./pages/Search";
 import Subscriptions from "./pages/Subscriptions";
 import Player from "./pages/Player";
 import Gists from "./pages/Gists";
+import Chat from "./pages/Chat";
 import Login from "./pages/Login";
 import Unauthorized from "./pages/Unauthorized";
 
@@ -107,6 +108,7 @@ function AppShell() {
           <Route path="/search" element={<Search />} />
           <Route path="/subscriptions" element={<Subscriptions />} />
           <Route path="/player/:episodeId" element={<Player />} />
+          <Route path="/player/:episodeId/chat" element={<Chat />} />
           <Route path="/gists" element={<Gists />} />
           <Route path="*" element={<Home />} />
         </Routes>

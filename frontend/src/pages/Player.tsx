@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useParams, useLocation } from "react-router-dom";
+import { useParams, useLocation, useNavigate } from "react-router-dom";
 import { createGist, listGists, getTranscriptStatus, Gist, Episode } from "../api/client";
 import { useAudio, readProgress, type PlayableEpisode } from "../context/AudioContext";
 
@@ -304,6 +304,7 @@ function EpisodeDescription({ html }: { html: string }) {
 export default function Player() {
   const { episodeId } = useParams<{ episodeId: string }>();
   const location      = useLocation();
+  const navigate      = useNavigate();
   const routeState    = location.state as (PlayableEpisode & { seekTo?: number }) | null;
 
   const { loadEpisode, audioReady, audioRef, episode } = useAudio();
@@ -401,13 +402,24 @@ export default function Player() {
 
         {/* Player widget */}
         {audioReady && episodeId && episode?.id === episodeId && (
-          <PlayerWidget
-            gists={gists}
-            transcriptStatus={transcriptStatus}
-            onGist={handleGist}
-            gisting={gisting}
-            gistFlash={gistFlash}
-          />
+          <>
+            <PlayerWidget
+              gists={gists}
+              transcriptStatus={transcriptStatus}
+              onGist={handleGist}
+              gisting={gisting}
+              gistFlash={gistFlash}
+            />
+            {transcriptStatus === "done" && (
+              <button
+                onClick={() => navigate(`/player/${episodeId}/chat`, { state: { episodeTitle: displayEpisode?.title } })}
+                className="w-full py-3 rounded-xl font-semibold text-base bg-gray-800 hover:bg-gray-700 active:scale-95 transition-all flex items-center justify-center gap-2"
+                style={{ color: "#FFD700" }}
+              >
+                <span>💬</span> Chat about this episode
+              </button>
+            )}
+          </>
         )}
 
         {(!audioReady || episode?.id !== episodeId) && !error && (

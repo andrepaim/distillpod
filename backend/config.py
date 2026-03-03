@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     frontend_origin: str = "http://localhost:5173"
 
     # Transcription
-    whisper_model: str = "base"           # base / small / medium / large-v3
+    whisper_model: str = "medium"           # base / small / medium / large-v3
     whisper_device: str = "cpu"
     gist_context_seconds: int = 60        # seconds of audio captured per shot
 

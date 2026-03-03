@@ -7,6 +7,7 @@ from config import settings
 from database import init_db
 from routers import podcasts, player, gists
 from routers import auth as auth_router
+from routers.chat import router as chat_router
 import httpx
 from middleware.auth import AuthMiddleware
 
@@ -32,6 +33,7 @@ app.include_router(auth_router.router)
 app.include_router(podcasts.router)
 app.include_router(player.router)
 app.include_router(gists.router)
+app.include_router(chat_router)
 
 
 @app.on_event("startup")

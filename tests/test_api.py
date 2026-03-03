@@ -1,6 +1,11 @@
 """
 Backend API tests using httpx AsyncClient against in-memory test DB.
 """
+import json
+import sqlite3
+import uuid
+from unittest.mock import AsyncMock, patch
+
 import pytest
 from conftest import (
     PODCAST_ID, EPISODE_ID_1, EPISODE_ID_2, EPISODE_ID_3,
@@ -157,3 +162,123 @@ class TestAuth:
             assert r.json()["detail"] == "Unauthorized"
         finally:
             config.settings.test_mode = True
+
+
+# ── /chat endpoints ───────────────────────────────────────────────────────────
+
+CHAT_EPISODE_ID = "ep_chat_001"
+FAKE_TRANSCRIPT = json.dumps([{"word": w} for w in "This is a test transcript about AI".split()])
+
+
+def seed_transcript(db_path: str):
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        "INSERT OR IGNORE INTO episodes (id, podcast_id, title, audio_url, transcript_status) VALUES (?, ?, ?, ?, ?)",
+        (CHAT_EPISODE_ID, PODCAST_ID, "Chat Test Episode", "https://audio.example.com/chat.mp3", "done"),
+    )
+    conn.execute(
+        "INSERT OR IGNORE INTO transcripts (episode_id, words_json, language, created_at) VALUES (?, ?, ?, ?)",
+        (CHAT_EPISODE_ID, FAKE_TRANSCRIPT, "en", "2026-03-01T00:00:00"),
+    )
+    conn.commit()
+    conn.close()
+
+
+class TestChat:
+
+    async def test_get_chat_empty(self, client):
+        """GET /chat/{episode_id} on unknown episode returns []."""
+        r = await client.get("/chat/nonexistent-episode")
+        assert r.status_code == 200
+        assert r.json() == []
+
+    async def test_init_chat_no_transcript(self, client):
+        """POST /chat/{episode_id}/init with no transcript returns 404."""
+        r = await client.post("/chat/no-transcript-episode/init")
+        assert r.status_code == 404
+
+    async def test_get_chat_returns_history(self, client, tmp_db):
+        """Inserting a message directly then GET returns it."""
+        msg_id = str(uuid.uuid4())
+        conn = sqlite3.connect(tmp_db)
+        conn.execute(
+            "INSERT INTO episode_chats (id, episode_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)",
+            (msg_id, CHAT_EPISODE_ID, "assistant", "Hello!", "2026-03-01T00:00:00"),
+        )
+        conn.commit()
+        conn.close()
+
+        r = await client.get(f"/chat/{CHAT_EPISODE_ID}")
+        assert r.status_code == 200
+        data = r.json()
+        assert len(data) == 1
+        assert data[0]["id"] == msg_id
+        assert data[0]["role"] == "assistant"
+        assert data[0]["content"] == "Hello!"
+
+    async def test_init_chat_idempotent(self, client, tmp_db):
+        """POST /chat/init when history exists returns existing message, no duplicate."""
+        msg_id = str(uuid.uuid4())
+        conn = sqlite3.connect(tmp_db)
+        conn.execute(
+            "INSERT INTO episode_chats (id, episode_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)",
+            (msg_id, CHAT_EPISODE_ID, "assistant", "Existing summary", "2026-03-01T00:00:00"),
+        )
+        conn.commit()
+        conn.close()
+
+        with patch("routers.chat.claude_call") as mock_claude:
+            r = await client.post(f"/chat/{CHAT_EPISODE_ID}/init")
+
+        assert r.status_code == 200
+        assert r.json()["id"] == msg_id
+        mock_claude.assert_not_called()  # Claude not called since message already exists
+
+        # Confirm no duplicate inserted
+        r2 = await client.get(f"/chat/{CHAT_EPISODE_ID}")
+        assert len(r2.json()) == 1
+
+    async def test_send_message_no_transcript(self, client):
+        """POST /chat/{episode_id}/message with no transcript returns 404."""
+        r = await client.post(
+            "/chat/no-transcript-episode/message",
+            json={"message": "What was this about?"},
+        )
+        assert r.status_code == 404
+
+    async def test_chat_full_flow(self, client, tmp_db):
+        """Full flow: init → get → message → get with mocked Claude."""
+        seed_transcript(tmp_db)
+
+        async def mock_claude(prompt: str) -> str:
+            if "Summarize" in prompt or "bullet" in prompt.lower():
+                return "• Key insight 1\n• Key insight 2\n\nWhat would you like to explore?"
+            return "The main topic was AI and its implications."
+
+        with patch("routers.chat.claude_call", side_effect=mock_claude):
+            # 1. Init chat
+            r_init = await client.post(f"/chat/{CHAT_EPISODE_ID}/init")
+            assert r_init.status_code == 200
+            init_msg = r_init.json()
+            assert init_msg["role"] == "assistant"
+            assert "Key insight" in init_msg["content"]
+
+            # 2. GET history — 1 message
+            r_get1 = await client.get(f"/chat/{CHAT_EPISODE_ID}")
+            assert len(r_get1.json()) == 1
+
+            # 3. Send user message
+            r_msg = await client.post(
+                f"/chat/{CHAT_EPISODE_ID}/message",
+                json={"message": "What was the main topic?"},
+            )
+            assert r_msg.status_code == 200
+            reply = r_msg.json()
+            assert reply["role"] == "assistant"
+            assert "AI" in reply["content"]
+
+            # 4. GET history — 3 messages (init + user + assistant)
+            r_get2 = await client.get(f"/chat/{CHAT_EPISODE_ID}")
+            assert len(r_get2.json()) == 3
+            roles = [m["role"] for m in r_get2.json()]
+            assert roles == ["assistant", "user", "assistant"]
