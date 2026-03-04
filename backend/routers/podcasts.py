@@ -88,7 +88,7 @@ async def get_feed() -> list[dict]:
         """
         SELECT
             e.id, e.podcast_id, e.title, e.audio_url, e.duration_seconds,
-            e.published_at, e.image_url, e.downloaded, e.transcript_status,
+            e.published_at, e.image_url, e.downloaded, e.transcript_status, e.ads_detected,
             s.title  AS podcast_title,
             s.image_url AS podcast_image,
             COUNT(g.id) AS distill_count

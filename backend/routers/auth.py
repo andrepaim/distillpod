@@ -122,3 +122,14 @@ async def test_session():
         path="/",
     )
     return response
+
+
+@router.get("/debug-cookie")
+async def debug_cookie(request: Request):
+    """TEMP: show what cookies the server sees."""
+    token = request.cookies.get("distillpod_session")
+    if not token:
+        return {"cookies": dict(request.cookies), "token": None, "user": None}
+    from middleware.auth import verify_session_token
+    user = verify_session_token(token)
+    return {"cookies": list(request.cookies.keys()), "token_present": bool(token), "token_valid": bool(user), "user": user}

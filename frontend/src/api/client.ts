@@ -81,6 +81,7 @@ export interface Episode {
   id: string; podcast_id: string; title: string; description?: string;
   audio_url: string; duration_seconds?: number; published_at?: string;
   image_url?: string; downloaded: boolean; transcript_status: string;
+  ads_detected?: number;
 }
 export interface FeedEpisode extends Episode {
   podcast_title: string;
@@ -129,3 +130,16 @@ export const triggerResearch = (gistId: string) =>
 
 export const getResearch = (gistId: string) =>
   req<Research>("GET", `/research/${gistId}`);
+
+// --- Ad-free ---
+export interface AdFreeStatus {
+  has_adfree: boolean;
+  ads_count: number;
+}
+
+export async function getAdFreeStatus(episodeId: string): Promise<AdFreeStatus> {
+  return req<AdFreeStatus>('GET', `/player/adfree-status/${episodeId}`);
+}
+
+export const adFreeAudioUrl = (episodeId: string) =>
+  `${BASE}/player/audio-adfree/${episodeId}`;

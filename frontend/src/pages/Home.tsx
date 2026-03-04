@@ -68,8 +68,11 @@ function EpisodeCard({
 
   return (
     <div
-      className={`bg-gray-900 rounded-xl p-4 flex gap-3 transition-opacity ${played ? "opacity-60" : ""}`}
+      className={`bg-gray-900 rounded-xl p-4 flex gap-3 transition-opacity relative ${played ? "opacity-60" : ""}`}
     >
+      {ep.ads_detected != null && ep.ads_detected > 0 && (
+        <span title='Ad-free version available' className='absolute top-1 right-1 text-xs bg-gray-800 rounded px-1'>✂️</span>
+      )}
       {/* Podcast art */}
       <div className="flex-shrink-0">
         {ep.podcast_image
