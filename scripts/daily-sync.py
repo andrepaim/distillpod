@@ -137,6 +137,41 @@ async def process_subscription(podcast_id: str, feed_url: str, title: str) -> di
                 )
                 await db.commit()
 
+        # Ad detection + removal (after transcription)
+        episodes_for_ads = await db.execute_fetchall(
+            '''SELECT id, local_path FROM episodes
+               WHERE podcast_id = ? AND transcript_status = 'done'
+               AND local_path IS NOT NULL AND adfree_path IS NULL AND ads_detected IS NULL''',
+            (podcast_id,)
+        )
+        for ep_row in episodes_for_ads:
+            try:
+                from services.ad_detector import detect_ads, remove_ads_from_audio
+                transcript_row = await db.execute_fetchone(
+                    'SELECT words_json FROM transcripts WHERE episode_id = ?', (ep_row['id'],)
+                )
+                if not transcript_row:
+                    continue
+                log.info(f'  Ad detection for: {ep_row["id"]}')
+                ads = detect_ads(transcript_row['words_json'])
+                log.info(f'  Found {len(ads)} ad segment(s)')
+                if ads:
+                    adfree_path = ep_row['local_path'].replace('.mp3', '_adfree.mp3').replace('.m4a', '_adfree.m4a')
+                    success = remove_ads_from_audio(ep_row['local_path'], ads, adfree_path)
+                    if success:
+                        await db.execute(
+                            'UPDATE episodes SET adfree_path = ?, ads_detected = ? WHERE id = ?',
+                            (adfree_path, len(ads), ep_row['id'])
+                        )
+                    else:
+                        await db.execute('UPDATE episodes SET ads_detected = 0 WHERE id = ?', (ep_row['id'],))
+                else:
+                    await db.execute('UPDATE episodes SET ads_detected = 0 WHERE id = ?', (ep_row['id'],))
+                await db.commit()
+            except Exception as exc:
+                log.warning(f'  Ad detection failed for {ep_row["id"]}: {exc}')
+                continue
+
         # Update last_checked timestamp
         await db.execute(
             "UPDATE subscriptions SET last_checked = ? WHERE podcast_id = ?",

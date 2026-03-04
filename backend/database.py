@@ -106,3 +106,13 @@ async def init_db():
     async with aiosqlite.connect(DB_PATH) as db:
         await db.executescript(SCHEMA)
         await db.commit()
+        # Migrations: add columns if they don't exist yet
+        for alter in [
+            'ALTER TABLE episodes ADD COLUMN adfree_path TEXT',
+            'ALTER TABLE episodes ADD COLUMN ads_detected INTEGER',
+        ]:
+            try:
+                await db.execute(alter)
+            except Exception:
+                pass
+        await db.commit()

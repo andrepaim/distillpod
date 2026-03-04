@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams, useLocation, useNavigate } from "react-router-dom";
-import { createGist, listGists, getTranscriptStatus, Gist, Episode } from "../api/client";
+import { createGist, listGists, getTranscriptStatus, getAdFreeStatus, adFreeAudioUrl, Gist, Episode, AdFreeStatus } from "../api/client";
 import { useAudio, readProgress, type PlayableEpisode } from "../context/AudioContext";
 import { useQueue, type QueueItem } from "../stores/queueStore";
 
@@ -320,6 +320,8 @@ export default function Player() {
   const [resumedFrom,setResumedFrom]= useState<number | null>(null);
   const [error,      setError]      = useState("");
   const [queueFeedback, setQueueFeedback] = useState<"next" | "end" | null>(null);
+  const [adFreeStatus, setAdFreeStatus] = useState<AdFreeStatus | null>(null);
+  const [useAdFree, setUseAdFree] = useState(false);
   const { addNext, addToEnd } = useQueue();
 
   // Display episode: prefer what's already in context (avoids blank header flash on same episode)
@@ -362,6 +364,26 @@ export default function Player() {
     if (!episodeId) return;
     getTranscriptStatus(episodeId).then(({ status }) => setTranscriptStatus(status));
   }, [episodeId]);
+
+  // Fetch ad-free status
+  useEffect(() => {
+    if (!episodeId) return;
+    getAdFreeStatus(episodeId).then(setAdFreeStatus).catch(() => {});
+  }, [episodeId]);
+
+  // Switch audio source when ad-free toggle changes
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio || !episodeId || !episode) return;
+    const newSrc = useAdFree && adFreeStatus?.has_adfree
+      ? adFreeAudioUrl(episodeId)
+      : `/player/audio/${episodeId}`;
+    if (audio.src.endsWith(newSrc)) return;
+    const wasPlaying = !audio.paused;
+    audio.src = newSrc;
+    audio.load();
+    if (wasPlaying) audio.play().catch(() => {});
+  }, [useAdFree]);
 
   const handleGist = async () => {
     if (!audioRef.current || !episodeId) return;
@@ -413,6 +435,21 @@ export default function Player() {
               gisting={gisting}
               gistFlash={gistFlash}
             />
+            {adFreeStatus?.has_adfree && (
+              <div className='flex gap-2 items-center justify-center mt-2'>
+                <span className='text-xs text-gray-400'>{adFreeStatus.ads_count} ad{adFreeStatus.ads_count !== 1 ? 's' : ''} detected</span>
+                <button
+                  onClick={() => setUseAdFree(false)}
+                  className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${!useAdFree ? 'text-gray-900' : 'bg-gray-700 text-gray-300'}`}
+                  style={!useAdFree ? {background: '#FFD700'} : {}}
+                >Original</button>
+                <button
+                  onClick={() => setUseAdFree(true)}
+                  className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${useAdFree ? 'text-gray-900' : 'bg-gray-700 text-gray-300'}`}
+                  style={useAdFree ? {background: '#FFD700'} : {}}
+                >Ad-free</button>
+              </div>
+            )}
             {transcriptStatus === "done" && (
               <button
                 onClick={() => navigate(`/player/${episodeId}/chat`, { state: { episodeTitle: displayEpisode?.title } })}

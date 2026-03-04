@@ -99,3 +99,32 @@ async def transcript_status(episode_id: str) -> TranscriptStatus:
     if not row:
         raise HTTPException(404, "Episode not found")
     return TranscriptStatus(episode_id=episode_id, status=row["transcript_status"])
+
+
+@router.get("/adfree-status/{episode_id}")
+async def adfree_status(episode_id: str):
+    db = await get_db()
+    try:
+        row = await db.execute_fetchone(
+            'SELECT adfree_path, ads_detected FROM episodes WHERE id = ?', (episode_id,)
+        )
+        if not row:
+            return {'has_adfree': False, 'ads_count': 0}
+        has = bool(row['adfree_path']) and Path(row['adfree_path']).exists()
+        return {'has_adfree': has, 'ads_count': row['ads_detected'] or 0}
+    finally:
+        await db.close()
+
+
+@router.get("/audio-adfree/{episode_id}")
+async def stream_adfree(episode_id: str):
+    db = await get_db()
+    try:
+        row = await db.execute_fetchone(
+            'SELECT adfree_path FROM episodes WHERE id = ?', (episode_id,)
+        )
+        if not row or not row['adfree_path'] or not Path(row['adfree_path']).exists():
+            raise HTTPException(status_code=404, detail='Ad-free version not found')
+        return FileResponse(row['adfree_path'], media_type='audio/mpeg')
+    finally:
+        await db.close()
