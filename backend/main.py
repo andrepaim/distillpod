@@ -8,10 +8,16 @@ from database import init_db
 from routers import podcasts, player, gists
 from routers import auth as auth_router
 from routers.chat import router as chat_router
+from routers.research import router as research_router
 import httpx
+import os
 from middleware.auth import AuthMiddleware
 
 app = FastAPI(title="DistillPod API", version="0.1.0")
+
+# Reports static files (research HTML reports)
+os.makedirs("/root/distillpod/reports", exist_ok=True)
+app.mount("/reports", StaticFiles(directory="/root/distillpod/reports"), name="reports")
 
 # Middleware order matters: added last = runs first (LIFO in Starlette)
 # AuthMiddleware added last so it wraps all requests after CORS
@@ -34,12 +40,14 @@ app.include_router(podcasts.router)
 app.include_router(player.router)
 app.include_router(gists.router)
 app.include_router(chat_router)
+app.include_router(research_router)
 
 
 @app.on_event("startup")
 async def startup():
     await init_db()
     settings.media_dir.mkdir(parents=True, exist_ok=True)
+    os.makedirs("/root/distillpod/reports", exist_ok=True)
 
 
 @app.get("/proxy/image")

@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { listGists, deleteGist, getSubscriptions, Gist, Subscription } from "../api/client";
+import { listGists, deleteGist, getSubscriptions, triggerResearch, getResearch, Gist, Subscription, Research } from "../api/client";
 
 function fmtTime(secs: number) {
   const m = Math.floor(secs / 60);
@@ -26,7 +26,24 @@ function GistCard({ gist, podcastImage, onDelete }: { gist: Gist; podcastImage?:
   const nav = useNavigate();
   const [copied, setCopied] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [research, setResearch] = useState<Research>({ status: "none" });
+  const pollRef = useRef<ReturnType<typeof setInterval>>();
   const ai = parseGistSummary(gist.summary);
+
+  useEffect(() => {
+    getResearch(gist.id).then(setResearch);
+  }, [gist.id]);
+
+  useEffect(() => {
+    if (research.status === "pending" || research.status === "running") {
+      pollRef.current = setInterval(() => {
+        getResearch(gist.id).then(setResearch);
+      }, 10000);
+    } else if (pollRef.current) {
+      clearInterval(pollRef.current);
+    }
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+  }, [research.status, gist.id]);
 
   const copy = async () => {
     const text = ai
@@ -90,6 +107,41 @@ function GistCard({ gist, podcastImage, onDelete }: { gist: Gist; podcastImage?:
       ) : (
         <p className="text-sm leading-relaxed text-gray-100">{gist.text}</p>
       )}
+
+      {/* Research */}
+      <div className="pt-1">
+        {research.status === "none" && (
+          <button
+            onClick={() => triggerResearch(gist.id).then(setResearch)}
+            className="text-xs text-yellow-400 hover:text-yellow-300 px-2 py-0.5 rounded hover:bg-gray-700 transition-colors"
+          >
+            🔬 Research
+          </button>
+        )}
+        {(research.status === "pending" || research.status === "running") && (
+          <span className="text-xs text-gray-400">⏳ Researching... (3-5 min)</span>
+        )}
+        {research.status === "done" && research.public_url && (
+          <button
+            onClick={() => window.open(research.public_url, "_blank")}
+            className="text-xs font-semibold px-3 py-1 rounded-lg"
+            style={{ background: "#FFD700", color: "#1A1A1A" }}
+          >
+            📄 Open Report
+          </button>
+        )}
+        {research.status === "error" && (
+          <span className="text-xs text-red-400">
+            ⚠️ Research failed.{" "}
+            <button
+              onClick={() => triggerResearch(gist.id).then(setResearch)}
+              className="underline hover:text-red-300"
+            >
+              Retry
+            </button>
+          </span>
+        )}
+      </div>
     </div>
   );
 }
