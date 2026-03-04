@@ -115,3 +115,17 @@ export const initChat = (episodeId: string) =>
 
 export const sendChatMessage = (episodeId: string, message: string) =>
   req<ChatMessage>("POST", `/chat/${episodeId}/message`, { message });
+
+// --- Research ---
+export interface Research {
+  id?: string;
+  status: "none" | "pending" | "running" | "done" | "error";
+  public_url?: string;
+  error?: string;
+}
+
+export const triggerResearch = (gistId: string) =>
+  req<Research>("POST", `/research/${gistId}`);
+
+export const getResearch = (gistId: string) =>
+  req<Research>("GET", `/research/${gistId}`);
