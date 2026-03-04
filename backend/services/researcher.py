@@ -8,9 +8,10 @@ from pathlib import Path
 import requests
 
 CLAUDE_BIN = "/root/.local/bin/claude"
-TAVILY_KEY = "***REMOVED***"
-TG_TOKEN = "***REMOVED***"
-TG_CHAT = "8592602749"
+import os
+TAVILY_KEY = os.environ.get("TAVILY_API_KEY", "")
+TG_TOKEN = os.environ.get("TG_BOT_TOKEN", "")
+TG_CHAT = os.environ.get("TG_CHAT_ID", "")
 REPORTS_DIR = "/root/distillpod/reports"
 PUBLIC_BASE = "https://distillpod.duckdns.org/reports"
 DB_PATH = "/root/distillpod/distillpod.db"
