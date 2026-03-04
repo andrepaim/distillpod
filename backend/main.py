@@ -15,9 +15,6 @@ from middleware.auth import AuthMiddleware
 
 app = FastAPI(title="DistillPod API", version="0.1.0")
 
-# Reports static files (research HTML reports)
-os.makedirs("/root/distillpod/reports", exist_ok=True)
-app.mount("/reports", StaticFiles(directory="/root/distillpod/reports"), name="reports")
 
 # Middleware order matters: added last = runs first (LIFO in Starlette)
 # AuthMiddleware added last so it wraps all requests after CORS
@@ -41,6 +38,15 @@ app.include_router(player.router)
 app.include_router(gists.router)
 app.include_router(chat_router)
 app.include_router(research_router)
+
+# Research reports — explicit route before catch-all SPA
+@app.get("/reports/{filename}")
+async def serve_report(filename: str):
+    report_path = Path("/root/distillpod/reports") / filename
+    if report_path.exists() and report_path.suffix == ".html":
+        return FileResponse(str(report_path), media_type="text/html")
+    from fastapi import HTTPException
+    raise HTTPException(status_code=404, detail="Report not found")
 
 
 @app.on_event("startup")
