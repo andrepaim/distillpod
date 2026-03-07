@@ -8,21 +8,15 @@ and stores 4 fresh suggestions in the database.
 import json
 import os
 import sqlite3
+import subprocess
 import sys
 import uuid
 import httpx
-import anthropic
 from datetime import datetime, timezone
 
 DB_PATH    = "/root/distillpod/distillpod.db"
 ITUNES_URL = "https://itunes.apple.com/search"
 N_SUGGEST  = 4
-
-ANTHROPIC_API_KEY = os.environ.get(
-    "ANTHROPIC_API_KEY",
-    "REDACTED"
-)
-_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
 
 def get_db():
@@ -48,12 +42,16 @@ def get_subscribed_feed_urls(db):
 
 
 def claude(prompt: str) -> str:
-    message = _client.messages.create(
-        model="claude-haiku-4-5",
-        max_tokens=512,
-        messages=[{"role": "user", "content": prompt}],
+    result = subprocess.run(
+        ["claude", "--print"],
+        input=prompt,
+        capture_output=True,
+        text=True,
+        timeout=60,
     )
-    return message.content[0].text.strip()
+    if result.returncode != 0:
+        raise RuntimeError(f"claude CLI error: {result.stderr.strip()}")
+    return result.stdout.strip()
 
 
 def get_search_queries(subs_context: str) -> list:
