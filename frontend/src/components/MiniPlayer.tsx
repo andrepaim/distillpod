@@ -1,11 +1,9 @@
-import { useNavigate } from "react-router-dom";
 import { useState, useCallback } from "react";
 import { useAudio } from "../context/AudioContext";
 import { getTranscriptStatus, createGist } from "../api/client";
 
 export default function MiniPlayer() {
-  const { episode, isPlaying, togglePlay, currentTime, duration, audioReady } = useAudio();
-  const navigate = useNavigate();
+  const { episode, isPlaying, togglePlay, currentTime, duration, audioReady, setPlayerExpanded } = useAudio();
   const [distillState, setDistillState] = useState<"idle"|"loading"|"done"|"error">("idle");
 
   const handleDistill = useCallback(async (e: React.MouseEvent) => {
@@ -55,9 +53,9 @@ export default function MiniPlayer() {
       {/* Content row */}
       <div className="flex items-center gap-3 px-3 py-2">
 
-        {/* Tap area → go to full player */}
+        {/* Tap area → open fullscreen player */}
         <button
-          onClick={() => navigate(`/player/${episode.id}`, { state: episode })}
+          onClick={() => setPlayerExpanded(true)}
           className="flex items-center gap-2.5 flex-1 min-w-0 text-left"
         >
           {episode.podcast_image

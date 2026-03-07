@@ -13,3 +13,5 @@ frontend/dist/
 .env
 *.env
 test-results/
+.omc/
+sync.log

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { getSubscriptions, getEpisodes, unsubscribe, Subscription, Episode } from "../api/client";
 import { getCached, setCached } from "../cache";
 
@@ -33,7 +33,7 @@ function fmtDuration(secs?: number | null) {
 }
 
 // ─── Episode List View ────────────────────────────────────────────────────────
-function EpisodeList({ sub, onBack, onUnsubscribed }: { sub: Subscription; onBack: () => void; onUnsubscribed: () => void }) {
+function EpisodeList({ sub, onUnsubscribed }: { sub: Subscription; onUnsubscribed: () => void }) {
   const nav = useNavigate();
   const cacheKey = `episodes:${sub.podcast_id}`;
   const [episodes, setEpisodes] = useState<Episode[]>(() => getCached<Episode[]>(cacheKey) || []);
@@ -60,6 +60,7 @@ function EpisodeList({ sub, onBack, onUnsubscribed }: { sub: Subscription; onBac
     setUnsubbing(true);
     try {
       await unsubscribe(sub.podcast_id);
+      nav('/subscriptions');
       onUnsubscribed();
     } finally {
       setUnsubbing(false);
@@ -71,7 +72,7 @@ function EpisodeList({ sub, onBack, onUnsubscribed }: { sub: Subscription; onBac
       {/* Header */}
       <div className="flex items-center gap-3">
         <button
-          onClick={onBack}
+          onClick={() => nav('/subscriptions')}
           className="flex items-center gap-1.5 text-indigo-400 hover:text-indigo-300 active:text-indigo-500 transition-colors py-2 pr-2 -ml-1"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
@@ -145,23 +146,46 @@ function EpisodeList({ sub, onBack, onUnsubscribed }: { sub: Subscription; onBac
   );
 }
 
-// ─── Podcast List View ────────────────────────────────────────────────────────
-export default function Subscriptions() {
-  const [subs, setSubs] = useState<Subscription[]>([]);
-  const [selected, setSelected] = useState<Subscription | null>(null);
+// ─── Podcast Episode List Page (routed: /subscriptions/:podcastId) ────────────
+export function PodcastEpisodes() {
+  const { podcastId } = useParams<{ podcastId: string }>();
+  const location = useLocation();
+  const nav = useNavigate();
+  // Sub data passed as nav state (fast path); fall back to API fetch
+  const [sub, setSub] = useState<Subscription | null>(
+    (location.state as Subscription | null) ?? null
+  );
 
-  useEffect(() => { getSubscriptions().then(setSubs); }, []);
+  useEffect(() => {
+    if (sub || !podcastId) return;
+    getSubscriptions()
+      .then(subs => setSub(subs.find(s => s.podcast_id === podcastId) ?? null))
+      .catch(() => {});
+  }, [podcastId]);
 
-  if (selected) return (
+  if (!sub) {
+    return (
+      <div className="flex items-center justify-center h-40 text-gray-500 text-sm">
+        <span className="w-5 h-5 border-2 border-gray-600 border-t-indigo-400 rounded-full animate-spin mr-2" />
+        Loading…
+      </div>
+    );
+  }
+
+  return (
     <EpisodeList
-      sub={selected}
-      onBack={() => setSelected(null)}
-      onUnsubscribed={() => {
-        setSubs(prev => prev.filter(s => s.podcast_id !== selected.podcast_id));
-        setSelected(null);
-      }}
+      sub={sub}
+      onUnsubscribed={() => nav('/subscriptions')}
     />
   );
+}
+
+// ─── Podcast List View (routed: /subscriptions) ───────────────────────────────
+export default function Subscriptions() {
+  const nav = useNavigate();
+  const [subs, setSubs] = useState<Subscription[]>([]);
+
+  useEffect(() => { getSubscriptions().then(setSubs); }, []);
 
   return (
     <div className="space-y-3">
@@ -178,7 +202,7 @@ export default function Subscriptions() {
       {subs.map(s => (
         <div
           key={s.podcast_id}
-          onClick={() => setSelected(s)}
+          onClick={() => nav(`/subscriptions/${s.podcast_id}`, { state: s })}
           className="bg-gray-900 hover:bg-gray-800 active:bg-gray-700 rounded-xl p-4 flex gap-4 items-center cursor-pointer transition-colors"
         >
           {s.image_url

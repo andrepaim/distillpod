@@ -128,3 +128,28 @@ async def stream_adfree(episode_id: str):
         return FileResponse(row['adfree_path'], media_type='audio/mpeg')
     finally:
         await db.close()
+
+
+@router.get("/chapters/{episode_id}")
+async def get_chapters(episode_id: str):
+    """Return chapters and summary for an episode."""
+    db = await get_db()
+    try:
+        ep = await db.execute_fetchone(
+            "SELECT summary, chapters_status FROM episodes WHERE id = ?", (episode_id,)
+        )
+        if not ep:
+            raise HTTPException(status_code=404, detail="Episode not found")
+
+        chapters = await db.execute_fetchall(
+            "SELECT title, start_time FROM chapters WHERE episode_id = ? ORDER BY start_time",
+            (episode_id,)
+        )
+        return {
+            "episode_id": episode_id,
+            "chapters_status": ep["chapters_status"] or "none",
+            "summary": ep["summary"],
+            "chapters": [{"title": r["title"], "start_time": r["start_time"]} for r in chapters],
+        }
+    finally:
+        await db.close()

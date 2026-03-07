@@ -29,6 +29,8 @@ class Episode(BaseModel):
     transcript_status: str = "none"   # none | queued | processing | done | error
     adfree_path: Optional[str] = None
     ads_detected: Optional[int] = None
+    summary: Optional[str] = None
+    chapters_status: str = "none"  # none | processing | done | error
 
 
 class Subscription(BaseModel):

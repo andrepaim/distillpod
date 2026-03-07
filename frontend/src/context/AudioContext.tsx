@@ -55,17 +55,19 @@ export type PlayableEpisode = Episode & {
 };
 
 interface AudioContextValue {
-  episode:        PlayableEpisode | null;
-  audioRef:       RefObject<HTMLAudioElement>;
-  isPlaying:      boolean;
-  currentTime:    number;
-  duration:       number;
-  audioReady:     boolean;
-  loadEpisode:    (id: string, ep: PlayableEpisode | null, seekTo?: number) => Promise<void>;
-  togglePlay:     () => void;
-  seek:           (secs: number) => void;
-  skipBy:         (delta: number) => void;
-  setRate:        (rate: number) => void;
+  episode:           PlayableEpisode | null;
+  audioRef:          RefObject<HTMLAudioElement>;
+  isPlaying:         boolean;
+  currentTime:       number;
+  duration:          number;
+  audioReady:        boolean;
+  loadEpisode:       (id: string, ep: PlayableEpisode | null, seekTo?: number) => Promise<void>;
+  togglePlay:        () => void;
+  seek:              (secs: number) => void;
+  skipBy:            (delta: number) => void;
+  setRate:           (rate: number) => void;
+  playerExpanded:    boolean;
+  setPlayerExpanded: (v: boolean) => void;
 }
 
 const Ctx = createContext<AudioContextValue | null>(null);
@@ -79,11 +81,12 @@ export function AudioProvider({ children }: { children: ReactNode }) {
 
   const loadEpisodeRef = useRef<AudioContextValue["loadEpisode"] | null>(null);
 
-  const [episode,     setEpisode]     = useState<PlayableEpisode | null>(null);
-  const [isPlaying,   setIsPlaying]   = useState(false);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration,    setDuration]    = useState(0);
-  const [audioReady,  setAudioReady]  = useState(false);
+  const [episode,        setEpisode]        = useState<PlayableEpisode | null>(null);
+  const [isPlaying,      setIsPlaying]      = useState(false);
+  const [currentTime,    setCurrentTime]    = useState(0);
+  const [duration,       setDuration]       = useState(0);
+  const [audioReady,     setAudioReady]     = useState(false);
+  const [playerExpanded, setPlayerExpanded] = useState(false);
 
   // Keep episodeRef in sync for use inside event listeners
   useEffect(() => { episodeRef.current = episode; }, [episode]);
@@ -296,6 +299,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     <Ctx.Provider value={{
       episode, audioRef, isPlaying, currentTime, duration, audioReady,
       loadEpisode, togglePlay, seek, skipBy, setRate,
+      playerExpanded, setPlayerExpanded,
     }}>
       {/* Single persistent audio element — never unmounts */}
       <audio ref={audioRef} preload="auto" className="hidden" />

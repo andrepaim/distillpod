@@ -82,6 +82,16 @@ CREATE TABLE IF NOT EXISTS researches (
     created_at  TEXT NOT NULL,
     finished_at TEXT
 );
+
+CREATE TABLE IF NOT EXISTS chapters (
+    id          TEXT PRIMARY KEY,
+    episode_id  TEXT NOT NULL,
+    title       TEXT NOT NULL,
+    start_time  REAL NOT NULL,
+    FOREIGN KEY (episode_id) REFERENCES episodes(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_chapters_episode ON chapters(episode_id, start_time);
 """
 
 async def get_db() -> aiosqlite.Connection:
@@ -110,6 +120,8 @@ async def init_db():
         for alter in [
             'ALTER TABLE episodes ADD COLUMN adfree_path TEXT',
             'ALTER TABLE episodes ADD COLUMN ads_detected INTEGER',
+            'ALTER TABLE episodes ADD COLUMN summary TEXT',
+            'ALTER TABLE episodes ADD COLUMN chapters_status TEXT DEFAULT \'none\'',
         ]:
             try:
                 await db.execute(alter)

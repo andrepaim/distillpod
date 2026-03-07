@@ -4,6 +4,23 @@
 
 body { background: #030712; color: white; }
 
+/* Disable native text selection across the app — behaves like a native app.
+   Transcript/gist text is explicitly re-enabled below via .selectable. */
+* {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none; /* disables iOS long-press callout */
+}
+
+/* Re-enable selection only where it makes sense */
+.selectable,
+.selectable * {
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  user-select: text;
+}
+
 /* Chat markdown rendering */
 .markdown-chat p { margin-bottom: 0.5rem; }
 .markdown-chat p:last-child { margin-bottom: 0; }

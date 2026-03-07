@@ -75,7 +75,7 @@ def detect_ads(words_json: str) -> list[dict]:
 
     result = subprocess.run(
         [CLAUDE_BIN, '--print', prompt],
-        capture_output=True, text=True, timeout=60
+        capture_output=True, text=True, timeout=120
     )
     raw = result.stdout.strip()
 
@@ -148,7 +148,7 @@ def remove_ads_from_audio(audio_path: str, ads: list[dict], output_path: str) ->
                     'ffmpeg', '-y', '-ss', str(start), '-to', str(end),
                     '-i', audio_path,
                     '-acodec', 'copy', seg_path
-                ], capture_output=True, timeout=60, check=True)
+                ], capture_output=True, timeout=120, check=True)
                 segment_files.append(seg_path)
 
             # Write concat list

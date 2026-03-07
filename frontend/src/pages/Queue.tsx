@@ -25,8 +25,15 @@ function fmtDur(secs?: number) {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
-function SortableRow({ item }: { item: QueueItem }) {
-  const { remove } = useQueue();
+function SortableRow({ item, index, isCurrentEpisode, currentEpisode, audioReady }: {
+  item: QueueItem;
+  index: number;
+  isCurrentEpisode: boolean;
+  currentEpisode: ReturnType<typeof useAudio>["episode"];
+  audioReady: boolean;
+}) {
+  const { remove, playNow, addNext } = useQueue();
+  const { loadEpisode } = useAudio();
   const {
     attributes,
     listeners,
@@ -35,6 +42,40 @@ function SortableRow({ item }: { item: QueueItem }) {
     transition,
     isDragging,
   } = useSortable({ id: item.episodeId });
+
+  const handlePlayNow = () => {
+    if (isCurrentEpisode) return;
+
+    // Push current episode back to front of queue before switching
+    if (currentEpisode && audioReady) {
+      addNext({
+        episodeId: currentEpisode.id,
+        title: currentEpisode.title ?? "",
+        podcastTitle: currentEpisode.podcast_title ?? "",
+        audioUrl: currentEpisode.audio_url ?? "",
+        imageUrl: currentEpisode.podcast_image,
+        durationSeconds: undefined,
+      });
+    }
+
+    // Index shifts by +1 because addNext just prepended to the queue
+    const adjustedIndex = currentEpisode && audioReady ? index + 1 : index;
+    const queued = playNow(adjustedIndex);
+    if (!queued) return;
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    loadEpisode(queued.episodeId, {
+      id: queued.episodeId,
+      title: queued.title,
+      audio_url: queued.audioUrl,
+      image_url: queued.imageUrl,
+      podcast_image: queued.imageUrl,
+      podcast_title: queued.podcastTitle,
+      podcast_id: "",
+      downloaded: false,
+      transcript_status: "none",
+    } as any);
+  };
 
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
@@ -54,10 +95,24 @@ function SortableRow({ item }: { item: QueueItem }) {
       <button
         {...attributes}
         {...listeners}
-        className="flex-shrink-0 cursor-grab active:cursor-grabbing touch-none w-11 h-11 flex items-center justify-center"
-        style={{ color: "#FFD700" }}
+        className="flex-shrink-0 cursor-grab active:cursor-grabbing touch-none w-8 h-11 flex items-center justify-center"
+        style={{ color: "#555" }}
       >
-        <span className="text-xl leading-none select-none">⠿</span>
+        <span className="text-lg leading-none select-none">⠿</span>
+      </button>
+
+      {/* Play Now button */}
+      <button
+        onClick={handlePlayNow}
+        disabled={isCurrentEpisode}
+        className="flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-full transition-all"
+        style={{
+          color: isCurrentEpisode ? "#FFD700" : "#aaa",
+          background: isCurrentEpisode ? "rgba(255,215,0,0.15)" : "transparent",
+        }}
+        title={isCurrentEpisode ? "Currently playing" : "Play now"}
+      >
+        <span className="text-sm leading-none">{isCurrentEpisode ? "▶" : "▷"}</span>
       </button>
 
       {/* Thumbnail */}
@@ -107,6 +162,7 @@ export default function Queue() {
   };
 
   const currentEpisode = episode && audioReady ? episode : null;
+  const currentEpisodeId = currentEpisode?.id ?? null;
 
   return (
     <div className="space-y-4">
@@ -158,8 +214,15 @@ export default function Queue() {
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
           <SortableContext items={queue.map(q => q.episodeId)} strategy={verticalListSortingStrategy}>
             <div className="space-y-2">
-              {queue.map(item => (
-                <SortableRow key={item.episodeId} item={item} />
+              {queue.map((item, index) => (
+                <SortableRow
+                  key={item.episodeId}
+                  item={item}
+                  index={index}
+                  isCurrentEpisode={item.episodeId === currentEpisodeId}
+                  currentEpisode={currentEpisode}
+                  audioReady={audioReady}
+                />
               ))}
             </div>
           </SortableContext>

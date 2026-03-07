@@ -5,10 +5,11 @@ import { useQueue } from "./stores/queueStore";
 import { BrowserRouter, Routes, Route, useLocation, useNavigate } from "react-router-dom";
 import { AudioProvider, useAudio } from "./context/AudioContext";
 import MiniPlayer from "./components/MiniPlayer";
+import FullscreenPlayer from "./components/FullscreenPlayer";
 import Home from "./pages/Home";
 import Search from "./pages/Search";
 import Queue from './pages/Queue';
-import Subscriptions from "./pages/Subscriptions";
+import Subscriptions, { PodcastEpisodes } from "./pages/Subscriptions";
 import Player from "./pages/Player";
 import Gists from "./pages/Gists";
 import Chat from "./pages/Chat";
@@ -68,7 +69,7 @@ function BottomNav() {
   const navigate = useNavigate();
   const { queue } = useQueue();
   const isActive = (to: string) =>
-    to === "/" ? location.pathname === "/" : location.pathname.startsWith(to);
+    to === "/" ? location.pathname === "/" : location.pathname.startsWith(to.split("?")[0]);
 
   return (
     <nav
@@ -132,6 +133,7 @@ function AppShell() {
           <Route path="/" element={<Home />} />
           <Route path="/search" element={<Search />} />
           <Route path="/subscriptions" element={<Subscriptions />} />
+          <Route path="/subscriptions/:podcastId" element={<PodcastEpisodes />} />
           <Route path="/player/:episodeId" element={<Player />} />
           <Route path="/player/:episodeId/chat" element={<Chat />} />
           <Route path="/queue" element={<Queue />} />
@@ -140,7 +142,8 @@ function AppShell() {
         </Routes>
       </main>
 
-      <MiniPlayer />   {/* sits above BottomNav when active */}
+      <MiniPlayer />
+      <FullscreenPlayer />
       <BottomNav />
     </div>
   );
