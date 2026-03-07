@@ -1,3 +1,4 @@
+import shutil
 from pydantic_settings import BaseSettings
 from pathlib import Path
 
@@ -6,12 +7,20 @@ class Settings(BaseSettings):
     podcast_index_api_key: str = ""
     podcast_index_secret: str = ""
 
-    # Snip summaries use Claude CLI (claude --print) — no API key needed
-    # Requires: `claude` CLI installed and authenticated via `claude login`
+    # Claude CLI — resolved via PATH by default
+    claude_bin: str = ""
+
+    @property
+    def claude(self) -> str:
+        return self.claude_bin or shutil.which("claude") or "claude"
 
     # Storage
     media_dir: Path = Path("/root/distillpod/media")
     db_path: Path = Path("/root/distillpod/distillpod.db")
+    reports_dir: Path = Path("/root/distillpod/reports")
+
+    # Public-facing domain (used for report URLs, OAuth redirect, CORS)
+    public_url: str = "https://distillpod.duckdns.org"
 
     # Server
     host: str = "127.0.0.1"
@@ -32,6 +41,10 @@ class Settings(BaseSettings):
 
     # Test mode — bypass auth for E2E tests. NEVER true in prod.
     test_mode: bool = False
+
+    # Notifications
+    telegram_bot_token: str = ""
+    telegram_chat_id: str = ""
 
     class Config:
         env_file = ".env"

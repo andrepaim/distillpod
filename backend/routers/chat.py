@@ -11,7 +11,8 @@ from database import get_db
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
-CLAUDE_BIN = "/root/.local/bin/claude"
+from config import settings
+CLAUDE_BIN = settings.claude
 
 
 def _claude_subprocess(prompt: str) -> str:

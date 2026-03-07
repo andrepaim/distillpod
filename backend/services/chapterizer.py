@@ -19,7 +19,8 @@ import json
 import subprocess
 from pathlib import Path
 
-CLAUDE_BIN = '/root/.local/bin/claude'
+from config import settings
+CLAUDE_BIN = settings.claude
 TIMEOUT_SECS = 240
 
 # Max chars to send to Claude (keeps prompt manageable for long episodes)

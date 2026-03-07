@@ -14,7 +14,9 @@ import uuid
 import httpx
 from datetime import datetime, timezone
 
-DB_PATH    = "/root/distillpod/distillpod.db"
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../backend"))
+from config import settings
+DB_PATH = str(settings.db_path)
 ITUNES_URL = "https://itunes.apple.com/search"
 N_SUGGEST  = 4
 

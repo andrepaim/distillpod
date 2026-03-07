@@ -5,7 +5,8 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-CLAUDE_BIN = '/root/.local/bin/claude'
+from config import settings
+CLAUDE_BIN = settings.claude
 
 def _format_time(seconds: float) -> str:
     m = int(seconds // 60)
