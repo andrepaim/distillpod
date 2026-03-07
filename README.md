@@ -1,84 +1,61 @@
 # DistillPod ⚗️
 
-A minimal, self-hosted podcast app built around one idea: **distill any episode into what actually matters.**
+A self-hosted, mobile-first podcast app with AI-powered features: transcription, distillations, ad detection, chapter generation, episode chat, and deep research reports.
 
-No cloud services. No subscriptions. No per-use API costs. Your VPS does all the heavy lifting.
+No per-call API costs. All AI runs via the Claude CLI through your existing subscription.
 
 ---
 
 ## What is this?
 
-DistillPod is a mobile-first web app for listening to podcasts and capturing distillations from them.
+DistillPod is a personal podcast client that runs on your VPS. You open it in your phone's browser. Everything else — downloading audio, transcribing, serving — happens on the server.
 
-**A distillation** is a moment you flag while listening. Tap the ⚗️ Distill button at any point and DistillPod extracts the last 60 seconds of transcript around that moment, then passes it to the Claude Code CLI, which returns a verbatim quote and a 1-2 sentence insight. Every distillation is AI-powered — no toggles, no modes.
+**A distillation** is a moment you flag while listening. Tap ⚗️ at any point and DistillPod extracts the last 60 seconds of transcript, passes it to the Claude CLI, and returns a verbatim quote and a 1–2 sentence insight.
 
-DistillPod **transcribes the whole episode once** using [faster-whisper](https://github.com/SYSTRAN/faster-whisper) (runs locally on CPU), and each distillation becomes a near-instant timestamp lookup in the pre-computed word-level transcript. The AI runs via the Claude CLI — see [How AI Works](#how-ai-works).
-
-You open the app in your phone's browser. Everything else — downloading audio, transcribing, serving — happens on your VPS.
-
----
-
-## What is a Distillation?
-
-A distillation is the core unit of DistillPod. Tap ⚗️ **Distill** at any moment while listening and the backend:
-
-1. Reads the current playback position (in seconds)
-2. Slices the pre-computed word-level transcript for the window `[now - 60s, now]`
-3. Calls `claude --print` as a subprocess with the excerpt and a structured prompt
-4. The Claude Code CLI returns `{ "quote": "...", "insight": "..." }`:
-   - **quote** — the single most memorable verbatim sentence from the excerpt
-   - **insight** — 1-2 sentence takeaway capturing the core idea
-5. The distillation card shows the quote (italic, styled) and insight
-
-Every distillation is AI-powered. There are no modes or toggles — tap and get a distillation.
-
-**Latency: ~30s** (Claude CLI startup + inference). Runs via your Claude subscription — no separate API billing.
-
-The 60-second context window is configurable via `GIST_CONTEXT_SECONDS` in `.env`.
+DistillPod transcribes each episode once using [faster-whisper](https://github.com/SYSTRAN/faster-whisper) (runs locally on CPU), then every distillation is a near-instant timestamp lookup in the pre-computed word-level transcript.
 
 ---
 
 ## Features
 
-- **📰 Home feed** — unified list of the latest episodes across all subscribed podcasts, sorted by date. Shows whether you've listened and how many distillations you have per episode.
-- **🔍 Search** — find podcasts via the iTunes Search API (no key needed). Subscribe with one tap. When the search box is empty, a **🤖 Suggested for you** section surfaces daily AI-generated recommendations based on your listening history — dismiss any you're not interested in.
-- **📚 Library** — browse your subscribed podcasts and their episodes. Transcript status shown per episode.
-- **▶️ Player** — stream audio directly from your VPS. Transcription kicks off automatically in the background when you press play.
-- **⚗️ Distill** — tap at any moment while listening. Captures the last 60 seconds of transcript, passes it to the Claude Code CLI, and returns a verbatim quote and insight (~30s).
-- **📋 Distillations library** — browse all your distillations grouped by episode. Copy to clipboard, delete, or jump back to the episode.
-- **⚡ Stale-while-revalidate caching** — the app feels instant on return visits. Data is cached in localStorage with a 30-minute TTL and refreshed silently in the background.
+- **📰 Home feed** — unified list of the latest episodes across all subscriptions, sorted by date. Shows distillation count per episode.
+- **🔍 Search** — find podcasts via the iTunes Search API (no key needed). When the search box is empty, a **🤖 Suggested for you** section surfaces daily AI-generated recommendations based on your listening history.
+- **📚 Library** — browse your subscribed podcasts and their episode lists with transcript status badges.
+- **▶️ Fullscreen Player** — Spotify-style slide-up player with chapter navigation, ad-free toggle, and distillation controls.
+- **⚗️ Distill** — tap at any moment while listening. Captures the last 60 seconds of transcript, calls the Claude CLI, and returns a quote and insight (~30s).
+- **✂️ Ad-free audio** — after transcription, Claude classifies ad segments and ffmpeg cuts them out. Stream the clean version from the player.
+- **📖 Chapters** — Claude generates 4–10 named chapters with timestamps from the full transcript. Tap any chapter to jump directly.
+- **💬 Episode chat** — ask questions about any transcribed episode. Claude answers using the full transcript as context. History kept per episode (capped at 50 messages).
+- **🔬 Research** — trigger a deep research report from any distillation. Claude generates queries, Tavily runs web searches, Claude synthesizes findings into an HTML report. Delivered via Telegram.
+- **📋 Distillations library** — all your distillations grouped by episode. Copy, delete, or trigger research from any entry.
+- **⚡ Stale-while-revalidate caching** — data is cached in localStorage with a 30-minute TTL and refreshed silently in the background.
 
 ---
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────┐
-│  Browser (React + Vite + Tailwind CSS)               │
-│                                                       │
-│  Home · Search · Library · Player · Distillations   │
-│                                                       │
-│  localStorage cache (stale-while-revalidate, 30min)  │
-└───────────────────────┬─────────────────────────────┘
-                        │ HTTP (SSH tunnel or direct IP)
-┌───────────────────────▼─────────────────────────────┐
-│  FastAPI backend (port 8124)                         │
-│                                                       │
-│  /podcasts   /player   /gists                        │
-│                                                       │
-│  ┌──────────────────────────────────────────────┐   │
-│  │  Services                                     │   │
-│  │  podcast_index · rss · downloader             │   │
-│  │  transcriber · gist_engine                    │   │
-│  └──────────────────────────────────────────────┘   │
-│                                                       │
-│  SQLite — subscriptions, episodes,                   │
-│            transcripts, distillations                │
-└──────────┬─────────────────────────┬────────────────┘
-           │                         │
-     iTunes Search API         faster-whisper (local)
-     RSS feeds                 Claude CLI (subscription)
-     Podcast Index API (opt.)
+┌─────────────────────────────────────────────────────────────┐
+│                         User (browser)                       │
+│              https://distillpod.duckdns.org                  │
+└──────────────────────────┬──────────────────────────────────┘
+                           │ HTTPS (Apache reverse proxy)
+┌──────────────────────────▼──────────────────────────────────┐
+│              FastAPI app  — port 8124 (localhost)            │
+│                                                             │
+│  ┌────────────────┐  ┌───────────────────────────────────┐  │
+│  │  Static files  │  │           API Routers             │  │
+│  │  (React SPA)   │  │  /auth  /podcasts  /player        │  │
+│  │  /assets/**    │  │  /gists  /chat  /research         │  │
+│  └────────────────┘  └──────────────┬────────────────────┘  │
+└─────────────────────────────────────┼───────────────────────┘
+                                      │
+              ┌───────────────────────┼──────────────────────┐
+              │                       │                       │
+   ┌──────────▼──────┐   ┌───────────▼──────┐   ┌──────────▼──────┐
+   │   SQLite DB      │   │   Media files     │   │  Claude CLI     │
+   │ distillpod.db    │   │  /media/*.mp3     │   │ claude --print  │
+   └─────────────────┘   └──────────────────┘   └────────────────┘
 ```
 
 ### Component breakdown
@@ -86,16 +63,23 @@ The 60-second context window is configurable via `GIST_CONTEXT_SECONDS` in `.env
 | Component | Responsibility |
 |---|---|
 | `frontend/` | React SPA — UI only, all state on backend |
-| `backend/main.py` | FastAPI app entry point, serves built frontend |
-| `backend/routers/podcasts.py` | Search, subscribe, episode listing |
-| `backend/routers/player.py` | Play trigger, audio streaming, transcript status |
+| `backend/main.py` | FastAPI entry point, serves built frontend and reports |
+| `backend/routers/auth.py` | Google OAuth2 flow, session cookie management |
+| `backend/routers/podcasts.py` | Search, subscribe, episode listing, suggestions |
+| `backend/routers/player.py` | Play trigger, audio streaming, transcript status, chapters |
 | `backend/routers/gists.py` | Create, list, delete distillations |
-| `backend/services/podcast_index.py` | iTunes Search API + optional Podcast Index |
-| `backend/services/rss.py` | RSS feed parsing via feedparser |
+| `backend/routers/chat.py` | Episode Q&A — init, message, history |
+| `backend/routers/research.py` | Trigger + poll research reports |
 | `backend/services/downloader.py` | Async MP3 download to `/media/` |
 | `backend/services/transcriber.py` | faster-whisper, word-level timestamps, async background task |
-| `backend/services/gist_engine.py` | Timestamp window lookup in transcript |
-| `backend/database.py` | SQLite connection + schema init |
+| `backend/services/snip_engine.py` | Timestamp window lookup + Claude distillation |
+| `backend/services/ad_detector.py` | Claude ad classification + ffmpeg audio surgery |
+| `backend/services/chapterizer.py` | Claude chapter + summary generation |
+| `backend/services/researcher.py` | Multi-turn research pipeline: Claude + Tavily → HTML report |
+| `backend/services/rss.py` | RSS feed parsing |
+| `backend/services/podcast_index.py` | PodcastIndex API wrapper |
+| `backend/database.py` | SQLite connection, schema init, WAL mode |
+| `backend/config.py` | All settings via env vars (`pydantic-settings`) |
 
 ---
 
@@ -103,47 +87,24 @@ The 60-second context window is configurable via `GIST_CONTEXT_SECONDS` in `.env
 
 **Backend**
 - [FastAPI](https://fastapi.tiangolo.com/) + [uvicorn](https://www.uvicorn.org/)
-- [aiosqlite](https://aiosqlite.omnilib.dev/) — async SQLite
-- [faster-whisper](https://github.com/SYSTRAN/faster-whisper) — local speech-to-text (CTranslate2 backend, int8 quantization)
+- [aiosqlite](https://aiosqlite.omnilib.dev/) — async SQLite (WAL mode)
+- [faster-whisper](https://github.com/SYSTRAN/faster-whisper) — local speech-to-text (CTranslate2, int8)
 - [feedparser](https://feedparser.readthedocs.io/) — RSS parsing
-- [httpx](https://www.python-httpx.org/) — async HTTP client for downloads
+- [httpx](https://www.python-httpx.org/) — async HTTP client
+- [authlib](https://docs.authlib.org/) — Google OAuth2
 
 **Frontend**
 - [React 18](https://react.dev/) + [TypeScript](https://www.typescriptlang.org/)
 - [Vite](https://vitejs.dev/) — build tool
 - [Tailwind CSS v3](https://tailwindcss.com/) — styling
 - [React Router v6](https://reactrouter.com/) — client-side routing
-
----
-
-## How Transcription Works
-
-When you press play on an episode:
-
-1. FastAPI receives `POST /player/play` with the episode's audio URL
-2. The episode MP3 is downloaded to `/media/` on the VPS (if not already cached)
-3. A background asyncio task starts transcribing using `faster-whisper` with `word_timestamps=True`
-4. The frontend polls `GET /player/transcript-status/{episode_id}` every 5 seconds
-5. When status is `done`, the ⚗️ Distill button unlocks
-
-Transcription runs on CPU. With the `base` model, a 1-hour podcast takes roughly 15-25 minutes — typically finishing before you're halfway through the episode.
-
-### Model trade-offs
-
-| Model | Speed (CPU) | Accuracy | Best for |
-|---|---|---|---|
-| `base` | Fastest | Good | English podcasts (default) |
-| `small` | Fast | Better | Accents, multilingual |
-| `medium` | Moderate | Very good | High accuracy |
-| `large-v3` | Slow | Best | Maximum quality |
-
-Set via `WHISPER_MODEL` in `.env`.
+- [Zustand](https://zustand-demo.pmnd.rs/) — queue state
 
 ---
 
 ## How AI Works
 
-DistillPod calls the `claude` CLI as a subprocess:
+All AI features call the Claude CLI as a subprocess:
 
 ```python
 result = subprocess.run(
@@ -161,7 +122,53 @@ npm install -g @anthropic-ai/claude-code
 claude login
 ```
 
-That's it. Every distillation and recommendation runs through your existing subscription.
+### AI features summary
+
+| Feature | Trigger |
+|---|---|
+| Distillation (quote + insight) | User taps ⚗️ while listening |
+| Ad detection + audio cut | After transcription completes |
+| Chapter generation + summary | Daily sync or manual script run |
+| Episode chat | User opens chat or sends message |
+| Deep research report | User triggers from a distillation |
+| Podcast suggestions | Daily cron at 09:00 BRT |
+
+---
+
+## Authentication
+
+Google OAuth2, server-side, cookie-based session (30-day HS256 JWT). Access is restricted to an email allowlist configured in `.env`.
+
+```
+GET  /auth/google           → redirect to Google consent
+GET  /auth/google/callback  → exchange code → set session cookie
+GET  /auth/me               → current user
+POST /auth/logout           → clear cookie
+```
+
+---
+
+## How Transcription Works
+
+When you tap Play:
+
+1. `POST /player/play` triggers a background download + transcription task
+2. The episode MP3 is downloaded to `/media/` (streaming, skips if cached)
+3. faster-whisper transcribes with `word_timestamps=True` (CPU, `medium` model by default)
+4. Word-level timestamps saved to `transcripts` table
+5. Ad detection runs non-fatally after transcription
+6. The ⚗️ Distill button unlocks when `transcript_status = done`
+
+### Model trade-offs
+
+| Model | Speed (CPU) | Accuracy |
+|---|---|---|
+| `base` | Fastest | Good |
+| `small` | Fast | Better |
+| `medium` | Moderate | Very good (default) |
+| `large-v3` | Slow | Best |
+
+Set via `WHISPER_MODEL` in `.env`.
 
 ---
 
@@ -169,10 +176,8 @@ That's it. Every distillation and recommendation runs through your existing subs
 
 - Python 3.10+
 - Node.js 18+
-- `pip`
-- A machine with a few GB of RAM (faster-whisper `base` model uses ~500MB)
-
-For production: a Linux VPS (tested on Ubuntu 22.04).
+- ffmpeg (for ad-free audio generation)
+- A VPS with a few GB of RAM (faster-whisper `medium` uses ~1.5GB)
 
 ---
 
@@ -191,24 +196,33 @@ cd distillpod
 cp .env.example .env
 ```
 
-Edit `.env`:
+Key settings in `backend/.env`:
 
 ```env
-# Optional: Podcast Index for richer metadata (iTunes Search API needs no key)
-PODCAST_INDEX_API_KEY=your_key_here
-PODCAST_INDEX_API_SECRET=your_secret_here
+# Google OAuth (required)
+GOOGLE_CLIENT_ID=...
+GOOGLE_CLIENT_SECRET=...
+ALLOWED_EMAILS=you@gmail.com
+SESSION_SECRET=change-me
 
-# AI distillations use Claude CLI (claude --print) — no API key needed
-# Requires: claude CLI installed + authenticated via `claude login`
+# Optional: Podcast Index for richer metadata
+PODCAST_INDEX_API_KEY=...
+PODCAST_INDEX_SECRET=...
 
-# Whisper model: base | small | medium | large-v3
-WHISPER_MODEL=base
+# Optional: Tavily for research reports
+TAVILY_API_KEY=...
 
-# Distillation context window in seconds (default 60)
-GIST_CONTEXT_SECONDS=60
+# Optional: Telegram notifications
+TELEGRAM_BOT_TOKEN=...
+TELEGRAM_CHAT_ID=...
 
-# Media storage path
-MEDIA_DIR=../media
+# Whisper model: base | small | medium | large-v3 (default: medium)
+WHISPER_MODEL=medium
+
+# Storage (defaults work out of the box)
+MEDIA_DIR=/root/distillpod/media
+REPORTS_DIR=/root/distillpod/reports
+PUBLIC_URL=https://your-domain.duckdns.org
 ```
 
 ### 3. Backend
@@ -235,7 +249,7 @@ npm install
 npm run build   # outputs to frontend/dist/
 ```
 
-The FastAPI backend automatically serves `frontend/dist/` at `/` when it exists, so no separate web server is needed.
+FastAPI serves `frontend/dist/` at `/` automatically.
 
 ---
 
@@ -243,11 +257,9 @@ The FastAPI backend automatically serves `frontend/dist/` at `/` when it exists,
 
 ### systemd service
 
-Create `/etc/systemd/system/distillpod.service`:
-
 ```ini
 [Unit]
-Description=DistillPod — self-hosted podcast app
+Description=DistillPod — AI-powered podcast player
 After=network.target
 
 [Service]
@@ -257,92 +269,94 @@ WorkingDirectory=/path/to/distillpod/backend
 ExecStart=/usr/bin/python3 -m uvicorn main:app --host 127.0.0.1 --port 8124
 Restart=always
 RestartSec=5
-EnvironmentFile=/path/to/distillpod/.env
+EnvironmentFile=/path/to/distillpod/backend/.env
 
 [Install]
 WantedBy=multi-user.target
 ```
 
-```bash
-systemctl daemon-reload
-systemctl enable distillpod
-systemctl start distillpod
-```
+### Reverse proxy (Apache)
 
-### Firewall
-
-DistillPod binds to `127.0.0.1` by default — not accessible from the outside. Two options for remote access:
-
-**Option A — SSH tunnel (most secure):**
-```bash
-ssh -L 8124:127.0.0.1:8124 user@your-vps
-# Then open http://localhost:8124 on your local machine
-```
-
-**Option B — IP allowlist (convenient for mobile):**
-```bash
-ufw allow from YOUR.IP.ADDRESS to any port 8124 proto tcp
-# Change backend to bind to 0.0.0.0 in the service ExecStart
+```apache
+ProxyPreserveHost On
+ProxyPass / http://127.0.0.1:8124/
+ProxyPassReverse / http://127.0.0.1:8124/
 ```
 
 ---
 
-## App Tour
+## Scheduled Jobs
 
-### Home — Latest Episodes
-Unified feed of the most recent episodes across all subscribed podcasts, newest first (up to 50). Each card shows cover art, podcast name, episode title, relative date, duration, and a distillation count badge if you have any.
+Two daily cron jobs run as background scripts:
 
-### Search
-Type a podcast name and press Search or Enter. Uses the iTunes Search API — no key needed. Subscribe with one tap.
+| Job | Schedule | Script | What it does |
+|---|---|---|---|
+| `distillpod-daily-sync` | 03:00 BRT | `scripts/daily-sync.py` | RSS fetch → download → transcribe → ad detection → chapterization |
+| `distillpod-suggest` | 09:00 BRT | `scripts/suggest-podcasts.py` | Claude generates queries → iTunes search → 4 suggestions stored |
 
-When the search box is empty, a **🤖 Suggested for you** section appears with up to 4 daily AI recommendations. These are generated overnight by a background cron job (see [Podcast Recommendations](#podcast-recommendations)) and ranked by relevance to your subscriptions. Tap a card to subscribe, or dismiss suggestions you're not interested in — they won't reappear.
-
-### Library
-Your subscribed podcasts. Tap into any podcast for its episode list with transcript status badges (green = done, yellow = processing, gray = none). Refresh RSS or unsubscribe per podcast.
-
-### Player
-- Episode header with cover art and title
-- Transcript status indicator (pulsing while transcribing, green when done)
-- Native `<audio>` player with full browser controls (seek, speed, etc.)
-- **⚗️ Distill button** — disabled until transcript is ready; tap at any moment to capture the last 60 seconds and get a Claude-powered quote and insight
-- All distillations for this episode listed below the player
-
-### Distillations
-All your distillations, grouped by episode. Each group shows cover art, podcast and episode title, distillation count, date of last distillation, and a preview of the first one. Tap to see all with copy and delete per entry. ▶ jumps back to the player.
-
----
-
-## Caching
-
-### Backend (SQLite)
-Episodes are stored after the first RSS fetch. Subsequent loads read from the DB — fast and offline-friendly. Use the ↻ button to force a fresh RSS fetch.
-
-### Frontend (localStorage)
-Home feed and episode lists are cached with a 30-minute TTL using stale-while-revalidate:
-
-- **Cache hit** — data renders instantly, fresh fetch runs silently in background
-- **Cache miss** — skeleton loaders shown, data rendered on arrival
-- **Manual refresh** — ↻ button forces fresh data immediately
+The daily sync pipeline per subscription:
+1. Reset stuck `processing` episodes
+2. Fetch latest 5 RSS episodes
+3. Download recent episodes (≤48h old)
+4. Transcribe with faster-whisper
+5. Detect + remove ads (non-fatal)
+6. Generate chapters + episode summary
+7. Telegram alert on errors
 
 ---
 
 ## API Reference
 
+### Auth
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/auth/google` | Redirect to Google OAuth |
+| `GET` | `/auth/google/callback` | OAuth callback, sets session cookie |
+| `GET` | `/auth/me` | Current user |
+| `POST` | `/auth/logout` | Clear session |
+
+### Podcasts
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/podcasts/search?q=` | Search podcasts (iTunes API) |
 | `GET` | `/podcasts/subscriptions` | List subscriptions |
-| `POST` | `/podcasts/subscriptions/{id}?feed_url=&title=` | Subscribe |
+| `POST` | `/podcasts/subscriptions/{id}` | Subscribe |
 | `DELETE` | `/podcasts/subscriptions/{id}` | Unsubscribe |
-| `GET` | `/podcasts/{id}/episodes?refresh=` | List episodes |
-| `POST` | `/player/play` | Trigger download + transcription |
-| `GET` | `/player/audio/{episode_id}` | Stream MP3 (Range-request capable) |
-| `GET` | `/player/transcript-status/{episode_id}` | Poll transcription progress |
-| `GET` | `/podcasts/suggestions` | List undismissed podcast suggestions |
+| `GET` | `/podcasts/feed` | Home feed (50 episodes) |
+| `GET` | `/podcasts/{id}/episodes` | Episodes for a podcast |
+| `GET` | `/podcasts/suggestions` | Undismissed AI suggestions |
 | `POST` | `/podcasts/suggestions/{id}/dismiss` | Dismiss a suggestion |
-| `POST` | `/gists/` | Create an AI distillation at current playback position |
-| `GET` | `/gists/?episode_id=` | List distillations (optionally filtered by episode) |
-| `DELETE` | `/gists/{id}` | Delete a distillation |
+
+### Player
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/player/play` | Trigger download + transcription |
+| `GET` | `/player/episode/{id}` | Episode metadata |
+| `GET` | `/player/audio/{id}` | Stream original MP3 |
+| `GET` | `/player/audio-adfree/{id}` | Stream ad-free MP3 |
+| `GET` | `/player/transcript-status/{id}` | Poll transcription progress |
+| `GET` | `/player/adfree-status/{id}` | Check ad-free availability |
+| `GET` | `/player/chapters/{id}` | Chapters + episode summary |
+
+### Gists (Distillations)
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/gists/` | Create distillation at current position |
+| `GET` | `/gists/?episode_id=` | List distillations |
+| `DELETE` | `/gists/{id}` | Delete distillation |
+
+### Chat
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/chat/{episode_id}` | Conversation history |
+| `POST` | `/chat/{episode_id}/init` | Initialize chat (AI summary + invitation) |
+| `POST` | `/chat/{episode_id}/message` | Send message, get reply |
+
+### Research
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/research/{gist_id}` | Trigger research report |
+| `GET` | `/research/{gist_id}` | Poll status + report URL |
 
 ---
 
@@ -350,87 +364,34 @@ Home feed and episode lists are cached with a 30-minute TTL using stale-while-re
 
 | Path | Contents |
 |---|---|
-| `distillpod.db` | SQLite database (subscriptions, episodes, transcripts, distillations, suggestions) |
+| `distillpod.db` | SQLite — subscriptions, episodes, transcripts, gists, chats, chapters, suggestions, research |
 | `media/` | Downloaded episode MP3s (named by MD5 of episode ID) |
-
-Media files accumulate over time. Cleanup is currently manual — a future improvement would be an LRU cache with a configurable size limit.
+| `media/*_adfree.mp3` | Ad-free cuts generated by ffmpeg |
+| `reports/` | HTML research reports |
 
 ---
 
 ## Testing
 
-DistillPod has a backend test suite covering the API layer and key script logic.
-
-### Backend tests (pytest)
+### Backend (pytest)
 
 ```bash
 cd /root/distillpod
 python3 -m pytest tests/ -v
 ```
 
-24 tests across two files:
+Tests run against an in-memory SQLite DB. Auth bypassed via test session cookie.
 
-| File | What it covers |
-|---|---|
-| `tests/test_api.py` | `GET /podcasts/feed` (distill counts, metadata, no description field), suggestions endpoints (list, dismiss, unknown ID), subscriptions list, auth middleware (browser → 302, API client → 401) |
-| `tests/test_suggest_podcasts.py` | `claude()` subprocess wrapper (JSON output, markdown fence stripping, error handling), deduplication filtering (subscribed feeds excluded, dismissed suggestions excluded, missing feed URLs skipped) |
-
-Tests run against an in-memory SQLite database seeded in `tests/conftest.py` — no production DB is touched. Auth is bypassed via a test session cookie injected by the `client` fixture.
-
-### Dependencies
+### E2E (Playwright)
 
 ```bash
-pip install pytest pytest-asyncio httpx
+cd frontend
+npx playwright test
 ```
 
-Already listed in `backend/requirements.txt`.
+Mobile viewport (390×844), Chromium. Requires `TEST_MODE=true` in `.env` for auth bypass.
 
----
-
-## Podcast Recommendations
-
-DistillPod generates daily podcast suggestions tailored to your library, surfaced in the Search tab when no query is typed.
-
-### How it works
-
-A background script (`scripts/suggest-podcasts.py`) runs once a day via cron:
-
-1. **Reads your context** — fetches your subscriptions and the last 8 episode titles per show from the SQLite DB
-2. **First Claude Code CLI call — query generation** — passes the context to the Claude Code CLI and asks for 4 iTunes search queries, each targeting a different angle (safety, engineering, research, a wildcard).
-3. **Searches iTunes** — runs each query against the iTunes Search API and collects candidate shows
-4. **Deduplicates** — filters out shows already subscribed, already suggested (including dismissed), or missing a feed URL
-5. **Second Claude Code CLI call — reason writing** — passes the real show metadata (title, author, description) back to the Claude Code CLI and gets a ≤12 word personalised reason per pick.
-6. **Stores up to 4 suggestions** in the `suggestions` table
-
-The frontend reads `GET /podcasts/suggestions` on Search mount and renders the results as interactive cards. Tapping a card subscribes immediately; tapping "Not interested" calls `POST /podcasts/suggestions/{id}/dismiss` and removes the card optimistically — dismissed suggestions are excluded from future runs.
-
-### Running the script manually
-
-```bash
-cd /root/distillpod
-python3 scripts/suggest-podcasts.py
-```
-
-### Scheduling
-
-The script is designed to run as a daily cron job. Example (3 AM UTC):
-
-```cron
-0 3 * * * cd /root/distillpod && python3 scripts/suggest-podcasts.py >> logs/suggest.log 2>&1
-```
-
-Both Claude Code CLI calls go through the same `claude --print` subprocess used for distillations. No API key, no per-call billing.
-
----
-
-## Future Ideas
-
-- **Full-text search** across distillations and transcripts (SQLite FTS5)
-- **Auto-sync** — poll RSS feeds on a schedule and transcribe new episodes automatically
-- **Export** distillations to Markdown, Notion, or Obsidian
-- **Speaker diarization** (pyannote.audio) — know who said what
-- **Chapter navigation** from faster-whisper segments
-- **Progressive transcription** — stream words as they come in
+Test files: navigation, home feed, search, library, player (fullscreen, gists, chapters, ad-free, chat), gists library, caching, SPA routing.
 
 ---
 
