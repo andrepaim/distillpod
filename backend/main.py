@@ -22,7 +22,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         settings.frontend_origin,
-        "https://distillpod.duckdns.org",
+        settings.public_url,
         "http://localhost:8124",
         "http://127.0.0.1:8124",
     ],
@@ -42,7 +42,7 @@ app.include_router(research_router)
 # Research reports — explicit route before catch-all SPA
 @app.get("/reports/{filename}")
 async def serve_report(filename: str):
-    report_path = Path("/root/distillpod/reports") / filename
+    report_path = settings.reports_dir / filename
     if report_path.exists() and report_path.suffix == ".html":
         return FileResponse(str(report_path), media_type="text/html")
     from fastapi import HTTPException
@@ -53,7 +53,7 @@ async def serve_report(filename: str):
 async def startup():
     await init_db()
     settings.media_dir.mkdir(parents=True, exist_ok=True)
-    os.makedirs("/root/distillpod/reports", exist_ok=True)
+    settings.reports_dir.mkdir(parents=True, exist_ok=True)
 
 
 @app.get("/proxy/image")

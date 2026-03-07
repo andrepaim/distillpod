@@ -9,13 +9,15 @@ from pathlib import Path
 import markdown
 import requests
 
-CLAUDE_BIN = "/root/.local/bin/claude"
+from config import settings
+
+CLAUDE_BIN = settings.claude
 TAVILY_KEY = os.environ.get("TAVILY_API_KEY", "")
-TG_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-TG_CHAT = os.environ.get("TG_CHAT_ID", "")
-REPORTS_DIR = "/root/distillpod/reports"
-PUBLIC_BASE = "https://distillpod.duckdns.org/reports"
-DB_PATH = "/root/distillpod/distillpod.db"
+TG_TOKEN = settings.telegram_bot_token
+TG_CHAT = settings.telegram_chat_id
+REPORTS_DIR = str(settings.reports_dir)
+PUBLIC_BASE = f"{settings.public_url}/reports"
+DB_PATH = str(settings.db_path)
 
 
 def _clean_text(text: str) -> str:
