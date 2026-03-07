@@ -1,6 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useParams, useLocation, useNavigate } from "react-router-dom";
-import { createGist, listGists, getTranscriptStatus, getAdFreeStatus, adFreeAudioUrl, Gist, Episode, AdFreeStatus } from "../api/client";
+import {
+  getEpisode, getChapters, listGists, createGist,
+  type Gist, type ChaptersResult,
+  type Episode,
+} from "../api/client";
 import { useAudio, readProgress, type PlayableEpisode } from "../context/AudioContext";
 import { useQueue, type QueueItem } from "../stores/queueStore";
 
@@ -8,7 +12,6 @@ function stripHtml(html: string): string {
   return html.replace(/<[^>]*>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&nbsp;/g, " ").replace(/&#39;/g, "'").replace(/&quot;/g, '"').trim();
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
 function fmtTime(secs: number) {
   if (!isFinite(secs) || isNaN(secs)) return "0:00";
   const m = Math.floor(secs / 60);
@@ -16,157 +19,40 @@ function fmtTime(secs: number) {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
-const SPEEDS = [1, 1.5, 2, 0.5];
-
-// ─── Transcript badge ─────────────────────────────────────────────────────────
-function TranscriptBadge({ status }: { status: string }) {
-  if (status === "done") return (
-    <span className="inline-flex items-center gap-1 text-xs bg-green-900 text-green-300 px-2 py-0.5 rounded-full">
-      ✓ Transcript ready
-    </span>
-  );
-  if (status === "error") return (
-    <span className="inline-flex items-center gap-1 text-xs bg-red-900 text-red-300 px-2 py-0.5 rounded-full">
-      ✗ Transcript error
-    </span>
-  );
-  if (status === "processing" || status === "queued") return (
-    <span className="inline-flex items-center gap-2 text-xs bg-yellow-900 text-yellow-300 px-2 py-0.5 rounded-full">
-      <span className="w-2 h-2 bg-yellow-400 rounded-full animate-pulse inline-block" />
-      Transcribing…
-    </span>
-  );
-  return (
-    <span className="inline-flex items-center gap-1 text-xs bg-gray-800 text-gray-400 px-2 py-0.5 rounded-full">
-      No transcript yet
-    </span>
-  );
+function fmtDuration(secs?: number) {
+  if (!secs) return null;
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m`;
 }
 
-// ─── Player widget ────────────────────────────────────────────────────────────
-function PlayerWidget({
-  gists, transcriptStatus, onGist, gisting, gistFlash,
-}: {
-  gists: Gist[];
-  transcriptStatus: string;
-  onGist: () => void;
-  gisting: boolean;
-  gistFlash: boolean;
-}) {
-  const { audioRef, isPlaying, currentTime, duration, togglePlay, skipBy, setRate } = useAudio();
-  const [speedIdx, setSpeedIdx] = useState(0);
+function fmtDate(iso?: string) {
+  if (!iso) return null;
+  try {
+    return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  } catch { return null; }
+}
 
-  const cycleSpeed = () => {
-    const next = (speedIdx + 1) % SPEEDS.length;
-    setSpeedIdx(next);
-    setRate(SPEEDS[next]);
-  };
-
-  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const audio = audioRef.current;
-    if (audio) audio.currentTime = Number(e.target.value);
-  };
-
-  const progress   = duration > 0 ? (currentTime / duration) * 100 : 0;
-  const remaining  = duration - currentTime;
-  const speed      = SPEEDS[speedIdx];
-
+// ─── Episode description (collapsible) ───────────────────────────────────────
+function EpisodeDescription({ html }: { html: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const plainLen = html.replace(/<[^>]*>/g, "").length;
+  const isLong = plainLen > 300;
   return (
-    <div className="bg-gray-900 rounded-2xl p-5 space-y-4">
-
-      {/* Progress bar + gist markers */}
-      <div className="space-y-1">
-        <div className="relative h-1.5">
-          <div className="absolute inset-0 rounded-full bg-gray-700" />
-          <div
-            className="absolute left-0 top-0 h-full rounded-full bg-indigo-500 pointer-events-none"
-            style={{ width: `${progress}%` }}
-          />
-          {duration > 0 && gists.map(s => (
-            <div
-              key={s.id}
-              className="absolute top-1/2 -translate-y-1/2 w-0.5 h-3 bg-indigo-300 rounded-full pointer-events-none opacity-80"
-              style={{ left: `${(s.start_seconds / duration) * 100}%` }}
-            />
-          ))}
-          <input
-            type="range" min={0} max={duration || 100} step={1} value={currentTime}
-            onChange={handleSeek}
-            className="absolute inset-0 w-full opacity-0 cursor-pointer h-full"
-          />
-        </div>
-        <div className="flex justify-between text-xs text-gray-400 font-mono">
-          <span>{fmtTime(currentTime)}</span>
-          <span>-{fmtTime(remaining)}</span>
-        </div>
-      </div>
-
-      {/* Controls */}
-      <div className="flex items-center justify-between px-2">
+    <div className="bg-gray-900 rounded-2xl px-4 py-3 text-[11px] text-gray-400 leading-relaxed">
+      <div
+        className={`prose prose-invert max-w-none [&_*]:text-[11px] [&_*]:leading-relaxed ${!expanded && isLong ? "line-clamp-6" : ""}`}
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
+      {isLong && (
         <button
-          onClick={cycleSpeed}
-          className="w-10 h-10 flex items-center justify-center text-gray-300 hover:text-white text-sm font-bold rounded-full hover:bg-gray-800 transition-colors"
+          onClick={() => setExpanded(e => !e)}
+          className="mt-2 text-indigo-400 hover:text-indigo-300 font-medium"
         >
-          {speed === 1 ? "1x" : `${speed}x`}
+          {expanded ? "Show less" : "Show more"}
         </button>
-
-        <button
-          onClick={() => skipBy(-10)}
-          className="w-12 h-12 flex items-center justify-center text-gray-300 hover:text-white rounded-full hover:bg-gray-800 transition-colors"
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="w-8 h-8">
-            <path d="M2.5 12a9.5 9.5 0 1 1 2.3 6.2" /><path d="M2.5 7v5h5" />
-            <text x="7.5" y="15" fontSize="6" fill="currentColor" stroke="none" fontWeight="bold">10</text>
-          </svg>
-        </button>
-
-        <button
-          onClick={togglePlay}
-          className="w-16 h-16 bg-indigo-600 hover:bg-indigo-500 active:scale-95 rounded-full flex items-center justify-center transition-all shadow-lg"
-        >
-          {isPlaying ? (
-            <svg viewBox="0 0 24 24" fill="white" className="w-7 h-7">
-              <rect x="6" y="4" width="4" height="16" rx="1" />
-              <rect x="14" y="4" width="4" height="16" rx="1" />
-            </svg>
-          ) : (
-            <svg viewBox="0 0 24 24" fill="white" className="w-7 h-7 translate-x-0.5">
-              <polygon points="5 3 19 12 5 21 5 3" />
-            </svg>
-          )}
-        </button>
-
-        <button
-          onClick={() => skipBy(30)}
-          className="w-12 h-12 flex items-center justify-center text-gray-300 hover:text-white rounded-full hover:bg-gray-800 transition-colors"
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="w-8 h-8">
-            <path d="M21.5 12a9.5 9.5 0 1 0-2.3 6.2" /><path d="M21.5 7v5h-5" />
-            <text x="6.5" y="15" fontSize="6" fill="currentColor" stroke="none" fontWeight="bold">30</text>
-          </svg>
-        </button>
-
-      </div>
-
-      {/* Gist button */}
-      <button
-        onClick={onGist}
-        disabled={gisting || transcriptStatus !== "done"}
-        className={`w-full py-3.5 rounded-xl font-semibold text-base transition-all ${
-          gistFlash
-            ? "bg-green-600 scale-95"
-            : transcriptStatus === "done"
-              ? "bg-indigo-600 hover:bg-indigo-500 active:scale-95"
-              : "bg-gray-800 text-gray-500 cursor-not-allowed"
-        }`}
-      >
-        {gisting
-          ? "Summarising…"
-          : transcriptStatus === "done"
-            ? "⚗️  Distill this moment"
-            : "⏳  Waiting for transcript…"}
-      </button>
-
+      )}
     </div>
   );
 }
@@ -174,7 +60,6 @@ function PlayerWidget({
 // ─── Gist card ────────────────────────────────────────────────────────────────
 function parseGistSummary(s: string | undefined): { quote?: string; insight?: string } | null {
   if (!s) return null;
-  // Strip markdown code fences: ```json ... ``` or ``` ... ```
   const stripped = s.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "").trim();
   try {
     const p = JSON.parse(stripped);
@@ -183,15 +68,11 @@ function parseGistSummary(s: string | undefined): { quote?: string; insight?: st
   return { insight: s };
 }
 
-interface GistCardProps {
-  gist: Gist;
-  episodeTitle?: string;
-  podcastTitle?: string;
-}
-
-function GistCard({ gist, episodeTitle, podcastTitle }: GistCardProps) {
-  const [copied, setCopied]   = useState(false);
-  const [shared, setShared]   = useState(false);
+function GistCard({ gist, episodeTitle, podcastTitle }: {
+  gist: Gist; episodeTitle?: string; podcastTitle?: string;
+}) {
+  const [copied, setCopied] = useState(false);
+  const [shared, setShared] = useState(false);
   const ai = parseGistSummary(gist.summary);
 
   const buildShareText = () => {
@@ -200,11 +81,10 @@ function GistCard({ gist, episodeTitle, podcastTitle }: GistCardProps) {
     if (ai?.insight) lines.push(`💡 ${ai.insight}`);
     else if (!ai)    lines.push(gist.text);
     lines.push("");
-    if (episodeTitle || podcastTitle) {
+    if (episodeTitle || podcastTitle)
       lines.push(`🎙️ ${[episodeTitle, podcastTitle].filter(Boolean).join(" — ")}`);
-      lines.push(`⏱ ${fmtTime(gist.start_seconds)} → ${fmtTime(gist.end_seconds)}`);
-      lines.push("");
-    }
+    lines.push(`⏱ ${fmtTime(gist.start_seconds)} → ${fmtTime(gist.end_seconds)}`);
+    lines.push("");
     lines.push("⚗️ Distilled with DistillPod");
     lines.push(`https://distillpod.duckdns.org/player/${gist.episode_id}`);
     lines.push("");
@@ -227,7 +107,6 @@ function GistCard({ gist, episodeTitle, podcastTitle }: GistCardProps) {
         setTimeout(() => setShared(false), 2000);
       } catch (e: any) {
         if (e?.name !== "AbortError") {
-          // User cancelled — silently ignore. Any other error → fall back to copy
           await navigator.clipboard.writeText(text);
           setCopied(true);
           setTimeout(() => setCopied(false), 2000);
@@ -241,19 +120,19 @@ function GistCard({ gist, episodeTitle, podcastTitle }: GistCardProps) {
   };
 
   return (
-    <div className="bg-gray-900 rounded-xl p-4 space-y-2">
+    <div className="bg-gray-900 rounded-2xl p-4 space-y-2">
       <div className="flex items-center justify-between">
         <span className="text-xs text-gray-500 font-mono">
           {fmtTime(gist.start_seconds)} → {fmtTime(gist.end_seconds)}
         </span>
         <div className="flex gap-1">
-          <button onClick={copy} className="text-xs font-semibold text-gray-300 hover:text-white bg-gray-700 hover:bg-gray-600 active:bg-gray-500 px-3 py-1 rounded-full transition-colors">
+          <button onClick={copy}
+            className="text-xs font-semibold text-gray-300 hover:text-white bg-gray-700 hover:bg-gray-600 active:bg-gray-500 px-3 py-1 rounded-full transition-colors">
             {copied ? "✓ Copied" : "Copy"}
           </button>
-          <button onClick={share} className="flex items-center gap-1 text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white px-3 py-1 rounded-full transition-colors">
-            {shared ? (
-              <span>✓ Shared</span>
-            ) : (
+          <button onClick={share}
+            className="flex items-center gap-1 text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white px-3 py-1 rounded-full transition-colors">
+            {shared ? <span>✓ Shared</span> : (
               <>
                 <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
                   <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" />
@@ -266,284 +145,439 @@ function GistCard({ gist, episodeTitle, podcastTitle }: GistCardProps) {
           </button>
         </div>
       </div>
-      {ai ? (
-        <>
-          {ai.quote && <p className="text-sm italic text-gray-100 border-l-2 border-indigo-500 pl-3">"{ai.quote}"</p>}
-          {ai.insight && <p className="text-indigo-300 text-sm leading-relaxed">{ai.insight}</p>}
-        </>
-      ) : (
-        <p className="text-sm leading-relaxed text-gray-100">{gist.text}</p>
-      )}
-    </div>
-  );
-}
-
-// ─── Player page ──────────────────────────────────────────────────────────────
-function EpisodeDescription({ html }: { html: string }) {
-  const [expanded, setExpanded] = useState(false);
-  // Estimate "short" by plain text length
-  const plainLen = html.replace(/<[^>]*>/g, "").length;
-  const isLong = plainLen > 300;
-  return (
-    <div className="bg-gray-900 rounded-xl px-4 py-3 text-[11px] text-gray-400 leading-relaxed">
-      <div
-        className={`prose prose-invert max-w-none [&_*]:text-[11px] [&_*]:leading-relaxed ${!expanded && isLong ? "line-clamp-6" : ""}`}
-        dangerouslySetInnerHTML={{ __html: html }}
-      />
-      {isLong && (
-        <button
-          onClick={() => setExpanded(e => !e)}
-          className="mt-1.5 text-indigo-400 hover:text-indigo-300 font-medium"
-        >
-          {expanded ? "Show less" : "Show more"}
-        </button>
-      )}
-    </div>
-  );
-}
-
-export default function Player() {
-  const { episodeId } = useParams<{ episodeId: string }>();
-  const location      = useLocation();
-  const navigate      = useNavigate();
-  const routeState    = location.state as (PlayableEpisode & { seekTo?: number }) | null;
-
-  const { loadEpisode, audioReady, audioRef, episode } = useAudio();
-
-  // seekTo comes only from current navigation state (gist → player link)
-  const seekTo = routeState?.seekTo;
-
-  const [transcriptStatus, setTranscriptStatus] = useState("none");
-  const [gists,    setGists]    = useState<Gist[]>([]);
-  const [gisting,    setGisting]    = useState(false);
-  const [gistFlash,  setGistFlash]  = useState(false);
-  const [resumedFrom,setResumedFrom]= useState<number | null>(null);
-  const [error,      setError]      = useState("");
-  const [queueFeedback, setQueueFeedback] = useState<"next" | "end" | null>(null);
-  const [adFreeStatus, setAdFreeStatus] = useState<AdFreeStatus | null>(null);
-  const [useAdFree, setUseAdFree] = useState(false);
-  const { addNext, addToEnd } = useQueue();
-
-  // Display episode: prefer what's already in context (avoids blank header flash on same episode)
-  const displayEpisode = episode?.id === episodeId ? episode : routeState;
-
-  // Load episode into audio context
-  useEffect(() => {
-    if (!episodeId) return;
-    const ep: PlayableEpisode | null = routeState
-      ? { ...routeState, podcast_image: routeState.podcast_image, podcast_title: routeState.podcast_title }
-      : null;
-
-    // If no explicit seekTo from nav state, check for saved progress
-    let resolvedSeekTo = seekTo;
-    if (resolvedSeekTo == null) {
-      const saved = readProgress()[episodeId];
-      if (saved && saved.currentTime > 10) {
-        resolvedSeekTo = saved.currentTime;
-        setResumedFrom(resolvedSeekTo);
-      }
-    }
-
-    loadEpisode(episodeId, ep, resolvedSeekTo).catch(e => setError(e.message));
-    listGists(episodeId).then(setGists);
-  }, [episodeId]); // intentionally only re-run on episodeId change
-
-  // Poll transcript status
-  useEffect(() => {
-    if (!episodeId || transcriptStatus === "done" || transcriptStatus === "error") return;
-    const timer = setInterval(async () => {
-      const { status } = await getTranscriptStatus(episodeId);
-      setTranscriptStatus(status);
-      if (status === "done" || status === "error") clearInterval(timer);
-    }, 5000);
-    return () => clearInterval(timer);
-  }, [episodeId, transcriptStatus]);
-
-  // Also fetch transcript status immediately when episode loads
-  useEffect(() => {
-    if (!episodeId) return;
-    getTranscriptStatus(episodeId).then(({ status }) => setTranscriptStatus(status));
-  }, [episodeId]);
-
-  // Fetch ad-free status
-  useEffect(() => {
-    if (!episodeId) return;
-    getAdFreeStatus(episodeId).then(setAdFreeStatus).catch(() => {});
-  }, [episodeId]);
-
-  // Switch audio source when ad-free toggle changes
-  useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio || !episodeId || !episode) return;
-    const newSrc = useAdFree && adFreeStatus?.has_adfree
-      ? adFreeAudioUrl(episodeId)
-      : `/player/audio/${episodeId}`;
-    if (audio.src.endsWith(newSrc)) return;
-    const wasPlaying = !audio.paused;
-    audio.src = newSrc;
-    audio.load();
-    if (wasPlaying) audio.play().catch(() => {});
-  }, [useAdFree]);
-
-  const handleGist = async () => {
-    if (!audioRef.current || !episodeId) return;
-    setGisting(true);
-    try {
-      const gist = await createGist(episodeId, audioRef.current.currentTime);
-      setGists(prev => [gist, ...prev]);
-      setGistFlash(true);
-      setTimeout(() => setGistFlash(false), 600);
-    } catch (e: any) { setError(e.message); }
-    finally { setGisting(false); }
-  };
-
-  return (
-    <div>
-      {/* ── STICKY: header + player ───────────────────────────────── */}
-      <div className="sticky top-0 z-10 -mx-4 px-4 pb-3 pt-1 bg-gray-950 border-b border-gray-800 space-y-4">
-
-        {/* Episode header */}
-        <div className="flex gap-3 items-start">
-          {displayEpisode?.podcast_image
-            ? <img src={displayEpisode.podcast_image} className="w-14 h-14 rounded-xl object-cover flex-shrink-0" alt="" />
-            : <div className="w-14 h-14 rounded-xl bg-gray-800 flex-shrink-0 animate-pulse" />
-          }
-          <div className="min-w-0 flex-1">
-            {displayEpisode?.title
-              ? <h1 className="text-sm font-bold leading-snug line-clamp-3">{displayEpisode.title}</h1>
-              : <div className="h-4 bg-gray-800 rounded animate-pulse w-3/4" />
-            }
-            {seekTo != null && (
-              <div className="text-xs text-indigo-400 mt-1">▶ From {fmtTime(seekTo)}</div>
-            )}
-            {seekTo == null && resumedFrom != null && (
-              <div className="text-xs text-indigo-400 mt-1">⏩ Resuming from {fmtTime(resumedFrom)}</div>
-            )}
-            <div className="mt-1.5"><TranscriptBadge status={transcriptStatus} /></div>
-          </div>
-        </div>
-
-        {error && <div className="bg-red-900 text-red-300 rounded-xl p-3 text-sm">{error}</div>}
-
-        {/* Player widget */}
-        {audioReady && episodeId && episode?.id === episodeId && (
+      <div className="selectable">
+        {ai ? (
           <>
-            <PlayerWidget
-              gists={gists}
-              transcriptStatus={transcriptStatus}
-              onGist={handleGist}
-              gisting={gisting}
-              gistFlash={gistFlash}
-            />
-            {adFreeStatus?.has_adfree && (
-              <div className='flex gap-2 items-center justify-center mt-2'>
-                <span className='text-xs text-gray-400'>{adFreeStatus.ads_count} ad{adFreeStatus.ads_count !== 1 ? 's' : ''} detected</span>
-                <button
-                  onClick={() => setUseAdFree(false)}
-                  className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${!useAdFree ? 'text-gray-900' : 'bg-gray-700 text-gray-300'}`}
-                  style={!useAdFree ? {background: '#FFD700'} : {}}
-                >Original</button>
-                <button
-                  onClick={() => setUseAdFree(true)}
-                  className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${useAdFree ? 'text-gray-900' : 'bg-gray-700 text-gray-300'}`}
-                  style={useAdFree ? {background: '#FFD700'} : {}}
-                >Ad-free</button>
-              </div>
-            )}
-            {transcriptStatus === "done" && (
-              <button
-                onClick={() => navigate(`/player/${episodeId}/chat`, { state: { episodeTitle: displayEpisode?.title } })}
-                className="w-full py-3 rounded-xl font-semibold text-base bg-gray-800 hover:bg-gray-700 active:scale-95 transition-all flex items-center justify-center gap-2"
-                style={{ color: "#FFD700" }}
-              >
-                <span>💬</span> Chat about this episode
-              </button>
-            )}
-
-            {/* Queue actions */}
-            {displayEpisode && (
-              <div className="flex gap-2">
-                <button
-                  onClick={() => {
-                    const item: QueueItem = {
-                      episodeId: displayEpisode.id,
-                      title: displayEpisode.title,
-                      podcastTitle: displayEpisode.podcast_title || "",
-                      audioUrl: displayEpisode.audio_url,
-                      imageUrl: displayEpisode.podcast_image || displayEpisode.image_url,
-                      durationSeconds: displayEpisode.duration_seconds,
-                    };
-                    addNext(item);
-                    setQueueFeedback("next");
-                    setTimeout(() => setQueueFeedback(null), 1200);
-                  }}
-                  className={`flex-1 py-2.5 rounded-xl font-semibold text-sm transition-all active:scale-95 ${
-                    queueFeedback === "next"
-                      ? "bg-green-600 text-white"
-                      : "bg-gray-800 text-gray-300 hover:bg-gray-700"
-                  }`}
-                >
-                  {queueFeedback === "next" ? "✓ Added!" : "⏭ Play next"}
-                </button>
-                <button
-                  onClick={() => {
-                    const item: QueueItem = {
-                      episodeId: displayEpisode.id,
-                      title: displayEpisode.title,
-                      podcastTitle: displayEpisode.podcast_title || "",
-                      audioUrl: displayEpisode.audio_url,
-                      imageUrl: displayEpisode.podcast_image || displayEpisode.image_url,
-                      durationSeconds: displayEpisode.duration_seconds,
-                    };
-                    addToEnd(item);
-                    setQueueFeedback("end");
-                    setTimeout(() => setQueueFeedback(null), 1200);
-                  }}
-                  className={`flex-1 py-2.5 rounded-xl font-semibold text-sm transition-all active:scale-95 ${
-                    queueFeedback === "end"
-                      ? "bg-green-600 text-white"
-                      : "bg-gray-800 text-gray-300 hover:bg-gray-700"
-                  }`}
-                >
-                  {queueFeedback === "end" ? "✓ Added!" : "+ Add to queue"}
-                </button>
-              </div>
-            )}
+            {ai.quote   && <p className="text-sm italic text-gray-100 border-l-2 border-indigo-500 pl-3 mb-1">"{ai.quote}"</p>}
+            {ai.insight && <p className="text-indigo-300 text-sm leading-relaxed">{ai.insight}</p>}
           </>
-        )}
-
-        {(!audioReady || episode?.id !== episodeId) && !error && (
-          <div className="bg-gray-900 rounded-2xl p-5 flex items-center justify-center h-44">
-            <div className="text-gray-500 text-sm flex items-center gap-2">
-              <span className="w-4 h-4 border-2 border-gray-500 border-t-indigo-400 rounded-full animate-spin inline-block" />
-              Loading episode…
-            </div>
-          </div>
+        ) : (
+          <p className="text-sm leading-relaxed text-gray-100">{gist.text}</p>
         )}
       </div>
+    </div>
+  );
+}
 
-      {/* ── SCROLLABLE: description + gists ──────────────────────── */}
-      <div className="space-y-4 mt-4">
+// ─── Episode page ──────────────────────────────────────────────────────────────
+export default function Player() {
+  const { episodeId }  = useParams<{ episodeId: string }>();
+  const location       = useLocation();
+  const navigate       = useNavigate();
+  const routeState     = location.state as (PlayableEpisode & { seekTo?: number }) | null;
 
-        {/* Episode description */}
-        {displayEpisode?.description && (
-          <EpisodeDescription html={displayEpisode.description} />
+  const {
+    episode, isPlaying, currentTime, duration,
+    audioReady, loadEpisode,
+    playerExpanded, setPlayerExpanded,
+  } = useAudio();
+  const { addNext, addToEnd } = useQueue();
+
+  // Episode metadata for display (may come from routeState, AudioContext, or API)
+  const [episodeInfo, setEpisodeInfo] = useState<PlayableEpisode | null>(routeState || null);
+  const [chaptersData, setChaptersData] = useState<ChaptersResult | null>(null);
+  const [gists, setGists]             = useState<Gist[]>([]);
+  const [chaptersOpen, setChaptersOpen] = useState(false);
+  const [queueFeedback, setQueueFeedback] = useState<"next" | "end" | null>(null);
+  const [loading, setLoading]         = useState(false);
+  const [error, setError]             = useState("");
+
+  // Track previous playerExpanded to detect close → refresh gists
+  const prevExpandedRef = useRef(playerExpanded);
+
+  // The best available episode data for display.
+  // Normalise: when episode comes from getEpisode() directly, it has image_url but not
+  // podcast_image — promote image_url so the hero artwork always renders.
+  const rawDisplay: PlayableEpisode | null = episode?.id === episodeId ? episode : episodeInfo;
+  const displayEpisode: PlayableEpisode | null = rawDisplay
+    ? { ...rawDisplay, podcast_image: rawDisplay.podcast_image ?? rawDisplay.image_url }
+    : null;
+
+  const isThisEpisode = episode?.id === episodeId && audioReady;
+  const isThisPlaying = isThisEpisode && isPlaying;
+
+  // ── Fetch episode metadata if not available ───────────────────────────────
+  useEffect(() => {
+    if (!episodeId) return;
+    if (episodeInfo?.id === episodeId) return;
+    if (episode?.id === episodeId) { setEpisodeInfo(episode); return; }
+    getEpisode(episodeId)
+      .then(ep => setEpisodeInfo(ep as PlayableEpisode))
+      .catch(() => {});
+  }, [episodeId]);
+
+  // ── Fetch chapters + gists ────────────────────────────────────────────────
+  useEffect(() => {
+    if (!episodeId) return;
+    getChapters(episodeId).then(setChaptersData).catch(() => {});
+    listGists(episodeId).then(setGists).catch(() => {});
+  }, [episodeId]);
+
+  // ── Refresh gists when fullscreen player closes (user may have distilled) ─
+  useEffect(() => {
+    if (prevExpandedRef.current && !playerExpanded && episodeId) {
+      listGists(episodeId).then(setGists).catch(() => {});
+    }
+    prevExpandedRef.current = playerExpanded;
+  }, [playerExpanded, episodeId]);
+
+  // ── Play handler ──────────────────────────────────────────────────────────
+  const handlePlay = async () => {
+    if (!episodeId) return;
+    if (!isThisEpisode) {
+      setLoading(true);
+      setError("");
+      try {
+        // nav-state seekTo (e.g. from Gists) takes priority; fall back to saved progress
+        let seekTo: number | undefined = routeState?.seekTo;
+        if (seekTo == null) {
+          const saved = readProgress()[episodeId];
+          if (saved && saved.currentTime > 10) seekTo = saved.currentTime;
+        }
+        await loadEpisode(episodeId, displayEpisode || null, seekTo);
+      } catch (e: any) {
+        setError(e.message);
+        setLoading(false);
+        return;
+      }
+      setLoading(false);
+    }
+    setPlayerExpanded(true);
+  };
+
+  // ── Queue helpers ─────────────────────────────────────────────────────────
+  const makeQueueItem = (): QueueItem | null => {
+    if (!displayEpisode) return null;
+    return {
+      episodeId: displayEpisode.id,
+      title: displayEpisode.title,
+      podcastTitle: displayEpisode.podcast_title || "",
+      audioUrl: displayEpisode.audio_url,
+      imageUrl: displayEpisode.podcast_image || displayEpisode.image_url,
+      durationSeconds: displayEpisode.duration_seconds,
+    };
+  };
+
+  const chapters = chaptersData?.chapters ?? [];
+
+  return (
+    <div className="pb-2">
+      {/* ── Back button ────────────────────────────────────────────────── */}
+      <button
+        onClick={() => navigate(-1)}
+        className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-white transition-colors mb-4"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}
+          strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+          <polyline points="15 18 9 12 15 6" />
+        </svg>
+        Back
+      </button>
+
+      {/* ── Hero: blurred artwork background ───────────────────────────── */}
+      <div className="relative rounded-3xl overflow-hidden mb-5" style={{ minHeight: "220px" }}>
+        {/* Blurred background */}
+        <div className="absolute inset-0">
+          {displayEpisode?.podcast_image ? (
+            <img
+              src={displayEpisode.podcast_image}
+              className="w-full h-full object-cover scale-110"
+              style={{ filter: "blur(40px) brightness(0.3) saturate(1.3)" }}
+              alt=""
+            />
+          ) : (
+            <div className="w-full h-full bg-gradient-to-br from-gray-800 to-gray-900" />
+          )}
+          <div className="absolute inset-0 bg-black/40" />
+        </div>
+
+        {/* Centered artwork */}
+        <div className="relative flex flex-col items-center justify-center py-8 gap-3">
+          {displayEpisode?.podcast_image ? (
+            <img
+              src={displayEpisode.podcast_image}
+              alt=""
+              className="w-32 h-32 rounded-2xl object-cover shadow-2xl ring-1 ring-white/10"
+            />
+          ) : (
+            <div className="w-32 h-32 rounded-2xl bg-gray-700 flex items-center justify-center shadow-2xl">
+              {!displayEpisode
+                ? <span className="w-8 h-8 border-2 border-gray-500 border-t-indigo-400 rounded-full animate-spin inline-block" />
+                : <span className="text-4xl">🎧</span>
+              }
+            </div>
+          )}
+
+          {/* Podcast title */}
+          {displayEpisode?.podcast_title && (
+            <p className="text-xs text-white/50 uppercase tracking-widest font-semibold">
+              {displayEpisode.podcast_title}
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* ── Episode title + meta ────────────────────────────────────────── */}
+      <div className="mb-4 px-1">
+        {displayEpisode?.title ? (
+          <h1 className="text-lg font-bold leading-snug mb-1">{displayEpisode.title}</h1>
+        ) : (
+          <div className="h-5 bg-gray-800 rounded animate-pulse w-3/4 mb-2" />
+        )}
+        <div className="flex items-center gap-2 text-xs text-gray-500">
+          {fmtDuration(displayEpisode?.duration_seconds) && (
+            <span>{fmtDuration(displayEpisode?.duration_seconds)}</span>
+          )}
+          {fmtDate(displayEpisode?.published_at) && (
+            <>
+              {fmtDuration(displayEpisode?.duration_seconds) && <span>·</span>}
+              <span>{fmtDate(displayEpisode?.published_at)}</span>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* ── Error ──────────────────────────────────────────────────────── */}
+      {error && (
+        <div className="bg-red-900/60 border border-red-700/40 text-red-300 rounded-2xl px-4 py-3 text-sm mb-4">
+          {error}
+        </div>
+      )}
+
+      {/* ── Action row ─────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-4 gap-2 mb-4">
+        {/* Play / open player */}
+        <button
+          onClick={handlePlay}
+          disabled={loading}
+          className={`col-span-2 flex items-center justify-center gap-2.5 py-3.5 rounded-2xl font-semibold text-sm transition-all active:scale-95 ${
+            isThisPlaying
+              ? "bg-indigo-600 hover:bg-indigo-500 text-white"
+              : "bg-indigo-600 hover:bg-indigo-500 text-white"
+          }`}
+        >
+          {loading ? (
+            <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin inline-block" />
+          ) : isThisPlaying ? (
+            <>
+              <svg viewBox="0 0 24 24" fill="white" className="w-4 h-4 flex-shrink-0">
+                <rect x="6" y="4" width="4" height="16" rx="1" />
+                <rect x="14" y="4" width="4" height="16" rx="1" />
+              </svg>
+              Now Playing
+            </>
+          ) : isThisEpisode ? (
+            <>
+              <svg viewBox="0 0 24 24" fill="white" className="w-4 h-4 flex-shrink-0 translate-x-0.5">
+                <polygon points="5 3 19 12 5 21 5 3" />
+              </svg>
+              Resume
+            </>
+          ) : (
+            <>
+              <svg viewBox="0 0 24 24" fill="white" className="w-4 h-4 flex-shrink-0 translate-x-0.5">
+                <polygon points="5 3 19 12 5 21 5 3" />
+              </svg>
+              Play
+            </>
+          )}
+        </button>
+
+        {/* Add next */}
+        <button
+          onClick={() => {
+            const item = makeQueueItem();
+            if (!item) return;
+            addNext(item);
+            setQueueFeedback("next");
+            setTimeout(() => setQueueFeedback(null), 1400);
+          }}
+          title="Play next"
+          className={`flex flex-col items-center justify-center gap-1 py-3 rounded-2xl text-xs font-medium transition-all active:scale-95 ${
+            queueFeedback === "next"
+              ? "bg-green-600/20 text-green-400"
+              : "bg-gray-800 hover:bg-gray-700 text-gray-400"
+          }`}
+        >
+          {queueFeedback === "next" ? (
+            <span className="text-base">✓</span>
+          ) : (
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
+              strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+              <polygon points="5 4 15 12 5 20 5 4" />
+              <line x1="19" y1="5" x2="19" y2="19" />
+            </svg>
+          )}
+          <span>{queueFeedback === "next" ? "Added" : "Next"}</span>
+        </button>
+
+        {/* Add to end */}
+        <button
+          onClick={() => {
+            const item = makeQueueItem();
+            if (!item) return;
+            addToEnd(item);
+            setQueueFeedback("end");
+            setTimeout(() => setQueueFeedback(null), 1400);
+          }}
+          title="Add to queue"
+          className={`flex flex-col items-center justify-center gap-1 py-3 rounded-2xl text-xs font-medium transition-all active:scale-95 ${
+            queueFeedback === "end"
+              ? "bg-green-600/20 text-green-400"
+              : "bg-gray-800 hover:bg-gray-700 text-gray-400"
+          }`}
+        >
+          {queueFeedback === "end" ? (
+            <span className="text-base">✓</span>
+          ) : (
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
+              strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+          )}
+          <span>{queueFeedback === "end" ? "Added" : "Queue"}</span>
+        </button>
+      </div>
+
+      {/* Chat button (only when episode is loaded and transcript exists) */}
+      <button
+        onClick={() => navigate(`/player/${episodeId}/chat`, {
+          state: { episodeTitle: displayEpisode?.title }
+        })}
+        className="w-full py-3 rounded-2xl font-semibold text-sm bg-gray-800 hover:bg-gray-700 active:scale-95 transition-all flex items-center justify-center gap-2 mb-4"
+        style={{ color: "#FFD700" }}
+      >
+        <span>💬</span> Chat about this episode
+      </button>
+
+      {/* ── Inline progress (if this episode is active) ─────────────── */}
+      {isThisEpisode && duration > 0 && (
+        <button
+          onClick={() => setPlayerExpanded(true)}
+          className="w-full mb-5 group"
+        >
+          <div className="relative h-1 rounded-full bg-gray-800 overflow-hidden">
+            <div
+              className="h-full bg-indigo-500 rounded-full transition-[width] duration-500"
+              style={{ width: `${(currentTime / duration) * 100}%` }}
+            />
+          </div>
+          <div className="flex justify-between text-xs text-gray-600 mt-1 px-0.5 group-hover:text-gray-400 transition-colors">
+            <span>{fmtTime(currentTime)}</span>
+            <span className="text-indigo-400/60 group-hover:text-indigo-400 transition-colors">
+              Open player ↑
+            </span>
+            <span>{fmtTime(duration)}</span>
+          </div>
+        </button>
+      )}
+
+      {/* ── Scrollable content ──────────────────────────────────────────── */}
+      <div className="space-y-4">
+
+        {/* AI Summary (or description fallback) */}
+        {chaptersData?.summary ? (
+          <div className="bg-gray-900 rounded-2xl px-4 py-4">
+            <p className="text-xs font-semibold text-indigo-400 uppercase tracking-wider mb-2">
+              ✦ AI Summary
+            </p>
+            <p className="text-sm text-gray-200 leading-relaxed selectable">
+              {chaptersData.summary}
+            </p>
+          </div>
+        ) : displayEpisode?.description ? (
+          <div className="bg-gray-900 rounded-2xl px-4 py-4">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+              About this episode
+            </p>
+            <EpisodeDescription html={displayEpisode.description} />
+          </div>
+        ) : null}
+
+        {/* Chapters */}
+        {chapters.length > 0 && (
+          <div className="bg-gray-900 rounded-2xl overflow-hidden">
+            <button
+              onClick={() => setChaptersOpen(o => !o)}
+              className="w-full flex items-center justify-between px-4 py-3.5 hover:bg-gray-800 transition-colors"
+            >
+              <span className="text-xs font-semibold text-gray-300 uppercase tracking-wider">
+                Chapters ({chapters.length})
+              </span>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
+                strokeLinecap="round" strokeLinejoin="round"
+                className={`w-4 h-4 text-gray-500 transition-transform ${chaptersOpen ? "rotate-180" : ""}`}>
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </button>
+            {chaptersOpen && (
+              <div className="divide-y divide-gray-800/60">
+                {chapters.map((ch, i) => (
+                  <button
+                    key={i}
+                    onClick={async () => {
+                      if (!episodeId) return;
+                      if (!isThisEpisode) {
+                        await loadEpisode(episodeId, displayEpisode || null, ch.start_time);
+                      } else {
+                        const audio = document.querySelector("audio");
+                        if (audio) audio.currentTime = ch.start_time;
+                      }
+                      setPlayerExpanded(true);
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-gray-800/50 transition-colors"
+                  >
+                    <span className="text-xs font-mono text-gray-500 w-10 flex-shrink-0">
+                      {fmtTime(ch.start_time)}
+                    </span>
+                    <span className="text-sm flex-1 text-gray-300">{ch.title}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         )}
 
-        {/* Gists list */}
+        {/* Description (if AI summary exists, show description below collapsed) */}
+        {chaptersData?.summary && displayEpisode?.description && (
+          <div className="bg-gray-900 rounded-2xl overflow-hidden">
+            <details>
+              <summary className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-800 transition-colors list-none flex items-center justify-between">
+                <span>Episode description</span>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
+                  strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+              </summary>
+              <div className="px-4 pb-3 pt-1">
+                <EpisodeDescription html={displayEpisode.description} />
+              </div>
+            </details>
+          </div>
+        )}
+
+        {/* Distills */}
         {gists.length > 0 && (
           <div className="space-y-3">
-            <h2 className="text-gray-400 font-medium text-xs uppercase tracking-wide">
-              Distillations ({gists.length})
+            <h2 className="text-gray-500 font-semibold text-xs uppercase tracking-wider px-1">
+              ⚗️ Distillations ({gists.length})
             </h2>
-            {gists.map(s => (
+            {gists.map(g => (
               <GistCard
-                key={s.id}
-                gist={s}
+                key={g.id}
+                gist={g}
                 episodeTitle={displayEpisode?.title}
                 podcastTitle={displayEpisode?.podcast_title}
               />
             ))}
+          </div>
+        )}
+
+        {/* Empty distills nudge */}
+        {gists.length === 0 && isThisEpisode && (
+          <div className="text-center py-4 text-gray-600 text-xs">
+            Open the player and tap ⚗️ to distill moments from this episode
           </div>
         )}
       </div>

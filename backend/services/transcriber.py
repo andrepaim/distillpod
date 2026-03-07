@@ -56,17 +56,42 @@ async def transcribe_episode(episode_id: str, audio_path: Path) -> None:
         loop = asyncio.get_event_loop()
         words = await loop.run_in_executor(None, _transcribe_sync, str(audio_path))
 
+        words_json = json.dumps(words)
+
         # Save transcript
         await db.execute(
             """INSERT OR REPLACE INTO transcripts (episode_id, words_json, language, created_at)
                VALUES (?, ?, ?, ?)""",
-            (episode_id, json.dumps(words), "auto", datetime.now(timezone.utc).isoformat())
+            (episode_id, words_json, "auto", datetime.now(timezone.utc).isoformat())
         )
         await db.execute(
             "UPDATE episodes SET transcript_status = 'done' WHERE id = ?",
             (episode_id,)
         )
         await db.commit()
+
+        # ── Ad detection + ad-free audio generation ──────────────────────────
+        # Runs after transcript is committed; failure is non-fatal.
+        try:
+            from services.ad_detector import detect_ads, remove_ads_from_audio
+            ads = await loop.run_in_executor(None, detect_ads, words_json)
+            ads_count = len(ads)
+            adfree_path: Optional[str] = None
+            if ads:
+                adfree_file = Path(audio_path).with_suffix("") \
+                    .parent / f"{episode_id}_adfree.mp3"
+                success = await loop.run_in_executor(
+                    None, remove_ads_from_audio, str(audio_path), ads, str(adfree_file)
+                )
+                if success:
+                    adfree_path = str(adfree_file)
+            await db.execute(
+                "UPDATE episodes SET ads_detected = ?, adfree_path = ? WHERE id = ?",
+                (ads_count, adfree_path, episode_id)
+            )
+            await db.commit()
+        except Exception:
+            pass  # never block the transcript result
 
     except Exception as e:
         await db.execute(

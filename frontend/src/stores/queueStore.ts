@@ -18,6 +18,7 @@ interface QueueStore {
   reorder: (from: number, to: number) => void;
   clear: () => void;
   shift: () => QueueItem | undefined;
+  playNow: (index: number) => QueueItem | undefined;
 }
 
 export const useQueue = create<QueueStore>()(
@@ -46,6 +47,13 @@ export const useQueue = create<QueueStore>()(
         const next = q[0];
         set({ queue: q.slice(1) });
         return next;
+      },
+      playNow: (index: number) => {
+        const q = get().queue;
+        if (index < 0 || index >= q.length) return undefined;
+        const item = q[index];
+        set({ queue: q.filter((_, i) => i !== index) });
+        return item;
       },
     }),
     { name: 'distillpod-queue' }

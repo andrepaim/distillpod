@@ -95,18 +95,20 @@ function GistCard({ gist, podcastImage, onDelete }: { gist: Gist; podcastImage?:
           </button>
         </div>
       </div>
-      {ai ? (
-        <>
-          {ai.quote && (
-            <p className="text-sm italic text-gray-100 border-l-2 border-indigo-500 pl-3">"{ai.quote}"</p>
-          )}
-          {ai.insight && (
-            <p className="text-indigo-300 text-sm leading-relaxed">{ai.insight}</p>
-          )}
-        </>
-      ) : (
-        <p className="text-sm leading-relaxed text-gray-100">{gist.text}</p>
-      )}
+      <div className="selectable">
+        {ai ? (
+          <>
+            {ai.quote && (
+              <p className="text-sm italic text-gray-100 border-l-2 border-indigo-500 pl-3">"{ai.quote}"</p>
+            )}
+            {ai.insight && (
+              <p className="text-indigo-300 text-sm leading-relaxed">{ai.insight}</p>
+            )}
+          </>
+        ) : (
+          <p className="text-sm leading-relaxed text-gray-100">{gist.text}</p>
+        )}
+      </div>
 
       {/* Research */}
       <div className="pt-1">

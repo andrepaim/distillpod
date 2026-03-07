@@ -1,4 +1,4 @@
-import { type Page, type APIRequestContext } from "@playwright/test";
+import { expect, type Page, type APIRequestContext } from "@playwright/test";
 
 export const BASE = "http://localhost:8124";
 
@@ -28,6 +28,20 @@ export async function clearGists(request: APIRequestContext): Promise<void> {
   await Promise.all(gists.map((g: { id: string }) =>
     request.delete(`${BASE}/gists/${g.id}`)
   ));
+}
+
+/**
+ * Click the Play / Resume / Now Playing button on an episode page to open the
+ * fullscreen player and wait until it is ready (distill button visible).
+ * Call AFTER goToPlayer().
+ */
+export async function openFullscreenPlayer(page: Page) {
+  // The Play button is the prominent action button (col-span-2 in the action grid)
+  await page.getByRole("button", { name: /^(Play|Resume|Now Playing)$/ }).first().click();
+  // Fullscreen player renders only once episode+audioReady; wait for its distill button
+  await expect(
+    page.getByRole("button", { name: /Distill this moment|Waiting for transcript|Transcribing/ })
+  ).toBeVisible({ timeout: 30_000 });
 }
 
 /** Navigate to a tab via bottom nav (scoped to <nav> to avoid ambiguity with page buttons) */

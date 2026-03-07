@@ -143,3 +143,19 @@ export async function getAdFreeStatus(episodeId: string): Promise<AdFreeStatus> 
 
 export const adFreeAudioUrl = (episodeId: string) =>
   `${BASE}/player/audio-adfree/${episodeId}`;
+
+// --- Chapters ---
+export interface Chapter {
+  title: string;
+  start_time: number; // seconds
+}
+
+export interface ChaptersResult {
+  episode_id: string;
+  chapters_status: "none" | "processing" | "done" | "error";
+  summary: string | null;
+  chapters: Chapter[];
+}
+
+export const getChapters = (episodeId: string) =>
+  req<ChaptersResult>('GET', `/player/chapters/${episodeId}`);

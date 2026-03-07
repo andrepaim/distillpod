@@ -8,7 +8,9 @@ New episodes appear as transcript_status='done' in the app, ready before the mor
 import asyncio
 import json
 import logging
+import os
 import sys
+import urllib.request
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
@@ -29,6 +31,22 @@ log = logging.getLogger("distillpod-sync")
 
 # Only transcribe episodes published within this window (avoid transcribing old backlog)
 RECENCY_HOURS = 48
+
+
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
+
+
+def _telegram_notify(message: str) -> None:
+    """Send a Telegram message. Best-effort — never raises."""
+    try:
+        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+        payload = json.dumps({"chat_id": TELEGRAM_CHAT_ID, "text": message}).encode()
+        req = urllib.request.Request(url, data=payload,
+                                     headers={"Content-Type": "application/json"})
+        urllib.request.urlopen(req, timeout=10)
+    except Exception as e:
+        log.warning(f"Telegram notify failed: {e}")
 
 
 async def process_subscription(podcast_id: str, feed_url: str, title: str) -> dict:
@@ -172,6 +190,60 @@ async def process_subscription(podcast_id: str, feed_url: str, title: str) -> di
                 log.warning(f'  Ad detection failed for {ep_row["id"]}: {exc}')
                 continue
 
+        # Chapterization (after transcription + ad detection)
+        episodes_for_chapters = await db.execute_fetchall(
+            '''SELECT id FROM episodes
+               WHERE podcast_id = ? AND transcript_status = 'done'
+               AND (chapters_status IS NULL OR chapters_status = 'none')''',
+            (podcast_id,)
+        )
+        for ep_row in episodes_for_chapters:
+            ep_id = ep_row['id']
+            try:
+                from services.chapterizer import chapterize
+                transcript_row = await db.execute_fetchone(
+                    'SELECT words_json FROM transcripts WHERE episode_id = ?', (ep_id,)
+                )
+                if not transcript_row:
+                    continue
+                log.info(f'  Chapterizing: {ep_id}')
+                await db.execute(
+                    "UPDATE episodes SET chapters_status = 'processing' WHERE id = ?", (ep_id,)
+                )
+                await db.commit()
+
+                loop = asyncio.get_event_loop()
+                result = await loop.run_in_executor(
+                    None, chapterize, transcript_row['words_json']
+                )
+
+                # Delete old chapters if any (re-run safety)
+                await db.execute('DELETE FROM chapters WHERE episode_id = ?', (ep_id,))
+
+                # Insert new chapters
+                import uuid
+                for ch in result['chapters']:
+                    await db.execute(
+                        'INSERT INTO chapters (id, episode_id, title, start_time) VALUES (?, ?, ?, ?)',
+                        (str(uuid.uuid4()), ep_id, ch['title'], ch['start_time'])
+                    )
+
+                # Store summary on episode row
+                await db.execute(
+                    "UPDATE episodes SET summary = ?, chapters_status = 'done' WHERE id = ?",
+                    (result['summary'], ep_id)
+                )
+                await db.commit()
+                log.info(f'  ✓ {len(result["chapters"])} chapters, summary saved')
+
+            except Exception as exc:
+                log.warning(f'  Chapterization failed for {ep_id}: {exc}')
+                await db.execute(
+                    "UPDATE episodes SET chapters_status = 'error' WHERE id = ?", (ep_id,)
+                )
+                await db.commit()
+                continue
+
         # Update last_checked timestamp
         await db.execute(
             "UPDATE subscriptions SET last_checked = ? WHERE podcast_id = ?",
@@ -185,10 +257,81 @@ async def process_subscription(podcast_id: str, feed_url: str, title: str) -> di
     return stats
 
 
+async def reset_stale_processing() -> int:
+    """
+    Reset episodes stuck in 'processing' back to 'none' so they get retried.
+    An episode is considered stale if it has been in 'processing' for longer
+    than 2 hours — this only happens when the process crashed
+    mid-transcription. Also removes the partial local file to avoid feeding
+    a corrupted audio to the transcriber on retry.
+    Returns the number of episodes reset.
+    """
+    db = await get_db()
+    try:
+        # Any episode still in 'processing' when the sync starts is a crash
+        # victim — the sync sets this status right before transcribing, so
+        # if the process survived it would have moved it to 'done' or 'error'.
+        stale = await db.execute_fetchall(
+            "SELECT id, title, local_path FROM episodes WHERE transcript_status = 'processing'",
+        )
+        if not stale:
+            return 0
+        for ep in stale:
+            log.warning(f"  ↩  Resetting stale episode: {ep['title'][:70]}")
+            if ep["local_path"] and Path(ep["local_path"]).exists():
+                Path(ep["local_path"]).unlink(missing_ok=True)
+                log.warning(f"     Deleted partial file: {ep['local_path']}")
+            await db.execute(
+                "UPDATE episodes SET transcript_status = 'none', downloaded = 0, local_path = NULL WHERE id = ?",
+                (ep["id"],),
+            )
+        await db.commit()
+        return len(stale)
+    finally:
+        await db.close()
+
+
+async def report_errors() -> None:
+    """
+    After the sync run, check for episodes in 'error' state and notify via
+    Telegram if any are found. Groups them by podcast for readability.
+    """
+    db = await get_db()
+    try:
+        errors = await db.execute_fetchall(
+            """SELECT e.title, s.title as podcast_title
+               FROM episodes e
+               JOIN subscriptions s ON s.podcast_id = e.podcast_id
+               WHERE e.transcript_status = 'error'
+               ORDER BY e.published_at DESC""",
+        )
+    finally:
+        await db.close()
+
+    if not errors:
+        log.info("No episodes in error state.")
+        return
+
+    log.warning(f"{len(errors)} episode(s) in error state — sending Telegram alert")
+    lines = [f"⚠️ DistillPod: {len(errors)} episode(s) failed to process:\n"]
+    for ep in errors:
+        lines.append(f"• [{ep['podcast_title']}] {ep['title']}")
+    lines.append("\nCheck /root/distillpod/sync.log for details.")
+    _telegram_notify("\n".join(lines))
+
+
 async def main() -> None:
     log.info("=" * 60)
     log.info("DistillPod Daily Sync — starting")
     log.info("=" * 60)
+
+    # --- Fix 1: Reset stale processing episodes before doing anything else ---
+    log.info("Checking for stale episodes stuck in 'processing'...")
+    reset_count = await reset_stale_processing()
+    if reset_count:
+        log.warning(f"Reset {reset_count} stale episode(s) to 'none' for retry")
+    else:
+        log.info("No stale episodes found")
 
     db = await get_db()
     subs = await db.execute_fetchall(
@@ -217,6 +360,9 @@ async def main() -> None:
         f"{total['skipped']} skipped"
     )
     log.info("=" * 60)
+
+    # --- Fix 2: Report any episodes in error state via Telegram ---
+    await report_errors()
 
 
 if __name__ == "__main__":
