@@ -101,7 +101,7 @@ async def process_subscription(podcast_id: str, feed_url: str, title: str) -> di
                 stats["skipped"] += 1
                 continue
 
-            # --- Download ---
+            # --- Download (with retry) ---
             log.info(f"  ⬇  Downloading: {ep.title[:70]}")
             await db.execute(
                 "UPDATE episodes SET transcript_status = 'queued' WHERE id = ?",
@@ -109,10 +109,17 @@ async def process_subscription(podcast_id: str, feed_url: str, title: str) -> di
             )
             await db.commit()
 
-            try:
-                local_path = await download_episode(ep.id, ep.audio_url)
-            except Exception as e:
-                log.error(f"  Download failed: {e}")
+            local_path = None
+            for attempt in range(1, 4):
+                try:
+                    local_path = await download_episode(ep.id, ep.audio_url)
+                    break
+                except Exception as e:
+                    log.warning(f"  Download attempt {attempt}/3 failed: {e}")
+                    if attempt < 3:
+                        await asyncio.sleep(5 * attempt)
+            if local_path is None:
+                log.error(f"  Download failed after 3 attempts, skipping.")
                 await db.execute(
                     "UPDATE episodes SET transcript_status = 'error' WHERE id = ?",
                     (ep.id,),

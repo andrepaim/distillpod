@@ -153,6 +153,13 @@ async def send_message(episode_id: str, body: MessageBody):
             "INSERT INTO episode_chats (id, episode_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)",
             (asst_id, episode_id, "assistant", reply_content, now),
         )
+        # Trim to 50 messages per episode (keep most recent)
+        await db.execute(
+            """DELETE FROM episode_chats WHERE episode_id = ? AND id NOT IN (
+               SELECT id FROM episode_chats WHERE episode_id = ?
+               ORDER BY created_at DESC LIMIT 50)""",
+            (episode_id, episode_id),
+        )
         await db.commit()
         return {"id": asst_id, "role": "assistant", "content": reply_content, "created_at": now}
     finally:

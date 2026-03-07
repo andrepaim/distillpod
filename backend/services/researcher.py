@@ -11,7 +11,7 @@ import requests
 
 CLAUDE_BIN = "/root/.local/bin/claude"
 TAVILY_KEY = os.environ.get("TAVILY_API_KEY", "")
-TG_TOKEN = os.environ.get("TG_BOT_TOKEN", "")
+TG_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 TG_CHAT = os.environ.get("TG_CHAT_ID", "")
 REPORTS_DIR = "/root/distillpod/reports"
 PUBLIC_BASE = "https://distillpod.duckdns.org/reports"
