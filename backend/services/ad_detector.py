@@ -50,6 +50,16 @@ def detect_ads(words_json: str) -> list[dict]:
     segments = _words_to_segments(words, chunk_sec=30)
     total_duration = words[-1]['end']
 
+    # Cap context sent to Claude: ads live in first/last 30 min only.
+    # For long episodes (>90 min) skip the middle to avoid timeouts.
+    MAX_WINDOW_SEC = 30 * 60  # 30 minutes
+    if total_duration > MAX_WINDOW_SEC * 3:
+        head = [s for s in segments if s['start'] < MAX_WINDOW_SEC]
+        tail = [s for s in segments if s['start'] >= total_duration - MAX_WINDOW_SEC]
+        # Avoid duplicates if windows overlap
+        tail = [s for s in tail if s not in head]
+        segments = head + tail
+
     # Build transcript with timestamps for Claude
     lines = []
     for seg in segments:
@@ -76,7 +86,7 @@ def detect_ads(words_json: str) -> list[dict]:
 
     result = subprocess.run(
         [CLAUDE_BIN, '--print', prompt],
-        capture_output=True, text=True, timeout=120
+        capture_output=True, text=True, timeout=300
     )
     raw = result.stdout.strip()
 
