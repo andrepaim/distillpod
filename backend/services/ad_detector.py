@@ -50,10 +50,10 @@ def detect_ads(words_json: str) -> list[dict]:
     segments = _words_to_segments(words, chunk_sec=30)
     total_duration = words[-1]['end']
 
-    # Cap context sent to Claude: ads live in first/last 30 min only.
-    # For long episodes (>90 min) skip the middle to avoid timeouts.
-    MAX_WINDOW_SEC = 30 * 60  # 30 minutes
-    if total_duration > MAX_WINDOW_SEC * 3:
+    # Cap context sent to Claude: ads live in first/last 20 min only.
+    # Apply to any episode longer than 30 minutes to avoid timeouts.
+    MAX_WINDOW_SEC = 20 * 60  # 20 minutes
+    if total_duration > 30 * 60:
         head = [s for s in segments if s['start'] < MAX_WINDOW_SEC]
         tail = [s for s in segments if s['start'] >= total_duration - MAX_WINDOW_SEC]
         # Avoid duplicates if windows overlap
