@@ -10,10 +10,10 @@ No per-call API costs. All AI runs via the Claude CLI through your existing subs
 
 <div align="center">
 
-| Home feed | Episode | Player | Chat | Distillations | Library |
+| Home feed | Episode | Player | Chat | Distillation | Shared link |
 |:---:|:---:|:---:|:---:|:---:|:---:|
-| ![Home](screenshots/1-home.png) | ![Episode](screenshots/2-episode.png) | ![Player](screenshots/3-player.png) | ![Chat](screenshots/4-chat.png) | ![Distills](screenshots/5-distills.png) | ![Library](screenshots/6-library.png) |
-| Latest episodes across subscriptions | Episode detail with AI summary | Full-screen player with chapters | AI-generated insights + Q&A | Saved distillations by episode | Subscribed podcasts |
+| ![Home](screenshots/1-home.png) | ![Episode](screenshots/2-episode.png) | ![Player](screenshots/3-player.png) | ![Chat](screenshots/4-chat.png) | ![Distills](screenshots/5b-distill-detail.png) | ![Unauthorized](screenshots/7-unauthorized.png) |
+| Latest episodes across subscriptions | Episode detail with AI summary | Full-screen player with chapters | AI-generated insights + Q&A | Distillation card with Copy / Delete / Research | What a recipient sees when following a shared link |
 
 </div>
 
