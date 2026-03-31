@@ -171,7 +171,7 @@ export default function Player() {
     audioReady, loadEpisode,
     playerExpanded, setPlayerExpanded,
   } = useAudio();
-  const { addNext, addToEnd } = useQueue();
+  const { addNext, addToEnd, remove } = useQueue();
 
   // Episode metadata for display (may come from routeState, AudioContext, or API)
   const [episodeInfo, setEpisodeInfo] = useState<PlayableEpisode | null>(routeState || null);
@@ -235,6 +235,8 @@ export default function Player() {
           if (saved && saved.currentTime > 10) seekTo = saved.currentTime;
         }
         await loadEpisode(episodeId, displayEpisode || null, seekTo);
+        // Remove from queue if present — playing directly shouldn't leave a duplicate in queue
+        remove(episodeId);
       } catch (e: any) {
         setError(e.message);
         setLoading(false);

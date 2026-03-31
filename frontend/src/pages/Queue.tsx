@@ -32,7 +32,7 @@ function SortableRow({ item, index, isCurrentEpisode, currentEpisode, audioReady
   currentEpisode: ReturnType<typeof useAudio>["episode"];
   audioReady: boolean;
 }) {
-  const { remove, playNow, addNext } = useQueue();
+  const { remove, playNow } = useQueue();
   const { loadEpisode } = useAudio();
   const {
     attributes,
@@ -46,21 +46,8 @@ function SortableRow({ item, index, isCurrentEpisode, currentEpisode, audioReady
   const handlePlayNow = () => {
     if (isCurrentEpisode) return;
 
-    // Push current episode back to front of queue before switching
-    if (currentEpisode && audioReady) {
-      addNext({
-        episodeId: currentEpisode.id,
-        title: currentEpisode.title ?? "",
-        podcastTitle: currentEpisode.podcast_title ?? "",
-        audioUrl: currentEpisode.audio_url ?? "",
-        imageUrl: currentEpisode.podcast_image,
-        durationSeconds: undefined,
-      });
-    }
-
-    // Index shifts by +1 because addNext just prepended to the queue
-    const adjustedIndex = currentEpisode && audioReady ? index + 1 : index;
-    const queued = playNow(adjustedIndex);
+    // Just play the selected item — remove it from queue and start playback
+    const queued = playNow(index);
     if (!queued) return;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
