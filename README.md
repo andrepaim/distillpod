@@ -6,6 +6,19 @@ No per-call API costs. All AI runs via the Claude CLI through your existing subs
 
 ---
 
+## Screenshots
+
+<div align="center">
+
+| Home feed | Episode | Player | Chat | Distillations | Library |
+|:---:|:---:|:---:|:---:|:---:|:---:|
+| ![Home](screenshots/1-home.png) | ![Episode](screenshots/2-episode.png) | ![Player](screenshots/3-player.png) | ![Chat](screenshots/4-chat.png) | ![Distills](screenshots/5-distills.png) | ![Library](screenshots/6-library.png) |
+| Latest episodes across subscriptions | Episode detail with AI summary | Full-screen player with chapters | AI-generated insights + Q&A | Saved distillations by episode | Subscribed podcasts |
+
+</div>
+
+---
+
 ## What is this?
 
 DistillPod is a personal podcast client that runs on your VPS. You open it in your phone's browser. Everything else — downloading audio, transcribing, serving — happens on the server.
