@@ -19,6 +19,18 @@ No per-call API costs. All AI runs via the Claude CLI through your existing subs
 
 ---
 
+## Why I Built This
+
+I was paying for a premium podcast app specifically for its AI distillation feature — the ability to extract insights from what I was listening to on the fly. It worked well, but it felt wasteful: I was already running a VPS with the Claude CLI for my own OpenClaw agent, paying for a Claude subscription. Why route that through someone else's SaaS?
+
+So I cut out the middleman.
+
+DistillPod runs entirely on your own server. The AI features — distillations, ad detection, chapters, chat, research — all go through the Claude CLI using your existing subscription. No separate API key, no extra per-call charges on top of what you already pay, no data leaving your infrastructure to a third-party podcast app, no feature flags behind a paywall.
+
+If you have a VPS and a Claude subscription, you already have everything you need to run this.
+
+---
+
 ## What is this?
 
 DistillPod is a personal podcast client that runs on your VPS. You open it in your phone's browser. Everything else — downloading audio, transcribing, serving — happens on the server.
