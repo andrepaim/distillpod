@@ -36,7 +36,17 @@ class Settings(BaseSettings):
     google_client_id: str = ""
     google_client_secret: str = ""
     allowed_emails: str = "andrepaim@gmail.com"     # comma-separated allowlist
-    session_secret: str = "change-me-in-production"
+    session_secret: str = ""
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        if not self.session_secret or self.session_secret == "change-me-in-production":
+            import warnings
+            warnings.warn(
+                "SESSION_SECRET is not set or uses the default value. "
+                "Set a strong random secret in your .env file (openssl rand -hex 32).",
+                stacklevel=2,
+            )
     session_max_age: int = 30 * 24 * 3600           # 30 days in seconds
 
     # Test mode — bypass auth for E2E tests. NEVER true in prod.

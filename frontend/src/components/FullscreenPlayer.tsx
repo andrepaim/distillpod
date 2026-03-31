@@ -110,18 +110,25 @@ export default function FullscreenPlayer() {
 
   // ── Poll transcript until done ───────────────────────────────────────────────
   useEffect(() => {
-    if (pollRef.current) clearInterval(pollRef.current);
+    if (pollRef.current) clearTimeout(pollRef.current);
     if (!episode?.id || transcriptStatus === "done" || transcriptStatus === "error") return;
 
-    pollRef.current = setInterval(async () => {
-      if (!episode?.id) return;
-      const { status } = await getTranscriptStatus(episode.id);
-      setTranscriptStatus(status);
-      if (status === "done" || status === "error") {
-        if (pollRef.current) clearInterval(pollRef.current);
-      }
-    }, 5000);
-    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+    // Bug 7: Exponential backoff — start at 5s, back off up to 30s
+    const episodeId = episode.id; // capture to avoid stale closure
+    let delay = 5000;
+
+    const poll = async () => {
+      try {
+        const { status } = await getTranscriptStatus(episodeId);
+        setTranscriptStatus(status);
+        if (status === "done" || status === "error") return;
+      } catch {}
+      delay = Math.min(delay * 1.5, 30000);
+      pollRef.current = setTimeout(poll, delay) as unknown as ReturnType<typeof setInterval>;
+    };
+
+    pollRef.current = setTimeout(poll, delay) as unknown as ReturnType<typeof setInterval>;
+    return () => { if (pollRef.current) clearTimeout(pollRef.current); };
   }, [episode?.id, transcriptStatus]);
 
   // ── Ad-free source swap ──────────────────────────────────────────────────────
@@ -136,9 +143,14 @@ export default function FullscreenPlayer() {
     const savedTime  = audio.currentTime;
     audio.src = newSrc;
     audio.load();
-    audio.currentTime = savedTime;
-    if (wasPlaying) audio.play().catch(() => {});
-  }, [useAdFree]);
+    // Bug 4: Wait for loadedmetadata before seeking — synchronous seek is ignored
+    const onReady = () => {
+      audio.currentTime = savedTime;
+      if (wasPlaying) audio.play().catch(() => {});
+      audio.removeEventListener("loadedmetadata", onReady);
+    };
+    audio.addEventListener("loadedmetadata", onReady);
+  }, [useAdFree, episode?.id, adFreeStatus?.has_adfree]); // Bug 4: added missing deps
 
   // ── Handlers ─────────────────────────────────────────────────────────────────
   const cycleSpeed = () => {

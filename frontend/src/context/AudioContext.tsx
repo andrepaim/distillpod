@@ -22,10 +22,13 @@ export function readProgress(): Record<string, ProgressEntry> {
 }
 
 function writeProgress(id: string, time: number, dur: number, ep: PlayableEpisode | null) {
-  // Don't save if nearly finished (within 30s of end)
-  if (dur > 0 && time > dur - 30) return;
-  // Don't save if barely started (under 10s)
-  if (time < 10) return;
+  // Bug 6: Use proportional thresholds for short episodes
+  // Don't save if nearly finished (within 30s or last 10% for short episodes)
+  const endThreshold = dur > 0 ? Math.min(30, dur * 0.1) : 30;
+  if (dur > 0 && time > dur - endThreshold) return;
+  // Don't save if barely started (under 10s or first 5% for short episodes)
+  const startThreshold = dur > 0 ? Math.min(10, dur * 0.05) : 10;
+  if (time < startThreshold) return;
   try {
     const map = readProgress();
     map[id] = {

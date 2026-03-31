@@ -126,10 +126,11 @@ async def test_session():
 
 @router.get("/debug-cookie")
 async def debug_cookie(request: Request):
-    """TEMP: show what cookies the server sees."""
-    token = request.cookies.get("distillpod_session")
-    if not token:
-        return {"cookies": dict(request.cookies), "token": None, "user": None}
+    """Debug endpoint — only available in test mode."""
+    from fastapi.responses import JSONResponse
+    if not settings.test_mode:
+        return JSONResponse({"detail": "Not found"}, status_code=404)
     from middleware.auth import verify_session_token
-    user = verify_session_token(token)
-    return {"cookies": list(request.cookies.keys()), "token_present": bool(token), "token_valid": bool(user), "user": user}
+    token = request.cookies.get("distillpod_session")
+    user = verify_session_token(token) if token else None
+    return {"token_present": bool(token), "token_valid": bool(user)}

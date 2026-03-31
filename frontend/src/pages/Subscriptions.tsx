@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { getSubscriptions, getEpisodes, unsubscribe, Subscription, Episode } from "../api/client";
-import { getCached, setCached } from "../cache";
+import { getCached, setCached, bustCache } from "../cache";
 
 const TrashIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
@@ -60,6 +60,10 @@ function EpisodeList({ sub, onUnsubscribed }: { sub: Subscription; onUnsubscribe
     setUnsubbing(true);
     try {
       await unsubscribe(sub.podcast_id);
+      // Bug 5: Bust home feed cache so unsubscribed episodes disappear immediately
+      bustCache("home:feed");
+      bustCache("home:shotCounts");
+      bustCache(`episodes:${sub.podcast_id}`);
       nav('/subscriptions');
       onUnsubscribed();
     } finally {

@@ -14,6 +14,18 @@ router = APIRouter(prefix="/player", tags=["player"])
 _transcribing: set[str] = set()
 
 
+def _safe_file_path(raw_path: str) -> Path:
+    """
+    Bug 1: Resolve path and verify it's within media_dir to prevent path traversal.
+    Raises HTTPException(403) if outside allowed directory.
+    """
+    file_path = Path(raw_path).resolve()
+    media_path = Path(settings.media_dir).resolve()
+    if not str(file_path).startswith(str(media_path)):
+        raise HTTPException(403, "Access denied")
+    return file_path
+
+
 @router.post("/play")
 async def play(req: PlayRequest):
     """
@@ -22,11 +34,13 @@ async def play(req: PlayRequest):
     Audio is streamed from /player/audio/{episode_id} once downloaded.
     """
     db = await get_db()
-    row = await db.execute_fetchone(
-        "SELECT downloaded, local_path, transcript_status FROM episodes WHERE id = ?",
-        (req.episode_id,),
-    )
-    await db.close()
+    try:
+        row = await db.execute_fetchone(
+            "SELECT downloaded, local_path, transcript_status FROM episodes WHERE id = ?",
+            (req.episode_id,),
+        )
+    finally:
+        await db.close()
 
     if not row:
         raise HTTPException(404, "Episode not found. Fetch episodes first.")
@@ -37,12 +51,14 @@ async def play(req: PlayRequest):
     if not row["downloaded"] or not (local_path and local_path.exists()):
         local_path = await download_episode(req.episode_id, req.audio_url)
         db = await get_db()
-        await db.execute(
-            "UPDATE episodes SET downloaded = 1, local_path = ? WHERE id = ?",
-            (str(local_path), req.episode_id),
-        )
-        await db.commit()
-        await db.close()
+        try:
+            await db.execute(
+                "UPDATE episodes SET downloaded = 1, local_path = ? WHERE id = ?",
+                (str(local_path), req.episode_id),
+            )
+            await db.commit()
+        finally:
+            await db.close()
 
     # Start transcription in background if not already done/running
     if row["transcript_status"] not in ("done", "processing") and req.episode_id not in _transcribing:
@@ -67,23 +83,31 @@ async def play(req: PlayRequest):
 async def stream_audio(episode_id: str):
     """Serve the downloaded audio file to the browser."""
     db = await get_db()
-    row = await db.execute_fetchone(
-        "SELECT local_path FROM episodes WHERE id = ? AND downloaded = 1", (episode_id,)
-    )
-    await db.close()
+    try:
+        row = await db.execute_fetchone(
+            "SELECT local_path FROM episodes WHERE id = ? AND downloaded = 1", (episode_id,)
+        )
+    finally:
+        await db.close()
+
     if not row or not row["local_path"]:
         raise HTTPException(404, "Audio not downloaded yet")
-    return FileResponse(row["local_path"], media_type="audio/mpeg")
+
+    # Bug 1: Validate path is within media_dir
+    file_path = _safe_file_path(row["local_path"])
+    return FileResponse(str(file_path), media_type="audio/mpeg")
 
 
 @router.get("/episode/{episode_id}")
 async def get_episode(episode_id: str) -> Episode:
     """Fetch a single episode by ID from the DB."""
     db = await get_db()
-    row = await db.execute_fetchone(
-        "SELECT * FROM episodes WHERE id = ?", (episode_id,)
-    )
-    await db.close()
+    try:
+        row = await db.execute_fetchone(
+            "SELECT * FROM episodes WHERE id = ?", (episode_id,)
+        )
+    finally:
+        await db.close()
     if not row:
         raise HTTPException(404, "Episode not found")
     return Episode(**dict(row))
@@ -92,10 +116,12 @@ async def get_episode(episode_id: str) -> Episode:
 @router.get("/transcript-status/{episode_id}")
 async def transcript_status(episode_id: str) -> TranscriptStatus:
     db = await get_db()
-    row = await db.execute_fetchone(
-        "SELECT transcript_status FROM episodes WHERE id = ?", (episode_id,)
-    )
-    await db.close()
+    try:
+        row = await db.execute_fetchone(
+            "SELECT transcript_status FROM episodes WHERE id = ?", (episode_id,)
+        )
+    finally:
+        await db.close()
     if not row:
         raise HTTPException(404, "Episode not found")
     return TranscriptStatus(episode_id=episode_id, status=row["transcript_status"])
@@ -125,7 +151,10 @@ async def stream_adfree(episode_id: str):
         )
         if not row or not row['adfree_path'] or not Path(row['adfree_path']).exists():
             raise HTTPException(status_code=404, detail='Ad-free version not found')
-        return FileResponse(row['adfree_path'], media_type='audio/mpeg')
+
+        # Bug 1: Validate path is within media_dir
+        file_path = _safe_file_path(row['adfree_path'])
+        return FileResponse(str(file_path), media_type='audio/mpeg')
     finally:
         await db.close()
 
