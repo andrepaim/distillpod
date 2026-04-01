@@ -5,9 +5,10 @@ import importlib.util
 import sqlite3
 import tempfile
 import os
+from pathlib import Path
 from unittest.mock import patch, MagicMock
 
-SCRIPT = "/root/distillpod/scripts/suggest-podcasts.py"
+SCRIPT = str(Path(__file__).resolve().parent.parent / "scripts" / "suggest-podcasts.py")
 spec = importlib.util.spec_from_file_location("suggest_podcasts", SCRIPT)
 mod = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(mod)

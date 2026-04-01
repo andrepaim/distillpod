@@ -86,7 +86,7 @@ function GistCard({ gist, episodeTitle, podcastTitle }: {
     lines.push(`⏱ ${fmtTime(gist.start_seconds)} → ${fmtTime(gist.end_seconds)}`);
     lines.push("");
     lines.push("⚗️ Distilled with DistillPod");
-    lines.push(`https://distillpod.duckdns.org/player/${gist.episode_id}`);
+    lines.push(`${window.location.origin}/player/${gist.episode_id}`);
     lines.push("");
     lines.push("Built for one. Shared by accident.");
     return lines.join("\n");

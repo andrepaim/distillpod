@@ -15,12 +15,12 @@ class Settings(BaseSettings):
         return self.claude_bin or shutil.which("claude") or "claude"
 
     # Storage
-    media_dir: Path = Path("/root/distillpod/media")
-    db_path: Path = Path("/root/distillpod/distillpod.db")
-    reports_dir: Path = Path("/root/distillpod/reports")
+    media_dir: Path = Path("media")
+    db_path: Path = Path("distillpod.db")
+    reports_dir: Path = Path("reports")
 
     # Public-facing domain (used for report URLs, OAuth redirect, CORS)
-    public_url: str = "https://distillpod.duckdns.org"
+    public_url: str = "https://your-domain.example.com"
 
     # Server
     host: str = "127.0.0.1"
@@ -35,7 +35,7 @@ class Settings(BaseSettings):
     # Auth — Google OAuth
     google_client_id: str = ""
     google_client_secret: str = ""
-    allowed_emails: str = "andrepaim@gmail.com"     # comma-separated allowlist
+    allowed_emails: str = ""     # comma-separated allowlist
     session_secret: str = ""
 
     def __init__(self, **kwargs):

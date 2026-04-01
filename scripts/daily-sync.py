@@ -15,7 +15,7 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 # Add backend to Python path
-sys.path.insert(0, "/root/distillpod/backend")
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
 from database import get_db
 from services.rss import fetch_episodes
@@ -323,7 +323,7 @@ async def report_errors() -> None:
     lines = [f"⚠️ DistillPod: {len(errors)} episode(s) failed to process:\n"]
     for ep in errors:
         lines.append(f"• [{ep['podcast_title']}] {ep['title']}")
-    lines.append("\nCheck /root/distillpod/sync.log for details.")
+    lines.append("\nCheck sync.log for details.")
     _telegram_notify("\n".join(lines))
 
 

@@ -342,11 +342,11 @@ The whole interaction takes < 200ms (DB read + array slice). No spinner needed.
 ### Prerequisites
 ```bash
 # Backend deps
-cd /root/distillpod/backend
+cd /path/to/distillpod/backend
 pip install -r requirements.txt
 
 # Frontend deps
-cd /root/distillpod/frontend
+cd /path/to/distillpod/frontend
 npm install
 npm run build  # outputs to frontend/dist/
 ```
@@ -364,21 +364,21 @@ Get free Podcast Index API credentials at: https://api.podcastindex.com/
 ### Running (development)
 ```bash
 # Terminal 1 — backend
-cd /root/distillpod/backend
+cd /path/to/distillpod/backend
 uvicorn main:app --host 127.0.0.1 --port 8124 --reload
 
 # Terminal 2 — frontend dev server
-cd /root/distillpod/frontend
+cd /path/to/distillpod/frontend
 npm run dev  # http://localhost:5173
 ```
 
 ### Running (production)
 ```bash
 # Build frontend
-cd /root/distillpod/frontend && npm run build
+cd /path/to/distillpod/frontend && npm run build
 
 # Run backend (serves built frontend at /)
-cd /root/distillpod/backend
+cd /path/to/distillpod/backend
 uvicorn main:app --host 127.0.0.1 --port 8124
 ```
 
@@ -394,7 +394,7 @@ server {
     }
 
     location / {
-        root /root/distillpod/frontend/dist;
+        root /path/to/distillpod/frontend/dist;
         try_files $uri $uri/ /index.html;
     }
 }
@@ -409,10 +409,10 @@ Description=DistillPod Backend
 After=network.target
 
 [Service]
-WorkingDirectory=/root/distillpod/backend
+WorkingDirectory=/path/to/distillpod/backend
 ExecStart=/usr/bin/uvicorn main:app --host 127.0.0.1 --port 8124
 Restart=on-failure
-EnvironmentFile=/root/distillpod/.env
+EnvironmentFile=/path/to/distillpod/.env
 
 [Install]
 WantedBy=multi-user.target

@@ -52,7 +52,7 @@ If you have a VPS and a Claude subscription, you already have everything you nee
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                         User (browser)                       │
-│              https://distillpod.duckdns.org                  │
+│              https://your-domain.example.com                 │
 └──────────────────────────┬──────────────────────────────────┘
                            │ HTTPS (Apache reverse proxy)
 ┌──────────────────────────▼──────────────────────────────────┐
@@ -201,7 +201,7 @@ Set via `WHISPER_MODEL` in `.env`.
 ### 1. Clone
 
 ```bash
-git clone https://github.com/andrepaim/distillpod.git
+git clone https://github.com/your-username/distillpod.git
 cd distillpod
 ```
 
@@ -235,8 +235,8 @@ TELEGRAM_CHAT_ID=...
 WHISPER_MODEL=medium
 
 # Storage (defaults work out of the box)
-MEDIA_DIR=/root/distillpod/media
-REPORTS_DIR=/root/distillpod/reports
+MEDIA_DIR=/path/to/distillpod/media
+REPORTS_DIR=/path/to/distillpod/reports
 PUBLIC_URL=https://your-domain.duckdns.org
 ```
 
@@ -391,7 +391,7 @@ The daily sync pipeline per subscription:
 ### Backend (pytest)
 
 ```bash
-cd /root/distillpod
+cd /path/to/distillpod
 python3 -m pytest tests/ -v
 ```
 

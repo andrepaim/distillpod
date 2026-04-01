@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-const REPO = "github.com/andrepaim/distillpod";
+const REPO = "github.com/your-username/distillpod";
 
 export default function Unauthorized() {
   const [copied, setCopied] = useState(false);

@@ -1,9 +1,9 @@
 # DistillPod — Architecture Reference
 
 > **Last updated:** 2026-03-07  
-> **URL:** https://distillpod.duckdns.org  
+> **URL:** https://your-domain.example.com  
 > **Service:** `distillpod.service` (systemd)  
-> **Root:** `/root/distillpod/`
+> **Root:** `/path/to/distillpod/`
 
 ---
 
@@ -14,7 +14,7 @@ DistillPod is a self-hosted podcast client with AI-powered features: on-device t
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                         User (browser)                       │
-│              https://distillpod.duckdns.org                  │
+│              https://your-domain.example.com                  │
 └──────────────────────────┬──────────────────────────────────┘
                            │ HTTPS (Apache reverse proxy)
 ┌──────────────────────────▼──────────────────────────────────┐
@@ -45,13 +45,13 @@ DistillPod is a self-hosted podcast client with AI-powered features: on-device t
 | **OS** | Ubuntu 22.04.5 LTS |
 | **Port** | `127.0.0.1:8124` (internal only) |
 | **Reverse proxy** | Apache (HTTPS termination, forwards to 8124) |
-| **Domain** | `distillpod.duckdns.org` |
+| **Domain** | `your-domain.example.com` |
 | **Process manager** | systemd (`distillpod.service`) |
-| **Python runtime** | `/root/distillpod/backend/` (uvicorn) |
-| **Frontend dist** | `/root/distillpod/frontend/dist/` |
-| **Media storage** | `/root/distillpod/media/` |
-| **Database** | `/root/distillpod/distillpod.db` (SQLite) |
-| **Reports** | `/root/distillpod/reports/*.html` |
+| **Python runtime** | `/path/to/distillpod/backend/` (uvicorn) |
+| **Frontend dist** | `/path/to/distillpod/frontend/dist/` |
+| **Media storage** | `/path/to/distillpod/media/` |
+| **Database** | `/path/to/distillpod/distillpod.db` (SQLite) |
+| **Reports** | `/path/to/distillpod/reports/*.html` |
 
 ### Environment variables (`backend/.env`)
 
@@ -165,13 +165,13 @@ POST /research/{gist_id}  → trigger background research job
 GET  /research/{gist_id}  → poll status + get report URL
 ```
 
-Research runs as a multi-turn Claude pipeline (see §5). Generates an HTML report saved to `/root/distillpod/reports/{id}.html`, served at `/reports/{filename}`.
+Research runs as a multi-turn Claude pipeline (see §5). Generates an HTML report saved to `/path/to/distillpod/reports/{id}.html`, served at `/reports/{filename}`.
 
 ---
 
 ## 4. Database Schema (SQLite)
 
-**File:** `/root/distillpod/distillpod.db`
+**File:** `/path/to/distillpod/distillpod.db`
 
 ### `subscriptions`
 | Column | Type | Description |
@@ -258,7 +258,7 @@ Research runs as a multi-turn Claude pipeline (see §5). Generates an HTML repor
 | `episode_id` | TEXT | |
 | `status` | TEXT | `pending` / `running` / `done` / `error` |
 | `file_path` | TEXT | Local path to HTML report |
-| `public_url` | TEXT | `https://distillpod.duckdns.org/reports/{id}.html` |
+| `public_url` | TEXT | `https://your-domain.example.com/reports/{id}.html` |
 | `error` | TEXT | Error message if failed |
 | `created_at` / `finished_at` | TEXT | |
 
@@ -270,7 +270,7 @@ Research runs as a multi-turn Claude pipeline (see §5). Generates an HTML repor
 
 Downloads episode audio via streaming HTTP (`httpx`).  
 **Filename strategy:** `MD5(episode_id)` as filename, preserving original extension (`.mp3`).  
-File stored under `/root/distillpod/media/`.  
+File stored under `/path/to/distillpod/media/`.  
 Idempotent — skips if file already exists.
 
 ### 5.2 Transcriber (`services/transcriber.py`)
@@ -337,7 +337,7 @@ Multi-turn research pipeline triggered from a gist. Runs synchronously in a thre
 1. **Topic extraction** — Claude extracts 3–5 search queries from the gist text + summary
 2. **Tavily search** — 3 searches via Tavily API, collects URLs + snippets
 3. **Synthesis** — Claude synthesizes findings into structured research (definitions, context, implications, further reading)
-4. **HTML report generation** — Markdown → HTML with inline CSS, saved to `/root/distillpod/reports/{id}.html`
+4. **HTML report generation** — Markdown → HTML with inline CSS, saved to `/path/to/distillpod/reports/{id}.html`
 5. **Telegram notify** — sends report URL to `TG_CHAT_ID` if configured
 6. **DB update** — sets `status=done`, `public_url`, `finished_at`
 
@@ -356,7 +356,7 @@ Fetches and parses podcast RSS feeds. Returns `list[Episode]` with GUID-based ID
 ## 6. Frontend — React SPA
 
 **Stack:** Vite + React + TypeScript + Tailwind CSS  
-**Build output:** `/root/distillpod/frontend/dist/` (served by FastAPI)  
+**Build output:** `/path/to/distillpod/frontend/dist/` (served by FastAPI)  
 **Auth:** handled via `distillpod_session` cookie (set by backend OAuth flow)
 
 ### Pages
@@ -522,7 +522,7 @@ Calls `POST /auth/test-session` (requires `TEST_MODE=true`) → saves session co
 - `EPISODE_DONE_ID` — has transcript, used for player/gist tests
 - `EPISODE_PROC_ID` — transcript in progress, used for "Transcribing…" state tests
 
-**Run:** `cd /root/distillpod/frontend && npx playwright test`
+**Run:** `cd /path/to/distillpod/frontend && npx playwright test`
 
 ---
 
