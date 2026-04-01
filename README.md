@@ -31,23 +31,13 @@ If you have a VPS and a Claude subscription, you already have everything you nee
 
 ---
 
-## What is this?
-
-DistillPod is a personal podcast client that runs on your VPS. You open it in your phone's browser. Everything else — downloading audio, transcribing, serving — happens on the server.
-
-**A distillation** is a moment you flag while listening. Tap ⚗️ at any point and DistillPod extracts the last 60 seconds of transcript, passes it to the Claude CLI, and returns a verbatim quote and a 1–2 sentence insight.
-
-DistillPod transcribes each episode once using [faster-whisper](https://github.com/SYSTRAN/faster-whisper) (runs locally on CPU), then every distillation is a near-instant timestamp lookup in the pre-computed word-level transcript.
-
----
-
 ## Features
 
 - **📰 Home feed** — unified list of the latest episodes across all subscriptions, sorted by date. Shows distillation count per episode.
 - **🔍 Search** — find podcasts via the iTunes Search API (no key needed). When the search box is empty, a **🤖 Suggested for you** section surfaces daily AI-generated recommendations based on your listening history.
 - **📚 Library** — browse your subscribed podcasts and their episode lists with transcript status badges.
 - **▶️ Fullscreen Player** — Spotify-style slide-up player with chapter navigation, ad-free toggle, and distillation controls.
-- **⚗️ Distill** — tap at any moment while listening. Captures the last 60 seconds of transcript, calls the Claude CLI, and returns a quote and insight (~30s).
+- **⚗️ Distill** — tap at any moment while listening. Captures the last 60 seconds of transcript, calls the Claude CLI, and returns a verbatim quote and a 1–2 sentence insight (~30s).
 - **✂️ Ad-free audio** — after transcription, Claude classifies ad segments and ffmpeg cuts them out. Stream the clean version from the player.
 - **📖 Chapters** — Claude generates 4–10 named chapters with timestamps from the full transcript. Tap any chapter to jump directly.
 - **💬 Episode chat** — ask questions about any transcribed episode. Claude answers using the full transcript as context. History kept per episode (capped at 50 messages).
