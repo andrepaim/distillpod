@@ -33,3 +33,40 @@ jobs:
         run: python -m pytest tests/ -v
         env:
           PYTHONPATH: backend
+
+  e2e-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install backend deps
+        run: |
+          grep -v 'faster-whisper' backend/requirements.txt > /tmp/requirements-ci.txt
+          pip install -r /tmp/requirements-ci.txt markdown requests
+          python -c "
+          import os, sys
+          site = next(p for p in sys.path if 'site-packages' in p)
+          os.makedirs(os.path.join(site, 'faster_whisper'), exist_ok=True)
+          with open(os.path.join(site, 'faster_whisper', '__init__.py'), 'w') as f:
+              f.write('class WhisperModel:\n    def __init__(self, *a, **kw): pass\n')
+          "
+      - name: Install frontend deps
+        run: cd frontend && npm ci
+      - name: Build frontend
+        run: cd frontend && npm run build
+      - name: Install Playwright
+        run: cd frontend && npx playwright install --with-deps chromium
+      - name: Start backend
+        run: cd backend && python -m uvicorn main:app --host 127.0.0.1 --port 8124 &
+        env:
+          TEST_MODE: 'true'
+          PYTHONPATH: backend
+      - name: Wait for backend
+        run: timeout 15 bash -c 'until curl -s http://localhost:8124/podcasts/feed > /dev/null 2>&1; do sleep 1; done'
+      - name: Run E2E tests
+        run: cd frontend && npx playwright test
