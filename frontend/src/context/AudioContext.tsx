@@ -59,7 +59,7 @@ export type PlayableEpisode = Episode & {
 
 interface AudioContextValue {
   episode:           PlayableEpisode | null;
-  audioRef:          RefObject<HTMLAudioElement>;
+  audioRef:          RefObject<HTMLAudioElement | null>;
   isPlaying:         boolean;
   currentTime:       number;
   duration:          number;

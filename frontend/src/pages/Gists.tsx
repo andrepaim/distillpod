@@ -27,7 +27,7 @@ function GistCard({ gist, podcastImage, onDelete }: { gist: Gist; podcastImage?:
   const [copied, setCopied] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [research, setResearch] = useState<Research>({ status: "none" });
-  const pollRef = useRef<ReturnType<typeof setInterval>>();
+  const pollRef = useRef<ReturnType<typeof setInterval>>(undefined);
   const ai = parseGistSummary(gist.summary);
 
   useEffect(() => {

@@ -10,7 +10,7 @@ const markdownComponents = {
     // when source markdown has blank lines between items.
     // This prevents the list marker from being orphaned on its own line.
     const unwrapped = React.Children.map(children, (child: React.ReactNode) => {
-      if (React.isValidElement(child) && child.type === "p") {
+      if (React.isValidElement<{ children?: React.ReactNode }>(child) && child.type === "p") {
         return <>{child.props.children}</>;
       }
       return child;
