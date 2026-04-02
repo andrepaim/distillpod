@@ -30,15 +30,17 @@ class TestClaude:
         raw = '["query one", "query two"]'
         assert self._run(raw) == raw
 
-    def test_strips_markdown_fences(self):
+    def test_preserves_markdown_fences(self):
+        """claude() only strips whitespace; fence stripping is in get_search_queries()"""
         raw = '```json\n["query one"]\n```'
         result = self._run(raw)
-        assert result == '["query one"]'
+        assert result == '```json\n["query one"]\n```'
 
-    def test_strips_fences_no_lang(self):
+    def test_preserves_fences_no_lang(self):
+        """claude() only strips whitespace; fence stripping is in get_search_queries()"""
         raw = '```\n["q1", "q2"]\n```'
         result = self._run(raw)
-        assert result == '["q1", "q2"]'
+        assert result == '```\n["q1", "q2"]\n```'
 
     def test_strips_leading_trailing_whitespace(self):
         raw = '  \n["q1"]\n  '
@@ -53,6 +55,27 @@ class TestClaude:
             import pytest
             with pytest.raises(RuntimeError):
                 mod.claude("prompt")
+
+
+# ── get_search_queries() fence stripping ──────────────────────────────────────
+
+class TestGetSearchQueries:
+
+    def _run(self, claude_output: str):
+        with patch.object(mod, "claude", return_value=claude_output):
+            return mod.get_search_queries("some context")
+
+    def test_parses_clean_json(self):
+        result = self._run('["q1", "q2", "q3", "q4"]')
+        assert result == ["q1", "q2", "q3", "q4"]
+
+    def test_strips_markdown_fences(self):
+        result = self._run('```json\n["q1", "q2", "q3", "q4"]\n```')
+        assert result == ["q1", "q2", "q3", "q4"]
+
+    def test_strips_fences_no_lang(self):
+        result = self._run('```\n["q1", "q2"]\n```')
+        assert result == ["q1", "q2"]
 
 
 # ── Deduplication / filtering ─────────────────────────────────────────────────
