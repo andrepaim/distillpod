@@ -287,6 +287,7 @@ class TestAuthMiddleware:
         from httpx import AsyncClient, ASGITransport
         from middleware.auth import create_session_token
 
+        await database.init_db()
         config.settings.test_mode = False
         try:
             token = create_session_token({
