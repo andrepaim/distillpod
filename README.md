@@ -1,8 +1,6 @@
 # DistillPod ⚗️
 
-A self-hosted, mobile-first podcast app with AI-powered features: transcription, distillations, ad detection, chapter generation, episode chat, and deep research reports.
-
-No per-call API costs. All AI runs via the Claude CLI through your existing subscription.
+> A self-hosted, mobile-first podcast app with AI-powered features: transcription, distillations, ad detection, chapter generation, episode chat, and deep research reports. No per-call API costs — all AI runs via the Claude CLI through your existing subscription.
 
 ---
 
@@ -44,6 +42,78 @@ If you have a VPS and a Claude subscription, you already have everything you nee
 - **🔬 Research** — trigger a deep research report from any distillation. Claude generates queries, Tavily runs web searches, Claude synthesizes findings into an HTML report. Delivered via Telegram.
 - **📋 Distillations library** — all your distillations grouped by episode. Copy, delete, or trigger research from any entry.
 - **⚡ Stale-while-revalidate caching** — data is cached in localStorage with a 30-minute TTL and refreshed silently in the background.
+
+---
+
+## How It Works
+
+All AI features call the Claude CLI as a subprocess:
+
+```python
+result = subprocess.run(
+    ["claude", "--print", prompt],
+    capture_output=True, text=True
+)
+```
+
+The CLI authenticates through your Claude subscription — no API key, no per-call billing.
+
+**Setup:** install the Claude CLI and log in once:
+
+```bash
+npm install -g @anthropic-ai/claude-code
+claude login
+```
+
+### AI features summary
+
+| Feature | Trigger |
+|---|---|
+| Distillation (quote + insight) | User taps ⚗️ while listening |
+| Ad detection + audio cut | After transcription completes |
+| Chapter generation + summary | Daily sync or manual script run |
+| Episode chat | User opens chat or sends message |
+| Deep research report | User triggers from a distillation |
+| Podcast suggestions | Daily cron at 09:00 BRT |
+
+### Transcription
+
+When you tap Play:
+
+1. `POST /player/play` triggers a background download + transcription task
+2. The episode MP3 is downloaded to `/media/` (streaming, skips if cached)
+3. faster-whisper transcribes with `word_timestamps=True` (CPU, `medium` model by default)
+4. Word-level timestamps saved to `transcripts` table
+5. Ad detection runs non-fatally after transcription
+6. The ⚗️ Distill button unlocks when `transcript_status = done`
+
+#### Model trade-offs
+
+| Model | Speed (CPU) | Accuracy |
+|---|---|---|
+| `base` | Fastest | Good |
+| `small` | Fast | Better |
+| `medium` | Moderate | Very good (default) |
+| `large-v3` | Slow | Best |
+
+Set via `WHISPER_MODEL` in `.env`.
+
+---
+
+## Stack
+
+| Layer | Tech |
+|---|---|
+| Frontend | [React 18](https://react.dev/) + [TypeScript](https://www.typescriptlang.org/) + [Vite](https://vitejs.dev/) + [Tailwind CSS v3](https://tailwindcss.com/) |
+| Client routing | [React Router v6](https://reactrouter.com/) |
+| State | [Zustand](https://zustand-demo.pmnd.rs/) |
+| Backend | [FastAPI](https://fastapi.tiangolo.com/) + [uvicorn](https://www.uvicorn.org/) |
+| Database | [aiosqlite](https://aiosqlite.omnilib.dev/) — async SQLite (WAL mode) |
+| Transcription | [faster-whisper](https://github.com/SYSTRAN/faster-whisper) — local speech-to-text (CTranslate2, int8) |
+| AI | Claude CLI (`claude --print`) |
+| RSS | [feedparser](https://feedparser.readthedocs.io/) |
+| HTTP client | [httpx](https://www.python-httpx.org/) |
+| Auth | [authlib](https://docs.authlib.org/) — Google OAuth2 |
 
 ---
 
@@ -98,179 +168,74 @@ If you have a VPS and a Claude subscription, you already have everything you nee
 
 ---
 
-## Tech Stack
+## Self-hosting
 
-**Backend**
-- [FastAPI](https://fastapi.tiangolo.com/) + [uvicorn](https://www.uvicorn.org/)
-- [aiosqlite](https://aiosqlite.omnilib.dev/) — async SQLite (WAL mode)
-- [faster-whisper](https://github.com/SYSTRAN/faster-whisper) — local speech-to-text (CTranslate2, int8)
-- [feedparser](https://feedparser.readthedocs.io/) — RSS parsing
-- [httpx](https://www.python-httpx.org/) — async HTTP client
-- [authlib](https://docs.authlib.org/) — Google OAuth2
-
-**Frontend**
-- [React 18](https://react.dev/) + [TypeScript](https://www.typescriptlang.org/)
-- [Vite](https://vitejs.dev/) — build tool
-- [Tailwind CSS v3](https://tailwindcss.com/) — styling
-- [React Router v6](https://reactrouter.com/) — client-side routing
-- [Zustand](https://zustand-demo.pmnd.rs/) — queue state
-
----
-
-## How AI Works
-
-All AI features call the Claude CLI as a subprocess:
-
-```python
-result = subprocess.run(
-    ["claude", "--print", prompt],
-    capture_output=True, text=True
-)
-```
-
-The CLI authenticates through your Claude subscription — no API key, no per-call billing.
-
-**Setup:** install the Claude CLI and log in once:
-
-```bash
-npm install -g @anthropic-ai/claude-code
-claude login
-```
-
-### AI features summary
-
-| Feature | Trigger |
-|---|---|
-| Distillation (quote + insight) | User taps ⚗️ while listening |
-| Ad detection + audio cut | After transcription completes |
-| Chapter generation + summary | Daily sync or manual script run |
-| Episode chat | User opens chat or sends message |
-| Deep research report | User triggers from a distillation |
-| Podcast suggestions | Daily cron at 09:00 BRT |
-
----
-
-## Authentication
-
-Google OAuth2, server-side, cookie-based session (30-day HS256 JWT). Access is restricted to an email allowlist configured in `.env`.
-
-```
-GET  /auth/google           → redirect to Google consent
-GET  /auth/google/callback  → exchange code → set session cookie
-GET  /auth/me               → current user
-POST /auth/logout           → clear cookie
-```
-
----
-
-## How Transcription Works
-
-When you tap Play:
-
-1. `POST /player/play` triggers a background download + transcription task
-2. The episode MP3 is downloaded to `/media/` (streaming, skips if cached)
-3. faster-whisper transcribes with `word_timestamps=True` (CPU, `medium` model by default)
-4. Word-level timestamps saved to `transcripts` table
-5. Ad detection runs non-fatally after transcription
-6. The ⚗️ Distill button unlocks when `transcript_status = done`
-
-### Model trade-offs
-
-| Model | Speed (CPU) | Accuracy |
-|---|---|---|
-| `base` | Fastest | Good |
-| `small` | Fast | Better |
-| `medium` | Moderate | Very good (default) |
-| `large-v3` | Slow | Best |
-
-Set via `WHISPER_MODEL` in `.env`.
-
----
-
-## Prerequisites
+### Requirements
 
 - Python 3.10+
 - Node.js 18+
 - ffmpeg (for ad-free audio generation)
+- [Claude CLI](https://claude.ai/code) installed and authenticated
 - A VPS with a few GB of RAM (faster-whisper `medium` uses ~1.5GB)
 
----
-
-## Installation
-
-### 1. Clone
+### Quick start
 
 ```bash
 git clone https://github.com/your-username/distillpod.git
 cd distillpod
-```
+cp .env.example .env       # edit with your settings
 
-### 2. Configure
-
-```bash
-cp .env.example .env
-```
-
-Key settings in `backend/.env`:
-
-```env
-# Google OAuth (required)
-GOOGLE_CLIENT_ID=...
-GOOGLE_CLIENT_SECRET=...
-ALLOWED_EMAILS=you@gmail.com
-SESSION_SECRET=change-me
-
-# Optional: Podcast Index for richer metadata
-PODCAST_INDEX_API_KEY=...
-PODCAST_INDEX_SECRET=...
-
-# Optional: Tavily for research reports
-TAVILY_API_KEY=...
-
-# Optional: Telegram notifications
-TELEGRAM_BOT_TOKEN=...
-TELEGRAM_CHAT_ID=...
-
-# Whisper model: base | small | medium | large-v3 (default: medium)
-WHISPER_MODEL=medium
-
-# Storage (defaults work out of the box)
-MEDIA_DIR=/path/to/distillpod/media
-REPORTS_DIR=/path/to/distillpod/reports
-PUBLIC_URL=https://your-domain.duckdns.org
-```
-
-### 3. Backend
-
-```bash
+# Backend
 cd backend
 pip install -r requirements.txt
-uvicorn main:app --host 127.0.0.1 --port 8124 --reload
+uvicorn main:app --host 127.0.0.1 --port 8124
+
+# Frontend (production build)
+cd ../frontend
+npm install
+npm run build              # outputs to frontend/dist/
 ```
 
-### 4. Frontend (development)
+FastAPI serves `frontend/dist/` at `/` automatically.
+
+### Environment variables
+
+Copy `.env.example` to `backend/.env` and edit:
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `GOOGLE_CLIENT_ID` | Yes | Google OAuth2 client ID |
+| `GOOGLE_CLIENT_SECRET` | Yes | Google OAuth2 client secret |
+| `ALLOWED_EMAILS` | Yes | Comma-separated email allowlist |
+| `SESSION_SECRET` | Yes | JWT signing secret (`openssl rand -hex 32`) |
+| `PUBLIC_URL` | Yes | Public-facing domain (CORS, OAuth redirect, report URLs) |
+| `PODCAST_INDEX_API_KEY` | No | Podcast Index API key for richer metadata |
+| `PODCAST_INDEX_SECRET` | No | Podcast Index API secret |
+| `TAVILY_API_KEY` | No | Enables deep research reports |
+| `TELEGRAM_BOT_TOKEN` | No | Telegram notifications |
+| `TELEGRAM_CHAT_ID` | No | Telegram chat ID |
+| `WHISPER_MODEL` | No | Whisper model size: `base`, `small`, `medium` (default), `large-v3` |
+| `MEDIA_DIR` | No | Path for downloaded MP3s (default: `media/`) |
+| `REPORTS_DIR` | No | Path for HTML research reports (default: `reports/`) |
+
+### Development
+
+Run backend and frontend with hot reload in separate terminals:
 
 ```bash
+# Terminal 1 — backend
+cd backend
+uvicorn main:app --host 127.0.0.1 --port 8124 --reload
+
+# Terminal 2 — frontend
 cd frontend
 npm install
 npm run dev   # http://localhost:5173
 ```
 
-### 5. Frontend (production build)
+### Deploy (systemd)
 
-```bash
-cd frontend
-npm install
-npm run build   # outputs to frontend/dist/
-```
-
-FastAPI serves `frontend/dist/` at `/` automatically.
-
----
-
-## Running in Production
-
-### systemd service
+#### Service file
 
 ```ini
 [Unit]
@@ -290,7 +255,7 @@ EnvironmentFile=/path/to/distillpod/backend/.env
 WantedBy=multi-user.target
 ```
 
-### Reverse proxy (Apache)
+#### Reverse proxy (Apache)
 
 ```apache
 ProxyPreserveHost On
@@ -298,9 +263,7 @@ ProxyPass / http://127.0.0.1:8124/
 ProxyPassReverse / http://127.0.0.1:8124/
 ```
 
----
-
-## Scheduled Jobs
+### Scheduled jobs
 
 Two daily cron jobs run as background scripts:
 
@@ -317,72 +280,6 @@ The daily sync pipeline per subscription:
 5. Detect + remove ads (non-fatal)
 6. Generate chapters + episode summary
 7. Telegram alert on errors
-
----
-
-## API Reference
-
-### Auth
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/auth/google` | Redirect to Google OAuth |
-| `GET` | `/auth/google/callback` | OAuth callback, sets session cookie |
-| `GET` | `/auth/me` | Current user |
-| `POST` | `/auth/logout` | Clear session |
-
-### Podcasts
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/podcasts/search?q=` | Search podcasts (iTunes API) |
-| `GET` | `/podcasts/subscriptions` | List subscriptions |
-| `POST` | `/podcasts/subscriptions/{id}` | Subscribe |
-| `DELETE` | `/podcasts/subscriptions/{id}` | Unsubscribe |
-| `GET` | `/podcasts/feed` | Home feed (50 episodes) |
-| `GET` | `/podcasts/{id}/episodes` | Episodes for a podcast |
-| `GET` | `/podcasts/suggestions` | Undismissed AI suggestions |
-| `POST` | `/podcasts/suggestions/{id}/dismiss` | Dismiss a suggestion |
-
-### Player
-| Method | Path | Description |
-|---|---|---|
-| `POST` | `/player/play` | Trigger download + transcription |
-| `GET` | `/player/episode/{id}` | Episode metadata |
-| `GET` | `/player/audio/{id}` | Stream original MP3 |
-| `GET` | `/player/audio-adfree/{id}` | Stream ad-free MP3 |
-| `GET` | `/player/transcript-status/{id}` | Poll transcription progress |
-| `GET` | `/player/adfree-status/{id}` | Check ad-free availability |
-| `GET` | `/player/chapters/{id}` | Chapters + episode summary |
-
-### Gists (Distillations)
-| Method | Path | Description |
-|---|---|---|
-| `POST` | `/gists/` | Create distillation at current position |
-| `GET` | `/gists/?episode_id=` | List distillations |
-| `DELETE` | `/gists/{id}` | Delete distillation |
-
-### Chat
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/chat/{episode_id}` | Conversation history |
-| `POST` | `/chat/{episode_id}/init` | Initialize chat (AI summary + invitation) |
-| `POST` | `/chat/{episode_id}/message` | Send message, get reply |
-
-### Research
-| Method | Path | Description |
-|---|---|---|
-| `POST` | `/research/{gist_id}` | Trigger research report |
-| `GET` | `/research/{gist_id}` | Poll status + report URL |
-
----
-
-## Storage
-
-| Path | Contents |
-|---|---|
-| `distillpod.db` | SQLite — subscriptions, episodes, transcripts, gists, chats, chapters, suggestions, research |
-| `media/` | Downloaded episode MP3s (named by MD5 of episode ID) |
-| `media/*_adfree.mp3` | Ad-free cuts generated by ffmpeg |
-| `reports/` | HTML research reports |
 
 ---
 
@@ -404,7 +301,7 @@ cd frontend
 npx playwright test
 ```
 
-Mobile viewport (390×844), Chromium. Requires `TEST_MODE=true` in `.env` for auth bypass.
+Mobile viewport (390x844), Chromium. Requires `TEST_MODE=true` in `.env` for auth bypass.
 
 Test files: navigation, home feed, search, library, player (fullscreen, gists, chapters, ad-free, chat), gists library, caching, SPA routing.
 
