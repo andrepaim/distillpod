@@ -20,8 +20,15 @@ jobs:
           # only used at runtime in transcriber.py, fully mocked in tests)
           grep -v 'faster-whisper' backend/requirements.txt > /tmp/requirements-ci.txt
           pip install -r /tmp/requirements-ci.txt
-          # Test-only dependencies not listed in requirements.txt
           pip install pytest pytest-asyncio
+          # Create a stub module so imports don't fail
+          python -c "
+          import os, sys
+          site = next(p for p in sys.path if 'site-packages' in p)
+          os.makedirs(os.path.join(site, 'faster_whisper'), exist_ok=True)
+          with open(os.path.join(site, 'faster_whisper', '__init__.py'), 'w') as f:
+              f.write('class WhisperModel:\n    def __init__(self, *a, **kw): pass\n')
+          "
       - name: Run tests
         run: python -m pytest tests/ -v
         env:
