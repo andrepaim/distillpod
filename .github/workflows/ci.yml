@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  backend-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: |
+          # Install requirements but skip faster-whisper (needs native libs,
+          # only used at runtime in transcriber.py, fully mocked in tests)
+          grep -v 'faster-whisper' backend/requirements.txt > /tmp/requirements-ci.txt
+          pip install -r /tmp/requirements-ci.txt
+          # Test-only dependencies not listed in requirements.txt
+          pip install pytest pytest-asyncio
+      - name: Run tests
+        run: python -m pytest tests/ -v
+        env:
+          PYTHONPATH: backend
