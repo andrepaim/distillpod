@@ -20,7 +20,7 @@ jobs:
           # only used at runtime in transcriber.py, fully mocked in tests)
           grep -v 'faster-whisper' backend/requirements.txt > /tmp/requirements-ci.txt
           pip install -r /tmp/requirements-ci.txt
-          pip install pytest pytest-asyncio
+          pip install pytest pytest-asyncio markdown requests
           # Create a stub module so imports don't fail
           python -c "
           import os, sys
