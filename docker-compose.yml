@@ -1,0 +1,22 @@
+services:
+  distillpod:
+    build: .
+    ports:
+      - "${PORT:-8124}:8124"
+    volumes:
+      - distillpod-data:/app/data
+      - distillpod-media:/app/media
+      - distillpod-reports:/app/reports
+      - ${CLAUDE_CONFIG:-~/.claude}:/root/.claude:ro
+    env_file:
+      - .env
+    environment:
+      - DB_PATH=/app/data/distillpod.db
+      - MEDIA_DIR=/app/media
+      - REPORTS_DIR=/app/reports
+    restart: unless-stopped
+
+volumes:
+  distillpod-data:
+  distillpod-media:
+  distillpod-reports:
