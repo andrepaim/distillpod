@@ -68,3 +68,11 @@ From WSL with a Windows-hosted emulator, set `DISTILLPOD_ADB` to the Windows `ad
 Fixtures must contain `ggml-tiny.en.bin` (SHA-256 recorded in the validation receipt) and the upstream `jfk.wav`. CI downloads and verifies the model, copies the pinned sample and runs the suite on an accelerated API 35 emulator. Local evidence is from API 36.1/Android 16; see [the emulator receipt](../docs/android/emulator-validation.md).
 
 These tests require no ChatGPT credentials and do not substitute a mock success for account entitlement. Live sign-in and plan usage are separate integration checks.
+
+## Returning from ChatGPT authorization
+
+After approving access in the browser, return to DistillPod. **Disconnect account** and an enabled **Run AI check** indicate that the local account connection is available. A completed AI response verifies inference access. The Activity refreshes this status when resumed and reuses its top instance on reentry.
+
+An approval email confirms granted permissions; a browser spinner alone does not establish whether the app completed the callback. See [the live validation follow-up](../docs/android/chatgpt-validation.md).
+
+Credential device tests use separate preference files and Keystore aliases. They do not overwrite the normal account connection. Other device tests still manipulate imported fixture audio, so use a development emulator.

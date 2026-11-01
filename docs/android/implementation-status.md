@@ -34,7 +34,7 @@ Native tests use explicit runtime checks, including Release builds, rather than 
 
 - The physical phone model and ChatGPT tier remain unknown. Android 16 emulator validation is now recorded in [the emulator receipt](emulator-validation.md).
 - A Windows-hosted x86_64 Android 16 emulator is running and tested through ADB. Physical-device performance remains unverified.
-- Browser authorization, Keystore behavior, entitlement, refresh-token rotation and real inference must still be verified with the owner's account on the target phone.
+- The owner completed browser authorization in the emulator, and a real plan-backed AI request succeeded. Hardware-phone validation and live refresh-token rotation remain open; see [ChatGPT validation](chatgpt-validation.md).
 - The packaged Android JNI bridge passed real tiny.en/JFK inference in the emulator, in approximately 1.9 seconds after native optimization. Phone battery/thermal behavior, locked-screen ASR and Portuguese quality remain unverified.
 - The feasibility build processes bounded WAV clips and returns segment timings. Production audio decoding, word alignment, cancellation, chunk scheduling, job checkpoints and model verification remain open.
 - The feasibility OAuth attempt is transient. Process death during sign-in requires starting a new attempt. Production registration reuse, pending-attempt recovery, disconnect revocation and account/workspace management remain open.

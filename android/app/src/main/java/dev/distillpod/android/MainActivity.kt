@@ -45,6 +45,7 @@ class MainActivity : ComponentActivity() {
     private var connected by mutableStateOf(false)
     private var prompt by mutableStateOf("Explain the main insight of this excerpt in two sentences.")
     private lateinit var auth: AuthSession
+    private lateinit var vault: TokenVault
     private var callbackServer: ServerSocket? = null
     private var playerConnection: ListenableFuture<MediaController>? = null
     private var playing by mutableStateOf(false)
@@ -65,7 +66,7 @@ class MainActivity : ComponentActivity() {
                 }.onFailure { status = "Player connection failed" }
             }, ContextCompat.getMainExecutor(this))
         }
-        val vault = TokenVault(this)
+        vault = TokenVault(this)
         auth = AuthSession(vault::read, vault::write)
         connected = runCatching { vault.read() != null }.getOrDefault(false)
         setContent {
@@ -89,6 +90,17 @@ class MainActivity : ComponentActivity() {
                 }
             }, { playClip() }, playing)
         }
+    }
+    private fun refreshConnectionState() {
+        if(::vault.isInitialized) connected = runCatching { vault.read() != null }.getOrDefault(false)
+    }
+    override fun onResume() {
+        super.onResume()
+        refreshConnectionState()
+    }
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        refreshConnectionState()
     }
     private fun playClip() {
         lifecycleScope.launch {

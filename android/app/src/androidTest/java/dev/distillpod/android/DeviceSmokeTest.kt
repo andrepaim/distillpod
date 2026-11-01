@@ -18,20 +18,33 @@ class DeviceSmokeTest {
         context.getFileStreamPath("whisper-model.bin").delete()
         context.getFileStreamPath("clip.wav").delete()
         compose.onNodeWithText("DistillPod").assertIsDisplayed()
-        compose.onNodeWithText("Run AI check").performScrollTo().assertIsNotEnabled()
+        val hasConnection = compose.onAllNodesWithText("Disconnect account").fetchSemanticsNodes().isNotEmpty()
+        val ai = compose.onNodeWithText("Run AI check").performScrollTo()
+        if(hasConnection) ai.assertIsEnabled() else ai.assertIsNotEnabled()
         compose.onNodeWithText("Transcribe clip").performScrollTo().performClick()
         compose.waitUntil(10000) { compose.onAllNodesWithText("Import a Whisper model and a 16 kHz mono PCM16 WAV clip first").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText("Transcribe clip").assertIsEnabled()
     }
 
     @Test fun credentialsSurviveVaultRecreationAndDisconnect() {
-        val vault = TokenVault(compose.activity)
+        val vault = TokenVault(compose.activity, "instrumentation-vault", "distillpod-test-credentials")
         try {
             vault.write("test-token-envelope")
-            assertEquals("test-token-envelope", TokenVault(compose.activity).read())
+            assertEquals("test-token-envelope", TokenVault(compose.activity, "instrumentation-vault", "distillpod-test-credentials").read())
             vault.write(null)
-            assertNull(TokenVault(compose.activity).read())
+            assertNull(TokenVault(compose.activity, "instrumentation-vault", "distillpod-test-credentials").read())
         } finally { vault.write(null) }
+    }
+
+    @Test fun credentialVaultNamespacesAreIsolated() {
+        val first = TokenVault(compose.activity, "test-vault-first", "test-key-first")
+        val second = TokenVault(compose.activity, "test-vault-second", "test-key-second")
+        try {
+            first.write("first-test-value")
+            second.write("second-test-value")
+            assertEquals("first-test-value", first.read())
+            assertEquals("second-test-value", second.read())
+        } finally { first.write(null); second.write(null) }
     }
 
     @Test fun androidXmlParserReadsFeedAndRejectsExternalEntities() {

@@ -21,7 +21,7 @@ The debug app and instrumentation APK were installed and executed on the Windows
 | Kotlin/Android JVM suite | 44 tests passed |
 | Device runner result parser | 2 tests passed |
 | Android lint | Passed; nonfatal dependency/KTX warnings remain |
-| Live ChatGPT sign-in | Browser reaches OpenAI sign-in; account authorization and actual inference remain pending |
+| Live ChatGPT sign-in | Subsequently verified: owner authorized access and a real AI request succeeded; see [follow-up](chatgpt-validation.md) |
 
 The instrumentation suite has **8 tests**, all passed in 24.152 seconds. The repeatable raw runner output is in [the evidence file](evidence/emulator-api36-tests.txt). The native inference test contains real model execution and is not stubbed.
 
