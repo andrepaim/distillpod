@@ -40,10 +40,11 @@ class TestFeed:
         assert ep1["distill_count"] == 1   # has a gist
         assert ep2["distill_count"] == 0   # no gist
 
-    async def test_no_description_field(self, client):
+    async def test_includes_episode_descriptions(self, client):
         r = await client.get("/podcasts/feed")
-        for ep in r.json():
-            assert "description" not in ep
+        episodes = {ep["id"]: ep for ep in r.json()}
+        assert episodes[EPISODE_ID_1]["description"] == "Long desc"
+        assert episodes[EPISODE_ID_3]["description"] is None
 
     async def test_ordered_by_published_at_desc(self, client):
         r = await client.get("/podcasts/feed")

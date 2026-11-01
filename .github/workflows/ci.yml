@@ -68,7 +68,7 @@ jobs:
         env:
           TEST_MODE: 'true'
       - name: Wait for backend
-        run: timeout 30 bash -c 'until curl -sf http://localhost:8124/auth/me > /dev/null 2>&1; do sleep 1; done' || (echo "Backend failed to start"; exit 1)
+        run: timeout 30 bash -c 'until curl -sf http://localhost:8124/health > /dev/null 2>&1; do sleep 1; done' || (echo "Backend failed to start"; exit 1)
       - name: Run E2E tests
         run: cd frontend && npx playwright test
         env:

@@ -7,7 +7,7 @@ from config import settings
 
 # Only these API prefixes require a valid session.
 # Everything else (frontend SPA, static files, auth routes) passes through freely.
-PROTECTED_PREFIXES = ["/gists", "/podcasts", "/player"]
+PROTECTED_PREFIXES = ["/gists", "/podcasts", "/player", "/chat", "/research"]
 
 
 def create_session_token(user: dict) -> str:

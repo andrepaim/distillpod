@@ -1,0 +1,46 @@
+name: Android
+on:
+  push:
+    branches: [master, feat/native-android]
+  pull_request:
+    paths: ['android/**', '.gitmodules', '.github/workflows/android.yml']
+jobs:
+  android-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Install pinned native tools
+        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0' 'ndk;27.2.12479018' 'cmake;3.22.1'
+      - name: Test, lint and build
+        working-directory: android
+        run: ./gradlew :core:test :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: android-reports
+          path: |
+            android/core/build/reports/tests
+            android/app/build/reports
+      - uses: actions/upload-artifact@v4
+        with:
+          name: distillpod-debug
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+  native-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Build shared native bridge and run validation
+        run: |
+          cmake -S android/app/src/main/cpp -B /tmp/distillpod-native -DCMAKE_BUILD_TYPE=Release
+          cmake --build /tmp/distillpod-native -j4
+          ctest --test-dir /tmp/distillpod-native --output-on-failure

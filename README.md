@@ -307,6 +307,12 @@ Test files: navigation, home feed, search, library, player (fullscreen, gists, c
 
 ---
 
+## Android roadmap
+
+A native [Android feasibility app](android/README.md) and its [implementation status](docs/android/implementation-status.md) are available on `feat/native-android`.
+
+See the [Android implementation plan](docs/android-implementation-plan.md) for the proposed native app, ChatGPT subscription integration, local transcription, migration tasks, and release criteria.
+
 ## License
 
 MIT
