@@ -2,7 +2,7 @@
 
 Date: November 1, 2026. Branch: `feat/native-android`.
 
-The owner approved DistillPod's identity and ChatGPT plan permissions in the Android emulator. An OpenAI confirmation email corroborated the grant. The app then completed a real Responses request using that saved OAuth connection and displayed an insight for a short, non-sensitive sample about habits and routines. No API key or separately billed fallback was used.
+The owner approved DistillPod's identity and ChatGPT plan permissions in the Android emulator. An OpenAI confirmation email corroborated the grant. The app then completed real Responses requests before and after the APK upgrade using that saved OAuth connection and displayed an insight for a short, non-sensitive sample about habits and routines. No API key or separately billed fallback was used.
 
 The browser appeared to remain on the approval screen, while inspecting the original Android Activity showed **ChatGPT connected** with **Run AI check** enabled. A second Activity instance displayed stale connection state. The grant and inference access had worked; the apparent disconnected state was misleading.
 
