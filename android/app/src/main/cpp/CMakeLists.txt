@@ -1,6 +1,10 @@
 cmake_minimum_required(VERSION 3.22.1)
 project(distillpod_native LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 17)
+# Native inference must be optimized even when the Android UI is debuggable.
+# Keep symbols for native crash reports; -O0 makes the CPU model impractical.
+set(CMAKE_C_FLAGS_DEBUG "-O2 -g")
+set(CMAKE_CXX_FLAGS_DEBUG "-O2 -g")
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 set(WHISPER_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(WHISPER_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)

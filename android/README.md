@@ -52,3 +52,19 @@ The last command checks real transcription content and timed output; model files
 ## Dependency notices
 
 Whisper is pinned through the submodule commit. Its MIT license and bundled ggml notices are in `third_party/whisper.cpp`. No code from the noncommercial Sign in with ChatGPT DevKit was copied. The provider implements the published protocol using Nimbus JOSE JWT, OkHttp and platform cryptography. Review all application and model licenses before distribution.
+
+## Automated emulator validation
+
+The app now supports playing an imported WAV clip through a native Media3 background service. Select **Play imported clip**; the button changes to **Pause playback**. Media-session controls remain active after leaving the Activity.
+
+With a running emulator and the public fixtures in a local folder:
+
+```sh
+DISTILLPOD_SERIAL=emulator-5554 scripts/emulator-tests.sh /path/to/fixtures
+```
+
+From WSL with a Windows-hosted emulator, set `DISTILLPOD_ADB` to the Windows `adb.exe` path. `DISTILLPOD_ADB_PORT` can select an isolated server port (5038 was used locally) to avoid collisions with Linux SDK tooling. The script builds and installs the app and instrumentation APK, runs the device suite and rejects incomplete/failing instrumentation output even if ADB returns zero. Run it only on a development emulator: tests write/delete fixture files in the app and exercise the system document picker.
+
+Fixtures must contain `ggml-tiny.en.bin` (SHA-256 recorded in the validation receipt) and the upstream `jfk.wav`. CI downloads and verifies the model, copies the pinned sample and runs the suite on an accelerated API 35 emulator. Local evidence is from API 36.1/Android 16; see [the emulator receipt](../docs/android/emulator-validation.md).
+
+These tests require no ChatGPT credentials and do not substitute a mock success for account entitlement. Live sign-in and plan usage are separate integration checks.

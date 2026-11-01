@@ -10,13 +10,16 @@ data class FeedEpisode(val id: String, val guid: String, val title: String, val 
 data class Feed(val title: String, val episodes: List<FeedEpisode>)
 fun parseFeed(feedUrl: String, xml: String): Feed {
     require(xml.length <= 10_000_000) { "Feed too large" }
+    // Android's Harmony parser does not implement the Xerces feature flags.
+    // Reject declarations before parsing rather than ignoring unsupported security flags.
+    require(!Regex("<!\\s*(DOCTYPE|ENTITY)", RegexOption.IGNORE_CASE).containsMatchIn(xml)) { "XML declarations for entities/DTDs are prohibited" }
     val factory = DocumentBuilderFactory.newInstance().apply {
         isNamespaceAware = true
-        setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
-        setFeature("http://xml.org/sax/features/external-general-entities", false)
-        setFeature("http://xml.org/sax/features/external-parameter-entities", false)
+        isExpandEntityReferences = false
     }
-    val document = factory.newDocumentBuilder().parse(InputSource(StringReader(xml)))
+    val builder = factory.newDocumentBuilder()
+    builder.setEntityResolver { _, _ -> throw org.xml.sax.SAXException("External entities are prohibited") }
+    val document = builder.parse(InputSource(StringReader(xml)))
     fun Element.text(name: String): String? = getElementsByTagName(name).item(0)?.textContent?.trim()?.takeIf { it.isNotEmpty() }
     val channel = document.getElementsByTagName("channel").item(0) as? Element ?: error("Missing RSS channel")
     val nodes = channel.getElementsByTagName("item")
