@@ -50,6 +50,8 @@ On disposable GitHub-hosted emulators only, the fixture script supplies Chromium
 
 CI also waits up to 30 seconds for user storage to become RUNNING_UNLOCKED after the emulator reports boot completion. A development phone still requires its owner to unlock it; the script does not dismiss a secure keyguard.
 
+The browser integration check validates receipt of a real browser's callback and its state/client identity. A separate Android TCP check reads the complete HTTP response while the listener scope remains open. This tests callback delivery and response completion independently of Chrome's accessibility representation of a plain-text page.
+
 ## Workflows
 
 `ci.yml` runs Kotlin tests, lint/APK assembly, release-tool guards, host native validation and emulator acceptance on main pushes and pull requests. Its reusable form also gates the release workflow. Actions are pinned to reviewed commit SHAs; Dependabot checks those pins and Gradle dependencies weekly.
