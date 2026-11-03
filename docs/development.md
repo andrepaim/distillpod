@@ -44,7 +44,7 @@ DISTILLPOD_SERIAL=emulator-5554 scripts/emulator-tests.sh /tmp/distillpod-fixtur
 
 Fixtures are fetched from the upstream public model repository and verified by SHA-256 before use; model/audio binaries are excluded from Git. The script also copies samples from the pinned Whisper submodule. Set `DISTILLPOD_ADB` and `DISTILLPOD_ADB_PORT` when using Windows ADB from WSL.
 
-Ordinary CI excludes live-account and long public-podcast/battery/hour tests. Deliberate live tests require their explicit instrumentation arguments and task authorization. Never upload tokens, generated account content, personal recordings, subscription lists or owner screenshots as CI artifacts.
+Ordinary CI excludes live-account, opt-in public-directory, and long public-podcast/battery/hour tests. Deliberate live tests require their explicit instrumentation arguments and task authorization. Never upload tokens, generated account content, personal recordings, subscription lists or owner screenshots as CI artifacts.
 
 On disposable GitHub-hosted emulators only, the fixture script supplies Chromium's test command-line flags to bypass first-run onboarding before the real browser callback check. It verifies that the target is an emulator and removes its flags/debug-app setting on exit. This setup is never applied to an owner's phone. Lazy-list UI checks scroll the containing list before accessing rows that may not yet be composed on smaller screens.
 
