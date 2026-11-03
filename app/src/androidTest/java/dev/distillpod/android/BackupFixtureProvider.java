@@ -26,7 +26,7 @@ public final class BackupFixtureProvider extends DocumentsProvider {
         row.add(Root.COLUMN_ROOT_ID, "fixture"); row.add(Root.COLUMN_DOCUMENT_ID, "root");
         row.add(Root.COLUMN_TITLE, "DistillPod test files");
         row.add(Root.COLUMN_FLAGS, Root.FLAG_SUPPORTS_CREATE | Root.FLAG_LOCAL_ONLY);
-        row.add(Root.COLUMN_MIME_TYPES, "application/json"); row.add(Root.COLUMN_AVAILABLE_BYTES, 100_000_000L);
+        row.add(Root.COLUMN_MIME_TYPES, "*/*"); row.add(Root.COLUMN_AVAILABLE_BYTES, 100_000_000L);
         return cursor;
     }
     private File file(String id) {
@@ -42,7 +42,7 @@ public final class BackupFixtureProvider extends DocumentsProvider {
         File file = root ? folder() : file(id);
         MatrixCursor.RowBuilder row = cursor.newRow();
         row.add(Document.COLUMN_DOCUMENT_ID, id); row.add(Document.COLUMN_DISPLAY_NAME, root ? "DistillPod test files" : id);
-        row.add(Document.COLUMN_MIME_TYPE, root ? Document.MIME_TYPE_DIR : "application/json");
+        row.add(Document.COLUMN_MIME_TYPE, root ? Document.MIME_TYPE_DIR : (id.endsWith(".zip") ? "application/zip" : "application/x-misclassified-backup"));
         row.add(Document.COLUMN_FLAGS, root ? Document.FLAG_DIR_SUPPORTS_CREATE : Document.FLAG_SUPPORTS_WRITE | Document.FLAG_SUPPORTS_DELETE);
         row.add(Document.COLUMN_SIZE, file.length()); row.add(Document.COLUMN_LAST_MODIFIED, file.lastModified());
     }

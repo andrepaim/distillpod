@@ -18,7 +18,7 @@ Only selected transcript text goes to OpenAI for requested AI actions; audio tra
 
 ## Backup and transfer
 
-Settings → Backup & Restore → Save backup to Google Drive writes a versioned JSON document through Android's document picker. It includes library metadata, progress, queue, transcripts and saved text, including any future analysis/history stored in the library. It excludes account credentials, audio, model binaries and device-private file paths. The file is readable library content; choose a suitable destination.
+Settings → Backup & Restore connects a backup file once through Android’s document picker. Back up now then saves without another picker; Restore a backup lists dated snapshots inside DistillPod. The managed ZIP contains versioned JSON snapshots. Older standalone JSON imports and exports remain available. It includes library metadata, progress, queue, transcripts and saved text, including any future analysis/history stored in the library. It excludes account credentials, audio, model binaries and device-private file paths. The file is readable library content; choose a suitable destination.
 
 Restore backup validates size, record limits, format, checksum and schema, then shows a preview. Merge library keeps existing records and inserts missing records in one transaction. Repeated merges are idempotent. Invalid relationships roll back the complete merge. Interrupted AI work is restored for explicit retry. Re-download audio and connect the destination installation's account separately.
 

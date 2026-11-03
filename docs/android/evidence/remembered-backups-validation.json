@@ -1,0 +1,34 @@
+{
+  "date": "2026-11-03",
+  "versionName": "0.7.0-alpha.1",
+  "versionCode": 12,
+  "builds": {"debug": "passed", "unsignedRelease": "passed", "debugLint": "passed", "releaseLint": "passed"},
+  "unitTests": {"core": 48, "app": 82, "failures": 0, "skipped": 0},
+  "utilityTests": {"passed": 11},
+  "emulatorAcceptance": {
+    "passed": 30,
+    "failures": 0,
+    "skipped": 0,
+    "environment": "Android 36 emulator instance with read-only source AVD overlays",
+    "newCases": [
+      "one-time system-picker creation with default filename and persistent read/write grant",
+      "a second backup without opening a picker",
+      "fresh connection to an existing managed backup history",
+      "coordinator recreation using persisted settings and grants",
+      "in-app selection and restore of an older snapshot into a fresh database",
+      "older JSON import when the provider reports an unexpected MIME type"
+    ]
+  },
+  "providerFailureCoverage": [
+    "truncated writes and rollback to previous verified history",
+    "revoked read access with labeled local recovery",
+    "damaged history repair from recovery",
+    "unsupported future history never overwritten",
+    "invalid history cannot replace a working connection",
+    "disconnect revokes persistent permission without deleting cloud or library data",
+    "bounded history retention, hashes and unsafe archive entries"
+  ],
+  "physicalPhoneTouched": false,
+  "physicalGoogleDriveValidation": "pending: test phone not connected",
+  "scope": "Synthetic provider validates Android file-picker and grant behavior. It does not certify the current Google Drive provider's persistent-access or cloud-sync behavior."
+}

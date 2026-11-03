@@ -41,3 +41,8 @@ reports/
 .pytest_cache/
 .omc/
 sync.log
+
+# Personal DistillPod backup documents
+DistillPod-backups*.zip
+distillpod-backups*.zip
+distillpod-20??-??-??*.json

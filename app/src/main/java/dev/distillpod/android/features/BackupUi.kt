@@ -22,6 +22,7 @@ import java.util.Locale
 
 @Composable internal fun BackupDocumentLaunchers(vm: AppViewModel) {
     BackupExportLauncher(vm.backupDocuments)
+    ManagedBackupLaunchers(vm.managedBackups)
 }
 
 @Composable internal fun BackupExportLauncher(
@@ -41,7 +42,7 @@ private fun backupDate(at: Long): String = if (at <= 0) "Date unavailable" else 
     .ofPattern("d MMM yyyy · HH:mm", Locale.getDefault()).withZone(ZoneId.systemDefault()).format(Instant.ofEpochMilli(at))
 private fun backupSize(bytes: Long): String = if (bytes < 1_000_000) "%.1f KB".format(bytes / 1000.0) else "%.1f MB".format(bytes / 1_000_000.0)
 
-@Composable internal fun BackupPage(vm: AppViewModel) = BackupScreen(vm.backupDocuments)
+@Composable internal fun BackupPage(vm: AppViewModel) = ManagedBackupScreen(vm.managedBackups, vm.backupDocuments)
 
 @Composable internal fun BackupScreen(documents: dev.distillpod.android.data.BackupDocuments) {
     val state by documents.state.collectAsStateWithLifecycle()
@@ -84,7 +85,7 @@ private fun backupSize(bytes: Long): String = if (bytes < 1_000_000) "%.1f KB".f
         Text("Restore your library", style = MaterialTheme.typography.titleLarge)
         Text("Choose a DistillPod backup from Drive or your device. Review its contents before merging. Existing records and listening progress are kept.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         OutlinedButton(onClick = {
-            try { import.launch(arrayOf("application/json", "text/plain", "application/octet-stream")) }
+            try { import.launch(arrayOf("*/*")) }
             catch (_: android.content.ActivityNotFoundException) { documents.pickerUnavailable() }
         }, enabled = enabled, modifier = Modifier.fillMaxWidth()) {
             Icon(Icons.Default.Restore, null); Spacer(Modifier.width(8.dp)); Text("Import backup")
@@ -95,6 +96,11 @@ private fun backupSize(bytes: Long): String = if (bytes < 1_000_000) "%.1f KB".f
         Text("Audio downloads, model files and sign-in credentials stay off the backup. On another phone, download audio/models and connect ChatGPT separately.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text("Backups are readable JSON, with personal text and feed addresses that may contain private access links. Keep them in a private location. This is a manual backup; save again after changes.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
+    BackupReview(documents)
+}
+
+@Composable internal fun BackupReview(documents: dev.distillpod.android.data.BackupDocuments) {
+    val state by documents.state.collectAsStateWithLifecycle()
     state.preview?.let { preview ->
         var restorePreferences by rememberSaveable(preview.createdAt, preview.appVersion) { mutableStateOf(false) }
         AlertDialog(onDismissRequest = documents::dismissPreview, title = { Text("Review backup") }, text = {

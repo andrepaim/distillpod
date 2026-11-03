@@ -1,14 +1,13 @@
-DistillPod 0.6.0-alpha.1 adds manual Google Drive backup and restore.
+DistillPod 0.7.0-alpha.1 makes Google Drive backup a one-time setup followed by one-tap saves and an in-app restore history.
 
-- Open Settings → Backup & Restore to save through Android’s file picker to Drive, another provider or your device.
-- Snapshots are prepared locally before choosing a destination. Each save creates a new timestamped file and reads it back to verify its bytes.
-- See the last saved file, date, size and library counts. Your file provider manages cloud sync.
-- Import previews date, source version, counts and existing-record conflicts before merging. Existing items and newer local progress are kept.
-- Restore language/model choices optionally. Account credentials, audio downloads, model files and device constraints are excluded.
-- Older backup files remain importable. Failed transfers, corrupt files and future formats receive clear recovery messages.
+- Choose a Drive backup file once using the suggested filename. DistillPod remembers it across launches.
+- Back up now saves to that file without opening another save dialog.
+- Restore a backup lists dated snapshots inside the app, newest first. Up to ten recent snapshots are kept within the history size limits.
+- Reconnect an existing managed backup file once after reinstalling or on another device.
+- Import older JSON backups with an unrestricted file-type picker, including providers that misclassify JSON.
+- Verified local recovery copies protect against unavailable providers and detected interrupted writes. Existing standalone exports are kept.
+- Safe merge, optional portable preferences and credential/audio/model exclusions remain in place.
 
-Backups are readable JSON containing personal library text and feed addresses. Keep them private. This feature is manual; scheduled backups and passphrase encryption are future work. No new Google sign-in is required in DistillPod.
+Backups are manual, and the provider manages cloud sync. They contain readable personal library data; ZIP compression is not encryption. The new flow is validated with a synthetic document provider on an emulator. Physical Drive testing of this version's remembered-file flow remains outstanding when the test phone is unavailable.
 
-Install the APK over the compatible personal-alpha app; do not uninstall as an update step. Android 10+; ARM64 and x86_64 included. The application ID and retained signing certificate are unchanged.
-
-This remains a personal alpha. AI features depend on eligible account/model access and plan limits. Web research, broader device/accessibility, Bluetooth/phone-interruption and sustained battery trials remain open. See the backup guide in docs/android/drive-backup.md for usage and recovery.
+Install over the compatible personal-alpha app; do not uninstall as an update step. Android 10+; ARM64 and x86_64. See docs/android/drive-backup.md for usage, retention, recovery and limitations.

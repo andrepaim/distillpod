@@ -38,7 +38,7 @@ With ChatGPT connected and the source transcript ready, DistillPod can generate 
 
 ## Back up or move devices
 
-Settings → Backup & Restore → Save backup to Google Drive writes library metadata, progress, queue, transcripts and saved text through Android's file picker. Backups contain readable personal library content; store them somewhere appropriate. Restore previews the file and merges records without replacing existing ones. Repeating a merge does not duplicate imported records. Language/model choices can be restored optionally. See the [Drive backup guide](android/drive-backup.md) for cloud sync, privacy and recovery details.
+Settings → Backup & Restore → Create backup file connects a Drive document once, with a suggested filename. After setup, Back up now saves without another picker, and Restore a backup shows dated snapshots in the app. Reconnect that file once after reinstalling or on another phone. Import older backup supports standalone JSON files and shows all file types. Restore previews and safely merges data, keeping existing local records. See the [Drive backup guide](android/drive-backup.md) for retention, privacy and recovery.
 
 Credentials, downloaded audio, model binaries and private device file paths are excluded. Reconnect the account and re-download audio/models on a destination installation. OPML transfers subscriptions only.
 

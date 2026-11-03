@@ -38,6 +38,7 @@ class AppViewModel(val graph: AppGraph, private val saved: SavedStateHandle) : V
     val messages = Channel<String>(Channel.BUFFERED)
     val loaded = MutableStateFlow(false)
     val backupDocuments = BackupDocuments(graph.context, graph.backup, graph.settings, viewModelScope) { graph.playback.synchronizeRestoredQueue() }
+    val managedBackups = ManagedBackups(graph.context, graph.backup, graph.settings, viewModelScope, backupDocuments::review)
     init { viewModelScope.launch { dao.observeEpisodes().first(); loaded.value = true } }
     fun root(route: String) { saved["backStack"] = arrayListOf(route) }
     fun open(route: String) { if (backStack.value.lastOrNull() != route) saved["backStack"] = ArrayList(backStack.value + route) }

@@ -135,6 +135,8 @@ class BackupDocuments(
         }
     }
 
+    fun review(preview: BackupPreview) { if (!state.value.working && !state.value.awaitingDestination) state.value = State(preview = preview) }
+
     fun dismissPreview() { if (!state.value.working) state.value = State() }
 
     fun restore(restorePreferences: Boolean) {
