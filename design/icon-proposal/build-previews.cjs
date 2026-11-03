@@ -1,7 +1,7 @@
 // Rasterize the original vectors using the repository's existing browser tooling.
 const fs = require('node:fs');
 const path = require('node:path');
-const { chromium } = require(path.resolve(__dirname, '../../frontend/node_modules/@playwright/test'));
+const { chromium } = require('@playwright/test');
 
 (async () => {
   const browser = await chromium.launch({ headless: true });

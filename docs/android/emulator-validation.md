@@ -37,7 +37,7 @@ Current debug APK SHA-256: `2b0cff24765938d915a34719edcbba2e35e04478a1446f0afde8
 
 ## Reproduction
 
-Follow the emulator section of [the Android README](../../android/README.md). `android/scripts/emulator-tests.sh` builds/install both APKs and verifies the runner's completion report. ADB's shell exit code alone does not prove test success. Public ASR fixtures are supplied explicitly, and the CI job checks the model's checksum before running.
+Follow the emulator section of [the Android README](../../README.md). `android/scripts/emulator-tests.sh` builds/install both APKs and verifies the runner's completion report. ADB's shell exit code alone does not prove test success. Public ASR fixtures are supplied explicitly, and the CI job checks the model's checksum before running.
 
 The tests install development APKs and manipulate fixture files in the app's private directory. They should not run on an installation containing personal data. No passwords or account tokens are part of test assets or this evidence.
 

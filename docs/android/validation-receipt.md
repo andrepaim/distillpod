@@ -21,7 +21,7 @@ Android command, from `android/` with JDK 17 and the pinned SDK/NDK tools instal
 ./gradlew --no-daemon :core:test :app:testDebugUnitTest :app:assembleDebug :app:lintDebug
 ```
 
-Native commands and model requirements are in [the Android README](../../android/README.md). The smoke test checks real content with explicit runtime checks that remain active in Release builds.
+Native commands and model requirements are in [the Android README](../../README.md). The smoke test checks real content with explicit runtime checks that remain active in Release builds.
 
 Whisper submodule commit: `482279b8a18855ba741d7b88c30fcb3874691f59`.
 

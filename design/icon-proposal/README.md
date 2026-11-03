@@ -23,7 +23,7 @@ The signal D alternative is compact but suggests audio hardware. The audio bookm
 
 `assets/distillpod-lavender.svg` is the full-square master for store/web previews, using the central 72 dp viewport of the 108 dp adaptive canvas. `distillpod-foreground.svg`, `distillpod-background.svg` and `distillpod-monochrome.svg` are separate 108 × 108 layers. The playback opening is genuine transparency, not a background-colored overlay. PNG exports contain full square backgrounds with no baked exterior shadow or rounded corners. The 512 px lavender candidate is under Google Play's 1024 KB limit.
 
-The downloadable Android XML files retain the same compound path and even-odd fill as the master. The installed resources live in `android/app/src/main/res`, with a base adaptive icon in `mipmap-anydpi-v26` and an additional monochrome layer in `mipmap-anydpi-v33`. Both the regular and round manifest icon references use this selected mark.
+The downloadable Android XML files retain the same compound path and even-odd fill as the master. The installed resources live in `app/src/main/res`, with a base adaptive icon in `mipmap-anydpi-v26` and an additional monochrome layer in `mipmap-anydpi-v33`. Both the regular and round manifest icon references use this selected mark.
 
 Reference specifications:
 
@@ -38,12 +38,14 @@ From the repository root:
 
 ```sh
 python3 design/icon-proposal/build-assets.py
+npm --prefix design/icon-proposal ci
+npm --prefix design/icon-proposal exec playwright install chromium
 node design/icon-proposal/build-previews.cjs
 python3 design/icon-proposal/package-assets.py
 python3 -m http.server 8136 --bind 127.0.0.1 --directory design/icon-proposal
 ```
 
-Open `http://localhost:8136`. The server serves only this proposal directory. Browser export tooling uses the existing Playwright dependency in `frontend/node_modules`.
+Open `http://localhost:8136`. The server serves only this proposal directory. Browser export tooling uses the existing Playwright dependency in this proposal’s own `node_modules` after `npm ci`.
 
 ## Checks and next implementation step
 

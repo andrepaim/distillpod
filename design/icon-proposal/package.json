@@ -1,0 +1,6 @@
+{
+  "name": "distillpod-icon-design",
+  "private": true,
+  "scripts": {"export": "node build-previews.cjs"},
+  "devDependencies": {"@playwright/test": "1.58.2"}
+}
