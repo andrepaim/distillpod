@@ -2,6 +2,12 @@
 
 Install the APK attached to a [GitHub release](https://github.com/andrepaim/distillpod/releases). Android 10 or later is required. A newer compatible release installs over the current app; keep the application installed to retain its private data.
 
+## Connect ChatGPT
+
+Start in **Settings → ChatGPT → Continue with ChatGPT**. The connection powers DistillPod's quotes and insights, episode summaries and chapters, episode chat, saved-idea explanations and interest-based podcast suggestions. Account/model eligibility and plan limits apply; requests use your ChatGPT plan allowance.
+
+Complete browser sign-in and return to DistillPod for its final connection result. A provider email alone does not establish that the app finished connecting. A retry can use more allowance. Playback, local transcription and source-moment capture also work without the connection.
+
 ## Follow your shows
 
 Open Search and enter a show name or creator. Preview the artwork and publisher, then Follow. The directory is external, so a show might require its public RSS address instead. Add RSS feed accepts that address directly. Settings also imports OPML subscription lists.
@@ -20,11 +26,15 @@ Publisher transcripts are used when suitable. Otherwise choose Tiny or Base in S
 
 Automatic language detection, English and Português are available. A partial transcript is identified as partial rather than treated as complete.
 
+## Understand an episode
+
+Once the complete transcript is ready, open **Summary & chapters** to generate an overview and jump to chapter timestamps, or open episode chat to ask questions about what was said. Answers use transcript excerpts and source references; replay the relevant audio to check the context.
+
 ## Keep a moment
 
 While listening, select Distill last 60 seconds. DistillPod records that original source window immediately. Open Saved to revisit the excerpt and replay it. Source preparation or AI failure retains the capture for review and retry.
 
-Connect ChatGPT in Settings only if you want optional quotes/insights, episode summaries, chat or interest-based suggestions. Account/model eligibility and plan limits apply. Complete browser sign-in and return to DistillPod for its final connection result. A provider email alone does not establish that the app finished connecting. A retry can use more allowance.
+With ChatGPT connected and the source transcript ready, DistillPod can generate a quote and concise insight for the saved moment. Source review may be required before generation. Choose **Explain this idea** to explore the excerpt further through an explanation, practical reflection and questions to investigate. Explanations use the transcript; they do not search the web.
 
 ## Back up or move devices
 
