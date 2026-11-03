@@ -14,7 +14,7 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class FileImportTest {
-    @get:Rule val compose = createAndroidComposeRule<MainActivity>()
+    @get:Rule val compose = createAndroidComposeRule<DiagnosticsActivity>()
     @Test fun systemPickerImportsValidatedWaveAndCancellationLeavesItIntact() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val resolver = compose.activity.contentResolver
@@ -26,7 +26,7 @@ class FileImportTest {
         })!!
         try {
             instrumentation.context.assets.open("jfk.wav").use { input -> resolver.openOutputStream(uri)!!.use(input::copyTo) }
-            compose.onNodeWithText("Import WAV clip").performScrollTo().performClick()
+            compose.onNodeWithText("Import audio clip").performScrollTo().performClick()
             val device = UiDevice.getInstance(instrumentation)
             var file = device.wait(Until.findObject(By.text(name)), 10000)
             if(file == null) {
@@ -43,7 +43,7 @@ class FileImportTest {
             val imported = compose.activity.getFileStreamPath("clip.wav")
             assertTrue(imported.length() > 0)
             val original = imported.readBytes()
-            compose.onNodeWithText("Import WAV clip").performScrollTo().performClick()
+            compose.onNodeWithText("Import audio clip").performScrollTo().performClick()
             device.wait(Until.hasObject(By.pkg("com.google.android.documentsui")), 5000)
             device.pressBack()
             compose.waitForIdle()

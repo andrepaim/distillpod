@@ -1,0 +1,33 @@
+{
+  "versionName": "0.4.1-alpha",
+  "versionCode": 6,
+  "sha256": "fc12e229aa48dbe5a2390e28cc918ad64ea21a99ae34aa7d0394ff7f20f1091b",
+  "bytes": 74151093,
+  "date": "2026-11-03",
+  "icon": "The Listening Drop \u2014 lavender #B7B9FF on ink #0C0F16",
+  "scope": "Launcher vector resources, manifest icon references, and version metadata only",
+  "lint": "passed",
+  "assembly": "passed",
+  "sameSigningCertificateVerified": true,
+  "installedSha256Verified": true,
+  "device": "Samsung S22 Ultra / Android 16",
+  "launcherIconVisuallyVerified": true,
+  "launcherIconTapOpensApp": true,
+  "deviceLeftOn": "Home screen with new DistillPod icon visible",
+  "adaptiveResources": [
+    "mipmap-anydpi-v26/ic_launcher.xml",
+    "mipmap-anydpi-v33/ic_launcher.xml"
+  ],
+  "monochromeLayerIncluded": true,
+  "physicalThemedModeTested": false,
+  "preservation": {
+    "subscribedPodcasts": 23,
+    "allTableCountsUnchanged": true,
+    "queueUnchanged": true,
+    "playerSessionUnchanged": true,
+    "episodeProgressAndDownloadsUnchanged": true,
+    "encryptedAccountVaultAndSettingsChecksumsUnchanged": true
+  },
+  "newAiRequests": false,
+  "earlierSearchAndPlaybackValidation": "Prior behavior suites retained; not rerun for this resource-only change"
+}

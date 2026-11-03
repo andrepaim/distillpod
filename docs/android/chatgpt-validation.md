@@ -25,3 +25,13 @@ This establishes one account's live authorization and text inference on the emul
 All 10 emulator instrumentation tests pass, including the navigation regression and isolated credential-vault tests. The 44 Kotlin/Android JVM tests and lint also pass. [Device runner output](evidence/emulator-auth-tests.txt) records the executed suite.
 
 Updated development APK SHA-256: `128ddde451e6f789f6ec4f2b45fa7e6112d801128e02bc06cdc1e3a7afd63919`.
+
+## Physical-phone follow-up — November 2
+
+Live authorization and plan-backed inference are now verified on the Samsung Galaxy S22 Ultra SM-S908E, Android 16/ARM64. The connection survives a full app process restart, and a further request using a public sample completed afterward. See [the phone validation receipt](s22-validation.md#live-account-and-restart-verification--november-2) and its sanitized metadata. The phone uses its own encrypted OAuth connection; emulator credentials were not copied. Live refresh-token rotation and account-switch behavior remain unverified.
+
+## Production-alpha follow-up — November 2
+
+The same phone connection now completes the production capture, summary and grounded chat workers after APK upgrades. A deliberate refresh-token renewal succeeded, followed by completed capture inference. [Renewal/restore evidence](evidence/s22-renewal-restore-tests.txt) and [summary/chat evidence](evidence/s22-understanding-tests.txt) record these runs. This verifies a real renewal; it does not assert that the server changed the refresh-token value or that every account-switch/revocation case was exercised live.
+
+A separate isolated-library run completed a transcript explanation and resolved six public podcast suggestions, with owner history excluded. [Exploration metadata](evidence/s22-exploration-integration.json) stores counts rather than prompts, credentials or result text.

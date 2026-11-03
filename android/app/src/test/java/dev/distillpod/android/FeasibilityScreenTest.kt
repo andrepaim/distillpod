@@ -19,11 +19,27 @@ class FeasibilityScreenTest {
         assertTrue(connected)
         compose.onNodeWithText("Ready for validation").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Import Whisper model").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("Import WAV clip").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Import audio clip").performScrollTo().assertIsDisplayed()
     }
     @Test fun `busy execution prevents starting duplicate jobs`() {
         compose.setContent { FeasibilityScreen("Transcribing", true, true, "", {}, {}, {}, {}, {}, {}, {}) }
         compose.onNodeWithText("Transcribe clip").assertIsNotEnabled()
+        compose.onNodeWithText("Run AI check").assertIsNotEnabled()
+    }
+    @Test fun `cancellable local work exposes cancellation while keeping duplicate work disabled`() {
+        var cancelled = false
+        compose.setContent { FeasibilityScreen("Transcribing", true, true, "", {}, {}, {}, {}, {}, {}, {},
+            cancellable = true, onCancel = { cancelled = true }) }
+        compose.onNodeWithText("Cancel operation").performScrollTo().performClick()
+        assertTrue(cancelled)
+        compose.onNodeWithText("Transcribe clip").assertIsNotEnabled()
+    }
+    @Test fun `a recoverable account failure offers an explicit retry`() {
+        var retried = false
+        compose.setContent { FeasibilityScreen("Check your network", false, false, "", {}, {}, {}, {}, {}, {}, {},
+            retryConnection = true, onRetryConnection = { retried = true }) }
+        compose.onNodeWithText("Retry account connection").performClick()
+        assertTrue(retried)
         compose.onNodeWithText("Run AI check").assertIsNotEnabled()
     }
 }

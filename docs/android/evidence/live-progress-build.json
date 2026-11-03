@@ -1,0 +1,23 @@
+{
+  "version": "0.2.1-alpha",
+  "versionCode": 3,
+  "apkSha256": "6abe2acfa5a749be0e6189d72932ba3220edeedbe9156e42305ebdf0159b28c5",
+  "unitTests": {
+    "core": {
+      "tests": 48,
+      "failures": 0
+    },
+    "app": {
+      "tests": 56,
+      "failures": 0
+    }
+  },
+  "lint": "passed",
+  "nativeHostValidation": "passed",
+  "nativeRealInferenceAndMonotonicCallbacks": "passed",
+  "phoneNativeProgressAndCancellation": "5 tests passed",
+  "renderedProgressCheck": "passed: real native progress visible on screen before first committed chunk; pause/resume retains saved coverage",
+  "coveragePolicy": "only committed chunks are saved; native callbacks update live work separately",
+  "schema": 2,
+  "installedApkVerified": true
+}

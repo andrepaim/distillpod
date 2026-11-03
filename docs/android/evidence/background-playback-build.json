@@ -1,0 +1,23 @@
+{
+  "date": "2026-11-02",
+  "versionName": "0.2.1-alpha",
+  "variant": "playback-wake-lock-fix",
+  "sha256": "ba57b28744c2979c0b4ec3f3dd9e0290db5d3f09a01b8000bc86d8b855123ed5",
+  "bytes": 74604222,
+  "coreTests": 48,
+  "appTests": 56,
+  "jvmFailures": 0,
+  "lint": "passed",
+  "mainAssembly": "passed",
+  "instrumentationAssembly": "passed",
+  "installed": "main APK install returned Success",
+  "lockedHour": "passed: 60 minutes 16.841 seconds",
+  "bluetooth": "not tested; no hardware available",
+  "installedSha256Verified": true,
+  "serviceForegroundVerified": true,
+  "exoPlayerWakeLockVerified": true,
+  "focusAndProcessRecovery": "passed",
+  "ownerQueueRestored": true,
+  "testPackageRemoved": true,
+  "cleanupVerifiedOn": "2026-11-03"
+}

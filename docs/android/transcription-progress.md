@@ -1,0 +1,9 @@
+# Live transcription progress
+
+November 2, 2026. Version 0.2.1-alpha addresses the progress display moving only when a two-minute chunk was saved.
+
+Whisper now reports native progress and segment completion through JNI. An application-scoped flow carries the current phase and active audio work to the transcript controls; the bar animates to measured progress and the audio counter advances within a chunk. Downloading, model verification, decoding, inference startup and saving have distinct status text and busy indicators.
+
+Live work remains separate from durable transcript coverage. The saved counter advances only after a chunk commits. Overlap, prioritized windows and partially saved retries are accounted for without double counting. Pausing clears the unfinished estimate; reprocessing a new revision resets it. Joining a preparation that is already running keeps its progress callbacks active. Output stays incomplete until existing validation and database commits succeed.
+
+Checks include overlap/retry arithmetic, host native monotonic callback delivery with real inference, and an updated physical pipeline regression. The device check requires multiple live updates before the first saved chunk, verifies that no unfinished coverage was published, checks that pause clears the estimate, then resumes and completes the same transcript revision. All 104 JVM tests and lint pass. Host native validation and real inference with monotonic callbacks pass. Five physical native/progress checks pass; the final rendered-bar/pause/resume regression also passes. See [the build receipt](evidence/live-progress-build.json), [native checks](evidence/s22-live-progress-tests.txt) and [rendered UI check](evidence/s22-progress-ui-test.txt). The updated APK is installed on the S22 Ultra with the same app data and credentials.

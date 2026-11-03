@@ -8,7 +8,7 @@ Build a native Android podcast app that stores its library on the phone, transcr
 
 The first deliverable is a working Android authentication and transcription experiment. A successful experiment unlocks the full application build. Subscription access, supported models, Android authentication behavior, and transcription performance must be demonstrated on the target account and phone before they become product promises.
 
-See [implementation status](android/implementation-status.md) for delivered code, test evidence and remaining gates. Task checkboxes represent full acceptance criteria, not partial code coverage.
+See [implementation status](android/implementation-status.md) for delivered code, test evidence and remaining gates. The November 2 personal alpha has [physical summary/chat/ad-review and database-upgrade evidence](android/evidence/s22-understanding-tests.txt), [account renewal and backup restore evidence](android/evidence/s22-renewal-restore-tests.txt), and [local build/test evidence](android/evidence/personal-alpha-build.json). The owner chose a fresh Android library, so legacy server/browser migration is deferred for this delivery. Task checkboxes represent full acceptance criteria, not partial code coverage.
 
 ## 1. Outcomes and working assumptions
 
@@ -28,7 +28,7 @@ See [implementation status](android/implementation-status.md) for delivered code
 | Decision | Planning default | When to resolve |
 | --- | --- | --- |
 | ChatGPT tier and entitlement | Eligible Plus or Pro account; actual tier unknown | Before the authentication experiment |
-| Phone | ARM64 physical device; model, RAM, Android version, and free storage unknown | Before transcription benchmarking |
+| Phone | Samsung Galaxy S22 Ultra SM-S908E, Android 16/API 36, ARM64; [device matrix and initial validation](android/s22-validation.md) recorded | Before transcription benchmarking |
 | Languages | English and Brazilian Portuguese benchmark samples | Before selecting the transcription model |
 | First distribution | Signed APK for personal use | Before release signing |
 | UI | Kotlin and Jetpack Compose | After feasibility experiments |
@@ -200,16 +200,18 @@ Owner: Android/integration developer, with the owner supplying the account and p
 
 | ID | Task | Dependencies | Acceptance criterion |
 | --- | --- | --- | --- |
-| F01 | [ ] Record phone, OS, RAM/storage, account tier, languages, install method and desired offline behavior | None | Target-device and account matrix exists; unknowns are explicit |
+| F01 | [x] Record phone, OS, RAM/storage, account tier, languages, install method and desired offline behavior | None | [Device/account matrix](android/s22-validation.md#device-matrix) recorded; account tier and owner-specific offline preferences remain explicit unknowns |
 | F02 | [ ] Recheck subscription eligibility, protocol, allowed distribution and reference-code licenses | None | Dated decision identifies supported route and code reuse boundaries |
-| F03 | [ ] Build minimal native sign-in harness with loopback listener and browser authorization | F01, F02 | Actual account completes Android callback; cancellation and mismatched state fail cleanly |
-| F04 | [ ] Discover entitled models, complete one distillation, persist/reload credentials and exercise refresh | F03 | Two app launches succeed; refresh works; denied plan usage and account mismatch are handled |
-| F05 | [ ] Build minimal whisper.cpp JNI harness and decode downloaded audio | F01 | Timed output from a real podcast excerpt, bounded memory and cancellation demonstrated |
+| F03 | [x] Build minimal native sign-in harness with loopback listener and browser authorization | F01, F02 | [Real phone authorization](android/s22-validation.md#live-account-and-restart-verification--november-2) completed; [callback regressions](android/callback-validation.md#verification) cover cancellation, state mismatch and denial |
+| F04 | [x] Discover entitled models, complete one distillation, persist/reload credentials and exercise refresh | F03 | Two launches and live inference pass; [real renewal plus production capture](android/evidence/s22-renewal-restore-tests.txt) succeeds; consent/account mismatch regressions pass |
+| F05 | [x] Build minimal whisper.cpp JNI harness and decode downloaded audio | F01 | Timed output from a real podcast excerpt, bounded memory and cancellation demonstrated |
 | F06 | [ ] Benchmark candidate models on short and full-length English/Portuguese samples | F05 | Record real-time factor, memory, battery, thermal state, errors, timestamp quality and model sizes |
 | F07 | [ ] Exercise locked-screen processing, process death and playback contention | F04, F06 | Document viable scheduling/checkpoint strategy and failure recovery on the target phone |
 | F08 | [ ] Select the primary architecture and resolve failed experiments | F02–F07 | Decision record states proceed, reduced scope, or a named fallback with tradeoffs |
 
 Gate F: one completed account-backed request and one usable timed transcript on the target phone. Model listing, compilation, mocked tests, or a third-party README do not satisfy this gate.
+
+F05 continuation: [compressed audio decoding and cancellation evidence](android/audio-validation.md) extends the harness to MP3, M4A/AAC and WAV clips, with real tiny.en inference and cancellation verified on the S22 Ultra. [Live phone authorization, inference and credential reload](android/s22-validation.md#live-account-and-restart-verification--november-2) were verified November 2. F04 remains open for live refresh/account recovery; representative-podcast benchmarks, lifecycle experiments and the final F08 decision remain open.
 
 If official sign-in fails, preserve the native playback work and investigate account eligibility or protocol implementation first. A bounded Codex-on-phone experiment is the next candidate. Optional paid API or server modes require an explicit product choice; they cannot silently replace the subscription goal. If transcription is too slow, first use publisher transcripts, smaller models, charging-only processing, or precomputed imports.
 
@@ -221,7 +223,7 @@ Owner: Android developer. Dependency: Gate F for the final architecture.
 | --- | --- | --- | --- |
 | A01 | [ ] Create Android project, choose application ID, pin SDK/JDK/Gradle/NDK dependencies and ABI support | F08 | Reproducible debug build on a clean environment |
 | A02 | [ ] Define package boundaries, repository interfaces, dependency construction and navigation | A01 | Screens use repositories; playback and AI do not depend on Activity lifetime |
-| A03 | [ ] Implement Room schema, indexes, transactions and exported migration history | A02 | Schema opens and migrates without destructive fallback; relational invariants tested |
+| A03 | [x] Implement Room schema, indexes, transactions and exported migration history | A02 | Schema opens and migrates without destructive fallback; relational invariants tested |
 | A04 | [ ] Implement preferences, private file layout, model/media manifests and storage accounting | A03 | Settings survive restart; files remain attributable to database records |
 | A05 | [ ] Implement persistent job coordinator and recovery states | A03, F07 | Interrupted job resumes from a durable checkpoint without duplicate logical results |
 | A06 | [ ] Add Android CI build, lint, focused unit tests and emulator smoke test | A01 | Pull requests produce a debug artifact with no credentials or live AI calls |
@@ -234,9 +236,9 @@ Owner: Android developer.
 | ID | Task | Dependencies | Acceptance criterion |
 | --- | --- | --- | --- |
 | L01 | [ ] Port directory search and add direct feed URL subscription | A02, A03 | Search and URL paths both create a subscription; no shared secret is embedded |
-| L02 | [ ] Implement RSS parsing, redirect handling, stable IDs, safe descriptions and conditional refresh | L01 | Fixtures cover missing GUIDs, duplicate GUIDs across feeds, dates, enclosures and malformed XML |
+| L02 | [x] Implement RSS parsing, redirect handling, stable IDs, safe descriptions and conditional refresh | L01 | Fixtures cover missing GUIDs, duplicate GUIDs across feeds, dates, enclosures and malformed XML |
 | L03 | [ ] Build feed, subscription and episode screens with cached local data | L02, A07 | Existing library is browsable offline and refresh errors preserve cached content |
-| L04 | [ ] Implement download manager, partial-file handling, resume validation and cancellation | A04, A05, L02 | Interrupted/truncated download is never marked complete; changed validators restart safely |
+| L04 | [x] Implement download manager, partial-file handling, resume validation and cancellation | A04, A05, L02 | Interrupted/truncated download is never marked complete; changed validators restart safely |
 | L05 | [ ] Add storage limits, delete-download action and active-file protection | L04 | Cleanup cannot remove currently playing/processing media; metadata and saved insights survive |
 | L06 | [ ] Add configurable refresh and download constraints | A05, L04 | Wi-Fi/charging preferences respected; no promise of exact cron timing |
 | L07 | [ ] Add OPML subscription import/export | L02 | Round-trip retains feeds and repeated import is idempotent |
@@ -279,7 +281,7 @@ Owner: Integration developer.
 | I01 | [ ] Port verified sign-in experiment into the provider with registration persistence and browser recovery | F04, A02 | Sign-in, cancellation and reauthorization work after process recreation |
 | I02 | [ ] Implement encrypted token storage, serialized refresh, invalidation and disconnect | I01, A04 | Concurrent requests do not race token rotation; logout removes usable local credentials |
 | I03 | [ ] Implement model discovery, capability records and selected-account checks | I02 | Model choice refreshes after reconnect/account change; unavailable choices fail clearly |
-| I04 | [ ] Implement streamed requests, completion detection, cancellation and bounded retries | I03, A05 | Only completed results are committed; auth/quota errors do not loop |
+| I04 | [x] Implement streamed requests, completion detection, cancellation and bounded retries | I03, A05 | Only completed results are committed; auth/quota errors do not loop |
 | I05 | [ ] Add task-specific prompts, local output schemas and response validation | I04 | Malformed quote/chapter/ad outputs are rejected or repaired once within a bounded policy |
 | I06 | [ ] Build connected-account, plan-usage and recovery UI | I02, I04, A07 | User sees active provider and can manage usage, reconnect or continue without AI |
 | I07 | [ ] Verify privacy behavior and provider contract on the real account | I05, I06 | Token redaction, scope denial, expiry, revoked consent and stream interruption evidence recorded |
@@ -294,8 +296,8 @@ Owner: Android/product developer.
 | --- | --- | --- | --- |
 | D01 | [ ] Capture episode, media revision and original playback position atomically at tap time | P03, T05 | Later playback movement cannot change the saved request window |
 | D02 | [ ] Extract preceding 60 seconds, persist excerpt immediately and handle incomplete coverage | D01 | Beginning-of-episode, silence and chunk-boundary cases produce honest results |
-| D03 | [ ] Generate quote and insight, preserving pending/failed states | D02, I05 | Quote maps to source text; an AI error does not delete the excerpt |
-| D04 | [ ] Build distillation library, detail, copy/share, delete and jump-to-source | D03, A07 | Complete create-to-replay flow works, including offline access to saved content |
+| D03 | [x] Generate quote and insight, preserving pending/failed states | D02, I05 | Quote maps to source text; an AI error does not delete the excerpt |
+| D04 | [x] Build distillation library, detail, copy/share, delete and jump-to-source | D03, A07 | Complete create-to-replay flow works, including offline access to saved content |
 | D05 | [ ] Add versioned local backup/restore for alpha data | A03, D04 | Clean-install round-trip preserves subscriptions, progress and distillations |
 | D06 | [ ] Run personal alpha acceptance and fix blocking defects | L03–L07, P06, T07, I07, D05 | Gate A evidence recorded on the target phone |
 
@@ -307,12 +309,12 @@ Owner: Android/AI developer.
 
 | ID | Task | Dependencies | Acceptance criterion |
 | --- | --- | --- | --- |
-| E01 | [ ] Generate summary and chapters from bounded transcript chunks | T05, I05 | Long transcripts fit the context budget; timestamps are sorted and within duration |
-| E02 | [ ] Build summary/chapters UI and source seeking | E01, P03 | Selecting a chapter seeks to the original position |
-| E03 | [ ] Build local episode conversation history, transcript retrieval and context budgeting | T05, I04 | Questions receive relevant excerpts; unsupported answers are identified as such |
-| E04 | [ ] Add chat streaming, cancellation, retry and source links | E03, A07 | Interrupted assistant reply stays incomplete; retry does not duplicate the user message |
-| E05 | [ ] Classify candidate ads and normalize ranges | T05, I05 | Ranges are clamped/merged, tied to media revision and reviewable |
-| E06 | [ ] Implement opt-in skip ranges, undo/replay and boundary behavior | E05, P03 | No repeated skip loop; deliberate replay works; progress/chapters retain original times |
+| E01 | [x] Generate summary and chapters from bounded transcript chunks | T05, I05 | Long transcripts fit the context budget; timestamps are sorted and within duration |
+| E02 | [x] Build summary/chapters UI and source seeking | E01, P03 | Selecting a chapter seeks to the original position |
+| E03 | [x] Build local episode conversation history, transcript retrieval and context budgeting | T05, I04 | Questions receive relevant excerpts; unsupported answers are identified as such |
+| E04 | [x] Add chat streaming, cancellation, retry and source links | E03, A07 | Interrupted assistant reply stays incomplete; retry does not duplicate the user message |
+| E05 | [x] Classify candidate ads and normalize ranges | T05, I05 | Ranges are clamped/merged, tied to media revision and reviewable |
+| E06 | [x] Implement opt-in skip ranges, undo/replay and boundary behavior | E05, P03 | No repeated skip loop; deliberate replay works; progress/chapters retain original times |
 | E07 | [ ] Evaluate analysis on multilingual and ad-heavy episodes | E02, E04, E06 | Record quality failures and chosen defaults; no unreviewed claim of perfect ad removal |
 
 ### Phase 8 — Add research and recommendations
@@ -413,7 +415,7 @@ CI uses fixtures and mock transports for deterministic behavior. Real-account ch
 
 | Scenario | Pass condition |
 | --- | --- |
-| At least one 60-minute episode played with screen locked | No unexplained playback interruption; controls and progress remain correct |
+| At least one 60-minute episode played with screen locked | Passed on S22: 60m16.841s, zero errors/underruns, 4 ms final drift; synthetic focus and process recovery also pass. [Evidence and USB/muted limitations](android/background-playback.md) |
 | Bluetooth disconnect, phone/audio interruption, speed change and seeking | Correct focus response and no unexpected restart |
 | Airplane mode with downloaded episode | Playback, transcript browsing and saved distillations remain usable |
 | Network loss during AI response | Partial result identified; retry preserves source excerpt and avoids duplicate saved cards |

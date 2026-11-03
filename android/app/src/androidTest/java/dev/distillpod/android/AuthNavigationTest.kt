@@ -14,19 +14,19 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class AuthNavigationTest {
-    @get:Rule val compose = createAndroidComposeRule<MainActivity>()
+    @get:Rule val compose = createAndroidComposeRule<DiagnosticsActivity>()
     @Test fun launcherReentryReusesTheExistingConnectionScreen() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val original = compose.activity
         instrumentation.runOnMainSync {
-            original.startActivity(Intent(original, MainActivity::class.java))
+            original.startActivity(Intent(original, DiagnosticsActivity::class.java))
         }
         var resumed: android.app.Activity? = null
         val until = SystemClock.elapsedRealtime() + 5000
         while(SystemClock.elapsedRealtime() < until) {
             instrumentation.waitForIdleSync()
             instrumentation.runOnMainSync {
-                resumed = ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED).firstOrNull { it is MainActivity }
+                resumed = ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED).firstOrNull { it is DiagnosticsActivity }
             }
             if(resumed != null) break
             SystemClock.sleep(100)

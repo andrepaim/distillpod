@@ -1,0 +1,249 @@
+package dev.distillpod.android.data
+
+import androidx.room.withTransaction
+import androidx.work.*
+import dev.distillpod.android.AppGraph
+import dev.distillpod.android.AudioClipDecoder
+import dev.distillpod.android.NativeWhisper
+import dev.distillpod.android.appGraph
+import dev.distillpod.android.work.workForeground
+import dev.distillpod.core.*
+import java.io.File
+import java.util.UUID
+import java.util.concurrent.Executors
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
+import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import okhttp3.Request
+import org.json.JSONArray
+import org.json.JSONObject
+
+private const val CHUNK_MS = 120_000L
+enum class TranscriptStage { PUBLISHER, DOWNLOADING, CHECKING_MODEL, DECODING, STARTING, TRANSCRIBING, SAVING, QUEUED }
+data class TranscriptProgress(val revision: String, val run: String, val stage: TranscriptStage,
+    val workedMs: Long, val durationMs: Long, val chunkStartMs: Long = 0, val chunkEndMs: Long = 0)
+
+class TranscriptionRepository(private val graph: AppGraph) {
+    private val dao = graph.db.library()
+    private val manager get() = WorkManager.getInstance(graph.context)
+    private val processing = Mutex()
+    private val controls = Mutex()
+    private val live = MutableStateFlow<Map<String, TranscriptProgress>>(emptyMap())
+    val progress = live.asStateFlow()
+    suspend fun prepare(id: String, forceLocal: Boolean = false) = controls.withLock { prepareInternal(id, forceLocal) }
+    private suspend fun prepareInternal(id: String, forceLocal: Boolean) {
+        val ep = dao.episode(id) ?: error("Episode is unavailable")
+        val prefs = graph.settings.flow.first()
+        val old = dao.transcript(id)
+        if (!forceLocal && old != null && old.fingerprint == ep.mediaFingerprint &&
+            (old.source == "publisher" && old.state != "partial" || old.model == prefs.model && old.language == prefs.language)) {
+            if (old.state == "ready") return
+            if (old.state in listOf("processing", "queued") && live.value[id]?.let { it.revision == old.revision && it.stage != TranscriptStage.QUEUED } == true) return
+            live.update { it - id }
+            val current = old.copy(state = "queued", error = null)
+            dao.putTranscript(current); enqueue(current, nextStart(current) ?: 0); return
+        }
+        live.update { it - id }
+        manager.cancelAllWorkByTag("transcript:$id")
+        val publisher = !forceLocal && !ep.transcriptUrl.isNullOrBlank() && !(old?.source == "publisher" && old.state == "partial")
+        val current = TranscriptEntity(id, UUID.randomUUID().toString(), ep.mediaFingerprint, if (publisher) "publisher" else prefs.model,
+            prefs.language, if (publisher) "publisher" else "whisper", durationMs = ep.durationMs)
+        graph.db.withTransaction { dao.deleteSegments(id); dao.deleteCoverage(id); dao.putTranscript(current) }
+        dao.analysis(id)?.let { dao.putAnalysis(it.copy(state = "stale", error = "Transcript changed. Analyze the current source again.")) }
+        enqueue(current, 0)
+    }
+    suspend fun pause(id: String) = controls.withLock {
+        live.update { it - id }
+        dao.transcript(id)?.let { dao.putTranscript(it.copy(state = "paused", error = null)) }
+        manager.cancelAllWorkByTag("transcript:$id")
+    }
+    suspend fun resumeModel(id: String) { dao.transcripts().filter { it.model == id && it.state == "waiting_model" }.forEach { prepare(it.episodeId) } }
+    suspend fun recover() { dao.transcripts().filter { it.state in listOf("queued", "processing") }.forEach { enqueue(it, nextStart(it) ?: 0) } }
+
+    private suspend fun enqueue(row: TranscriptEntity, start: Long) {
+        val prefs = graph.settings.flow.first()
+        val ep = dao.episode(row.episodeId) ?: return
+        val needNetwork = ep.localFile?.let { File(it).isFile } != true || row.source == "publisher"
+        val constraints = Constraints.Builder().setRequiresBatteryNotLow(true).setRequiresCharging(prefs.chargingOnly)
+            .apply { if (needNetwork) setRequiredNetworkType(if (prefs.wifiOnly) NetworkType.UNMETERED else NetworkType.CONNECTED) }.build()
+        manager.enqueueUniqueWork("transcript:${row.episodeId}:${row.revision}:$start", ExistingWorkPolicy.KEEP,
+            OneTimeWorkRequestBuilder<TranscriptWorker>().setInputData(workDataOf("episode" to row.episodeId, "revision" to row.revision))
+                .setConstraints(constraints).addTag("transcript:${row.episodeId}").build())
+    }
+    private suspend fun nextStart(row: TranscriptEntity): Long? {
+        if (row.durationMs <= 0) return 0
+        val covered = dao.coverage(row.episodeId, row.revision).associateBy { it.startMs }
+        fun missing(start: Long) = (covered[start]?.endMs ?: 0) < minOf(start + CHUNK_MS, row.durationMs) - 1
+        val pending = dao.distillations().filter { it.episodeId == row.episodeId && it.state == "waiting_transcript" }
+        for (saved in pending) {
+            val first = saved.startMs / CHUNK_MS * CHUNK_MS
+            val last = saved.endMs.coerceAtMost(row.durationMs - 1).coerceAtLeast(0) / CHUNK_MS * CHUNK_MS
+            var start = first
+            while (start <= last) { if (missing(start)) return start; start += CHUNK_MS }
+        }
+        var start = 0L
+        while (start < row.durationMs) { if (missing(start)) return start; start += CHUNK_MS }
+        return null
+    }
+
+    suspend fun process(id: String, revision: String, worker: CoroutineWorker) = processing.withLock { processChunk(id, revision, worker) }
+
+    private suspend fun processChunk(id: String, revision: String, worker: CoroutineWorker) {
+        var row = dao.transcript(id) ?: return
+        if (row.revision != revision || row.state in listOf("paused", "ready", "stale")) return
+        val run = UUID.randomUUID().toString()
+        live.update { it + (id to TranscriptProgress(revision, run, TranscriptStage.STARTING, row.processedMs, row.durationMs)) }
+        fun report(stage: TranscriptStage, workedMs: Long? = null, durationMs: Long? = null, start: Long? = null, end: Long? = null) {
+            live.update { all -> val current = all[id]
+                if (current?.run != run) all else all + (id to current.copy(stage = stage, workedMs = workedMs ?: current.workedMs,
+                    durationMs = durationMs ?: current.durationMs, chunkStartMs = start ?: current.chunkStartMs, chunkEndMs = end ?: current.chunkEndMs))
+            }
+        }
+        try {
+            worker.setForeground(workForeground(graph.context, worker.id, "Preparing transcript", true))
+            dao.putTranscript(row.copy(state = "processing", error = null))
+            val initialEp = dao.episode(id) ?: return
+            if (row.source == "publisher") {
+                report(TranscriptStage.PUBLISHER)
+                val published = try { published(initialEp, row) } catch (error: Exception) {
+                    if (error is CancellationException) throw error
+                    false
+                }
+                if (published == true) { graph.captures.transcriptUpdated(id); return }
+                val prefs = graph.settings.flow.first()
+                row = row.copy(source = "whisper", model = prefs.model, language = prefs.language)
+                dao.putTranscript(row)
+            }
+            val modelPath = File(graph.media.modelsDirectory, "${row.model}.bin")
+            if (dao.model(row.model)?.state != "ready" || !modelPath.isFile) {
+                dao.putTranscript(row.copy(state = "waiting_model", error = "Download the selected transcription model in Settings.")); return
+            }
+            report(TranscriptStage.DOWNLOADING)
+            val source = graph.media.ensureDownloaded(id)
+            val ep = dao.episode(id) ?: return
+            if (row.fingerprint != ep.mediaFingerprint) { row = row.copy(fingerprint = ep.mediaFingerprint); dao.putTranscript(row) }
+            graph.activeFiles.acquire(source); graph.activeFiles.acquire(modelPath)
+            val wave = File.createTempFile("transcription-", ".wav", graph.context.cacheDir)
+            try {
+                report(TranscriptStage.CHECKING_MODEL)
+                val model = graph.media.verifiedModel(row.model)
+                val start = nextStart(row) ?: run { dao.putTranscript(row.copy(state = "ready")); graph.captures.transcriptUpdated(id); return }
+                val decodeStart = (start - 2000).coerceAtLeast(0)
+                report(TranscriptStage.DECODING, start = start, end = start + CHUNK_MS)
+                val decoded = withContext(Dispatchers.IO) { AudioClipDecoder().decodeChunk(source, wave, decodeStart, CHUNK_MS + start - decodeStart) { worker.isStopped } }
+                val duration = decoded.sourceDurationMs
+                require(duration > 0) { "This source has no reliable duration. Use a timed publisher transcript or another audio source." }
+                dao.duration(id, duration)
+                val end = minOf(start + CHUNK_MS, duration)
+                val samples = withContext(Dispatchers.IO) { readWhisperWave(wave.readBytes()) }
+                val saved = dao.coverage(id, revision)
+                val savedMs = saved.sumOf { it.endMs - it.startMs }
+                val savedInChunk = saved.filter { it.startMs == start }.sumOf { it.endMs - it.startMs }
+                report(TranscriptStage.STARTING, workedMs = savedMs, durationMs = duration, start = start, end = end)
+                val text = nativeTranscribe(model, samples, row.language, graph.activeFiles) { percent ->
+                    report(TranscriptStage.TRANSCRIBING, transcribingAudioMs(savedMs, savedInChunk, start, end,
+                        decoded.startMs, decoded.endMs, percent).coerceAtMost(duration))
+                }
+                report(TranscriptStage.SAVING)
+                val raw = JSONArray(text)
+                val previous = dao.window(id, row.revision, (start - 6000).coerceAtLeast(0), start).joinToString(" ") { it.text }
+                var first = true
+                val segments = (0 until raw.length()).mapNotNull { index ->
+                    val segment = raw.getJSONObject(index)
+                    val a = decoded.startMs + segment.getLong("startMs")
+                    val b = decoded.startMs + segment.getLong("endMs")
+                    if (b <= start || a >= end) return@mapNotNull null
+                    var body = segment.getString("text").trim()
+                    if (first && a < start) body = trimRepeatedOverlap(previous, body)
+                    first = false
+                    if (body.isBlank()) null else SegmentEntity(id, row.revision, a.coerceAtLeast(start), b.coerceAtMost(end).coerceAtLeast(a.coerceAtLeast(start)), body, index)
+                }
+                graph.db.withTransaction {
+                    currentCoroutineContext().ensureActive()
+                    val current = dao.transcript(id) ?: return@withTransaction
+                    if (current.revision != revision || current.state in listOf("paused", "stale") || dao.episode(id)?.mediaFingerprint != ep.mediaFingerprint) return@withTransaction
+                    dao.putSegments(segments)
+                    // Actual EOS can leave a small codec-padding tail in container duration.
+                    // It has been decoded and contains no further speech; do not rerun that tail.
+                    val coverageEnd = if (decoded.sourceEnded && duration - decoded.endMs in 0..1000) end else minOf(end, decoded.endMs + 1)
+                    require(coverageEnd > start) { "The audio ended before this window could be decoded. Completed chunks are saved." }
+                    dao.putCoverage(CoverageEntity(id, revision, start, coverageEnd))
+                    val processed = dao.coverage(id, revision).sumOf { it.endMs - it.startMs }
+                    dao.putTranscript(current.copy(fingerprint = ep.mediaFingerprint, durationMs = duration, processedMs = processed, state = "queued", error = null))
+                }
+                graph.captures.transcriptUpdated(id)
+                val current = dao.transcript(id) ?: return
+                if (current.revision == revision && current.state !in listOf("paused", "stale")) {
+                    val next = nextStart(current)
+                    require(next != start) { "This audio window could not be decoded completely. Completed chunks are saved." }
+                    if (next == null) dao.putTranscript(current.copy(state = "ready", processedMs = duration)) else enqueue(current, next)
+                }
+            } finally { wave.delete(); graph.activeFiles.release(source); graph.activeFiles.release(modelPath) }
+        } catch (error: Exception) {
+            withContext(NonCancellable) {
+                val current = dao.transcript(id)
+                if (current?.revision == revision && current.state !in listOf("paused", "stale", "ready")) dao.putTranscript(current.copy(state = if (error is CancellationException) "queued" else "failed", error = if (error is CancellationException) null else safeFailure(error)))
+            }
+            if (error is CancellationException) throw error
+        } finally {
+            withContext(NonCancellable) {
+                val current = dao.transcript(id)
+                if (current?.revision == revision && current.state == "queued") report(TranscriptStage.QUEUED, current.processedMs, current.durationMs)
+                else live.update { if (it[id]?.run == run) it - id else it }
+            }
+        }
+    }
+
+    private suspend fun published(ep: EpisodeEntity, row: TranscriptEntity): Boolean {
+        val url = ep.transcriptUrl ?: return false
+        val input = withContext(Dispatchers.IO) { graph.http.newCall(Request.Builder().url(publicHttpUrl(url)).build()).execute().use { response ->
+            check(response.isSuccessful); response.body!!.boundedText()
+        } }
+        val segments = if (ep.transcriptType?.contains("json") == true || input.trimStart().startsWith("{")) {
+            val json = JSONObject(input).getJSONArray("segments")
+            (0 until json.length()).map { i -> val s = json.getJSONObject(i)
+                SubtitleSegment(TimeRange((s.getDouble("startTime") * 1000).toLong(), (s.getDouble("endTime") * 1000).toLong()), plainDescription(s.optString("body", s.optString("text")))) }
+        } else parseVtt(input)
+        require(segments.isNotEmpty() && segments.size <= 30000)
+        val end = segments.maxOf { it.range.endMs }
+        require(end > 0 && (ep.durationMs == 0L || end <= ep.durationMs + 60000))
+        val duration = ep.durationMs.takeIf { it > 0 } ?: end
+        graph.db.withTransaction {
+            val current = dao.transcript(ep.id) ?: return@withTransaction
+            if (current.revision != row.revision || current.state == "paused") return@withTransaction
+            dao.putSegments(segments.mapIndexedNotNull { index, s -> if (s.range.startMs >= duration) null else SegmentEntity(ep.id, row.revision, s.range.startMs, s.range.endMs.coerceAtMost(duration), s.text, index) })
+            dao.putCoverage(CoverageEntity(ep.id, row.revision, 0, minOf(end, duration)))
+            dao.putTranscript(current.copy(source = "publisher", model = "publisher", state = if (end >= duration) "ready" else "partial", durationMs = duration, processedMs = minOf(end, duration), error = null))
+        }
+        return true
+    }
+}
+
+private val nativeExecutor = Executors.newSingleThreadExecutor { Thread(it, "distillpod-transcription").apply { isDaemon = true } }
+private suspend fun nativeTranscribe(model: File, samples: FloatArray, language: String, active: ActiveFiles, onProgress: (Int) -> Unit): String = suspendCancellableCoroutine { continuation ->
+    val engine = NativeWhisper()
+    active.acquire(model)
+    nativeExecutor.submit {
+        try { continuation.resume(engine.transcribe(model.absolutePath, samples, language) { if (continuation.isActive) onProgress(it) }) }
+        catch (error: Exception) { continuation.resumeWithException(error) }
+        finally { active.release(model) }
+    }
+    continuation.invokeOnCancellation { engine.cancel() }
+}
+
+class TranscriptWorker(context: android.content.Context, params: WorkerParameters) : CoroutineWorker(context, params) {
+    override suspend fun doWork(): Result {
+        applicationContext.appGraph.ready.await()
+        applicationContext.appGraph.transcription.process(inputData.getString("episode") ?: return Result.failure(), inputData.getString("revision") ?: return Result.failure(), this)
+        return Result.success()
+    }
+}
+class CaptureWorker(context: android.content.Context, params: WorkerParameters) : CoroutineWorker(context, params) {
+    override suspend fun doWork(): Result { applicationContext.appGraph.ready.await(); applicationContext.appGraph.captures.run(inputData.getString("capture") ?: return Result.failure()); return Result.success() }
+}

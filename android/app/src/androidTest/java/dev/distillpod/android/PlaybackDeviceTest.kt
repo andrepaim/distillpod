@@ -17,7 +17,7 @@ import java.util.concurrent.TimeUnit
 
 @RunWith(AndroidJUnit4::class)
 class PlaybackDeviceTest {
-    @get:Rule val compose = createAndroidComposeRule<MainActivity>()
+    @get:Rule val compose = createAndroidComposeRule<DiagnosticsActivity>()
     @Test fun importedClipPlaysInBackgroundAndSupportsSystemPauseAndSeek() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = compose.activity

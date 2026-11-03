@@ -1,0 +1,44 @@
+{
+  "date": "2026-11-02",
+  "versionName": "0.2.0-alpha",
+  "versionCode": 2,
+  "databaseSchema": 2,
+  "apkSha256": "cc21a52274b0e702e71cc8659a5b07edbf020fe8b93b6d75193a2d5ede18974f",
+  "apkBytes": 74959366,
+  "unitTests": {
+    "core": {
+      "tests": 46,
+      "failures": 0
+    },
+    "app": {
+      "tests": 56,
+      "failures": 0
+    }
+  },
+  "lint": "passed",
+  "assembly": "app and instrumentation APK passed",
+  "latestArtifactInstalledOnS22": true,
+  "finalInstalledAcceptance": "passed: nine physical checks, complete episode, codec boundaries and create-to-replay",
+  "ownerLibraryDecision": "start fresh on Android; retain existing web application",
+  "liveAccountRenewal": "passed",
+  "liveCapture": "passed",
+  "liveSummaryAndGroundedReply": "passed",
+  "liveExplanationAndSuggestions": "passed; isolated public inputs, no owner history",
+  "realPodcastBenchmarks": "Tiny/Base, English/Portuguese, passed; see s22-podcast-benchmark.json",
+  "completeEpisode": {
+    "date": "2026-11-02",
+    "title": "How crypto world made inroads in Pakistan",
+    "sourceDurationMs": 646426,
+    "processedMs": 646426,
+    "chunks": 6,
+    "segments": 161,
+    "elapsedMs": 94457,
+    "downloadBytes": 10342893
+  },
+  "distribution": "personal development APK; existing local signing certificate retained",
+  "testPackageCleanup": "removed; main app, verified Tiny/Base models and owner connection retained",
+  "coldStartMs": 1010,
+  "connectedAfterColdRestart": true,
+  "modelCatalogRefreshedAfterColdRestart": true,
+  "finalScreen": "fresh Library"
+}

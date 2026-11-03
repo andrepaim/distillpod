@@ -11,7 +11,7 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class DeviceSmokeTest {
-    @get:Rule val compose = createAndroidComposeRule<MainActivity>()
+    @get:Rule val compose = createAndroidComposeRule<DiagnosticsActivity>()
 
     @Test fun launchAndMissingFilesRecoverWithoutCrash() {
         val context = compose.activity
@@ -22,7 +22,7 @@ class DeviceSmokeTest {
         val ai = compose.onNodeWithText("Run AI check").performScrollTo()
         if(hasConnection) ai.assertIsEnabled() else ai.assertIsNotEnabled()
         compose.onNodeWithText("Transcribe clip").performScrollTo().performClick()
-        compose.waitUntil(10000) { compose.onAllNodesWithText("Import a Whisper model and a 16 kHz mono PCM16 WAV clip first").fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(10000) { compose.onAllNodesWithText("Import a Whisper model and an audio clip first").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText("Transcribe clip").assertIsEnabled()
     }
 
@@ -58,6 +58,6 @@ class DeviceSmokeTest {
     @Test fun activityRecreationRemainsUsable() {
         compose.activityRule.scenario.recreate()
         compose.onNodeWithText("DistillPod").assertIsDisplayed()
-        compose.onNodeWithText("Import WAV clip").performScrollTo().assertIsEnabled()
+        compose.onNodeWithText("Import audio clip").performScrollTo().assertIsEnabled()
     }
 }

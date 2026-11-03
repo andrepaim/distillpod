@@ -1,39 +1,72 @@
 package dev.distillpod.core
+
 import java.io.StringReader
+import java.net.URI
+import java.time.Instant
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import javax.xml.parsers.DocumentBuilderFactory
 import org.xml.sax.InputSource
 import org.w3c.dom.Element
+import org.w3c.dom.Document
 
-data class FeedEpisode(val id: String, val guid: String, val title: String, val audioUrl: String, val durationMs: Long?, val transcriptUrl: String?, val publishedAt: String?)
-data class Feed(val title: String, val episodes: List<FeedEpisode>)
-fun parseFeed(feedUrl: String, xml: String): Feed {
+/** Feed identity is independent of redirect/enclosure URLs. Optional metadata preserves older callers. */
+data class FeedEpisode(val id: String, val guid: String, val title: String, val audioUrl: String,
+    val durationMs: Long?, val transcriptUrl: String?, val publishedAt: String?, val description: String = "",
+    val imageUrl: String? = null, val mimeType: String? = null, val transcriptType: String? = null)
+data class Feed(val title: String, val episodes: List<FeedEpisode>, val author: String = "", val description: String = "", val imageUrl: String? = null)
+
+fun plainDescription(text: String): String = text.replace(Regex("(?is)<(script|style)\\b[^>]*>.*?</\\1>"), "")
+    .replace(Regex("<[^>]*>"), " ").replace("&nbsp;", " ").replace("&amp;", "&").replace("&lt;", "<")
+    .replace("&gt;", ">").replace("&quot;", "\"").replace("&#39;", "'").replace(Regex("\\s+"), " ").trim()
+
+fun parseFeed(feedUrl: String, xml: String, baseUrl: String = feedUrl): Feed {
     require(xml.length <= 10_000_000) { "Feed too large" }
-    // Android's Harmony parser does not implement the Xerces feature flags.
-    // Reject declarations before parsing rather than ignoring unsupported security flags.
     require(!Regex("<!\\s*(DOCTYPE|ENTITY)", RegexOption.IGNORE_CASE).containsMatchIn(xml)) { "XML declarations for entities/DTDs are prohibited" }
-    val factory = DocumentBuilderFactory.newInstance().apply {
-        isNamespaceAware = true
-        isExpandEntityReferences = false
-    }
+    val factory = DocumentBuilderFactory.newInstance().apply { isNamespaceAware = true; isExpandEntityReferences = false }
     val builder = factory.newDocumentBuilder()
     builder.setEntityResolver { _, _ -> throw org.xml.sax.SAXException("External entities are prohibited") }
     val document = builder.parse(InputSource(StringReader(xml)))
-    fun Element.text(name: String): String? = getElementsByTagName(name).item(0)?.textContent?.trim()?.takeIf { it.isNotEmpty() }
-    val channel = document.getElementsByTagName("channel").item(0) as? Element ?: error("Missing RSS channel")
-    val nodes = channel.getElementsByTagName("item")
-    val episodes = (0 until nodes.length).mapNotNull { i ->
-        val item = nodes.item(i) as Element
-        val enclosure = item.getElementsByTagName("enclosure").item(0) as? Element
-        val audio = enclosure?.getAttribute("url")?.takeIf { it.startsWith("https://") || it.startsWith("http://") } ?: return@mapNotNull null
-        val guid = item.text("guid") ?: audio
-        val duration = item.getElementsByTagNameNS("*", "duration").item(0)?.textContent?.trim()?.let { raw ->
-            runCatching { raw.split(':').fold(0L) { total, part -> total * 60 + part.toLong() } * 1000 }.getOrNull()
-        }
-        val transcript = (item.getElementsByTagNameNS("*", "transcript").item(0) as? Element)?.getAttribute("url")
-        val date = item.text("pubDate")?.let { runCatching { ZonedDateTime.parse(it, DateTimeFormatter.RFC_1123_DATE_TIME).toInstant().toString() }.getOrNull() }
-        FeedEpisode(episodeId(feedUrl, guid), guid, item.text("title") ?: "Untitled", audio, duration, transcript, date)
+    return feedFromDocument(feedUrl, document, baseUrl)
+}
+
+internal fun feedFromDocument(feedUrl: String, document: Document, baseUrl: String): Feed {
+    fun Element.children(name: String): List<Element> = (0 until childNodes.length).mapNotNull { childNodes.item(it) as? Element }
+        .filter { (it.localName ?: it.tagName.substringAfter(':')) == name }
+    fun Element.text(name: String): String? = children(name).firstOrNull()?.textContent?.trim()?.takeIf(String::isNotBlank)
+    fun url(raw: String?): String? = raw?.trim()?.takeIf { it.isNotBlank() }?.let {
+        runCatching { URI(baseUrl).resolve(it).takeIf { u -> u.scheme?.lowercase() in setOf("https", "http") && u.host != null && u.userInfo == null }?.toASCIIString() }.getOrNull()
+    }
+    fun Element.image(): String? = children("image").firstNotNullOfOrNull { url(it.getAttribute("href").ifBlank { it.text("url") ?: "" }) }
+        ?: children("thumbnail").firstNotNullOfOrNull { url(it.getAttribute("url")) }
+    fun duration(raw: String?): Long? = raw?.trim()?.let {
+        runCatching {
+            val parts = it.split(':'); require(parts.size in 1..3)
+            val seconds = parts.fold(0.0) { total, p -> total * 60 + p.toDouble() }
+            require(seconds.isFinite() && seconds >= 0 && seconds <= 7 * 86400)
+            (seconds * 1000).toLong()
+        }.getOrNull()
+    }
+    fun date(raw: String?): String? = raw?.let { value ->
+        runCatching { ZonedDateTime.parse(value, DateTimeFormatter.RFC_1123_DATE_TIME).toInstant().toString() }
+            .getOrElse { runCatching { Instant.parse(value).toString() }.getOrNull() }
+    }
+    val root = document.documentElement
+    val atom = (root.localName ?: root.tagName) == "feed"
+    val channel = if (atom) root else root.children("channel").firstOrNull() ?: error("Missing RSS channel")
+    val showImage = channel.image() ?: url(channel.text("logo") ?: channel.text("icon"))
+    val episodes = channel.children(if (atom) "entry" else "item").mapNotNull { item ->
+        val enclosure = item.children(if (atom) "link" else "enclosure").firstOrNull { !atom || it.getAttribute("rel") == "enclosure" }
+        val audio = url(enclosure?.getAttribute(if (atom) "href" else "url")) ?: return@mapNotNull null
+        val guid = item.text(if (atom) "id" else "guid") ?: audio
+        val timed = item.children("transcript").sortedBy { if (it.getAttribute("type") in setOf("text/vtt", "application/srt", "application/x-subrip")) 0 else 1 }.firstOrNull()
+        FeedEpisode(episodeId(feedUrl, guid), guid, plainDescription(item.text("title") ?: "Untitled"), audio,
+            duration(item.text("duration")), url(timed?.getAttribute("url")),
+            date(item.text(if (atom) "published" else "pubDate") ?: item.text("updated")),
+            plainDescription(item.text("description") ?: item.text("summary") ?: item.text("encoded") ?: item.text("content") ?: ""),
+            item.image() ?: showImage, enclosure?.getAttribute("type")?.takeIf(String::isNotBlank), timed?.getAttribute("type")?.takeIf(String::isNotBlank))
     }.distinctBy { it.id }
-    return Feed(channel.text("title") ?: "Untitled", episodes)
+    val author = channel.children("author").firstOrNull()?.let { it.text("name") ?: it.textContent.trim() } ?: channel.text("managingEditor") ?: ""
+    return Feed(plainDescription(channel.text("title") ?: "Untitled"), episodes, plainDescription(author),
+        plainDescription(channel.text("description") ?: channel.text("subtitle") ?: ""), showImage)
 }

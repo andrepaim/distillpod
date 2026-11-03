@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#F4F3EF">
+  <title>DistillPod — Icon design proposal</title>
+  <link rel="icon" href="assets/drop.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to proposal</a>
+  <header class="nav wrap">
+    <a class="wordmark" href="#" aria-label="DistillPod proposal home"><span class="brand-symbol" data-symbol></span>distillpod<span class="nav-divider"></span><span class="studio-label">Design notes</span></a>
+    <nav aria-label="Proposal"><a href="#concept">The concept</a><a href="#playground">Try it out</a><a class="nav-cta" href="#assets">The assets <span aria-hidden="true">↗</span></a></nav>
+  </header>
+  <main id="main">
+    <section class="hero wrap" aria-labelledby="hero-title">
+      <div class="hero-copy">
+        <p class="eyebrow"><span class="small-line"></span> A new mark for DistillPod</p>
+        <h1 id="hero-title">An icon for<br>the <em>good bits.</em></h1>
+        <p class="intro">A little symbol for a big idea:<br>listen deeply. Keep what matters.</p>
+        <a class="button dark" href="#playground">Explore the icon <span aria-hidden="true">↗</span></a>
+        <div class="hero-note"><span class="status-dot"></span> Design proposal · November 2026</div>
+      </div>
+      <div class="hero-art">
+        <div class="art-meta"><span>01 / THE LISTENING DROP</span><span class="recommendation">Recommended</span></div>
+        <div class="hero-icon icon" data-icon="drop" aria-label="Recommended icon: lavender listening drop on ink"></div>
+        <div class="art-footer"><span>Sound, distilled.</span><span>Made for your home screen <span aria-hidden="true">↙</span></span></div>
+      </div>
+    </section>
+
+    <section class="principles wrap" aria-label="Design principles">
+      <div><span class="number">01</span><p><strong>Meaning in the shape.</strong><br>A drop for distilling. Play for listening.</p></div>
+      <div><span class="number">02</span><p><strong>Clarity at a glance.</strong><br>One silhouette. One generous opening.</p></div>
+      <div><span class="number">03</span><p><strong>Feels like DistillPod.</strong><br>Familiar lavender, grounded in ink.</p></div>
+    </section>
+
+    <section class="section wrap" id="concept" aria-labelledby="concept-title">
+      <div class="section-heading"><div><p class="eyebrow">The thinking</p><h2 id="concept-title">Two ideas.<br>One small mark.</h2></div><p>The drop represents the essence of a conversation. Its open center is a rounded play symbol. Together, they connect DistillPod’s name to what you actually do: listen and keep the worthwhile parts.</p></div>
+      <div class="construction">
+        <div class="construction-cell"><span class="isolated" data-part="drop"></span><span class="cell-label">The essence</span><p>A full, asymmetric drop.<br>A gentle lean gives it movement.</p></div>
+        <span class="operator" aria-hidden="true">+</span>
+        <div class="construction-cell"><span class="isolated play-only" data-part="play"></span><span class="cell-label">The listening</span><p>A familiar play gesture.<br>Soft corners match the outer form.</p></div>
+        <span class="operator" aria-hidden="true">=</span>
+        <div class="construction-cell result"><span class="isolated" data-symbol></span><span class="cell-label">The listening drop</span><p>The opening is transparent.<br>The mark works in a single color.</p></div>
+      </div>
+      <div class="designer-note"><span class="note-mark" aria-hidden="true">↳</span><p><strong>My recommendation</strong> is the lavender mark on ink. It connects directly to the app’s existing palette, while the solid silhouette stays readable without gradients or fine detail. Keep mint as a supporting brand color.</p></div>
+    </section>
+
+    <section class="section playground-section" id="playground" aria-labelledby="playground-title">
+      <div class="wrap">
+        <div class="section-heading"><div><p class="eyebrow">The everyday test</p><h2 id="playground-title">Make it yours.<br>See it in context.</h2></div><p>A great icon earns its place at 48 pixels. Try the colors and masks, then check the launcher preview and the actual-size samples.</p></div>
+        <div class="playground-grid">
+          <div class="workbench">
+            <div class="workbench-top"><span class="tiny-label">LIVE PREVIEW</span><label class="guide-toggle"><input id="safe-zone" type="checkbox"> Show safe zone</label></div>
+            <div class="preview-stage"><div class="preview-icon icon" data-icon="drop"></div><svg class="safe-guide" viewBox="18 18 72 72" aria-hidden="true"><circle cx="54" cy="54" r="33"/></svg></div>
+            <div class="preview-caption"><strong id="preview-name">Lavender / Squircle</strong><span>Vector artwork · 108 dp layers</span></div>
+            <div class="controls">
+              <fieldset><legend>Color</legend><div class="segmented" id="colors"><button type="button" data-color="lavender" aria-pressed="true"><i style="--swatch:#B7B9FF"></i>Lavender</button><button type="button" data-color="mint" aria-pressed="false"><i style="--swatch:#91DCC8"></i>Mint</button><button type="button" data-color="chalk" aria-pressed="false"><i style="--swatch:#D4DECA"></i>Themed</button></div></fieldset>
+              <fieldset><legend>Shape</legend><div class="segmented" id="shapes"><button type="button" data-shape="squircle" aria-pressed="true">Squircle</button><button type="button" data-shape="circle" aria-pressed="false">Circle</button><button type="button" data-shape="rounded" aria-pressed="false">Rounded</button></div></fieldset>
+            </div>
+            <p class="workbench-foot" id="safe-note">Launcher masks are illustrative. Android applies the final device shape.</p>
+            <span class="sr-only" id="preview-status" role="status" aria-live="polite"></span>
+          </div>
+          <div class="launcher-panel">
+            <div class="launcher-label"><span class="tiny-label">A PLACE ON YOUR HOME SCREEN</span><span aria-hidden="true">↘</span></div>
+            <div class="phone" aria-label="Illustrative Android home screen preview">
+              <div class="phone-status"><strong>09:41</strong><span aria-hidden="true">● ▰</span></div><div class="camera" aria-hidden="true"></div>
+              <div class="phone-clock">09<span>:</span>41</div><div class="phone-date">Tuesday, November 3</div>
+              <div class="phone-widget"><span class="widget-brand" data-symbol></span><div><span class="widget-kicker">A LITTLE SPACE TO LISTEN</span><p>Keep a good idea<br>with you.</p></div></div>
+              <div class="phone-apps"><div class="app-item"><span class="fake-app calendar"><small>NOV</small><b>3</b></span><span>Calendar</span></div><div class="app-item"><span class="fake-app notes"><i></i><i></i><i></i></span><span>Notes</span></div><div class="app-item selected-app"><span class="launcher-icon icon" data-icon="drop"></span><strong>DistillPod</strong></div><div class="app-item"><span class="fake-app photos"><span>✳</span></span><span>Photos</span></div></div>
+              <div class="page-dots" aria-hidden="true">● <span>● ●</span></div><div class="phone-dock" aria-hidden="true"><span>⌕</span><span>☏</span><span>◉</span><span>▦</span></div><div class="gesture" aria-hidden="true"></div>
+            </div>
+            <p class="context-note">Illustrative launcher and widget; this is an icon proposal.</p>
+          </div>
+        </div>
+        <div class="size-test"><div class="size-intro"><span class="tiny-label">SMALL IS THE REAL TEST</span><p>Actual CSS pixel sizes.<br>At normal browser zoom.</p></div><div class="size-samples"> <div><span class="icon" data-icon="drop" style="width:96px;height:96px"></span><span>96 px</span></div><div><span class="icon" data-icon="drop" style="width:64px;height:64px"></span><span>64 px</span></div><div><span class="icon" data-icon="drop" style="width:48px;height:48px"></span><span>48 px</span></div><div><span class="icon" data-icon="drop" style="width:32px;height:32px"></span><span>32 px</span></div><div><span class="icon" data-icon="drop" style="width:24px;height:24px"></span><span>24 px</span></div><div><span class="icon" data-icon="drop" style="width:16px;height:16px"></span><span>16 px</span></div></div></div>
+      </div>
+    </section>
+
+    <section class="section wrap" aria-labelledby="directions-title">
+      <div class="section-heading"><div><p class="eyebrow">The exploration</p><h2 id="directions-title">Three routes.<br>A clear favorite.</h2></div><p>I explored listening, sound, and saved ideas. The drop offers the strongest connection between the product name and the listening experience.</p></div>
+      <div class="directions"><article class="direction chosen"><div class="direction-art"><span class="icon" data-icon="drop"></span><span class="direction-tag">The recommendation</span></div><div class="direction-copy"><span class="tiny-label">01 / ESSENCE</span><h3>The listening drop</h3><p>The name and the purpose in one silhouette. Distinctive enough to become a recognisable signature.</p><span class="verdict">Best connection to DistillPod</span></div></article><article class="direction"><div class="direction-art alt-signal"><span class="icon" data-icon="signal"></span></div><div class="direction-copy"><span class="tiny-label">02 / SOUND</span><h3>The signal D</h3><p>A geometric D built from a signal and a receiver. Clear and compact, though it could also belong to an audio hardware brand.</p><span class="verdict">Strong monogram; less expressive</span></div></article><article class="direction"><div class="direction-art alt-bookmark"><span class="icon" data-icon="bookmark"></span></div><div class="direction-copy"><span class="tiny-label">03 / MEMORY</span><h3>The audio bookmark</h3><p>A saved moment, with sound inside. A useful idea for the Saved area, but it makes the whole app feel like a note-taking tool.</p><span class="verdict">Useful secondary visual language</span></div></article></div>
+    </section>
+
+    <section class="section wrap assets-section" id="assets" aria-labelledby="assets-title">
+      <div class="delivery-copy"><p class="eyebrow">The handoff</p><h2 id="assets-title">Small mark.<br>Thought-through system.</h2><p>The proposal includes editable vector masters, raster previews, and separate Android foreground, background, and monochrome layers.</p><a class="button dark" href="assets/distillpod-icon-proposal.zip" download>Download the asset kit <span aria-hidden="true">↓</span></a><a class="text-link" href="assets/distillpod-lavender.svg" download>Or get the SVG master ↗</a></div>
+      <div class="delivery-details"><div class="swatches"><div style="--color:#0C0F16"><span>Ink</span><code>#0C0F16</code></div><div style="--color:#B7B9FF"><span>Lavender</span><code>#B7B9FF</code></div><div style="--color:#91DCC8"><span>Mint</span><code>#91DCC8</code></div></div><ul class="specs"><li><strong>Adaptive from the start</strong><span>108 × 108 dp vector layers; artwork inside the central 66 dp safe circle.</span></li><li><strong>Works with themed icons</strong><span>A transparent play opening and a single-color silhouette.</span></li><li><strong>Ready for the next step</strong><span>512 px square PNG candidate for the store. Device installation and launcher motion checks follow implementation.</span></li></ul></div>
+    </section>
+    <section class="reference-note wrap" aria-label="Design references"><strong>Design references</strong><p>The existing DistillPod app supplied the palette. Android’s <a href="https://developer.android.com/develop/ui/compose/system/icon_design_adaptive" target="_blank" rel="noopener noreferrer">adaptive icon guidance</a> informed the layers and safe area; the <a href="https://developer.android.com/distribute/google-play/resources/icon-design-specifications" target="_blank" rel="noopener noreferrer">Google Play specification</a> informed the square export. The shapes shown here are original vector artwork.</p></section>
+  </main>
+  <footer class="wrap"><span class="wordmark"><span class="brand-symbol" data-symbol></span>distillpod</span><span>Listen deeply. Keep what matters.</span><span>Icon study / 01</span></footer>
+</body>
+</html>

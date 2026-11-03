@@ -62,6 +62,8 @@ jobs:
           mkdir -p /tmp/distillpod-fixtures
           curl -fL --retry 3 https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.en.bin -o /tmp/distillpod-fixtures/ggml-tiny.en.bin
           printf '%s\n' '921e4cf8686fdd993dcd081a5da5b6c365bfde1162e72b08d75ac75289920b1f  /tmp/distillpod-fixtures/ggml-tiny.en.bin' | sha256sum -c -
+          curl -fL --retry 3 https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin -o /tmp/distillpod-fixtures/ggml-tiny.bin
+          printf '%s\n' 'be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21  /tmp/distillpod-fixtures/ggml-tiny.bin' | sha256sum -c -
           cp android/third_party/whisper.cpp/samples/jfk.wav /tmp/distillpod-fixtures/jfk.wav
           sdkmanager 'platforms;android-35' 'build-tools;35.0.0' 'ndk;27.2.12479018' 'cmake;3.22.1'
       - name: Enable emulator acceleration

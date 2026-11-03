@@ -1,0 +1,10 @@
+{
+  "cleanupVerifiedOn": "2026-11-03",
+  "testPackageRemoved": true,
+  "fixtureAudioRemoved": true,
+  "privateQueueBackupRemovedAfterSuccessfulRestore": true,
+  "diagnosticFlagRemoved": true,
+  "diagnosticLogsRemoved": true,
+  "mainAppRetained": true,
+  "installedSha256": "ba57b28744c2979c0b4ec3f3dd9e0290db5d3f09a01b8000bc86d8b855123ed5"
+}

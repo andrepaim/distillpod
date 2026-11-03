@@ -1,0 +1,63 @@
+{
+  "device": "Samsung S22 Ultra SM-S908E",
+  "date": "2026-11-02",
+  "memorySamplingMs": 200,
+  "results": [
+    {
+      "model": "tiny",
+      "language": "en",
+      "audioMs": 90000,
+      "elapsedMs": 8641,
+      "realTimeFactor": 0.09601111111111112,
+      "segments": 27,
+      "characters": 1456,
+      "sampledPeakPssKiB": 457441,
+      "sampledPeakManagedBytes": 59498208,
+      "sampledPeakNativeBytes": 712639936,
+      "thermalBefore": 0,
+      "thermalAfter": 0
+    },
+    {
+      "model": "tiny",
+      "language": "pt",
+      "audioMs": 90000,
+      "elapsedMs": 9217,
+      "realTimeFactor": 0.1024111111111111,
+      "segments": 21,
+      "characters": 1336,
+      "sampledPeakPssKiB": 484789,
+      "sampledPeakManagedBytes": 71159520,
+      "sampledPeakNativeBytes": 712645680,
+      "thermalBefore": 0,
+      "thermalAfter": 0
+    },
+    {
+      "model": "base",
+      "language": "en",
+      "audioMs": 90000,
+      "elapsedMs": 20200,
+      "realTimeFactor": 0.22444444444444445,
+      "segments": 26,
+      "characters": 1475,
+      "sampledPeakPssKiB": 595933,
+      "sampledPeakManagedBytes": 40906464,
+      "sampledPeakNativeBytes": 807638640,
+      "thermalBefore": 0,
+      "thermalAfter": 0
+    },
+    {
+      "model": "base",
+      "language": "pt",
+      "audioMs": 90000,
+      "elapsedMs": 22549,
+      "realTimeFactor": 0.25054444444444446,
+      "segments": 21,
+      "characters": 1337,
+      "sampledPeakPssKiB": 559862,
+      "sampledPeakManagedBytes": 52993760,
+      "sampledPeakNativeBytes": 807740720,
+      "thermalBefore": 0,
+      "thermalAfter": 0
+    }
+  ]
+}

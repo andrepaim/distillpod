@@ -1,0 +1,22 @@
+{
+  "date": "2026-11-03",
+  "versionName": "0.3.0-alpha",
+  "versionCode": 4,
+  "sha256": "a6aab385c1aaa09dbb3820809fcdb73880f72522bfcd470eafb8c95aa62fd240",
+  "bytes": 74016876,
+  "jvmTests": {
+    "core": 48,
+    "app": 56
+  },
+  "lint": "passed",
+  "mainAndTestAssemblies": "passed",
+  "deviceVerification": "Original 0.3.0 flow passed; cold-start follow-up delivered and regression-verified in 0.4.0-alpha",
+  "mediaServiceBehavior": "unchanged from the separately validated locked-hour build",
+  "lastDeviceVerifiedSha256": "90b52d95210cd4771496aaf52807b2e330ea630929e5ed5ac4824c7731ad8e77",
+  "pendingFinalInstall": false,
+  "deviceFlowSeconds": 10.869,
+  "fontScaleChecked": 1.6,
+  "ownerQueueRestoration": "passed on UI device run",
+  "coldStartVisibilityFix": "delivered in 0.4.0-alpha; general UI regression passed",
+  "supersededBy": "search-ui-build.json"
+}

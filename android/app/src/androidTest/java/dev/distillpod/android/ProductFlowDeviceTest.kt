@@ -1,0 +1,96 @@
+package dev.distillpod.android
+
+import androidx.compose.ui.test.*
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
+import androidx.room.Room
+import dev.distillpod.android.ai.*
+import dev.distillpod.android.data.*
+import kotlinx.coroutines.*
+import okhttp3.mockwebserver.*
+import okio.Buffer
+import org.junit.Assert.*
+import org.junit.Rule
+import org.junit.Test
+import org.junit.runner.RunWith
+
+@RunWith(AndroidJUnit4::class)
+class ProductFlowDeviceTest {
+    @get:Rule val compose = createAndroidComposeRule<MainActivity>()
+
+    @Test fun subscriptionDownloadTranscriptCaptureAndReplaySurviveRecreation() = runBlocking {
+        val graph = compose.activity.applicationContext.appGraph
+        val dao = graph.db.library()
+        val audio = InstrumentationRegistry.getInstrumentation().context.assets.open("jfk.wav").use { it.readBytes() }
+        val server = MockWebServer()
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse = when (request.path) {
+                "/feed" -> MockResponse().setHeader("Content-Type", "application/rss+xml").setBody("""
+                    <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd" xmlns:podcast="https://podcastindex.org/namespace/1.0"><channel>
+                    <title>Device validation show</title><item><guid>device-fixture</guid><title>Device validation episode</title>
+                    <enclosure url="${server.url("/audio")}" type="audio/wav" length="${audio.size}"/>
+                    <itunes:duration>11</itunes:duration><podcast:transcript url="${server.url("/text")}" type="text/vtt"/>
+                    </item></channel></rss>
+                """.trimIndent())
+                "/audio" -> MockResponse().setHeader("Content-Type", "audio/wav").setHeader("ETag", "\"fixture-v1\"").setBody(Buffer().write(audio))
+                "/text" -> MockResponse().setBody("WEBVTT\n\n00:00:00.000 --> 00:00:11.000\nAsk not what your country can do for you, ask what you can do for your country.\n")
+                else -> MockResponse().setResponseCode(404)
+            }
+        }
+        server.start()
+        var podcast: String? = null
+        var episode: String? = null
+        try {
+            podcast = graph.podcasts.subscribe(server.url("/feed").toString())
+            episode = dao.episodesForPodcast(podcast).single().id
+            compose.waitUntil(10000) { compose.onAllNodesWithText("Device validation episode").fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithContentDescription("Play Device validation episode").performClick()
+            await { graph.playback.state.value.episodeId == episode && graph.playback.state.value.playing }
+            graph.playback.pause()
+            graph.jobs.download(episode)
+            await { dao.episode(episode)?.downloadState == "downloaded" }
+            assertTrue(java.io.File(dao.episode(episode)!!.localFile!!).isFile)
+            graph.transcription.prepare(episode)
+            await { dao.transcript(episode)?.state == "ready" }
+            val gateway = object : AiGateway {
+                override suspend fun complete(instructions: String, input: String, onDelta: (String) -> Unit) =
+                    AiText("""{"quote":"Ask not what your country can do for you","insight":"The speaker urges people to contribute to their community."}""", "device-test")
+            }
+            val requests = mutableListOf<String>()
+            val captures = CaptureRepository(graph.db, gateway, { true }, { error("Coverage should already exist") }, requests::add)
+            val capture = captures.capture(episode, 10000, true)
+            assertEquals(listOf(capture), requests)
+            captures.run(capture)
+            assertEquals("succeeded", dao.distillation(capture)!!.state)
+            val restored = Room.inMemoryDatabaseBuilder(graph.context, AppDatabase::class.java).build()
+            try {
+                val backup = LibraryBackup(restored)
+                backup.merge(backup.preview(graph.backup.export().inputStream()))
+                assertEquals(dao.distillation(capture)!!.quote, restored.library().distillation(capture)!!.quote)
+                assertEquals(dao.transcript(episode)!!.revision, restored.library().transcript(episode)!!.revision)
+                assertNull(restored.library().episode(episode)!!.localFile)
+            } finally { restored.close() }
+            compose.onNodeWithText("Saved", useUnmergedTree = true).performClick()
+            compose.waitUntil(10000) { compose.onAllNodesWithText("Ask not what your country can do for you", substring = true).fetchSemanticsNodes().isNotEmpty() }
+            compose.activityRule.scenario.recreate()
+            compose.onNodeWithText("Ask not what your country can do for you", substring = true).assertIsDisplayed().performClick()
+            compose.onNodeWithText("Replay source · 0:00").performScrollTo().performClick()
+            await { graph.playback.state.value.episodeId == episode && graph.playback.state.value.playing }
+            assertEquals(dao.episode(episode)!!.localFile, graph.playback.captureSource().third)
+            assertEquals(10000L, dao.distillation(capture)!!.endMs)
+        } finally {
+            episode?.let {
+                graph.playback.pause(); graph.playback.remove(it)
+                await { !graph.activeFiles.busy(dao.episode(it)?.localFile ?: "") }
+                graph.media.deleteDownload(it)
+            }
+            podcast?.let { dao.deletePodcast(it) }
+            server.shutdown()
+        }
+    }
+
+    private suspend fun await(predicate: suspend () -> Boolean) = withTimeout(45000) {
+        while (!predicate()) delay(100)
+    }
+}

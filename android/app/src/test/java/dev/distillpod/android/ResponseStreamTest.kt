@@ -22,4 +22,12 @@ class ResponseStreamTest {
         assertThrows(IllegalStateException::class.java) { parser.accept("""{"type":"response.failed"}""") }
         assertThrows(IllegalStateException::class.java) { parser.result() }
     }
+    @Test fun `structured allowance failures remain quota errors after streaming starts`() {
+        listOf("subscription_sharing_usage_limit_exceeded", "subscription_sharing_usage_unavailable").forEach { code ->
+            val parser = ResponseStream()
+            parser.accept("""{"type":"response.output_text.delta","delta":"partial"}""")
+            assertThrows(QuotaExceeded::class.java) { parser.accept("""{"type":"response.failed","response":{"error":{"code":"$code"}}}""") }
+            assertThrows(IllegalStateException::class.java) { parser.result() }
+        }
+    }
 }

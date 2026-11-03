@@ -1,0 +1,40 @@
+{
+  "status": "passed",
+  "instrumentationDuringHour": false,
+  "usbConnected": true,
+  "muted": true,
+  "bluetooth": "No hardware available",
+  "lockedElapsedMs": 3616841,
+  "positionAdvanceMs": 3616845,
+  "sampleCount": 723,
+  "errors": 0,
+  "additionalUnderruns": 0,
+  "maxThermalStatus": 1,
+  "charging": true,
+  "focusAndProcessRecovery": "passed",
+  "date": "2026-11-02",
+  "device": "Samsung S22 Ultra SM-S908E",
+  "androidApi": 36,
+  "apkSha256": "ba57b28744c2979c0b4ec3f3dd9e0290db5d3f09a01b8000bc86d8b855123ed5",
+  "source": {
+    "durationMs": 5297893,
+    "bytes": 90223039
+  },
+  "maxSampleGapMs": 5051,
+  "maxAbsolutePositionDriftMs": 10,
+  "totalPositionDriftMs": 4,
+  "sampleSha256": "9ab1f8356abfd8ac2c1399ae9dd449317ee2d4f1791e6d8b5152de151c51b763",
+  "startedAt": "2026-11-02T20:49:22.260000-03:00",
+  "endedAt": "2026-11-02T21:49:39.102000-03:00",
+  "ownerQueueRestoration": "passed",
+  "phoneSettingsRestoration": "completed by host cleanup",
+  "thermalHistogram": {
+    "0": 623,
+    "1": 100
+  },
+  "limitations": [
+    "USB connected and muted; no unplugged battery-drain or audible-quality measurement",
+    "No real Bluetooth or telephone-call interruption",
+    "No simultaneous transcription workload"
+  ]
+}

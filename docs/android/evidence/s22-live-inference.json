@@ -1,0 +1,13 @@
+{
+  "date": "2026-11-02",
+  "device": "Samsung Galaxy S22 Ultra SM-S908E",
+  "android_api": 36,
+  "saved_connection_before_restart": true,
+  "saved_connection_after_restart": true,
+  "post_restart_completed_inference": true,
+  "response_characters": 179,
+  "response_sha256": "8291f46cdf267e20a3c23e2f252bed61e89264e427929287e3c3b1a3f706509b",
+  "response_stream_completion_required_by_provider": true,
+  "model": "first entitled visible model; slug not recorded",
+  "refresh_rotation_verified": false
+}

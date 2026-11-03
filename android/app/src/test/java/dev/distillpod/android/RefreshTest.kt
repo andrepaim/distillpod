@@ -30,4 +30,16 @@ class RefreshTest {
             assertNull(saved)
         }
     }
+    @Test fun `invalid grant and removed plan scope require a new connection`() {
+        listOf(MockResponse().setResponseCode(400).setBody("""{"error":"invalid_grant"}"""),
+            MockResponse().setBody("""{"access_token":"new","expires_in":3600,"scope":"openid"}""")).forEach { response ->
+            MockWebServer().use { server ->
+                server.enqueue(response)
+                var saved: String? = expired()
+                val session = AuthSession({ saved }, { saved = it }, server.url("/"))
+                assertThrows(ReauthorizationRequired::class.java) { session.accessToken() }
+                assertNull(saved); assertEquals(1, server.requestCount)
+            }
+        }
+    }
 }

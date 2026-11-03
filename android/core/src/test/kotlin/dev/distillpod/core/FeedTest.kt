@@ -25,4 +25,12 @@ class FeedTest {
         assertEquals(3500L, segments.first().range.endMs)
         assertEquals("Hello world", segments.first().text)
     }
+    @Test fun `Atom relative enclosures resolve without changing feed scoped identity`() {
+        val xml = """<feed xmlns="http://www.w3.org/2005/Atom"><title>Atom</title><author><name>Host</name></author><entry><id>same</id><title>Episode</title><summary><![CDATA[<script>bad()</script><p>Safe text</p>]]></summary><link rel="enclosure" href="audio.mp3" type="audio/mpeg"/><published>2026-11-01T12:00:00Z</published></entry></feed>"""
+        val a = parseFeed("stable-id", xml, "https://example.test/one/feed")
+        val b = parseFeed("stable-id", xml, "https://example.test/two/feed")
+        assertEquals("https://example.test/one/audio.mp3", a.episodes.single().audioUrl)
+        assertEquals(a.episodes.single().id, b.episodes.single().id)
+        assertEquals("Host", a.author); assertEquals("Safe text", a.episodes.single().description)
+    }
 }
