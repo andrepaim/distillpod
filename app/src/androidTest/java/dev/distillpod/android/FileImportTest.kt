@@ -30,10 +30,7 @@ class FileImportTest {
             val device = UiDevice.getInstance(instrumentation)
             var file = device.wait(Until.findObject(By.text(name)), 10000)
             if(file == null) {
-                device.waitForIdle()
-                device.findObject(UiSelector().description("Show roots")).click()
-                device.waitForIdle()
-                device.findObject(UiSelector().text("Downloads")).click()
+                DocumentPickerUi.location(device, By.text("Downloads"))
                 file = device.wait(Until.findObject(By.text(name)), 10000)
             }
             assertNotNull("The Android document picker must show the fixture", file)

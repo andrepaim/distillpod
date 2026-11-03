@@ -51,21 +51,9 @@ class BackupDocumentsDeviceTest {
             compose.waitForIdle()
         }
         fun providerRoot() {
-            device.waitForIdle()
-            val rootsSelector = By.res(java.util.regex.Pattern.compile(".*:id/roots_list"))
-            if (!device.hasObject(rootsSelector)) {
-                val button = device.findObject(UiSelector().descriptionContains("Show roots"))
-                check(button.waitForExists(5000)) { "Document picker navigation unavailable" }
-                button.click()
-            }
-            device.waitForIdle()
-            val drawer = checkNotNull(device.wait(Until.findObject(rootsSelector), 5000)) { "Document locations unavailable" }
             val personal = InstrumentationRegistry.getArguments().getString("backupPersonal") == "true"
             val selector = if (personal) By.text(java.util.regex.Pattern.compile(".*@gmail\\.com")) else By.text(providerTitle)
-            val root = checkNotNull(drawer.findObject(selector)) { "Selected provider missing from system picker" }
-            val center = root.visibleCenter
-            device.click(center.x, center.y)
-            device.waitForIdle()
+            DocumentPickerUi.location(device, selector)
             if (providerTitle == "Drive") {
                 device.wait(Until.findObject(By.text("My Drive")), 5000)?.click()
                 device.waitForIdle()
@@ -78,6 +66,8 @@ class BackupDocumentsDeviceTest {
             settings.restorePortable(PortablePreferences("base", "pt", "test-model"))
             show(documents)
             compose.onNodeWithText("Save backup to Google Drive").performClick()
+            compose.waitUntil(transferTimeout) { documents.state.value.awaitingDestination || documents.state.value.error }
+            assertFalse(documents.state.value.phase, documents.state.value.error)
             providerRoot()
             checkNotNull(device.wait(Until.findObject(By.text(java.util.regex.Pattern.compile("Save", java.util.regex.Pattern.CASE_INSENSITIVE)).enabled(true)), 10000)).click()
             compose.waitUntil(transferTimeout) { documents.state.value.phase.startsWith("Saved and checked") || documents.state.value.error }
