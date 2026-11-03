@@ -8,7 +8,23 @@ DISTILLPOD_LOG="${DISTILLPOD_LOG:-/tmp/distillpod-instrumentation.log}"
 test -f "$DISTILLPOD_FIXTURES/ggml-tiny.en.bin"
 test -f "$DISTILLPOD_FIXTURES/ggml-tiny.bin"
 test -f "$DISTILLPOD_FIXTURES/jfk.wav"
-DISTILLPOD_USER_STATE="$("$DISTILLPOD_ADB" -P "${DISTILLPOD_ADB_PORT:-5037}" -s "$DISTILLPOD_SERIAL" shell am get-started-user-state 0)"
+if [[ "${GITHUB_ACTIONS:-false}" == true ]]; then
+    [[ "$DISTILLPOD_SERIAL" == emulator-* ]] || { echo 'CI setup requires a disposable emulator' >&2; exit 1; }
+    DISTILLPOD_QEMU="$("$DISTILLPOD_ADB" -P "${DISTILLPOD_ADB_PORT:-5037}" -s "$DISTILLPOD_SERIAL" shell getprop ro.boot.qemu)"
+    if [[ "${DISTILLPOD_QEMU//$'\r'/}" != 1 ]]; then
+        DISTILLPOD_QEMU="$("$DISTILLPOD_ADB" -P "${DISTILLPOD_ADB_PORT:-5037}" -s "$DISTILLPOD_SERIAL" shell getprop ro.kernel.qemu)"
+    fi
+    [[ "${DISTILLPOD_QEMU//$'\r'/}" == 1 ]] || { echo 'CI setup requires a verified emulator' >&2; exit 1; }
+    # sys.boot_completed can precede credential-encrypted storage readiness.
+    # Wait for the disposable emulator's normal boot; never unlock an owner phone.
+    for DISTILLPOD_ATTEMPT in {1..30}; do
+        DISTILLPOD_USER_STATE="$("$DISTILLPOD_ADB" -P "${DISTILLPOD_ADB_PORT:-5037}" -s "$DISTILLPOD_SERIAL" shell am get-started-user-state 0)"
+        [[ "$DISTILLPOD_USER_STATE" == *RUNNING_UNLOCKED* ]] && break
+        sleep 1
+    done
+else
+    DISTILLPOD_USER_STATE="$("$DISTILLPOD_ADB" -P "${DISTILLPOD_ADB_PORT:-5037}" -s "$DISTILLPOD_SERIAL" shell am get-started-user-state 0)"
+fi
 if [[ "$DISTILLPOD_USER_STATE" != *RUNNING_UNLOCKED* ]]; then
     echo "Unlock the development emulator before running tests; user 0 state: $DISTILLPOD_USER_STATE" >&2
     exit 1
@@ -25,14 +41,12 @@ cleanup_browser_fixture() {
 }
 trap cleanup_browser_fixture EXIT
 if [[ "${GITHUB_ACTIONS:-false}" == true ]]; then
-    DISTILLPOD_QEMU="$("$DISTILLPOD_ADB" -P "${DISTILLPOD_ADB_PORT:-5037}" -s "$DISTILLPOD_SERIAL" shell getprop ro.kernel.qemu)"
-    [[ "${DISTILLPOD_QEMU//$'\r'/}" == 1 ]] || { echo 'CI browser setup requires a disposable emulator' >&2; exit 1; }
     DISTILLPOD_FLAGS="$(mktemp)"
     printf '%s\n' '_ --disable-fre --no-first-run --no-default-browser-check' > "$DISTILLPOD_FLAGS"
     "$DISTILLPOD_ADB" -P "${DISTILLPOD_ADB_PORT:-5037}" -s "$DISTILLPOD_SERIAL" push "$DISTILLPOD_FLAGS" /data/local/tmp/chrome-command-line
     rm -f "$DISTILLPOD_FLAGS"
-    "$DISTILLPOD_ADB" -P "${DISTILLPOD_ADB_PORT:-5037}" -s "$DISTILLPOD_SERIAL" shell am set-debug-app --persistent com.android.chrome
     DISTILLPOD_BROWSER_CONFIGURED=true
+    "$DISTILLPOD_ADB" -P "${DISTILLPOD_ADB_PORT:-5037}" -s "$DISTILLPOD_SERIAL" shell am set-debug-app --persistent com.android.chrome
     "$DISTILLPOD_ADB" -P "${DISTILLPOD_ADB_PORT:-5037}" -s "$DISTILLPOD_SERIAL" shell am force-stop com.android.chrome
 fi
 # Keep the compressed regression sample tied to the same pinned upstream checkout.
