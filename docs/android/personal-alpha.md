@@ -14,7 +14,7 @@ Search now provides publisher thumbnails, preview sheets, Follow/Open actions, t
 4. While listening, select **Distill last 60 seconds**. The source window is saved before AI work. Saved moments support replay, copy/share, retry and transcript explanations.
 5. **Summary & chapters** and **Ask episode** use the prepared transcript. Chapter and chat source buttons replay the original audio timeline. Suggested ads require review plus the skip switch; Undo or a deliberate seek replays them normally.
 6. **Search → Explore by interest** requests real-feed suggestions. Sending followed-show titles is optional; suggestions do not run automatically.
-7. Use **Settings → Save backup** for library metadata/text. Restore merges existing records safely. OPML transfers subscriptions. Backups exclude account credentials, audio files and models.
+7. Use **Settings → Backup & Restore** for library metadata/text. Restore merges existing records safely. OPML transfers subscriptions. Backups exclude account credentials, audio files and models.
 
 AI requests use the existing authorized ChatGPT allowance. Audio transcription runs locally. A saved streamed moment may ask for source review before sending text for generation. Quota/auth errors preserve the excerpt, and explicit retries may consume allowance again.
 

@@ -29,6 +29,14 @@ class AppSettings(context: Context, private val store: androidx.datastore.core.D
         p[longPreferencesKey("storageLimit")] ?: (2L * 1024 * 1024 * 1024), p[stringPreferencesKey("aiModel")] ?: "",
         p[booleanPreferencesKey("recommendations")] ?: false,
     ) }
+    suspend fun restorePortable(value: PortablePreferences) {
+        PortablePreferences.parse(value.json())
+        store.edit {
+            it[stringPreferencesKey("model")] = value.model
+            it[stringPreferencesKey("language")] = value.language
+            it[stringPreferencesKey("aiModel")] = value.aiModel
+        }
+    }
     suspend fun text(key: String, value: String) { store.edit { it[stringPreferencesKey(key)] = value } }
     suspend fun flag(key: String, value: Boolean) { store.edit { it[booleanPreferencesKey(key)] = value } }
     suspend fun storage(bytes: Long) { require(bytes >= 250_000_000); store.edit { it[longPreferencesKey("storageLimit")] = bytes } }

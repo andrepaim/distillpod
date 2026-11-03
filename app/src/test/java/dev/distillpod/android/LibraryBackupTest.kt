@@ -121,4 +121,28 @@ class LibraryBackupTest {
             assertEquals("succeeded", target.library().distillation("moment")!!.state)
         } finally { source.close(); target.close() }
     }
+    @Test fun `version two metadata and preferences are integrity checked and future formats refused`() = runBlocking {
+        val source = database(); val target = database()
+        try {
+            seed(source)
+            val root = JSONObject(LibraryBackup(source).export(PortablePreferences("base", "pt", "test-model"), "0.6.0").toString(Charsets.UTF_8))
+            val backup = LibraryBackup(target)
+            val preview = backup.preview(root.toString().byteInputStream())
+            assertEquals("0.6.0", preview.appVersion); assertTrue(preview.createdAt > 0)
+            assertEquals(PortablePreferences("base", "pt", "test-model"), preview.preferences)
+            val payload = JSONObject(root.getString("payload"))
+            payload.getJSONObject("preferences").put("language", "en")
+            root.put("payload", payload.toString())
+            assertTrue(runCatching { backup.preview(root.toString().byteInputStream()) }.isFailure)
+            root.put("version", 99)
+            assertTrue(runCatching { backup.preview(root.toString().byteInputStream()) }.isFailure)
+            assertTrue(target.library().podcasts().isEmpty())
+        } finally { source.close(); target.close() }
+    }
+
+    @Test fun `portable preferences reject unexpected keys and unsupported values`() {
+        assertTrue(runCatching { PortablePreferences.parse(JSONObject("""{"model":"tiny","language":"en","aiModel":"","token":"secret"}""")) }.isFailure)
+        assertTrue(runCatching { PortablePreferences.parse(JSONObject("""{"model":"/private/model","language":"en","aiModel":""}""")) }.isFailure)
+    }
+
 }

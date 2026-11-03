@@ -12,7 +12,8 @@ import kotlinx.coroutines.withContext
 private const val BACKUP_LIMIT = 32 * 1024 * 1024
 private val backupTables = listOf("podcasts", "episodes", "transcripts", "segments", "transcript_coverage", "distillations",
     "analyses", "analysis_parts", "messages", "research", "suggestions", "queue", "player_session")
-data class BackupPreview internal constructor(internal val payload: String, val counts: Map<String, Int>, val conflicts: Int) {
+data class BackupPreview internal constructor(internal val payload: String, val counts: Map<String, Int>, val conflicts: Int,
+    val createdAt: Long = 0, val appVersion: String = "Unknown (older backup)", val preferences: PortablePreferences? = null) {
     val episodes get() = counts["episodes"] ?: 0
     val moments get() = counts["distillations"] ?: 0
 }
@@ -25,7 +26,7 @@ class LibraryBackup(private val db: AppDatabase) {
     }
     private fun sha(text: String) = MessageDigest.getInstance("SHA-256").digest(text.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
 
-    suspend fun export(): ByteArray = db.withTransaction {
+    suspend fun export(preferences: PortablePreferences? = null, appVersion: String = ""): ByteArray = db.withTransaction {
         val tables = JSONObject()
         var count = 0
         for (table in backupTables) {
@@ -47,9 +48,11 @@ class LibraryBackup(private val db: AppDatabase) {
             }
             tables.put(table, rows)
         }
-        val payload = tables.toString()
-        val bytes = JSONObject().put("format", "distillpod-library").put("version", 1).put("databaseSchema", 2)
-            .put("createdAt", System.currentTimeMillis()).put("payload", payload).put("sha256", sha(payload)).toString().toByteArray(Charsets.UTF_8)
+        val createdAt = System.currentTimeMillis()
+        val payload = if (preferences == null) tables.toString() else JSONObject().put("library", tables)
+            .put("preferences", PortablePreferences.parse(preferences.json()).json()).put("createdAt", createdAt).put("appVersion", appVersion.take(100)).toString()
+        val bytes = JSONObject().put("format", "distillpod-library").put("version", if (preferences == null) 1 else 2).put("databaseSchema", 2)
+            .put("createdAt", createdAt).put("payload", payload).put("sha256", sha(payload)).toString().toByteArray(Charsets.UTF_8)
         require(bytes.size <= BACKUP_LIMIT) { "This library exceeds the 32 MB backup limit" }
         bytes
     }
@@ -57,11 +60,18 @@ class LibraryBackup(private val db: AppDatabase) {
     suspend fun preview(input: InputStream): BackupPreview = withContext(Dispatchers.IO) {
         val bytes = input.readBytesBounded()
         val root = JSONObject(bytes.toString(Charsets.UTF_8))
-        require(root.optString("format") == "distillpod-library" && root.optInt("version") == 1 && root.optInt("databaseSchema") in 1..2) { "This backup format is not supported" }
+        require(root.optString("format") == "distillpod-library" && root.optInt("version") in 1..2 && root.optInt("databaseSchema") in 1..2) { "This backup format is not supported" }
         val original = root.getString("payload")
         require(sha(original) == root.getString("sha256")) { "The backup integrity check failed" }
+        val content = if (root.getInt("version") == 2) JSONObject(original) else null
+        val preferences = content?.let { PortablePreferences.parse(it.getJSONObject("preferences")) }
+        val createdAt = content?.getLong("createdAt") ?: root.optLong("createdAt")
+        require(createdAt >= 0) { "Invalid backup date" }
+        val appVersion = content?.getString("appVersion") ?: "Unknown (older backup)"
+        require(appVersion.length <= 100 && appVersion.none { it.isISOControl() }) { "Invalid backup app version" }
+        val library = content?.getJSONObject("library")?.toString() ?: original
         val payload = if (root.getInt("databaseSchema") == 1) {
-            val tables = JSONObject(original)
+            val tables = JSONObject(library)
             val analyses = tables.getJSONArray("analyses")
             repeat(analyses.length()) { analyses.getJSONObject(it).put("model", JSONObject.NULL).put("promptVersion", 1).put("attempt", "") }
             val moments = tables.getJSONArray("distillations")
@@ -69,7 +79,7 @@ class LibraryBackup(private val db: AppDatabase) {
             val messages = tables.getJSONArray("messages")
             repeat(messages.length()) { messages.getJSONObject(it).put("sourcesJson", "[]").put("revision", "").put("fingerprint", "").put("model", JSONObject.NULL).put("attempt", "") }
             tables.toString()
-        } else original
+        } else library
         db.withTransaction {
             val tables = validated(payload)
             mapExistingIdentities(tables)
@@ -80,7 +90,7 @@ class LibraryBackup(private val db: AppDatabase) {
                 val rows = tables.getJSONArray(table)
                 repeat(rows.length()) { i -> if (exists(table, keys, rows.getJSONObject(i))) conflicts++ }
             }
-            BackupPreview(payload, counts, conflicts)
+            BackupPreview(payload, counts, conflicts, createdAt, appVersion, preferences)
         }
     }
 

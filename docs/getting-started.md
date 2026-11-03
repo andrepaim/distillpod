@@ -28,7 +28,7 @@ Connect ChatGPT in Settings only if you want optional quotes/insights, episode s
 
 ## Back up or move devices
 
-Settings → Save backup writes library metadata, progress, queue, transcripts and saved text through Android's file picker. Backups contain readable personal library content; store them somewhere appropriate. Restore previews the file and merges records without replacing existing ones. Repeating a merge does not duplicate imported records.
+Settings → Backup & Restore → Save backup to Google Drive writes library metadata, progress, queue, transcripts and saved text through Android's file picker. Backups contain readable personal library content; store them somewhere appropriate. Restore previews the file and merges records without replacing existing ones. Repeating a merge does not duplicate imported records. Language/model choices can be restored optionally. See the [Drive backup guide](android/drive-backup.md) for cloud sync, privacy and recovery details.
 
 Credentials, downloaded audio, model binaries and private device file paths are excluded. Reconnect the account and re-download audio/models on a destination installation. OPML transfers subscriptions only.
 

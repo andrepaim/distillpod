@@ -1,0 +1,28 @@
+{
+  "date": "2026-11-03",
+  "versionName": "0.6.0-alpha.1",
+  "versionCode": 11,
+  "builds": {"debugApk": "passed", "releaseUnsignedApk": "passed", "debugLint": "passed", "releaseLint": "passed"},
+  "unitTests": {"core": 48, "app": 71, "failures": 0, "skipped": 0},
+  "utilityTests": {"passed": 11},
+  "emulatorAcceptance": {"passed": 28, "failures": 0, "skipped": 0},
+  "physicalDriveRoundTrip": {
+    "device": "Samsung Galaxy S22 Ultra",
+    "provider": "Google Drive through Android Storage Access Framework",
+    "test": "BackupDocumentsDeviceTest.systemPickerRoundTripIntoFreshDatabaseAndSafeRepeatedMerge",
+    "result": "passed",
+    "data": "synthetic library in isolated in-memory databases and separate temporary preferences",
+    "checks": ["real system picker save", "provider byte read-back", "last-file metadata", "real system picker import", "preview before mutation", "optional language/model restore", "fresh target progress and queue", "repeated merge preserves newer progress"],
+    "syntheticDriveDocumentDeleted": true
+  },
+  "ownerPreservation": {
+    "tableCountsUnchanged": true,
+    "subscriptionsUnchanged": true,
+    "queueUnchanged": true,
+    "playerSessionUnchanged": true,
+    "progressAndDownloadsUnchanged": true,
+    "accountAndSettingsFileHashesUnchanged": true,
+    "privateSnapshotsPublished": false
+  },
+  "scope": "Manual document backup. Provider byte verification does not independently certify completed cloud sync or restoration on a second physical device."
+}

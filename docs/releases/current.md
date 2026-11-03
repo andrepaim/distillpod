@@ -1,14 +1,14 @@
-DistillPod is now a native Android project, with the complete app at the repository root.
+DistillPod 0.6.0-alpha.1 adds manual Google Drive backup and restore.
 
-- Podcast search with artwork, show previews, RSS entry and OPML subscriptions.
-- Background streaming/offline playback, a persistent queue and saved listening progress.
-- Publisher transcripts and local Whisper preparation with live progress and pause/resume.
-- Saved source moments, optional account-backed insights, summaries, chapters and episode chat.
-- The selected lavender Listening Drop icon, including adaptive and monochrome layers.
-- Native-only CI and signed APK prerelease automation.
+- Open Settings → Backup & Restore to save through Android’s file picker to Drive, another provider or your device.
+- Snapshots are prepared locally before choosing a destination. Each save creates a new timestamped file and reads it back to verify its bytes.
+- See the last saved file, date, size and library counts. Your file provider manages cloud sync.
+- Import previews date, source version, counts and existing-record conflicts before merging. Existing items and newer local progress are kept.
+- Restore language/model choices optionally. Account credentials, audio downloads, model files and device constraints are excluded.
+- Older backup files remain importable. Failed transfers, corrupt files and future formats receive clear recovery messages.
 
-Download the attached APK and install it over the existing compatible personal-alpha app. The application ID and personal-alpha signing certificate are retained; do not uninstall as an update step. Android 10+; ARM64 and x86_64 included.
+Backups are readable JSON containing personal library text and feed addresses. Keep them private. This feature is manual; scheduled backups and passphrase encryption are future work. No new Google sign-in is required in DistillPod.
 
-This remains a personal alpha. AI features depend on eligible account/model access and plan limits. Web research is not implemented. Broader device/accessibility, real Bluetooth/phone-interruption and sustained battery trials remain open.
+Install the APK over the compatible personal-alpha app; do not uninstall as an update step. Android 10+; ARM64 and x86_64 included. The application ID and retained signing certificate are unchanged.
 
-The retired web app is preserved on legacy/web and the web-legacy-final tag. See README for usage and development details. SHA256SUMS and build-info.json identify the released APK, commit and signing certificate.
+This remains a personal alpha. AI features depend on eligible account/model access and plan limits. Web research, broader device/accessibility, Bluetooth/phone-interruption and sustained battery trials remain open. See the backup guide in docs/android/drive-backup.md for usage and recovery.

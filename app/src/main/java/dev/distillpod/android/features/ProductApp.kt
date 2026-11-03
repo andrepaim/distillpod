@@ -90,6 +90,7 @@ private fun date(ms: Long) = if (ms <= 0) "" else DateTimeFormatter.ofPattern("d
         route == "saved" || route.startsWith("capture:") -> "Saved moments"
         route == "queue" -> "Listening queue"
         route == "settings" -> "Settings"
+        route == "backup" -> "Backup & Restore"
         route == "player" -> "Now playing"
         route.startsWith("analysis:") -> "Episode insights"
         route.startsWith("chat:") -> "Ask this episode"
@@ -99,6 +100,7 @@ private fun date(ms: Long) = if (ms <= 0) "" else DateTimeFormatter.ofPattern("d
         else -> "Episode"
     }
     DistillTheme {
+        BackupDocumentLaunchers(vm)
         Scaffold(containerColor = ink, snackbarHost = { SnackbarHost(snackbar) }, topBar = {
             TopAppBar(title = { Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold) },
                 navigationIcon = { if (stack.size > 1) IconButton(onClick = vm::back) { Icon(Icons.Default.ArrowBack, "Back") } },
@@ -130,6 +132,7 @@ private fun date(ms: Long) = if (ms <= 0) "" else DateTimeFormatter.ofPattern("d
                     route == "queue" -> QueuePage(vm, episodes, podcasts, player)
                     route == "saved" -> SavedPage(vm, captures, episodes, podcasts)
                     route == "settings" -> SettingsPage(vm, preferences, account, models, episodes)
+                    route == "backup" -> BackupPage(vm)
                     route == "player" -> PlayerPage(vm, episodes.firstOrNull { it.id == player.episodeId }, podcasts, player)
                     route.startsWith("episode:") -> EpisodePage(vm, episodes.firstOrNull { it.id == route.substringAfter(':') }, podcasts, player)
                     route.startsWith("capture:") -> CapturePage(vm, captures.firstOrNull { it.id == route.substringAfter(':') }, episodes)

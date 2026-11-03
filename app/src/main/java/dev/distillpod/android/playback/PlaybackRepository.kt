@@ -116,8 +116,9 @@ class PlaybackRepository(context: Context, private val db: AppDatabase, private 
         withContext(Dispatchers.Main) {
             if (c.mediaItemCount == 0 && restored.isNotEmpty()) {
                 val index = restored.indexOf(saved?.episodeId).coerceAtLeast(0)
+                c.pause()
                 c.setMediaItems(restored.map { mediaItem(episodes.getValue(it), podcasts[episodes.getValue(it).podcastId]) }, index, episodes.getValue(restored[index]).positionMs)
-                c.setPlaybackSpeed(saved?.speed ?: 1f); c.prepare(); c.pause()
+                c.setPlaybackSpeed(saved?.speed ?: 1f)
             } else {
                 val existing = (0 until c.mediaItemCount).map { c.getMediaItemAt(it).mediaId }.toSet()
                 restored.filter { it !in existing }.forEach { c.addMediaItem(mediaItem(episodes.getValue(it), podcasts[episodes.getValue(it).podcastId])) }

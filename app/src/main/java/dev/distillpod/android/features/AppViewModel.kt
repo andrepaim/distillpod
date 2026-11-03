@@ -37,7 +37,7 @@ class AppViewModel(val graph: AppGraph, private val saved: SavedStateHandle) : V
     val busy = MutableStateFlow<Set<String>>(emptySet())
     val messages = Channel<String>(Channel.BUFFERED)
     val loaded = MutableStateFlow(false)
-    val backupPreview = MutableStateFlow<BackupPreview?>(null)
+    val backupDocuments = BackupDocuments(graph.context, graph.backup, graph.settings, viewModelScope) { graph.playback.synchronizeRestoredQueue() }
     init { viewModelScope.launch { dao.observeEpisodes().first(); loaded.value = true } }
     fun root(route: String) { saved["backStack"] = arrayListOf(route) }
     fun open(route: String) { if (backStack.value.lastOrNull() != route) saved["backStack"] = ArrayList(backStack.value + route) }
@@ -102,21 +102,6 @@ class AppViewModel(val graph: AppGraph, private val saved: SavedStateHandle) : V
     }
     fun generateCapture(id: String, confirm: Boolean = false) = action("capture:$id") { graph.captures.generate(id, confirm) }
     fun cancelCapture(id: String) = action("capture:$id") { graph.jobs.cancelCapture(id); dao.distillation(id)?.let { dao.putDistillation(it.copy(state = "failed", error = "Generation paused. Your source is saved.")) } }
-    fun exportBackup(uri: android.net.Uri) = action("backup") {
-        val bytes = graph.backup.export()
-        withContext(Dispatchers.IO) { graph.context.contentResolver.openOutputStream(uri, "wt")!!.use { it.write(bytes) } }
-        messages.send("Library backup saved")
-    }
-    fun previewBackup(uri: android.net.Uri) = action("backup") {
-        backupPreview.value = withContext(Dispatchers.IO) { graph.context.contentResolver.openInputStream(uri)!!.use { graph.backup.preview(it) } }
-    }
-    fun restoreBackup() = action("backup") {
-        val preview = backupPreview.value ?: return@action
-        val count = graph.backup.merge(preview)
-        backupPreview.value = null
-        graph.playback.synchronizeRestoredQueue()
-        messages.send("Restored $count records. Existing items were kept. Audio can be downloaded again.")
-    }
     fun exportOpml(uri: android.net.Uri) = action("opml") {
         val xml = graph.podcasts.exportOpml()
         withContext(Dispatchers.IO) { graph.context.contentResolver.openOutputStream(uri, "wt")!!.bufferedWriter().use { it.write(xml) } }

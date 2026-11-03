@@ -42,7 +42,7 @@ Use the APK attached to a release for updates. CI debug artifacts use temporary 
 - **Listen:** resume from the library, build your queue, and download episodes for offline playback.
 - **Transcribe:** choose Tiny or Base in Settings, download the model once, and prepare an episode transcript. English and Portuguese are available alongside automatic language detection.
 - **Distill:** save the last 60 seconds while listening. The original source window is captured immediately; quotes and insights can be generated when its transcript is ready.
-- **Save:** revisit source moments, replay their original audio, and export your library from Settings.
+- **Save:** revisit source moments, replay their original audio, and use **Settings → Backup & Restore** to keep a portable library copy in Google Drive or another file provider. [Backup guide](docs/android/drive-backup.md).
 
 [Read the usage guide →](docs/getting-started.md)
 
