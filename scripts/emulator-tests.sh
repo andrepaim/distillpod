@@ -13,6 +13,28 @@ if [[ "$DISTILLPOD_USER_STATE" != *RUNNING_UNLOCKED* ]]; then
     echo "Unlock the development emulator before running tests; user 0 state: $DISTILLPOD_USER_STATE" >&2
     exit 1
 fi
+# A fresh CI image has not completed Chrome's first-run experience. Configure
+# Chromium's documented test command line on the disposable emulator only, so
+# ACTION_VIEW reaches the real callback page instead of an onboarding screen.
+DISTILLPOD_BROWSER_CONFIGURED=false
+cleanup_browser_fixture() {
+    if [[ "$DISTILLPOD_BROWSER_CONFIGURED" == true ]]; then
+        "$DISTILLPOD_ADB" -P "${DISTILLPOD_ADB_PORT:-5037}" -s "$DISTILLPOD_SERIAL" shell am clear-debug-app || true
+        "$DISTILLPOD_ADB" -P "${DISTILLPOD_ADB_PORT:-5037}" -s "$DISTILLPOD_SERIAL" shell rm -f /data/local/tmp/chrome-command-line || true
+    fi
+}
+trap cleanup_browser_fixture EXIT
+if [[ "${GITHUB_ACTIONS:-false}" == true ]]; then
+    DISTILLPOD_QEMU="$("$DISTILLPOD_ADB" -P "${DISTILLPOD_ADB_PORT:-5037}" -s "$DISTILLPOD_SERIAL" shell getprop ro.kernel.qemu)"
+    [[ "${DISTILLPOD_QEMU//$'\r'/}" == 1 ]] || { echo 'CI browser setup requires a disposable emulator' >&2; exit 1; }
+    DISTILLPOD_FLAGS="$(mktemp)"
+    printf '%s\n' '_ --disable-fre --no-first-run --no-default-browser-check' > "$DISTILLPOD_FLAGS"
+    "$DISTILLPOD_ADB" -P "${DISTILLPOD_ADB_PORT:-5037}" -s "$DISTILLPOD_SERIAL" push "$DISTILLPOD_FLAGS" /data/local/tmp/chrome-command-line
+    rm -f "$DISTILLPOD_FLAGS"
+    "$DISTILLPOD_ADB" -P "${DISTILLPOD_ADB_PORT:-5037}" -s "$DISTILLPOD_SERIAL" shell am set-debug-app --persistent com.android.chrome
+    DISTILLPOD_BROWSER_CONFIGURED=true
+    "$DISTILLPOD_ADB" -P "${DISTILLPOD_ADB_PORT:-5037}" -s "$DISTILLPOD_SERIAL" shell am force-stop com.android.chrome
+fi
 # Keep the compressed regression sample tied to the same pinned upstream checkout.
 cp third_party/whisper.cpp/samples/jfk.mp3 "$DISTILLPOD_FIXTURES/jfk.mp3"
 ./gradlew --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest "-PdistillpodFixtureDir=$DISTILLPOD_FIXTURES"

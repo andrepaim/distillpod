@@ -97,15 +97,17 @@ class ListeningDesignDeviceTest {
             screenshot("player")
             compose.onNodeWithContentDescription("Open queue").performClick()
             compose.onNodeWithText("Up next").assertIsDisplayed()
-            compose.onNodeWithContentDescription("Move ${titles[2]} up").performScrollTo().performClick()
+            // A small emulator may not have composed the last lazy-list row yet.
+            compose.onNode(hasScrollAction()).performScrollToNode(hasContentDescription("Move ${titles[2]} up"))
+            compose.onNodeWithContentDescription("Move ${titles[2]} up").performClick()
             await { (0 until c.mediaItemCount).map { c.getMediaItemAt(it).mediaId } == listOf(ids[0], ids[2], ids[1]) }
             compose.waitUntil(5000) { vm.player.value.queue == listOf(ids[0], ids[2], ids[1]) }
             assertEquals(60000L, withContext(Dispatchers.Main) { c.currentPosition })
             screenshot("queue")
             compose.onNodeWithText("Saved", useUnmergedTree = true).performClick()
-            compose.onNodeWithText("Useful ideas deserve a second listen.", substring = true).performScrollTo()
+            compose.onNode(hasScrollAction()).performScrollToNode(hasText("Useful ideas deserve a second listen.", substring = true))
             screenshot("saved")
-            compose.onNodeWithText("Useful ideas deserve a second listen.", substring = true).performScrollTo().performClick()
+            compose.onNodeWithText("Useful ideas deserve a second listen.", substring = true).performClick()
             compose.onNodeWithText("Replay source · 0:05").performScrollTo().assertIsDisplayed()
             screenshot("moment")
             withContext(Dispatchers.Main) {
