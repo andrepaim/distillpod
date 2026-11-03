@@ -1,3 +1,5 @@
+> **Retired web version.** Active DistillPod development now lives in the [native Android project on main](https://github.com/andrepaim/distillpod). This branch preserves the former self-hosted application. Its exact final pre-deprecation source is tagged [web-legacy-final](https://github.com/andrepaim/distillpod/tree/web-legacy-final). The historical setup below is retained for recovery, not as the current product guide.
+
 # DistillPod ⚗️
 
 > A self-hosted, mobile-first podcast app with AI-powered features: transcription, distillations, ad detection, chapter generation, episode chat, and deep research reports. No per-call API costs — all AI runs via the Claude CLI through your existing subscription.
