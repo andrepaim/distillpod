@@ -45,6 +45,7 @@ class SyncProtocolTest {
     @Test fun `unknown payload fields are rejected`() { invalid(mutation(payload=mapOf("surprise" to "content"))) }
     @Test fun `private locators stay local`() { invalid(mutation(payload=mapOf("feedUrl" to "https://example.test/rss?token=secret"))) }
     @Test fun `public feed locator is allowed`() { SyncProtocol.validate(mutation(payload=mapOf("feedUrl" to "https://example.test/rss"))) }
+    @Test fun `public HTTP feed locator remains supported`() { SyncProtocol.validate(mutation(payload=mapOf("feedUrl" to "http://example.test/rss"))) }
     @Test fun `payload size is bounded in UTF8 bytes`() { invalid(mutation(payload=mapOf("excerpt" to "é".repeat(70000)))) }
     @Test fun `retry is bounded and uses supplied jitter`() {
         assertEquals(15000L, SyncProtocol.retryDelayMs(0, 0.0))

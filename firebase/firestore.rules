@@ -9,16 +9,20 @@ service cloud.firestore {
   function receipt(uid,id) { return getAfter(/databases/$(database)/documents/users/$(uid)/receipts/$(id)).data; }
   function id(value) { return value is string && value.matches('[A-Za-z0-9_-]{1,128}'); }
   function validPayload(p) {
-   return p is map && p.keys().hasOnly(['subscribed','feedUrl','title','author','positionMs','completed','episodeId','podcastId','guid','audioUrl','sessionId','deviceId','deviceSequence','startMs','endMs','excerpt','quote','insight','revision','fingerprint','createdAt'])
-    && (!('feedUrl' in p) || (p.feedUrl is string && p.feedUrl.matches('https://[^?@#]+')))
-    && (!('audioUrl' in p) || (p.audioUrl is string && p.audioUrl.matches('https://[^?@#]+')));
+   return p is map && p.keys().hasOnly(['subscribed','podcastId','feedUrl','originalFeedUrl','title','author'])
+    && p.keys().hasAll(['subscribed','podcastId','feedUrl','originalFeedUrl','title','author'])
+    && p.subscribed == 'true' && id(p.podcastId)
+    && p.title is string && p.title.size() <= 1000
+    && p.author is string && p.author.size() <= 1000
+    && p.feedUrl is string && p.feedUrl.size() <= 2048 && p.feedUrl.matches('https?://[^/?@#]+(/[^?#]*)?')
+    && p.originalFeedUrl is string && p.originalFeedUrl.size() <= 2048 && p.originalFeedUrl.matches('https?://[^/?@#]+(/[^?#]*)?');
   }
   function validRecord(uid,d) {
    return d.keys().hasOnly(['version','payload','deleted','generation','sequence','operationId'])
-    && d.version is int && d.version > 0 && d.deleted is bool && id(d.operationId)
+    && d.sequence is int && d.version is int && d.version > 0 && d.version < 9000000000000000 && d.deleted is bool && id(d.operationId)
     && d.generation == head(uid).generation && head(uid).active == true
     && d.sequence == head(uid).sequence + 1 && d.sequence == nextHead(uid).sequence
-    && validPayload(d.payload) && (!d.deleted || d.payload.size() == 0);
+    && ((d.deleted && d.payload is map && d.payload.size() == 0) || (!d.deleted && validPayload(d.payload)));
   }
   match /users/{uid} {
    allow read: if owner(uid);
@@ -38,8 +42,8 @@ service cloud.firestore {
      return c.key == key && c.diff(d).affectedKeys().hasOnly(['key'])
       && r.key == key && r.version == d.version && r.sequence == d.sequence && r.generation == d.generation;
     }
-    allow create: if owner(uid) && id(key) && validRecord(uid,request.resource.data) && request.resource.data.version == 1 && companions();
-    allow update: if owner(uid) && validRecord(uid,request.resource.data) && request.resource.data.version == resource.data.version + 1 && companions();
+    allow create: if owner(uid) && key.matches('subscription_[A-Za-z0-9_-]{1,115}') && validRecord(uid,request.resource.data) && request.resource.data.version == 1 && companions();
+    allow update: if owner(uid) && key.matches('subscription_[A-Za-z0-9_-]{1,115}') && validRecord(uid,request.resource.data) && request.resource.data.version == resource.data.version + 1 && companions();
    }
    match /changes/{sequence} {
     allow read: if owner(uid);

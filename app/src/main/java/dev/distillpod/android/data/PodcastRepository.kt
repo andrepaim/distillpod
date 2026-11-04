@@ -29,8 +29,11 @@ fun okhttp3.ResponseBody.boundedText(limit: Int = 10_000_000): String {
 }
 
 class PodcastRepository(private val db: AppDatabase, private val http: OkHttpClient,
-    private val directory: HttpUrl = "https://itunes.apple.com/search".toHttpUrl()) {
+    private val directory: HttpUrl = "https://itunes.apple.com/search".toHttpUrl(),
+    private val onSubscriptionChanged: () -> Unit = {},
+    private val onFeedNeeded: (String) -> Unit = {}) {
     private val dao = db.library()
+    private val subscriptionSync = dev.distillpod.android.sync.SubscriptionSyncStore(db)
     suspend fun search(query: String): List<PodcastCandidate> = withContext(Dispatchers.IO) {
         require(query.trim().length in 2..200) { "Enter at least two characters" }
         val url = directory.newBuilder().addQueryParameter("term", query.trim()).addQueryParameter("media", "podcast")
@@ -60,12 +63,24 @@ class PodcastRepository(private val db: AppDatabase, private val http: OkHttpCli
         }
     }
 
+    suspend fun follow(candidate: PodcastCandidate): String = withContext(Dispatchers.IO) {
+        val url=publicHttpUrl(candidate.feedUrl).toString()
+        val old=dao.podcastByUrl(url)
+        val value=old?.copy(subscribed=true) ?: PodcastEntity(episodeId("podcast",url),url,candidate.title,
+            author=candidate.author,imageUrl=candidate.imageUrl,originalFeedUrl=url)
+        subscriptionSync.follow(value,publicSource=true)
+        onFeedNeeded(value.id)
+        onSubscriptionChanged()
+        value.id
+    }
+
     suspend fun subscribe(rawUrl: String): String = withContext(Dispatchers.IO) {
         val url = publicHttpUrl(rawUrl).toString()
         val existing = dao.podcastByUrl(url)
         if (existing != null) {
-            dao.putPodcast(existing.copy(subscribed = true))
-            refresh(existing.id)
+            subscriptionSync.follow(existing.copy(subscribed = true))
+            onSubscriptionChanged()
+            try { refresh(existing.id) } catch(cancelled:kotlinx.coroutines.CancellationException) { throw cancelled } catch(_:Exception) { /* Follow remains saved offline. */ }
             return@withContext existing.id
         }
         http.newCall(Request.Builder().url(url).build()).execute().use { response ->
@@ -75,10 +90,11 @@ class PodcastRepository(private val db: AppDatabase, private val http: OkHttpCli
             val id = existingRedirect?.id ?: episodeId("podcast", finalUrl)
             val feed = response.body!!.byteStream().use { parseFeedStream(id, it, finalUrl) }
             db.withTransaction {
-                dao.putPodcast(PodcastEntity(id, finalUrl, feed.title, feed.author, feed.description, feed.imageUrl, true,
+                subscriptionSync.follow(PodcastEntity(id, finalUrl, feed.title, feed.author, feed.description, feed.imageUrl, true,
                     response.header("ETag"), response.header("Last-Modified"), System.currentTimeMillis(), originalFeedUrl = url))
                 saveEpisodes(id, feed.episodes)
             }
+            onSubscriptionChanged()
             id
         }
     }
@@ -132,7 +148,7 @@ class PodcastRepository(private val db: AppDatabase, private val http: OkHttpCli
         dao.putEpisodes(episodes)
     }
 
-    suspend fun unsubscribe(id: String) { dao.podcast(id)?.let { dao.putPodcast(it.copy(subscribed = false)) } }
+    suspend fun unsubscribe(id: String) { dao.podcast(id)?.let { subscriptionSync.follow(it.copy(subscribed = false)); onSubscriptionChanged() } }
     suspend fun exportOpml(): String = dev.distillpod.core.writeOpml(dao.podcasts().filter { it.subscribed }.map { dev.distillpod.core.OpmlFeed(it.title, it.feedUrl) })
     suspend fun importOpml(xml: String): Int {
         val feeds = dev.distillpod.core.parseOpml(xml)
@@ -142,11 +158,12 @@ class PodcastRepository(private val db: AppDatabase, private val http: OkHttpCli
                 val url = publicHttpUrl(feed.url).toString()
                 val old = dao.podcastByUrl(url)
                 if (old == null) {
-                    dao.putPodcast(PodcastEntity(episodeId("podcast", url), url, feed.title.ifBlank { publicHttpUrl(url).host }, originalFeedUrl = url))
+                    subscriptionSync.follow(PodcastEntity(episodeId("podcast", url), url, feed.title.ifBlank { publicHttpUrl(url).host }, originalFeedUrl = url))
                     added++
-                } else if (!old.subscribed) { dao.putPodcast(old.copy(subscribed = true)); added++ }
+                } else if (!old.subscribed) { subscriptionSync.follow(old.copy(subscribed = true)); added++ }
             }
         }
+        if(added>0) onSubscriptionChanged()
         return added
     }
     suspend fun refreshAll() { dao.podcasts().filter { it.subscribed }.forEach { runCatching { refresh(it.id) } } }

@@ -11,7 +11,7 @@ sealed interface MergeDecision {
 }
 object SyncProtocol {
     private val safeId = Regex("[A-Za-z0-9_-]{1,128}")
-    private val allowed = setOf("subscribed", "feedUrl", "title", "author", "positionMs", "completed",
+    private val allowed = setOf("subscribed", "feedUrl", "originalFeedUrl", "title", "author", "positionMs", "completed",
         "episodeId", "podcastId", "guid", "audioUrl", "sessionId", "deviceId", "deviceSequence",
         "startMs", "endMs", "excerpt", "quote", "insight", "revision", "fingerprint", "createdAt")
     fun validate(mutation: SyncMutation) {
@@ -19,9 +19,10 @@ object SyncProtocol {
         require(mutation.baseVersion in 0 until Long.MAX_VALUE)
         require(mutation.payload.keys.all { it in allowed })
         require(mutation.payload.entries.sumOf { it.key.toByteArray(Charsets.UTF_8).size.toLong() + it.value.toByteArray(Charsets.UTF_8).size } <= 128 * 1024)
-        for (field in listOf("feedUrl", "audioUrl")) mutation.payload[field]?.let {
+        for (field in listOf("feedUrl", "audioUrl", "originalFeedUrl")) mutation.payload[field]?.let {
+            require(it.toByteArray(Charsets.UTF_8).size <= 2048)
             val uri = try { java.net.URI(it) } catch (_: Exception) { throw IllegalArgumentException("Invalid public locator") }
-            require(uri.scheme == "https" && !uri.host.isNullOrBlank() && uri.rawUserInfo == null && uri.rawQuery == null && uri.rawFragment == null)
+            require(uri.scheme in setOf("http", "https") && !uri.host.isNullOrBlank() && uri.rawUserInfo == null && uri.rawQuery == null && uri.rawFragment == null)
         }
     }
     fun merge(mutation: SyncMutation, current: RemoteRecord?): MergeDecision {

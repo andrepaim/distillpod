@@ -20,6 +20,17 @@ class SyncLocalStoreTest {
         try { block(db) } finally { db.close() }
     }
     private fun mutation(id: String="op1", uid: String="alice") = SyncMutation(id, SyncOwner(uid,"g1"),"show1",0,mapOf("subscribed" to "true"))
+    @Test fun `instrumentation keeps local writes without deferred cloud intents`() = runBlocking {
+        context.deleteDatabase("library.db")
+        dev.distillpod.android.sync.SubscriptionCloudAccess.instrumentation=true
+        try {
+            withDb {db->
+                val store=SyncLocalStore(db)
+                store.record(mutation()){db.library().putPodcast(PodcastEntity("show1","https://example.test/rss","Show"))}
+                assertNotNull(db.library().podcast("show1"));assertTrue(store.pending("alice","g1").isEmpty())
+            }
+        }finally{dev.distillpod.android.sync.SubscriptionCloudAccess.instrumentation=false}
+    }
     @Test fun `library write and pending change survive reopen`() = runBlocking {
         context.deleteDatabase("library.db")
         withDb { db ->

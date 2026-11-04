@@ -11,10 +11,11 @@ class SyncLocalStore(private val db: AppDatabase) {
         SyncProtocol.validate(mutation)
         db.withTransaction {
             writeLibrary()
+            if(SubscriptionCloudAccess.instrumentation)return@withTransaction
             db.sync().enqueue(SyncOutboxEntity(mutation.id, mutation.owner.uid, mutation.owner.generation,
                 mutation.key, mutation.baseVersion, JSONObject(mutation.payload.toSortedMap()).toString(), mutation.deleted))
         }
     }
     suspend fun pending(uid: String, generation: String): List<String> = db.sync().pending(uid, generation)
-    suspend fun acknowledge(uid: String, generation: String, operationId: String) { db.sync().acknowledge(uid, generation, operationId) }
+    suspend fun acknowledge(uid: String, generation: String, operationId: String) { if(!SubscriptionCloudAccess.instrumentation)db.sync().acknowledge(uid, generation, operationId) }
 }

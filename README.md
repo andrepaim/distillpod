@@ -65,6 +65,8 @@ There is no required DistillPod server. See [privacy and data handling](docs/pri
 
 DistillPod is a **personal alpha**. The S22 Ultra has been used for real subscription/search, playback, download, local transcription and saved-moment flows, along with ChatGPT sign-in, quote/insight generation, summaries and episode chat. A separate 60-minute screen-locked playback test passed. CI runs Kotlin tests, lint, native validation and isolated emulator acceptance before an APK can be released.
 
+The sync feature branch adds [optional subscription sync](docs/android/subscription-sync.md), with Google sign-in, offline changes, restoration and explicit conflict choices. Existing published APKs do not include it yet. Other library data and live telemetry remain later milestones in the [implementation plan](docs/android/firebase-sync-telemetry-plan.md).
+
 AI summaries, answers and explanations use the episode transcript and can miss context or contain mistakes; use the source references and audio replay to check them. Saved-idea explanations currently use the transcript only; web research is not implemented in the Android app.
 
 Broader devices, TalkBack, real Bluetooth/phone interruptions, sustained unplugged battery use and longer multilingual listening trials still need coverage. See [implementation status and evidence](docs/android/implementation-status.md).

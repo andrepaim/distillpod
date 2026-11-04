@@ -2,13 +2,25 @@
 
 Date: November 4, 2026
 
-Status: Implementation in progress on `feat/firebase-sync-telemetry`; foundations only, not yet an end-user sync feature.
+Status: Implementation in progress on `feat/firebase-sync-telemetry`; subscription-only milestone implemented, full portable-library sync and telemetry still open.
 
 Scope: Optional account-based, offline-first library synchronization and privacy-controlled diagnostics/usage analytics for the native Android app.
 
 Method: Test-driven development (TDD), with separate evidence for local tests, Firebase emulator tests, and live service acceptance.
 
-## Implementation checkpoint — November 4
+## Subscription milestone checkpoint — November 4
+
+Implemented after foundation commit `cee4a3d`: native Google sign-in integration; one-account library binding; subscription eligibility/review; atomic follow/unfollow intent; Firebase server transactions; bounded worker/retry/bootstrap/cursors; explicit conflict choices; Settings controls and fresh-library restoration. Existing/manual feeds require selection; directory follows establish public provenance. Private tokens in URL paths are not inferred from URL shape.
+
+Room schemas 4/5 add bindings, remote versions/cursors, outbox states and public-feed provenance, with tested upgrade paths from schemas 1–4. The current configured build is a developer alpha, not a published release. Default builds have no production Firebase configuration.
+
+Validated: 190 JVM tests; 15 rule tests; ordinary Android suite with 38 passes and no skips; nine targeted SDK/UI/migration/isolation tests plus separate successful seed/resume invocations across a real force-stop. The two SDK clients have independent Firebase auth instances and Room databases on one Android emulator, not two physical phones. See the [TDD receipt](evidence/firebase-sync-tdd.md).
+
+External setup: Google provider enabled by the owner; retained certificate fingerprints registered; free-tier Standard database created in São Paulo with deletion protection; validated subscription rules deployed. Billing remains disabled. Live Google account selection/login and a real-phone signed upgrade remain unverified. No Firebase build was installed on an owner phone, and no personal library was uploaded.
+
+Remaining includes multiple local account profiles, all other portable data, independent backups/account erasure/retention, telemetry SDKs and live ingestion, App Check/live staging, release configuration and broader rollout. Existing full-phase checkboxes stay open until their complete acceptance criteria pass. See the [subscription milestone guide](subscription-sync.md).
+
+## Initial foundation checkpoint — November 4 (historical)
 
 Starting source: `a1e8456afdab0c9d9206235951abfe9a2a65cbd6`, with the previously prepared lock-screen changes preserved separately in the working tree.
 

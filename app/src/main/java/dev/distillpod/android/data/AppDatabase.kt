@@ -1,5 +1,8 @@
 package dev.distillpod.android.data
 
+import dev.distillpod.android.sync.SyncPublicFeedEntity
+import dev.distillpod.android.sync.SyncBindingEntity
+import dev.distillpod.android.sync.SyncRemoteEntity
 import dev.distillpod.android.sync.SyncDao
 import dev.distillpod.android.sync.SyncOutboxEntity
 import android.content.Context
@@ -153,7 +156,7 @@ interface LibraryDao {
 
 @Database(entities = [PodcastEntity::class, EpisodeEntity::class, QueueEntryEntity::class, PlayerSessionEntity::class,
     TranscriptEntity::class, SegmentEntity::class, CoverageEntity::class, DistillationEntity::class, ModelEntity::class,
-    AnalysisEntity::class, AnalysisPartEntity::class, MessageEntity::class, ResearchEntity::class, SuggestionEntity::class, SyncOutboxEntity::class], version = 3, exportSchema = true)
+    AnalysisEntity::class, AnalysisPartEntity::class, MessageEntity::class, ResearchEntity::class, SuggestionEntity::class, SyncOutboxEntity::class, SyncBindingEntity::class, SyncRemoteEntity::class, SyncPublicFeedEntity::class], version = 5, exportSchema = true)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun library(): LibraryDao
     abstract fun sync(): SyncDao
@@ -177,6 +180,19 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_sync_outbox_uid_generation ON sync_outbox (uid,generation)")
             }
         }
-        fun open(context: Context): AppDatabase = Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "library.db").addMigrations(MIGRATION_1_2, MIGRATION_2_3).build()
+        val MIGRATION_3_4 = object : androidx.room.migration.Migration(3, 4) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE sync_outbox ADD COLUMN state TEXT NOT NULL DEFAULT 'queued'")
+                db.execSQL("ALTER TABLE sync_outbox ADD COLUMN baseline INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("CREATE TABLE IF NOT EXISTS sync_binding (id INTEGER NOT NULL, uid TEXT NOT NULL, generation TEXT NOT NULL, enabled INTEGER NOT NULL, lease TEXT NOT NULL, bootstrapped INTEGER NOT NULL, bootstrapAfter TEXT NOT NULL, bootstrapHead INTEGER NOT NULL, cursor INTEGER NOT NULL, status TEXT NOT NULL, lastSyncedAt INTEGER NOT NULL, PRIMARY KEY(id))")
+                db.execSQL("CREATE TABLE IF NOT EXISTS sync_remote (uid TEXT NOT NULL, generation TEXT NOT NULL, entityKey TEXT NOT NULL, version INTEGER NOT NULL, payload TEXT NOT NULL, deleted INTEGER NOT NULL, sequence INTEGER NOT NULL, PRIMARY KEY(uid,generation,entityKey))")
+            }
+        }
+        val MIGRATION_4_5 = object : androidx.room.migration.Migration(4, 5) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS sync_public_feeds (podcastId TEXT NOT NULL, PRIMARY KEY(podcastId))")
+            }
+        }
+        fun open(context: Context): AppDatabase = Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "library.db").addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5).build()
     }
 }

@@ -2,7 +2,7 @@
 
 Date: November 4, 2026. Branch: `feat/firebase-sync-telemetry`. Starting commit: `a1e8456afdab0c9d9206235951abfe9a2a65cbd6`.
 
-This receipt covers a foundation checkpoint, not completion of the full implementation plan. No live personal library upload, live SDK telemetry, signed phone upgrade or production rules deployment is claimed.
+This receipt preserves the initial foundation checkpoint and adds the subscription milestone below. It is not completion of the full implementation plan. At the foundation checkpoint there was no personal library upload, live SDK telemetry, signed phone upgrade or production rules deployment.
 
 ## Red and green evidence
 
@@ -41,6 +41,46 @@ The first two-version emulator run found a test-fixture issue: the schema-2 seed
 
 The owner authorized a new dedicated Firebase project and completed CLI reauthentication. Created project: `distillpod-native-sync`; registered Android application: `dev.distillpod.android`. CLI credentials and downloaded app configuration remain outside Git. No billing activation, database location choice, deployed rules, production telemetry or personal data transfer occurred.
 
-## Remaining gates
+## Remaining gates at the foundation checkpoint (historical)
 
 The feature is not ready for installation/release as cloud sync. Android Firebase integration, durable cursor/bootstrap recovery, full account isolation, user controls, native symbol upload, live telemetry, artifact transfer, account deletion, recovery backups and the complete 28-scenario matrix remain open. The local consent gate does not itself configure SDK collection; SDK adapters must prove that behavior before telemetry can ship.
+
+## Subscription milestone receipt
+
+Based on foundation commit `cee4a3d`; results below supersede its integration/setup status.
+
+### Additional TDD cycles
+
+| Behavior | Observed red | Green result |
+| --- | --- | --- |
+| Owner binding, local changes, coalescing and persistence | Eight initial `SubscriptionSyncStoreTest` failures with explicit unimplemented behavior | Store suite passes |
+| Push/pull/bootstrap, lost acknowledgement, wrong account and sign-out race | Five initial `SubscriptionCoordinatorTest` failures with explicit unimplemented behavior | Coordinator suite passes |
+| Explicit conflict choices | Two failures with resolution unimplemented; unrelated cases stayed green | Accepting cloud deletion and explicit local re-follow pass |
+| Cancellation recovery | One failure: visible state remained syncing after interruption | Pending state restored; original operation receipt replayed safely |
+| Offline directory follow | Failure on unimplemented follow; later failure for missing targeted refresh callback | Local save without network and per-feed refresh callback pass |
+| Unknown/private-source protection | Failures for automatic baseline/manual-source upload | First-bind selection and directory provenance protect unknown sources |
+| Public-feed review UI | Two device assertion failures with the empty review component | Unknown source starts unselected; only confirmed IDs passed; cancellation authorizes nothing |
+| Typed cloud schema | Three failures: numeric title, oversized title and incomplete snapshot were accepted | All three rejected by rules |
+| Stale receipt after another device edit | One failure: an old receipt replaced a newer remote version already pulled | Remote versions remain monotonic; latest remote state projects after acknowledgement |
+| Eligible worker retries | Six unimplemented-policy failures | Signed-out/paused work stops retrying; unfinished pages continue; conflicts preserve unrelated queued work |
+| Instrumentation isolation | UI test failed because automatic production configuration was enabled; generic and subscription mutation tests exposed deferred fixture intents | Runner disables automatic cloud work and intent recording before Application creation; SDK demo stores opt in explicitly |
+| Existing HTTP feed compatibility | Core validation and rule acceptance failed for a public HTTP source | HTTP/HTTPS accepted while passwords/query-bearing addresses remain excluded |
+
+### Final local validation
+
+- Java 17/SDK 35 configured build, lint and JVM tests passed: **71 core + 119 app = 190**, no failures.
+- Java 21/Node 22 isolated Firestore suite: **15 passed**, no skips.
+- Existing Python release/emulator tooling suite: **11 passed**.
+- Final ordinary Android acceptance on isolated API 36.1 emulator: **38 passed**, no skips, 197.780 seconds. Earlier ordinary runs had successful assertions plus two assumption skips and were correctly rejected by the strict result parser. The ordinary script now explicitly excludes SDK/restart-only classes, which remain mandatory in the separate Firebase stage.
+- Targeted Auth/Firestore Android acceptance: **9 passed**, 19.675 seconds, including four schema upgrades, two review UI cases, Settings scope, production/deferred-intent isolation, and two independently authenticated SDK clients with separate databases and simultaneous edits.
+- Actual process restart: seed invocation **1 passed**, 0.742 seconds; runner force-stopped the emulator package; resume invocation in the new process **1 passed**, 0.874 seconds. Cached synthetic authentication and the Room outbox survived; exactly one cloud operation was committed.
+
+Commands are reproducible through `scripts/emulator-tests.sh`, `scripts/sync-device-tests.sh`, and `npm --prefix firebase run test:emulator`. Build configuration/fixtures stayed outside Git. Emulator SDK accounts and data used only `demo-distillpod-sync`. Tests did not sign a real Google user in, upload a personal library or install a Firebase build on an owner phone. A separately requested background task installed the saved pre-Firebase APK on the connected S25; that is outside this feature validation.
+
+### Cloud setup and deployment
+
+The owner enabled Google sign-in in Firebase Console. The Android web client ID was retrieved and retained SHA-1/SHA-256 fingerprints registered. Firestore API was enabled; the Standard default database was created in `southamerica-east1`, reporting `freeTier: true` with deletion protection. Validated rules compiled and deployed successfully using explicit project `distillpod-native-sync`. Billing was not enabled, and no test/owner library was written to that project.
+
+### Remaining acceptance
+
+Live Google account selection/token exchange and a real-phone signed upgrade are not demonstrated by emulator credentials. The alpha supports one bound account per existing library and rejects account adoption; multiple local profiles remain a later milestone. Full-data sync, cloud erasure/recovery/retention, telemetry SDK integration/ingestion, App Check, live staging and configured release automation remain open. Existing lock-screen source changes remain separate and uncommitted by this milestone. Normal app builds keep cloud access available when configured; the isolated instrumentation runner disables automatic production access even with a cached real login. Deferred fixture intents are suppressed too, so they cannot upload later after testing.

@@ -1,6 +1,6 @@
-# Firebase sync protocol feasibility
+# Firebase subscription sync
 
-This directory contains the isolated protocol/security test harness. It does not yet provide end-user account sync. The Kotlin Android adapter, full merge policies, cursor/bootstrap recovery and account UI remain implementation tasks in the [plan](../docs/android/firebase-sync-telemetry-plan.md).
+This directory contains the isolated protocol/security test harness and deployed rules for the first subscription milestone. The Android adapter, durable cursor/bootstrap recovery, public-feed review and account UI are implemented. See the [usage/build/test guide](../docs/android/subscription-sync.md) and the [complete plan](../docs/android/firebase-sync-telemetry-plan.md) for scope and remaining milestones.
 
 ## Local tests
 
@@ -13,14 +13,14 @@ npm --prefix firebase run test:emulator
 
 The command uses `demo-distillpod-sync` and Firestore on localhost:8085. Tests refuse to run without that emulator endpoint. No Google credentials or real project are needed. Security tests seed synthetic account control records using the rules-testing admin context; no production credentials are used.
 
-The commit helper is a test driver for the proposed wire contract, not a deployed backend. It atomically writes a portable entity, an immutable change, an immutable receipt and the per-account sequence. Repeated operations return the same receipt; stale versions conflict. Rules require the companion writes and prohibit editing receipts/change history or changing account generation through the client.
+The JavaScript commit helper is a test driver for the wire contract, not a deployed backend. `FirebaseSubscriptionCloud` implements the Android transport. Each atomically writes a subscription entity, an immutable change, an immutable receipt and the per-account sequence. Repeated operations return the same receipt; stale versions conflict. Rules require the companion writes, restrict subscription field types/sizes and prohibit editing receipts/change history or changing account generation through the client. Public-feed approval is a client sharing decision, not an authentication mechanism; server UID rules enforce ownership.
 
 Concurrent transactions exposed an emulator behavior where rules see a competing head update before the SDK returns a retriable transaction-precondition error. The driver retries a permission denial only after a server read proves that the active account's head advanced in the same generation. Retries are bounded; a denial with no such advancement propagates. The Android transport must implement and test this distinction before integration.
 
 ## Cloud setup status
 
-The owner authorized a dedicated project, `distillpod-native-sync`, and Android app registration for `dev.distillpod.android`. Billing has not been enabled by this work. No production rules, user library, telemetry or app integration have been deployed. No region/database was provisioned yet.
+The owner authorized dedicated project `distillpod-native-sync` and Android app registration `dev.distillpod.android`, and enabled its Google provider. The Standard/default Firestore database is in São Paulo (`southamerica-east1`) with deletion protection. The validated subscription rules are deployed and SHA-1/SHA-256 signing fingerprints registered. Billing has not been enabled. No personal library, live telemetry or Firebase build installation on an owner phone has been performed by this work. Google sign-in itself still requires a live manual check; emulator credentials are not evidence of a real Google login.
 
-The CLI login and downloaded client configuration are outside the repository. Service-account keys and OAuth credentials must never be committed. Client configuration is not an authorization boundary; rules and account lifecycle validation provide access control. Future staging/production separation, certificate registration, Google provider setup and App Check remain required.
+The CLI login and downloaded client configuration are outside the repository. Service-account keys and OAuth credentials must never be committed. Client configuration is not an authorization boundary; rules and account lifecycle validation provide access control. Configured APKs use the explicit `distillpodFirebaseConfig` build property. CI uses demo Auth/Firestore emulators. Separate live staging, App Check and release configuration injection remain required before broader rollout.
 
-These rules are a feasibility baseline. Do not deploy them as the completed feature: the final typed entity schema, size validation, lifecycle/retention policies and expanded adversarial tests remain open.
+These rules cover subscription sync only. Other library entities, complete account deletion, retention/compaction and independent recovery backups remain later milestones. Do not deploy client/schema expansions without their corresponding rule tests and compatibility gates.

@@ -114,7 +114,7 @@ def main():
         def phase(name, method):
             result = shell("am", "instrument", "-w", "-r", "-e", "lockedTrial", name, "-e", "class",
                            "dev.distillpod.android.PlaybackReliabilityDeviceTest#" + method,
-                           "dev.distillpod.android.test/androidx.test.runner.AndroidJUnitRunner")
+                           "dev.distillpod.android.test/dev.distillpod.android.IsolatedTestRunner")
             (args.output / (name + ".txt")).write_text(result + "\n")
             if "OK (1 test)" not in result:
                 raise RuntimeError(name + " device check did not pass")
@@ -134,7 +134,7 @@ def main():
         failures = []
         for action in [
             ("am", "instrument", "-w", "-r", "-e", "lockedTrial", "restore", "-e", "class",
-             "dev.distillpod.android.PlaybackReliabilityDeviceTest#restoreLockedTrial", "dev.distillpod.android.test/androidx.test.runner.AndroidJUnitRunner"),
+             "dev.distillpod.android.PlaybackReliabilityDeviceTest#restoreLockedTrial", "dev.distillpod.android.test/dev.distillpod.android.IsolatedTestRunner"),
             ("settings", "put", "global", "stay_on_while_plugged_in", original["stayAwake"]),
             ("cmd", "media_session", "volume", "--setfine", str(original["volume"])),
         ]:

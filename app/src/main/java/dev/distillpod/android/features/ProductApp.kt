@@ -503,6 +503,8 @@ private fun captureState(state: String) = when (state) { "waiting_transcript" ->
     val version = remember(context) { context.packageManager.getPackageInfo(context.packageName, 0).versionName.orEmpty() }
     LaunchedEffect(account.connected) { if (account.connected) vm.graph.account.refreshModels() }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        SubscriptionSyncSettings(vm)
+        HorizontalDivider()
         Text("ChatGPT", style = MaterialTheme.typography.titleLarge)
         Text(if (account.connected) "Connected" else "Not connected", color = if (account.connected) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurfaceVariant)
         Text(account.message, color = MaterialTheme.colorScheme.onSurfaceVariant)

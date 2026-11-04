@@ -32,7 +32,7 @@ class AppJobs(private val context: Context) {
         context.appGraph.db.library().putModel(ModelEntity(id, "queued", old?.bytes ?: 0, old?.etag))
         manager.enqueueUniqueWork("model:$id", ExistingWorkPolicy.KEEP, request("model", id, prefs))
     }
-    fun refresh() { manager.enqueueUniqueWork("refresh", ExistingWorkPolicy.KEEP, request("refresh", "", Preferences(wifiOnly = false))) }
+    fun refresh(id:String = "") { manager.enqueueUniqueWork(if(id.isBlank())"refresh" else "refresh:$id", ExistingWorkPolicy.KEEP, request("refresh", id, Preferences(wifiOnly = false))) }
     suspend fun configureRefresh() {
         val prefs = context.appGraph.settings.flow.first()
         if (prefs.refresh) manager.enqueueUniquePeriodicWork("refresh-periodic", ExistingPeriodicWorkPolicy.UPDATE,
@@ -87,7 +87,7 @@ class LibraryWorker(context: Context, params: WorkerParameters) : CoroutineWorke
                     }
                     graph.transcription.resumeModel(target)
                 }
-                "refresh" -> graph.podcasts.refreshAll()
+                "refresh" -> if(target.isBlank())graph.podcasts.refreshAll() else graph.podcasts.refresh(target)
                 else -> return Result.failure()
             }
             Result.success()

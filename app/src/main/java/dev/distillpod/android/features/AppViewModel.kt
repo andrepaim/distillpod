@@ -67,7 +67,8 @@ class AppViewModel(val graph: AppGraph, private val saved: SavedStateHandle) : V
         directorySearch.submit(text)
     }
     fun subscribe(url: String) = action("subscribe:$url") {
-        val id = graph.podcasts.subscribe(url); messages.send("Subscribed"); open("podcast:$id")
+        val candidate = search.value.results.firstOrNull { it.feedUrl == url }
+        val id = if (candidate != null) graph.podcasts.follow(candidate) else graph.podcasts.subscribe(url); messages.send("Subscribed"); open("podcast:$id")
     }
     fun refresh(id: String? = null) = action("refresh") {
         if (id == null) graph.podcasts.refreshAll() else graph.podcasts.refresh(id)

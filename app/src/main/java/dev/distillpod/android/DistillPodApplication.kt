@@ -23,7 +23,8 @@ class AppGraph(val context: Context) {
     val preferences = settings.flow.stateIn(scope, SharingStarted.Eagerly, Preferences())
     val http = OkHttpClient.Builder().connectTimeout(20, TimeUnit.SECONDS).readTimeout(30, TimeUnit.SECONDS)
         .addInterceptor { it.proceed(it.request().newBuilder().header("User-Agent", "DistillPod/0.2 (Android)").build()) }.build()
-    val podcasts = PodcastRepository(db, http)
+    val syncAccount by lazy { dev.distillpod.android.sync.SubscriptionSyncAccount(this) }
+    val podcasts = PodcastRepository(db, http, onSubscriptionChanged = { syncAccount.kick() }, onFeedNeeded = { jobs.refresh(it) })
     val activeFiles = ActiveFiles()
     val media = MediaRepository(context, db, settings, ResumableDownloader(http), activeFiles)
     val account = AccountRepository(context, scope)

@@ -17,6 +17,8 @@ import java.util.UUID
 class DatabaseUpgradeDeviceTest {
     @Test fun schemaOneUpgradesWithoutLosingProgressSavedMomentsOrMessages() = upgradeFixture(1)
     @Test fun schemaTwoUpgradesWithoutLosingProgressSavedMomentsOrMessages() = upgradeFixture(2)
+    @Test fun schemaThreeUpgradesWithoutLosingProgressSavedMomentsOrMessages() = upgradeFixture(3)
+    @Test fun schemaFourUpgradesWithoutLosingProgressSavedMomentsOrMessages() = upgradeFixture(4)
     private fun upgradeFixture(from: Int) = runBlocking {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
@@ -48,7 +50,7 @@ class DatabaseUpgradeDeviceTest {
                 insert("messages", mapOf("id" to "m", "episodeId" to "e", "role" to "assistant", "text" to "Saved reply", "state" to "succeeded") + if (from >= 2) mapOf("sourcesJson" to "[]") else emptyMap())
                 old.version = from
             }
-            val upgraded = Room.databaseBuilder(context, AppDatabase::class.java, name).addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3).build()
+            val upgraded = Room.databaseBuilder(context, AppDatabase::class.java, name).addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4, AppDatabase.MIGRATION_4_5).build()
             try {
                 assertTrue(upgraded.sync().pending("alice", "g1").isEmpty())
                 assertEquals(23000L, upgraded.library().episode("e")!!.positionMs)

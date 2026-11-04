@@ -17,7 +17,8 @@ const control = uid => `users/${uid}`;
 async function seed(uid='alice') { await env.withSecurityRulesDisabled(async ctx=>{
   await setDoc(doc(ctx.firestore(),control(uid)),{generation:'g1',sequence:0,active:true,protocol:1});
 }); }
-async function commit(database, {uid='alice',id='op1',key='item1',baseVersion=0,payload={subscribed:'true'},deleted=false,generation='g1'}={}) {
+const validPayload={subscribed:'true',podcastId:'podcast1',feedUrl:'https://example.test/feed',originalFeedUrl:'https://example.test/feed',title:'Show',author:'Author'};
+async function commit(database, {uid='alice',id='op1',key='subscription_item1',baseVersion=0,payload=validPayload,deleted=false,generation='g1'}={}) {
  let observedSequence;
  for(let attempt=0;attempt<5;attempt++) {
  try { return await runTransaction(database,async tx=>{
@@ -44,11 +45,18 @@ async function commit(database, {uid='alice',id='op1',key='item1',baseVersion=0,
  }
 }
 test('owner commit and retry produce one change',async()=>{await seed();const a=db('alice');const first=await commit(a);assert.deepEqual(await commit(a),first);assert.equal((await getDocs(collection(a,'users/alice/changes'))).size,1);});
-test('two devices commit unrelated changes with unique sequences',async()=>{await seed();await Promise.all([commit(db('alice')),commit(db('alice'),{id:'op2',key:'item2'})]);assert.deepEqual((await getDocs(query(collection(db('alice'),'users/alice/changes'),orderBy('sequence')))).docs.map(x=>x.data().sequence),[1,2]);});
-test('stale device cannot resurrect tombstone',async()=>{await seed();const a=db('alice');await commit(a);await commit(a,{id:'delete1',baseVersion:1,deleted:true});await assert.rejects(commit(a,{id:'stale1'}),/Conflict/);assert.equal((await getDoc(doc(a,'users/alice/entities/item1'))).data().deleted,true);});
+test('two devices commit unrelated changes with unique sequences',async()=>{await seed();await Promise.all([commit(db('alice')),commit(db('alice'),{id:'op2',key:'subscription_item2'})]);assert.deepEqual((await getDocs(query(collection(db('alice'),'users/alice/changes'),orderBy('sequence')))).docs.map(x=>x.data().sequence),[1,2]);});
+test('stale device cannot resurrect tombstone',async()=>{await seed();const a=db('alice');await commit(a);await commit(a,{id:'delete1',baseVersion:1,deleted:true});await assert.rejects(commit(a,{id:'stale1'}),/Conflict/);assert.equal((await getDoc(doc(a,'users/alice/entities/subscription_item1'))).data().deleted,true);});
 test('operation ID cannot be reused with different payload',async()=>{await seed();const a=db('alice');await commit(a);await assert.rejects(commit(a,{payload:{subscribed:'false'}}),/reused/);});
 test('unauthenticated and other user cannot read or list',async()=>{await seed();await commit(db('alice'));for(const database of [db('bob'),env.unauthenticatedContext().firestore()]) {await assertFails(getDoc(doc(database,'users/alice')));await assertFails(getDocs(collection(database,'users/alice/entities')));}});
-test('owner cannot bypass transaction with direct entity write',async()=>{await seed();await assertFails(setDoc(doc(db('alice'),'users/alice/entities/item1'),{version:1,payload:{},deleted:false,generation:'g1',sequence:1,operationId:'op1'}));});
+test('owner cannot bypass transaction with direct entity write',async()=>{await seed();await assertFails(setDoc(doc(db('alice'),'users/alice/entities/subscription_item1'),{version:1,payload:{},deleted:false,generation:'g1',sequence:1,operationId:'op1'}));});
 test('owner cannot change account generation',async()=>{await seed();await assertFails(setDoc(doc(db('alice'),'users/alice'),{generation:'g2',sequence:0,active:true,protocol:1}));});
 test('receipt and changes cannot be overwritten',async()=>{await seed();const a=db('alice');await commit(a);await assertFails(setDoc(doc(a,'users/alice/receipts/op1'),{signature:'bad'}));await assertFails(setDoc(doc(a,'users/alice/changes/1'),{sequence:100}));});
-test('unexpected entity fields rejected',async()=>{await seed();const a=db('alice');await assertFails(setDoc(doc(a,'users/alice/entities/item1'),{accessToken:'secret'}));});
+test('unexpected entity fields rejected',async()=>{await seed();const a=db('alice');await assertFails(setDoc(doc(a,'users/alice/entities/subscription_item1'),{accessToken:'secret'}));});
+
+test('numeric subscription title is rejected',async()=>{await seed();await assertFails(commit(db('alice'),{payload:{...validPayload,title:42}}));});
+test('oversized subscription title is rejected',async()=>{await seed();await assertFails(commit(db('alice'),{payload:{...validPayload,title:'x'.repeat(1001)}}));});
+test('incomplete subscription snapshot is rejected',async()=>{await seed();await assertFails(commit(db('alice'),{payload:{subscribed:'true'}}));});
+test('public HTTP RSS addresses remain supported',async()=>{await seed();await assertSucceeds(commit(db('alice'),{payload:{...validPayload,feedUrl:'http://example.test/feed',originalFeedUrl:'http://example.test/feed'}}));});
+test('public path containing at sign is not treated as userinfo',async()=>{await seed();await assertSucceeds(commit(db('alice'),{payload:{...validPayload,feedUrl:'https://example.test/@show/rss',originalFeedUrl:'https://example.test/@show/rss'}}));});
+test('embedded URL credentials are rejected',async()=>{await seed();await assertFails(commit(db('alice'),{payload:{...validPayload,feedUrl:'https://user:password@example.test/rss'}}));});
