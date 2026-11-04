@@ -2,11 +2,19 @@
 
 Date: November 4, 2026
 
-Status: Implementation in progress on `feat/firebase-sync-telemetry`; subscriptions/progress/completion/saved-moment increment validated; remaining portable-library sync and telemetry still open.
+Status: Implementation in progress on `feat/firebase-sync-telemetry`; extended portable-library sync implemented and in final deployment validation; operational recovery/account lifecycle/telemetry gates remain open.
 
 Scope: Optional account-based, offline-first library synchronization and privacy-controlled diagnostics/usage analytics for the native Android app.
 
 Method: Test-driven development (TDD), with separate evidence for local tests, Firebase emulator tests, and live service acceptance.
+
+## Extended portable-library increment — November 4
+
+Implementation now includes versioned queue order and per-key portable preferences, immutable compressed finished-content artifacts, account/generation-scoped Storage rules, source/hash/size validation, atomic restore, and protocol-2 compatibility gating. Finished transcripts, completed analyses, conversation branches and explanations restore without regenerating AI/transcription. Existing source alternatives and active processing are preserved. Room schema 7 adds portable preference values and artifact staging state.
+
+Local core/Room/security tests and two-client Android Auth/Firestore/Storage acceptance pass; final verification and live deployment are tracked in [TDD evidence](evidence/firebase-sync-tdd.md). The initial live project still requires its private bucket and billing setup. The source retains metadata-only/basic sync until the extended scope successfully probes storage and upgrades the account.
+
+This increment does not complete the entire plan: account profile switching, broad alias/conflict/performance coverage, independent cloud recovery/retention/erasure, telemetry delivery, App Check and public release automation remain separate gates. Immutable objects/history are retained; do not enable pruning until recovery and old-device tests pass.
 
 ## Core-library increment — November 4
 

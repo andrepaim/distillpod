@@ -8,7 +8,10 @@ import org.json.JSONObject
 import java.util.UUID
 
 /** Uses server transactions only. Room owns the durable offline queue. */
-class FirebaseSubscriptionCloud(private val auth:FirebaseAuth,private val firestore:FirebaseFirestore):SubscriptionCloud {
+class FirebaseSubscriptionCloud(private val auth:FirebaseAuth,private val firestore:FirebaseFirestore,private val artifacts:ArtifactSync?=null):SubscriptionCloud {
+    override suspend fun prepareContent(owner:SyncOwner,record:CloudSubscription) {
+        (artifacts?:error("Cloud content storage is unavailable in this build")).fetch(owner,record)
+    }
     override val uid get()=auth.currentUser?.uid
     private fun account(expected:String?=uid):DocumentReference {
         check(expected!=null && uid==expected) { "Reconnect your sync account." }
@@ -24,9 +27,18 @@ class FirebaseSubscriptionCloud(private val auth:FirebaseAuth,private val firest
                 tx.set(root,mapOf("generation" to generation,"sequence" to 0L,"active" to true,"protocol" to 1L))
                 CloudHead(SyncOwner(user,generation),0)
             } else {
-                check(snapshot.getBoolean("active")==true && snapshot.getLong("protocol")==1L) { "Cloud account is unavailable or needs an app update." }
-                CloudHead(SyncOwner(user,snapshot.getString("generation")?:error("Invalid cloud account")),snapshot.getLong("sequence")?:error("Invalid cloud sequence"))
+                check(snapshot.getBoolean("active")==true && snapshot.getLong("protocol") in setOf(1L,2L)) { "Cloud account is unavailable or needs an app update." }
+                CloudHead(SyncOwner(user,snapshot.getString("generation")?:error("Invalid cloud account")),snapshot.getLong("sequence")?:error("Invalid cloud sequence"),(snapshot.getLong("protocol")?:1).toInt())
             }
+        }.await()
+    }
+    suspend fun enableFullScope() {
+        val root=account()
+        firestore.runTransaction {tx->
+            val current=tx.get(root)
+            check(current.getBoolean("active")==true)
+            check(current.getLong("protocol") in setOf(1L,2L))
+            if(current.getLong("protocol")==1L)tx.update(root,"protocol",2L)
         }.await()
     }
     override suspend fun entities(after:String):List<CloudSubscription> {
@@ -41,6 +53,7 @@ class FirebaseSubscriptionCloud(private val auth:FirebaseAuth,private val firest
         val root=account(operation.uid)
         val payload=SubscriptionSyncStore.decode(operation.payload)
         SyncProtocol.validate(SyncMutation(operation.operationId,SyncOwner(operation.uid,operation.generation),operation.entityKey,operation.baseVersion,payload,operation.deleted))
+        if(operation.entityKey.startsWith("artifact_"))(artifacts?:error("Cloud content storage is unavailable in this build")).upload(operation)
         val signature=JSONObject().put("key",operation.entityKey).put("baseVersion",operation.baseVersion)
             .put("payload",JSONObject(payload.toSortedMap())).put("deleted",operation.deleted).put("generation",operation.generation).toString()
         var observed:Long?=null

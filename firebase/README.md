@@ -1,6 +1,6 @@
 # Firebase library sync
 
-This directory contains the isolated protocol/security test harness and deployed rules for subscriptions, progress, completion and saved moments. The Android adapter, durable cursor/bootstrap recovery, public-feed review and account UI are implemented. See the [usage/build/test guide](../docs/android/subscription-sync.md) and the [complete plan](../docs/android/firebase-sync-telemetry-plan.md) for scope and remaining milestones.
+This directory contains the isolated protocol/security test harness and deployed rules for basic library sync and the protocol-2 queue/preferences/finished-content extension. The Android adapter, durable cursor/bootstrap recovery, public-feed review and account UI are implemented. See the [usage/build/test guide](../docs/android/subscription-sync.md) and the [complete plan](../docs/android/firebase-sync-telemetry-plan.md) for scope and remaining milestones.
 
 ## Local tests
 
@@ -13,7 +13,7 @@ npm --prefix firebase run test:emulator
 
 The command uses `demo-distillpod-sync` and Firestore on localhost:8085. Tests refuse to run without that emulator endpoint. No Google credentials or real project are needed. Security tests seed synthetic account control records using the rules-testing admin context; no production credentials are used.
 
-The JavaScript commit helper is a test driver for the wire contract, not a deployed backend. `FirebaseSubscriptionCloud` implements the Android transport. Each atomically writes a versioned library entity, an immutable change, an immutable receipt and the per-account sequence. Repeated operations return the same receipt; stale versions conflict. Rules require the companion writes, restrict entity field types/sizes and prohibit editing receipts/change history or changing account generation through the client. Public-feed approval is a client sharing decision, not an authentication mechanism; server UID rules enforce ownership.
+The JavaScript commit helper is a test driver for the wire contract, not a deployed backend. `FirebaseSubscriptionCloud` implements the Android transport. Each metadata commit atomically writes a versioned library entity, an immutable change, an immutable receipt and the per-account sequence. Repeated operations return the same receipt; stale versions conflict. Rules require the companion writes, restrict entity field types/sizes and prohibit editing receipts/change history or changing account generation through the client. Public-feed approval is a client sharing decision, not an authentication mechanism; server UID rules enforce ownership.
 
 Concurrent transactions exposed an emulator behavior where rules see a competing head update before the SDK returns a retriable transaction-precondition error. The driver retries a permission denial only after a server read proves that the active account's head advanced in the same generation. Retries are bounded; a denial with no such advancement propagates. The Android transport must implement and test this distinction before integration.
 
@@ -23,4 +23,8 @@ The owner authorized dedicated project `distillpod-native-sync` and Android app 
 
 The CLI login and downloaded client configuration are outside the repository. Service-account keys and OAuth credentials must never be committed. Client configuration is not an authorization boundary; rules and account lifecycle validation provide access control. Configured APKs use the explicit `distillpodFirebaseConfig` build property. CI uses demo Auth/Firestore emulators. Separate live staging, App Check and release configuration injection remain required before broader rollout.
 
-These rules cover subscriptions, listening progress, completion and saved moments for approved public sources. Other library entities, complete account deletion, retention/compaction and independent recovery backups remain later milestones. Do not deploy client/schema expansions without their corresponding rule tests and compatibility gates.
+Firestore rules cover basic library records, protocol-2 queue/episode/preferences records and finished-content manifests. Storage rules restrict immutable gzip objects to the authenticated active account generation. Other library entities, complete account deletion, retention/compaction and independent recovery backups remain later milestones. Do not deploy client/schema expansions without their corresponding rule tests and compatibility gates.
+
+## Finished-content checks
+
+Run `npm --prefix firebase run test:storage` with Java 21 for isolated owner/generation/schema/immutable-object tests. Android SDK acceptance now requires Auth, Firestore and Storage emulators (`--only auth,firestore,storage`). `FullContentSyncDeviceTest` restores a finished transcript, analysis, completed conversation and explanation into a separate database, while preserving the exclusion of local files and unfinished responses. Live bucket deployment uses billing-enabled Firebase; default source/CI APKs keep production access unavailable.

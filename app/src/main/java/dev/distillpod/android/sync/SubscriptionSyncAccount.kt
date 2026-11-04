@@ -38,9 +38,16 @@ class SubscriptionSyncAccount(private val graph:AppGraph) {
                 .setProjectId(context.getString(R.string.sync_project_id)).build(),"distillpod-sync")
     }
     private val auth by lazy { FirebaseAuth.getInstance(app) }
+    val fullScope=graph.db.sync().observeView("__extended_scope")
+    val contentStates=graph.db.sync().observeArtifacts()
+    val contentConfigured get()=mutable.value.configured && context.getString(R.string.sync_storage_bucket).isNotBlank()
+    private val artifacts by lazy {
+        check(contentConfigured) {"Cloud content storage is unavailable in this build"}
+        ArtifactSync(graph.db,ContentFiles(context),FirebaseContentObjects(auth,com.google.firebase.storage.FirebaseStorage.getInstance(app,"gs://"+context.getString(R.string.sync_storage_bucket)),ContentFiles(context),UploadSessions(context)))
+    }
     private val cloud by lazy { FirebaseSubscriptionCloud(auth,FirebaseFirestore.getInstance(app).apply {
         firestoreSettings=FirebaseFirestoreSettings.Builder().setLocalCacheSettings(MemoryCacheSettings.newBuilder().build()).build()
-    }) }
+    },if(contentConfigured)artifacts else null) }
     private val coordinator by lazy { SubscriptionSyncCoordinator(graph.db,cloud) }
     private var scheduled:Job?=null
     private val connecting=Mutex()
@@ -70,6 +77,7 @@ class SubscriptionSyncAccount(private val graph:AppGraph) {
             }
             val head=cloud.head()
             store.bind(head.owner,approvedFeedIds?:emptySet())
+            if(head.protocol>=2)graph.db.sync().putView(SyncViewEntity("__extended_scope",version=1))
             }
             kick()
         } catch(timeout:TimeoutCancellationException) {
@@ -80,10 +88,40 @@ class SubscriptionSyncAccount(private val graph:AppGraph) {
         catch(_:Exception) { mutable.update { it.copy(message="Sync could not connect. Check your connection and use this library's original Google account.") } }
         finally { mutable.update { it.copy(busy=false) };connecting.unlock() }
     }
+    suspend fun enableFullScope() {
+        check(contentConfigured) {"Cloud content storage is unavailable in this build"}
+        val binding=graph.db.sync().binding()?:error("Connect Google first")
+        check(binding.enabled && auth.currentUser?.uid==binding.uid)
+        artifacts.probe(dev.distillpod.core.sync.SyncOwner(binding.uid,binding.generation))
+        cloud.enableFullScope()
+        graph.db.sync().putView(SyncViewEntity("__extended_scope",version=1))
+        graph.collectionSync.queue(graph.db.library().queue().map {it.episodeId})
+        val prefs=graph.settings.flow.first()
+        for((name,value) in mapOf("model" to prefs.model,"language" to prefs.language,"aiModel" to prefs.selectedAiModel))graph.collectionSync.preference(name,value)
+        artifacts.capture();kick()
+    }
+    suspend fun useSavedContent(hash:String)=withContext(Dispatchers.IO){useSavedContentOnIo(hash)}
+    private suspend fun useSavedContentOnIo(hash:String) {
+        val b=graph.db.sync().binding()?:error("Connect Google first")
+        check(b.enabled && auth.currentUser?.uid==b.uid)
+        val cached=graph.db.sync().artifact(b.uid,b.generation,hash)?:error("Saved content is unavailable")
+        val artifact=artifacts.saved(dev.distillpod.core.sync.SyncOwner(b.uid,b.generation),cached)
+        val episodeId=org.json.JSONObject(dev.distillpod.core.sync.ContentArtifacts.decode(artifact).toString(Charsets.UTF_8)).getJSONObject("identity").getString("episodeId")
+        val previous=FinishedContent(graph.db).snapshot(episodeId)
+        if(previous!=null && previous.hash!=hash) {
+            val files=ContentFiles(context);val owner=dev.distillpod.core.sync.SyncOwner(b.uid,b.generation)
+            files.save(owner,previous)
+            graph.db.sync().putArtifact(SyncArtifactEntity(b.uid,b.generation,previous.hash,previous.expandedBytes,"alternate",files.path(owner,previous.hash),episodeId,org.json.JSONObject(dev.distillpod.core.sync.ContentArtifacts.decode(previous).toString(Charsets.UTF_8)).getJSONObject("transcript").getString("revision")))
+        }
+        check(FinishedContent(graph.db).restore(artifact,replaceRevision=true)) {"The audio source differs, or processing is still active. The saved copy is retained."}
+        graph.db.sync().putArtifact(cached.copy(state="applied"));kick()
+    }
     suspend fun approveFeeds(ids:Set<String>) {
         val binding=graph.db.sync().binding() ?: error("Connect your sync account first.")
         check(binding.enabled && auth.currentUser?.uid==binding.uid) { "Resume your original sync account first." }
-        store.bind(dev.distillpod.core.sync.SyncOwner(binding.uid,binding.generation),ids);kick()
+        store.bind(dev.distillpod.core.sync.SyncOwner(binding.uid,binding.generation),ids)
+        if(graph.db.sync().view("__extended_scope")!=null)graph.collectionSync.queue(graph.db.library().queue().map {it.episodeId})
+        kick()
     }
     suspend fun pause() { store.pause();WorkManager.getInstance(context).cancelUniqueWork("subscription-sync") }
     suspend fun resume() {
@@ -108,6 +146,19 @@ class SubscriptionSyncAccount(private val graph:AppGraph) {
     fun signedIn(uid:String):Boolean=mutable.value.configured && auth.currentUser?.uid==uid
     suspend fun syncOnce():Boolean {
         if(!mutable.value.configured)return true
+        graph.ready.await()
+        val b=graph.db.sync().binding()
+        if(contentConfigured && b?.enabled==true && signedIn(b.uid) && graph.db.sync().view("__extended_scope")==null) {
+            val head=cloud.head()
+            if(head.owner==dev.distillpod.core.sync.SyncOwner(b.uid,b.generation) && head.protocol>=2)graph.db.sync().putView(SyncViewEntity("__extended_scope",version=1))
+        }
+        try {
+            if(contentConfigured && graph.db.sync().view("__extended_scope")!=null)artifacts.capture()
+        } catch(error:Exception) {
+            if(error is CancellationException)throw error
+            graph.db.sync().binding()?.let {graph.db.sync().putBinding(it.copy(status="error"))}
+            throw error
+        }
         return coordinator.run()
     }
 }

@@ -16,6 +16,7 @@ val firebaseClient = (firebaseConfig?.get("client") as? List<Map<String, Any>>)?
     ((it["client_info"] as? Map<*, *>)?.get("android_client_info") as? Map<*, *>)?.get("package_name") == "dev.distillpod.android"
 }
 fun clientString(key: String): String = when(key) {
+    "bucket" -> (firebaseConfig?.get("project_info") as? Map<*, *>)?.get("storage_bucket") as? String ?: ""
     "project" -> (firebaseConfig?.get("project_info") as? Map<*, *>)?.get("project_id") as? String ?: ""
     "app" -> (firebaseClient?.get("client_info") as? Map<*, *>)?.get("mobilesdk_app_id") as? String ?: ""
     "api" -> ((firebaseClient?.get("api_key") as? List<*>)?.firstOrNull() as? Map<*, *>)?.get("current_key") as? String ?: ""
@@ -29,7 +30,7 @@ android {
     ndkVersion = "27.2.12479018"
     externalNativeBuild { cmake { path = file("src/main/cpp/CMakeLists.txt"); version = "3.22.1" } }
     defaultConfig {
-        for ((resource, key) in listOf("sync_project_id" to "project", "sync_app_id" to "app", "sync_api_key" to "api", "sync_web_client_id" to "web")) {
+        for ((resource, key) in listOf("sync_storage_bucket" to "bucket", "sync_project_id" to "project", "sync_app_id" to "app", "sync_api_key" to "api", "sync_web_client_id" to "web")) {
             val value = clientString(key)
             require(value.matches(Regex("[A-Za-z0-9_.:/-]*"))) { "Invalid Firebase client configuration" }
             resValue("string", resource, value)
@@ -55,6 +56,7 @@ dependencies {
     implementation(platform("com.google.firebase:firebase-bom:34.8.0"))
     implementation("com.google.firebase:firebase-auth")
     implementation("com.google.firebase:firebase-firestore")
+    implementation("com.google.firebase:firebase-storage")
     implementation("androidx.credentials:credentials:1.5.0")
     implementation("androidx.credentials:credentials-play-services-auth:1.5.0")
     implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")

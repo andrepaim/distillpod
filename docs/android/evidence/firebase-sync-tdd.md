@@ -126,3 +126,44 @@ This increment remains partial against the full plan: queue/preferences/artifact
 - JVM: **205 passed** (71 core, 134 app). Lint and APK/test-APK builds pass. Firestore rules: **20 passed**, no skips.
 
 The local ordinary suite includes the pre-existing uncommitted lock-screen test; committed-source CI intentionally does not include that separate test. No Firebase release was published.
+
+## Extended portable-library implementation — November 4
+
+Starting source: `e7dd174`. This increment extends the account protocol to 2 and Room to schema 7, while retaining the existing uncommitted lock-screen changes separately.
+
+Observed red/green cycles:
+
+| Behavior | Observed red | Result |
+| --- | --- | --- |
+| Queue/preference wire contract | 2 failures / 5 core cases: valid new payloads were rejected | Strict ordered queue and per-key preference contracts pass |
+| Durable queue/preference writes and restoration | 4 failures / 4 Room cases with the compiling local-only seam | Queue identities/order, coalescing, independent preferences and private locator exclusion pass |
+| Server record support | 2 failures / 24 rules cases for valid queue/episode/preference writes | Typed new records pass and forbidden payloads remain denied |
+| Compressed content format | 4 failures / 4 core cases with an identity-codec seam | Gzip, SHA-256, declared-size/format validation and expansion-bomb rejection pass |
+| Finished content serialization | 2 failures / 4 Room cases with an empty snapshot seam | Ready transcript/provenance and completed text serialize; partial AI and private links stay local |
+| Fresh content restoration | 1 failure / 6 cases with restore returning false | Atomic import creates finished content without jobs; different fingerprints remain protected |
+| Artifact manifests/protocol upgrade | Valid manifests and owner protocol upgrade rejected by old rules | Manifest schema and monotonic owner-only upgrade pass |
+| Old-client compatibility | New-type write incorrectly succeeded on protocol 1 | New record types require protocol 2; old clients stop before consuming unsupported records |
+| Immutable Storage objects | An overwrite unexpectedly succeeded | Explicit `resource == null` protects creation; overwrite/delete stay denied |
+| Private queue acknowledgement | 1 failure / 5 cases: own ack did not advance the public subset's base | Private entries retain their place and later public edits avoid false conflicts |
+| Corrupted upload staging | 1 failure / 3 cases: damaged gzip blocked the pending operation | Staging rebuilds from local completed content without changing the pending operation ID |
+
+Additional checks verify separate upload-before-reference publication, a connection interrupted after object acceptance, stable retry identities, fresh independent database restoration, pending parent references, account/generation-scoped upload-session recovery, and explicit concurrent queue choice preserving the player session. Storage test objects use unique synthetic hashes per case; clearing the emulator alone did not reliably remove the previous object's rule-visible identity. This preserves the immutable-object assertions rather than weakening them.
+
+Validation before final deployment:
+
+- 82 core + 149 app JVM tests passed before the final staging-recovery regression was added; final counts are recorded after the complete run.
+- 27 Firestore rules tests and 4 Storage rules tests passed, with no skips.
+- Real Auth/Firestore/Storage Android SDK acceptance: 13 tests passed, followed by separate actual force-stop seed/resume invocations. Two named clients and Room databases restored queue, portable preference, transcript, summary, completed conversation and explanation without computation or downloaded audio.
+- Ordinary Android acceptance: 41 passed, 196.673 seconds, before the final queue/playback regression. The additional queue/playback device test passed separately in 2.462 seconds: current audio/position continued, while the temporary active item did not echo into the shared queue.
+
+The full scope probes the active account's Storage prefix before upgrading the protocol. No bucket/missing-rules failure can upgrade the account first. Pending uploads/restores and incompatible source alternatives have separate UI status; received content waiting on moment parents is retried after metadata projection. App-private staging and resumable upload URLs are excluded from library exports. No telemetry collection is enabled by these changes.
+
+A read-only infrastructure check found billing disabled and zero Storage buckets. One open billing account is available. Live provisioning/deployment and a phone upgrade follow only after the code validation checkpoint; deployment evidence is recorded separately. The existing phone remains on 0.8.0-alpha.1 during this implementation.
+
+### Final extended-scope local gate
+
+- 82 core + 150 app JVM tests: **232 passed**; debug lint/APKs passed.
+- Final ordinary isolated Android acceptance: **42 passed**, no skips, 191.029 seconds (includes the separate pre-existing lock-screen test).
+- Real Auth/Firestore/Storage targeted acceptance: **13 passed**, plus both seed/resume invocations after an actual process force-stop.
+- Firestore: **27 passed**. Storage: **4 passed**. Python release/emulator tools: **11 passed**.
+- Existing billing account linked to this project and a USD 5 monthly alert budget created. Bucket provisioning is still being resolved; rules and phone rollout remain gated on a working private bucket.

@@ -14,8 +14,8 @@ after(async()=>env?.cleanup());
 beforeEach(async()=>env.clearFirestore());
 const db = uid => env.authenticatedContext(uid).firestore();
 const control = uid => `users/${uid}`;
-async function seed(uid='alice') { await env.withSecurityRulesDisabled(async ctx=>{
-  await setDoc(doc(ctx.firestore(),control(uid)),{generation:'g1',sequence:0,active:true,protocol:1});
+async function seed(uid='alice',protocol=1) { await env.withSecurityRulesDisabled(async ctx=>{
+  await setDoc(doc(ctx.firestore(),control(uid)),{generation:'g1',sequence:0,active:true,protocol});
 }); }
 const validPayload={subscribed:'true',podcastId:'podcast1',feedUrl:'https://example.test/feed',originalFeedUrl:'https://example.test/feed',title:'Show',author:'Author'};
 async function commit(database, {uid='alice',id='op1',key='subscription_item1',baseVersion=0,payload=validPayload,deleted=false,generation='g1'}={}) {
@@ -70,3 +70,12 @@ test('portable moment create and deletion are idempotent',async()=>{await seed()
 test('explicit completion snapshots remain independent of position',async()=>{await seed();await assertSucceeds(commit(db('alice'),{key:'completion_episode1',payload:completion}));});
 test('portable identity and field types cannot be forged',async()=>{await seed();const a=db('alice');for(const [i,payload] of [{...progress,positionMs:'-1'},{...progress,episodeId:'other'},{...progress,positionMs:42},{...progress,localFile:'/private/audio'},{...progress,audioUrl:'https://example.test/audio?token=secret'}].entries())await assertFails(commit(a,{key:'progress_episode1',id:`bad${i}`,payload}));});
 test('moment job states and invalid intervals are rejected',async()=>{await seed();const a=db('alice');await assertFails(commit(a,{key:'moment_moment1',payload:{...moment,state:'running'}}));await assertFails(commit(a,{key:'moment_moment1',payload:{...moment,startMs:'10001'}}));});
+
+test('queue order and episode identities are versioned without playback state',async()=>{await seed('alice',2);const a=db('alice');await assertSucceeds(commit(a,{key:'episode_episode1',payload:episodeIdentity}));await assertSucceeds(commit(a,{key:'queue_library',id:'queue',payload:{items:'episode1,episode2'}}));});
+test('portable preferences have independent typed documents',async()=>{await seed('alice',2);const a=db('alice');await assertSucceeds(commit(a,{key:'preference_model',payload:{value:'base'}}));await assertSucceeds(commit(a,{key:'preference_language',id:'lang',payload:{value:'pt'}}));});
+test('queue cannot carry private URLs or playback commands',async()=>{await seed('alice',2);const a=db('alice');await assertFails(commit(a,{key:'queue_library',payload:{items:'https://secret.test/audio?token=secret'}}));await assertFails(commit(a,{key:'queue_library',payload:{items:'episode1',playing:'true'}}));});
+test('preferences exclude identity device policies and invalid values',async()=>{await seed('alice',2);const a=db('alice');for(const [key,value] of [['token','secret'],['wifi','false'],['model','bad'],['language','bad']])await assertFails(commit(a,{key:`preference_${key}`,payload:{value}}));});
+
+test('finished content manifest stores only public identity and a verified descriptor',async()=>{await seed('alice',2);await assertSucceeds(commit(db('alice'),{key:'artifact_episode1',payload:{...episodeIdentity,hash:'a'.repeat(64),expandedBytes:'1000',schema:'1'}}));});
+test('full-scope protocol upgrade is owner-only monotonic and keeps generation',async()=>{await seed();const a=db('alice');await assertSucceeds(setDoc(doc(a,'users/alice'),{generation:'g1',sequence:0,active:true,protocol:2}));await assertFails(setDoc(doc(a,'users/alice'),{generation:'g1',sequence:0,active:true,protocol:1}));await assertFails(setDoc(doc(db('bob'),'users/alice'),{generation:'g1',sequence:0,active:true,protocol:2}));});
+test('old protocol cannot publish record types older clients cannot read',async()=>{await seed();await assertFails(commit(db('alice'),{key:'preference_model',payload:{value:'tiny'}}));});

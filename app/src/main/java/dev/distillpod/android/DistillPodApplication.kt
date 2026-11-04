@@ -19,18 +19,20 @@ val Context.appGraph: AppGraph get() = (applicationContext as DistillPodApplicat
 class AppGraph(val context: Context) {
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     val db = AppDatabase.open(context)
-    val settings = AppSettings(context)
+    val settings = AppSettings(context,db=db,portableChanged={syncAccount.kick()})
     val preferences = settings.flow.stateIn(scope, SharingStarted.Eagerly, Preferences())
     val http = OkHttpClient.Builder().connectTimeout(20, TimeUnit.SECONDS).readTimeout(30, TimeUnit.SECONDS)
         .addInterceptor { it.proceed(it.request().newBuilder().header("User-Agent", "DistillPod/0.2 (Android)").build()) }.build()
     val syncAccount by lazy { dev.distillpod.android.sync.SubscriptionSyncAccount(this) }
     val podcasts = PodcastRepository(db, http, onSubscriptionChanged = { syncAccount.kick() }, onFeedNeeded = { jobs.refresh(it) })
     val portableSync by lazy {dev.distillpod.android.sync.PortableLibrarySync(db,changed={syncAccount.kick()})}
+    val collectionSync by lazy {dev.distillpod.android.sync.CollectionSync(db,changed={syncAccount.kick()})}
     val activeFiles = ActiveFiles()
     val media = MediaRepository(context, db, settings, ResumableDownloader(http), activeFiles)
     val account = AccountRepository(context, scope)
     val jobs = AppJobs(context)
     val backup by lazy { LibraryBackup(db) }
+    val importedQueue=kotlinx.coroutines.flow.MutableStateFlow<List<String>?>(null)
     val playbackEvents = dev.distillpod.android.playback.PlaybackEvents()
     val playback by lazy { dev.distillpod.android.playback.PlaybackRepository(context, db, scope) }
     val ai by lazy { dev.distillpod.android.ai.ChatGptGateway(account.session, settings) }
@@ -40,7 +42,18 @@ class AppGraph(val context: Context) {
     val explanations by lazy { MomentExplanation(db, ai, jobs::explain) }
     val recommendations by lazy { Recommendations(db, settings, podcasts, http, ai, jobs::recommend, jobs::recommendationPending) }
     val ready = CompletableDeferred<Unit>()
-    init { scope.launch(Dispatchers.IO) {
+    init {
+        scope.launch(Dispatchers.IO) {
+            combine(db.library().observeTranscripts(),db.library().observeAnalyses(),db.library().observeMessages(),db.library().observeResearch()) {ts,analyses,messages,reports->
+                listOf(ts.filter {it.state=="ready"}.map {listOf(it.episodeId,it.revision,it.fingerprint)},
+                    analyses.filter {it.state=="succeeded"}.map {listOf(it.episodeId,it.revision,it.summary.hashCode())},
+                    messages.filter {it.state=="succeeded"}.map {it.id},reports.filter {it.state=="succeeded"}.map {it.id})
+            }.distinctUntilChanged().collectLatest {
+                delay(1000)
+                if(db.sync().view("__extended_scope")!=null)syncAccount.kick()
+            }
+        }
+        scope.launch(Dispatchers.IO) {
         try {
             portableSync.releaseSessions(); importFeasibility(); understanding.recoverInterrupted(); explanations.recoverInterrupted(); recommendations.recoverInterrupted()
             db.library().distillations().filter { it.state == "queued" }.forEach { jobs.capture(it.id) }

@@ -12,7 +12,17 @@ data class SyncOutboxEntity(
 )
 @Dao
 interface SyncDao {
+    @Upsert suspend fun putArtifact(value:SyncArtifactEntity)
+    @Query("SELECT * FROM sync_artifacts WHERE uid=:uid AND generation=:generation AND hash=:hash") suspend fun artifact(uid:String,generation:String,hash:String):SyncArtifactEntity?
+    @Query("SELECT * FROM sync_artifacts WHERE uid=:uid AND generation=:generation") suspend fun artifacts(uid:String,generation:String):List<SyncArtifactEntity>
+    @Query("SELECT * FROM sync_artifacts") fun observeArtifacts():kotlinx.coroutines.flow.Flow<List<SyncArtifactEntity>>
+
+    @Upsert suspend fun putPreference(value:SyncPreferenceEntity)
+    @Query("SELECT * FROM sync_preferences") fun observePreferences():kotlinx.coroutines.flow.Flow<List<SyncPreferenceEntity>>
+    @Query("SELECT * FROM sync_preferences") suspend fun preferences():List<SyncPreferenceEntity>
+
     @Query("SELECT * FROM sync_views WHERE entityKey=:key") suspend fun view(key:String):SyncViewEntity?
+    @Query("SELECT * FROM sync_views WHERE entityKey=:key") fun observeView(key:String):kotlinx.coroutines.flow.Flow<SyncViewEntity?>
     @Upsert suspend fun putView(value:SyncViewEntity)
     @Query("UPDATE sync_views SET active=0") suspend fun releasePlaybackViews()
 
@@ -63,3 +73,9 @@ data class SyncPublicFeedEntity(@PrimaryKey val podcastId:String)
 @Entity(tableName="sync_views")
 data class SyncViewEntity(@PrimaryKey val entityKey:String,val version:Long=0,val sessionId:String="",
     val sequence:Long=0,val checkpointAt:Long=0,val active:Boolean=false,val completionBase:Long=0)
+
+@Entity(tableName="sync_preferences")
+data class SyncPreferenceEntity(@PrimaryKey val name:String,val value:String)
+
+@Entity(tableName="sync_artifacts",primaryKeys=["uid","generation","hash"])
+data class SyncArtifactEntity(val uid:String,val generation:String,val hash:String,val expandedBytes:Long,val state:String,val localFile:String,val episodeId:String,val revision:String)

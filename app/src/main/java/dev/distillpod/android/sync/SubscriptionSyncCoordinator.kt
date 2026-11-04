@@ -11,10 +11,11 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.json.JSONObject
 
-data class CloudHead(val owner:SyncOwner,val sequence:Long)
+data class CloudHead(val owner:SyncOwner,val sequence:Long,val protocol:Int=1)
 data class CloudSubscription(val key:String,val version:Long,val payload:Map<String,String>,val deleted:Boolean,val sequence:Long)
 interface SubscriptionCloud {
     val uid:String?
+    suspend fun prepareContent(owner:SyncOwner,record:CloudSubscription) {}
     suspend fun head():CloudHead
     suspend fun entities(after:String):List<CloudSubscription>
     suspend fun changes(after:Long,through:Long):List<CloudSubscription>
@@ -88,8 +89,12 @@ class SubscriptionSyncCoordinator(private val db:AppDatabase,private val cloud:S
                     })return@withLock false
                 }
             }
+            db.withTransaction {
+                if(valid(b))applyStagedContent(db,b)
+            }
+            val contentPending=dao.artifacts(b.uid,b.generation).any {it.state in setOf("prepared","downloaded","waiting")}
             val remaining=dao.operations(b.uid,b.generation)
-            val status=when {remaining.any { it.state=="conflict" }->"conflict";remaining.isNotEmpty()->"pending";else->"synced"}
+            val status=when {remaining.any { it.state=="conflict" }->"conflict";remaining.isNotEmpty() || contentPending->"pending";else->"synced"}
             update(b){it.copy(status=status,lastSyncedAt=if(status=="synced")System.currentTimeMillis() else it.lastSyncedAt)}
             status=="synced"
         } catch(cancelled:CancellationException){
@@ -98,7 +103,15 @@ class SubscriptionSyncCoordinator(private val db:AppDatabase,private val cloud:S
         }
         catch(error:Exception){update(b){it.copy(status=if(error is java.io.IOException)"offline" else "error")};throw error}
     }
-    private suspend fun applyPage(b:SyncBindingEntity,page:List<CloudSubscription>,bootstrap:Boolean=false,done:Boolean=false):Boolean=db.withTransaction {
+    private suspend fun applyPage(b:SyncBindingEntity,page:List<CloudSubscription>,bootstrap:Boolean=false,done:Boolean=false):Boolean {
+        for(record in page) {
+            validate(b,record)
+            if(record.key.startsWith("artifact_"))cloud.prepareContent(SyncOwner(b.uid,b.generation),record)
+            if(!valid(b))return false
+        }
+        return applyPreparedPage(b,page,bootstrap,done)
+    }
+    private suspend fun applyPreparedPage(b:SyncBindingEntity,page:List<CloudSubscription>,bootstrap:Boolean=false,done:Boolean=false):Boolean=db.withTransaction {
         if(!valid(b))return@withTransaction false
         for(record in page) {
             validate(b,record)
@@ -120,7 +133,7 @@ class SubscriptionSyncCoordinator(private val db:AppDatabase,private val cloud:S
         true
     }
     private fun validate(b:SyncBindingEntity,r:CloudSubscription) {
-        check((r.key.startsWith("subscription_") || PortableRecord.isPortable(r.key)) && r.version>0 && r.sequence>0)
+        check((r.key.startsWith("subscription_") || PortableRecord.isPortable(r.key) || CollectionRecord.supports(r.key) || r.key.startsWith("artifact_")) && r.version>0 && r.sequence>0)
         SyncProtocol.validate(SyncMutation("remote",SyncOwner(b.uid,b.generation),r.key,r.version-1,r.payload,r.deleted))
         if(!r.deleted && r.key.startsWith("subscription_")) { require(r.payload["podcastId"]?.matches(Regex("[A-Za-z0-9_-]{1,128}"))==true);require(r.payload["feedUrl"]!=null) }
     }
@@ -135,6 +148,8 @@ class SubscriptionSyncCoordinator(private val db:AppDatabase,private val cloud:S
 }
 
 internal suspend fun projectSubscription(db:AppDatabase,r:CloudSubscription) {
+        if(r.key.startsWith("artifact_")){projectArtifact(db,r);return}
+        if(CollectionRecord.supports(r.key)){projectCollection(db,r);return}
         if(PortableRecord.isPortable(r.key)){projectPortable(db,r);return}
         val p=r.payload
         val old=if(r.deleted) {

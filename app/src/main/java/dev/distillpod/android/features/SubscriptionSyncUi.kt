@@ -20,6 +20,9 @@ import dev.distillpod.android.sync.SubscriptionSyncStore
     val approvals by account.store.approvals.collectAsStateWithLifecycle(initialValue=emptyList())
     val podcasts by vm.podcasts.collectAsStateWithLifecycle()
     val conflicts by account.conflicts.collectAsStateWithLifecycle(initialValue=emptyList())
+    val fullScope by account.fullScope.collectAsStateWithLifecycle(initialValue=null)
+    val excludedQueue by vm.graph.db.sync().observeView("__queue_excluded").collectAsStateWithLifecycle(initialValue=null)
+    val contentStates by account.contentStates.collectAsStateWithLifecycle(initialValue=emptyList())
     val pending by account.pending.collectAsStateWithLifecycle(initialValue=0)
     val scope=rememberCoroutineScope()
     val context=LocalContext.current
@@ -40,11 +43,20 @@ import dev.distillpod.android.sync.SubscriptionSyncStore
     }
     Column(verticalArrangement=Arrangement.spacedBy(10.dp)) {
         Text("Library sync",style=MaterialTheme.typography.titleLarge)
-        Text("Connect Google to sync public podcast subscriptions, listening progress, completion and saved moments between your phones. Transcripts and other library data still use Backup & Restore.",style=MaterialTheme.typography.bodySmall)
+        Text(if(fullScope==null)"Connect Google to sync public podcast subscriptions, listening progress, completion and saved moments between your phones. Transcripts and other library data still use Backup & Restore." else "Your approved public library, queue, preferences and finished text sync between your phones. Downloads, models and processing stay on this phone.",style=MaterialTheme.typography.bodySmall)
+        if(fullScope!=null)Text("Queue, portable preferences, finished transcripts, summaries, conversations and explanations also sync for approved public sources.",style=MaterialTheme.typography.bodySmall)
         Text("Your library works offline. Only approved public sources and their portable listening data sync. Other feeds, downloads and credentials stay on this phone.",style=MaterialTheme.typography.bodySmall)
         if(!state.configured) {
             Text("Cloud sync is unavailable in this build.",color=MaterialTheme.colorScheme.onSurfaceVariant)
         } else {
+            val ownedContent=contentStates.filter {it.uid==binding?.uid && it.generation==binding?.generation}
+            val pendingContent=ownedContent.count {it.state in setOf("prepared","downloaded","waiting")}
+            if((excludedQueue?.sequence?:0)>0)Text("${excludedQueue?.sequence} queue entries stay on this phone because their sources are not shared.",style=MaterialTheme.typography.bodySmall)
+            if(fullScope!=null && pendingContent>0)Text("$pendingContent saved content uploads or restores pending",color=MaterialTheme.colorScheme.secondary)
+            ownedContent.filter {it.state=="alternate"}.forEachIndexed {index,item->
+                Text("${vm.episodes.value.firstOrNull {it.id==item.episodeId}?.title?:"Saved source"} · saved source version ${index+1}. This version needs review. Your current source is preserved.",style=MaterialTheme.typography.bodySmall)
+                TextButton(onClick={vm.action("select-content"){account.useSavedContent(item.hash)}}){Text("Use saved source version ${index+1}")}
+            }
             if(state.email.isNotEmpty())Text(state.email)
             val status=when {
                 binding==null->"Not connected"
@@ -69,6 +81,11 @@ import dev.distillpod.android.sync.SubscriptionSyncStore
                 if(binding?.enabled==true && podcasts.any {p->p.subscribed && approvals.none {it.podcastId==p.id}}) {
                     TextButton(onClick={reviewing=true}){Text("Add existing subscriptions to sync")}
                 }
+                if(fullScope==null) {
+                    Text("Enable the remaining library types to restore finished text on another phone without regenerating it.",style=MaterialTheme.typography.bodySmall)
+                    OutlinedButton(onClick={vm.action("full-library-sync"){account.enableFullScope()}},enabled=account.contentConfigured && binding?.enabled==true){Text("Enable remaining library sync")}
+                    if(!account.contentConfigured)Text("Finished-content storage is unavailable in this build. Existing sync and your local library remain available.",style=MaterialTheme.typography.bodySmall)
+                }
                 TextButton(onClick={vm.action("sync-signout"){account.disconnect()}}){Text("Sign out of sync")}
             }
             conflicts.forEach { conflict ->
@@ -79,11 +96,11 @@ import dev.distillpod.android.sync.SubscriptionSyncStore
                             vm.graph.db.sync().observeRemote(binding?.uid.orEmpty(),binding?.generation.orEmpty(),key)
                         }.collectAsStateWithLifecycle(initialValue=null)
                         val cloudChoice=runCatching {SubscriptionSyncStore.decode(remote?.payload?:"{}")} .getOrDefault(emptyMap())
-                        val portable=dev.distillpod.core.sync.PortableRecord.isPortable(key)
+                        val portable=dev.distillpod.core.sync.PortableRecord.isPortable(key) || dev.distillpod.core.sync.CollectionRecord.supports(key) || key.startsWith("artifact_")
                         val local=runCatching {SubscriptionSyncStore.decode(conflict.payload)}.getOrDefault(emptyMap())
-                        val title=if(portable)local["title"]?:"Saved moment" else podcasts.firstOrNull {SubscriptionSyncStore.key(it)==key}?.title?:"Subscription"
+                        val title=when {key=="queue_library"->"Queue";key.startsWith("preference_")->"Listening preference";portable->local["title"]?:"Saved content";else-> podcasts.firstOrNull {SubscriptionSyncStore.key(it)==key}?.title?:"Subscription"}
                         Text(title,style=MaterialTheme.typography.titleSmall)
-                        Text(when {key.startsWith("progress_")->"Listening positions differ between phones.";key.startsWith("moment_")->"This saved moment changed on another phone.";key.startsWith("completion_")->"Played status changed on another phone.";else->"This subscription changed on another phone."})
+                        Text(when {key=="queue_library"->"Queue order changed on another phone.";key.startsWith("preference_")->"This preference changed on another phone.";key.startsWith("artifact_")->"Saved content changed on another phone.";key.startsWith("progress_")->"Listening positions differ between phones.";key.startsWith("moment_")->"This saved moment changed on another phone.";key.startsWith("completion_")->"Played status changed on another phone.";else->"This subscription changed on another phone."})
                         if(key.startsWith("progress_")) {
                             Text("This phone: ${timestamp(local["positionMs"]?.toLongOrNull()?:0)}",style=MaterialTheme.typography.bodySmall)
                             Text("Other phone: ${timestamp(cloudChoice["positionMs"]?.toLongOrNull()?:0)}",style=MaterialTheme.typography.bodySmall)
@@ -105,6 +122,10 @@ import dev.distillpod.android.sync.SubscriptionSyncStore
                         TextButton(onClick={vm.action("resolve-sync"){
                             if(portable) {
                                 vm.graph.portableSync.resolve(key,false)
+                                if(key=="queue_library") {
+                                    vm.graph.playback.acceptCloudQueue {vm.graph.importedQueue.value=it}
+                                    vm.graph.db.sync().view(key)?.let {vm.graph.db.sync().putView(it.copy(active=true))}
+                                }
                                 if(key.startsWith("progress_")) {
                                     val id=local["episodeId"]
                                     if(vm.graph.playback.state.value.episodeId==id && id!=null)vm.graph.db.library().episode(id)?.let {vm.graph.playback.seek(it.positionMs)}

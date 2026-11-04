@@ -1,5 +1,7 @@
 package dev.distillpod.android.data
 
+import dev.distillpod.android.sync.SyncArtifactEntity
+import dev.distillpod.android.sync.SyncPreferenceEntity
 import dev.distillpod.android.sync.SyncViewEntity
 import dev.distillpod.android.sync.SyncPublicFeedEntity
 import dev.distillpod.android.sync.SyncBindingEntity
@@ -157,7 +159,7 @@ interface LibraryDao {
 
 @Database(entities = [PodcastEntity::class, EpisodeEntity::class, QueueEntryEntity::class, PlayerSessionEntity::class,
     TranscriptEntity::class, SegmentEntity::class, CoverageEntity::class, DistillationEntity::class, ModelEntity::class,
-    AnalysisEntity::class, AnalysisPartEntity::class, MessageEntity::class, ResearchEntity::class, SuggestionEntity::class, SyncOutboxEntity::class, SyncBindingEntity::class, SyncRemoteEntity::class, SyncPublicFeedEntity::class, SyncViewEntity::class], version = 6, exportSchema = true)
+    AnalysisEntity::class, AnalysisPartEntity::class, MessageEntity::class, ResearchEntity::class, SuggestionEntity::class, SyncOutboxEntity::class, SyncBindingEntity::class, SyncRemoteEntity::class, SyncPublicFeedEntity::class, SyncViewEntity::class, SyncPreferenceEntity::class, SyncArtifactEntity::class], version = 7, exportSchema = true)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun library(): LibraryDao
     abstract fun sync(): SyncDao
@@ -200,6 +202,12 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("INSERT INTO sync_views (entityKey,version,sessionId,sequence,checkpointAt,active,completionBase) SELECT entityKey,version,'',0,0,0,0 FROM sync_remote WHERE uid=(SELECT uid FROM sync_binding WHERE id=0) AND generation=(SELECT generation FROM sync_binding WHERE id=0)")
             }
         }
-        fun open(context: Context): AppDatabase = Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "library.db").addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6).build()
+        val MIGRATION_6_7 = object : androidx.room.migration.Migration(6, 7) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS sync_artifacts (uid TEXT NOT NULL, generation TEXT NOT NULL, hash TEXT NOT NULL, expandedBytes INTEGER NOT NULL, state TEXT NOT NULL, localFile TEXT NOT NULL, episodeId TEXT NOT NULL, revision TEXT NOT NULL, PRIMARY KEY(uid,generation,hash))")
+                db.execSQL("CREATE TABLE IF NOT EXISTS sync_preferences (name TEXT NOT NULL, value TEXT NOT NULL, PRIMARY KEY(name))")
+            }
+        }
+        fun open(context: Context): AppDatabase = Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "library.db").addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7).build()
     }
 }

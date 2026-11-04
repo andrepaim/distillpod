@@ -48,15 +48,30 @@ service cloud.firestore {
     && p.excerpt.toUtf8().size()+p.quote.toUtf8().size()+p.insight.toUtf8().size() <= 98304
     && text(p.revision,1000) && text(p.model,1000);
   }
+  function collectionPayload(key,p) {
+   return (key == 'queue_library' && p.keys().hasOnly(['items']) && p.keys().hasAll(['items']) && p.items is string
+      && (p.items == '' || (p.items.matches('[A-Za-z0-9_-]{1,100}(,[A-Za-z0-9_-]{1,100}){0,199}') && p.items.split(',').toSet().size() == p.items.split(',').size())))
+    || (key.matches('episode_.*') && p.keys().hasOnly(identityFields()) && episodeIdentity(p) && key == 'episode_' + p.episodeId)
+    || (key.matches('preference_(model|language|aiModel)') && p.keys().hasOnly(['value']) && p.keys().hasAll(['value']) && p.value is string
+      && ((key == 'preference_model' && p.value in ['tiny','base']) || (key == 'preference_language' && p.value in ['auto','en','pt'])
+       || (key == 'preference_aiModel' && p.value.size() <= 200 && !p.value.matches('.*[\\x00-\\x1f\\x7f].*'))));
+  }
+  function artifactPayload(key,p) {
+   return p.keys().hasOnly(identityFields().concat(['hash','expandedBytes','schema']))
+    && p.keys().hasAll(['hash','expandedBytes','schema']) && episodeIdentity(p)
+    && key == 'artifact_' + p.episodeId && p.schema == '1' && p.hash is string && p.hash.matches('[a-f0-9]{64}')
+    && number(p.expandedBytes) && int(p.expandedBytes) > 0 && int(p.expandedBytes) <= 33554432;
+  }
   function validPayload(key,p) {
    return p is map && ((key.matches('subscription_.*') && subscriptionPayload(p))
     || (key.matches('progress_.*') && progressPayload(key,p))
     || (key.matches('completion_.*') && completionPayload(key,p))
-    || (key.matches('moment_.*') && momentPayload(key,p)));
+    || (key.matches('moment_.*') && momentPayload(key,p)) || collectionPayload(key,p) || (key.matches('artifact_.*') && artifactPayload(key,p)));
   }
   function validRecord(uid,key,d) {
    return d.keys().hasOnly(['version','payload','deleted','generation','sequence','operationId'])
     && d.sequence is int && d.version is int && d.version > 0 && d.version < 9000000000000000 && d.deleted is bool && id(d.operationId)
+    && (key.matches('(subscription|progress|completion|moment)_.*') || head(uid).protocol == 2)
     && d.generation == head(uid).generation && head(uid).active == true
     && d.sequence == head(uid).sequence + 1 && d.sequence == nextHead(uid).sequence
     && ((d.deleted && key.matches('(subscription|moment)_.*') && d.payload is map && d.payload.size() == 0) || (!d.deleted && validPayload(key,d.payload)));
@@ -67,9 +82,11 @@ service cloud.firestore {
     && id(request.resource.data.generation) && request.resource.data.sequence == 0
     && request.resource.data.active == true && request.resource.data.protocol == 1;
    allow update: if owner(uid) && resource.data.active == true
-    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['sequence'])
-    && request.resource.data.sequence == resource.data.sequence + 1
-    && change(uid,request.resource.data.sequence).sequence == request.resource.data.sequence;
+    && ((request.resource.data.diff(resource.data).affectedKeys().hasOnly(['sequence'])
+      && request.resource.data.sequence == resource.data.sequence + 1
+      && change(uid,request.resource.data.sequence).sequence == request.resource.data.sequence)
+     || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['protocol'])
+      && resource.data.protocol == 1 && request.resource.data.protocol == 2));
    match /entities/{key} {
     allow read: if owner(uid);
     function companions() {
@@ -79,8 +96,8 @@ service cloud.firestore {
      return c.key == key && c.diff(d).affectedKeys().hasOnly(['key'])
       && r.key == key && r.version == d.version && r.sequence == d.sequence && r.generation == d.generation;
     }
-    allow create: if owner(uid) && key.matches('(subscription|progress|completion|moment)_[A-Za-z0-9_-]{1,115}') && validRecord(uid,key,request.resource.data) && request.resource.data.version == 1 && companions();
-    allow update: if owner(uid) && key.matches('(subscription|progress|completion|moment)_[A-Za-z0-9_-]{1,115}') && validRecord(uid,key,request.resource.data) && request.resource.data.version == resource.data.version + 1 && companions();
+    allow create: if owner(uid) && key.matches('(subscription|progress|completion|moment|episode|preference|queue|artifact)_[A-Za-z0-9_-]{1,115}') && validRecord(uid,key,request.resource.data) && request.resource.data.version == 1 && companions();
+    allow update: if owner(uid) && key.matches('(subscription|progress|completion|moment|episode|preference|queue|artifact)_[A-Za-z0-9_-]{1,115}') && validRecord(uid,key,request.resource.data) && request.resource.data.version == resource.data.version + 1 && companions();
    }
    match /changes/{sequence} {
     allow read: if owner(uid);

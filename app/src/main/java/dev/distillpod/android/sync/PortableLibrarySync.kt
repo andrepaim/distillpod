@@ -73,6 +73,7 @@ class PortableLibrarySync(private val db:AppDatabase,private val isolatedDemo:Bo
     }
     suspend fun finishPlayback(id:String,position:Long,duration:Long,at:Long,sessionId:String,elapsedMs:Long) {
         checkpoint(id,position,duration,false,at,sessionId,elapsedMs,force=true,active=false)
+        db.sync().view("queue_library")?.let {db.sync().putView(it.copy(active=false))}
     }
     suspend fun releaseSessions() {sync.releasePlaybackViews()}
     internal suspend fun seed(approved:Set<String>) {
@@ -83,7 +84,7 @@ class PortableLibrarySync(private val db:AppDatabase,private val isolatedDemo:Bo
         }
         for(moment in dao.distillations())if(dao.episode(moment.episodeId)?.podcastId in approved)recordMoment(moment)
     }
-    private suspend fun identity(ep:EpisodeEntity):Map<String,String>? {
+    internal suspend fun identity(ep:EpisodeEntity):Map<String,String>? {
         if(!allowed() || sync.approved(ep.podcastId)==null)return null
         val p=dao.podcast(ep.podcastId) ?: return null
         val identity=mapOf("episodeId" to ep.id,"podcastId" to p.id,"feedUrl" to p.feedUrl,"originalFeedUrl" to p.originalFeedUrl.ifBlank {p.feedUrl},
@@ -91,7 +92,7 @@ class PortableLibrarySync(private val db:AppDatabase,private val isolatedDemo:Bo
         // Validate all locators before enqueue, even when the outgoing action is a tombstone.
         return identity.takeIf {runCatching {SyncProtocol.validate(SyncMutation("check",SyncOwner("check","check"),"identity",0,it))}.isSuccess}
     }
-    private suspend fun enqueue(key:String,payload:Map<String,String>,deleted:Boolean=false,base:Long?=null):Boolean {
+    internal suspend fun enqueue(key:String,payload:Map<String,String>,deleted:Boolean=false,base:Long?=null):Boolean {
         if(!allowed())return false
         val binding=sync.binding() ?: return false
         val pending=sync.forKey(binding.uid,binding.generation,key)
@@ -113,7 +114,10 @@ class PortableLibrarySync(private val db:AppDatabase,private val isolatedDemo:Bo
         val old=sync.view(key) ?: SyncViewEntity(key)
         sync.putView(old.copy(version=remote.version,active=false))
         if(useLocal)enqueue(key,SubscriptionSyncStore.decode(latest.payload),latest.deleted,remote.version)
-        else projectPortable(db,CloudSubscription(key,remote.version,SubscriptionSyncStore.decode(remote.payload),remote.deleted,remote.sequence),force=true)
+        else {
+            val record=CloudSubscription(key,remote.version,SubscriptionSyncStore.decode(remote.payload),remote.deleted,remote.sequence)
+            if(key.startsWith("artifact_"))projectArtifact(db,record,replaceRevision=true) else if(CollectionRecord.supports(key))projectCollection(db,record,force=true) else projectPortable(db,record,force=true)
+        }
         sync.putBinding(binding.copy(status=if(binding.enabled)"pending" else "paused"))
     }
 }
@@ -121,14 +125,7 @@ class PortableLibrarySync(private val db:AppDatabase,private val isolatedDemo:Bo
 internal suspend fun projectPortable(db:AppDatabase,r:CloudSubscription,force:Boolean=false) {
     val dao=db.library();val p=r.payload;val oldView=db.sync().view(r.key) ?: SyncViewEntity(r.key)
     if(r.deleted) {dao.deleteDistillation(r.key.removePrefix("moment_"));db.sync().putView(oldView.copy(version=r.version));return}
-    var podcast=dao.podcastByUrl(p.getValue("feedUrl")) ?: dao.podcastByUrl(p.getValue("originalFeedUrl")) ?: dao.podcast(p.getValue("podcastId"))
-    if(podcast==null) {
-        podcast=PodcastEntity(p.getValue("podcastId"),p.getValue("feedUrl"),p.getValue("podcastTitle"),author=p.getValue("podcastAuthor"),subscribed=false,originalFeedUrl=p.getValue("originalFeedUrl"))
-        dao.putPodcast(podcast)
-    }
-    db.sync().approve(SyncPublicFeedEntity(podcast.id))
-    val ep=dao.episodesForPodcast(podcast.id).firstOrNull {it.guid==p.getValue("guid")} ?: dao.episode(p.getValue("episodeId")) ?: EpisodeEntity(p.getValue("episodeId"),podcast.id,p.getValue("guid"),p.getValue("title"),p.getValue("audioUrl"),durationMs=p.getValue("durationMs").toLong(),mediaFingerprint=p.getValue("fingerprint"))
-    if(dao.episode(ep.id)==null)dao.putEpisode(ep)
+    val ep=restoreEpisodeIdentity(db,p)
     when {
         r.key.startsWith("progress_")-> {
             if(oldView.active && !force) {
@@ -152,4 +149,17 @@ internal suspend fun projectPortable(db:AppDatabase,r:CloudSubscription,force:Bo
         }
     }
     db.sync().putView(oldView.copy(version=r.version,active=false))
+}
+
+internal suspend fun restoreEpisodeIdentity(db:AppDatabase,p:Map<String,String>):EpisodeEntity {
+    val dao=db.library()
+    var podcast=dao.podcastByUrl(p.getValue("feedUrl")) ?: dao.podcastByUrl(p.getValue("originalFeedUrl")) ?: dao.podcast(p.getValue("podcastId"))
+    if(podcast==null) {
+        podcast=PodcastEntity(p.getValue("podcastId"),p.getValue("feedUrl"),p.getValue("podcastTitle"),author=p.getValue("podcastAuthor"),subscribed=false,originalFeedUrl=p.getValue("originalFeedUrl"))
+        dao.putPodcast(podcast)
+    }
+    db.sync().approve(SyncPublicFeedEntity(podcast.id))
+    val ep=dao.episodesForPodcast(podcast.id).firstOrNull {it.guid==p.getValue("guid")} ?: dao.episode(p.getValue("episodeId")) ?: EpisodeEntity(p.getValue("episodeId"),podcast.id,p.getValue("guid"),p.getValue("title"),p.getValue("audioUrl"),durationMs=p.getValue("durationMs").toLong(),mediaFingerprint=p.getValue("fingerprint"))
+    if(dao.episode(ep.id)==null)dao.putEpisode(ep)
+    return ep
 }

@@ -1,6 +1,6 @@
 # Library sync alpha
 
-Implemented on `feat/firebase-sync-telemetry`; not yet in a published APK release. This is the first usable scope of the [complete sync and telemetry plan](firebase-sync-telemetry-plan.md).
+Implemented on `feat/firebase-sync-telemetry`; not yet in a published APK release. This is an incremental implementation of the [complete sync and telemetry plan](firebase-sync-telemetry-plan.md).
 
 ## Use
 
@@ -14,7 +14,7 @@ Use Add existing subscriptions to sync to approve other local feeds later. A pub
 
 This alpha supports one sync account per existing local library. Signing in with a different account is rejected. It does not move or erase the original account's data. Multiple local profiles, complete account erasure and dated cloud recovery remain open milestones. Use the original account to resume; do not uninstall the app to switch accounts.
 
-Subscriptions, listening position, explicit completion and saved moments synchronize for approved public sources. Episode restoration includes only the metadata needed for these records, rather than the full RSS catalogue. Transcripts, analyses, conversations, queue and preferences still require Backup & Restore. Downloads, models and provider credentials remain device-local. See [privacy](../privacy.md).
+Subscriptions, listening position, explicit completion and saved moments synchronize for approved public sources. Episode restoration includes only the metadata needed for these records, rather than the full RSS catalogue. The remaining-library option adds queue and portable model/language/AI-model preferences, finished transcripts, completed analyses, conversations and explanations. Its private content bucket must be configured and deployed first. Downloads, models and provider credentials remain device-local. See [privacy](../privacy.md).
 
 ## Build configuration
 
@@ -35,12 +35,13 @@ JVM/Room tests cover durable changes, safe owner binding, public-feed review/pro
 ```sh
 npm ci --prefix firebase --ignore-scripts --no-audit --no-fund
 npm --prefix firebase run test:emulator
+npm --prefix firebase run test:storage
 ```
 
 Build the debug and instrumentation APKs and start an isolated Android emulator. With Java 21 active for the Firebase CLI, run from the repository root:
 
 ```sh
-firebase/node_modules/.bin/firebase --config firebase/firebase.json emulators:exec --only auth,firestore --project demo-distillpod-sync 'env DISTILLPOD_SERIAL=emulator-5554 scripts/sync-device-tests.sh'
+firebase/node_modules/.bin/firebase --config firebase/firebase.json emulators:exec --only auth,firestore,storage --project demo-distillpod-sync 'env DISTILLPOD_SERIAL=emulator-5554 scripts/sync-device-tests.sh'
 ```
 
 Set `DISTILLPOD_ADB` to Windows ADB when using WSL. The script verifies an emulator target. The SDK tests use independently authenticated named Firebase apps and separate Room databases on one Android emulator, not two physical phones. They cover concurrent edits, restore, sign-out/account denial and cross-user rules. A separate two-phase test force-stops the package between recording an offline intent and uploading it in a new process. Firebase emulators remain running across those phases.
@@ -54,3 +55,15 @@ Local playback saves frequently for crash recovery. Cloud checkpoints coalesce w
 Played/unplayed actions are separate versioned records. A stale automatic end-of-playback event cannot undo a newer explicit mark-unplayed. Saved moments carry their original interval, excerpt, completed quote/insight, revision, fingerprint and model; local generation state and attempts never enter the cloud. Incomplete restored moments remain saved without automatically starting transcription or consuming AI allowance. Deletions use empty tombstones; stale in-flight generation cannot recreate a deleted row.
 
 Room schema 6 adds locally visible revisions and durable session/checkpoint state. Its migration preserves library rows and the existing outbox. Remote projections preserve downloads, queue and local media fields. Private/query-bearing media addresses and oversized snapshots remain local; Backup & Restore is still required for excluded records and for the remaining portable library types.
+
+## Extended library scope
+
+After configured storage is deployed, Settings offers **Enable remaining library sync**. The app first checks the account-scoped storage prefix, then upgrades the account protocol from 1 to 2 and seeds existing queue/preferences/finished text. Older builds stop cloud work at this protocol gate and preserve their local library; upgrade those installations before using the extended account. A fresh installation connected to an already upgraded account joins that scope automatically.
+
+Queue order is a versioned, deduplicated list (up to 200 public entries) with separate episode identity records. Private entries stay local and are counted in Settings. Active divergent order retains an explicit conflict; accepting cloud order preserves the current audio and applies the remaining playlist without echoing its temporary active item into the shared queue. Preferences have independent revisions and never include account identity, network/storage policies or request/job state.
+
+Finished content is a versioned gzip artifact (up to 8 MiB compressed / 32 MiB expanded / 100,000 segments), addressed by the SHA-256 of its expanded bytes. Cloud Storage objects are immutable and account/generation scoped. Upload succeeds before a Firestore reference can be published; retries reuse the same object and operation receipt. Resumable upload URLs remain app-private. Downloads verify size, checksum, format and source fingerprint before an atomic import. Missing parent moments defer import until metadata arrives; incompatible source revisions remain retained alternatives rather than replacing active processing. No transcription/AI request runs as a restore side effect. Completed conversation messages retain IDs and reply links, and incomplete assistant responses remain local.
+
+“Library synced” applies to the enabled scope and supported approved sources. Settings separately counts pending content and source versions needing review. Source credentials, downloads, models, unfinished jobs and oversized/excluded records remain on the original installation. Keep manual backups for independent recovery; sync is not a dated recovery service.
+
+Full-content deployment uses a billing-enabled Firebase project and a private default bucket in `southamerica-east1`. The client JSON must contain the actual bucket name. The required cross-service Storage rules role is `roles/firebaserules.firestoreServiceAgent` for the project's Firebase Storage service agent; it lets those rules evaluate account generation/activity in Firestore. Do not grant client users broad Cloud IAM roles or make the bucket public. Deployment must include both validated Firestore and Storage rules. Budget alerts are alerts, not a hard spending cap.

@@ -15,7 +15,7 @@ for artifact in app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/
 done
 "$DISTILLPOD_ADB" "${DISTILLPOD_FLAGS[@]}" shell am instrument -w -r -e syncEmulators true \
     -e syncEmulatorHost 10.0.2.2 \
-    -e class dev.distillpod.android.SubscriptionSyncDeviceTest,dev.distillpod.android.DatabaseUpgradeDeviceTest,dev.distillpod.android.SubscriptionSyncUiDeviceTest,dev.distillpod.android.PublicFeedReviewDeviceTest \
+    -e class dev.distillpod.android.FullContentSyncDeviceTest,dev.distillpod.android.SubscriptionSyncDeviceTest,dev.distillpod.android.DatabaseUpgradeDeviceTest,dev.distillpod.android.SubscriptionSyncUiDeviceTest,dev.distillpod.android.PublicFeedReviewDeviceTest \
     dev.distillpod.android.test/dev.distillpod.android.IsolatedTestRunner | tee "$DISTILLPOD_LOG"
 python3 scripts/device_result.py "$DISTILLPOD_LOG"
 for phase in seed resume; do

@@ -40,7 +40,9 @@ jobs:
       - name: Install locked emulator tools
         run: npm ci --prefix firebase --ignore-scripts --no-audit --no-fund
       - name: Validate isolated transactions and rules
-        run: npm --prefix firebase run test:emulator
+        run: |
+          npm --prefix firebase run test:emulator
+          npm --prefix firebase run test:storage
 
   android:
     name: Kotlin, lint and APK
@@ -153,7 +155,7 @@ jobs:
           disable-animations: true
           script: |
             DISTILLPOD_SERIAL=emulator-5554 scripts/emulator-tests.sh /tmp/distillpod-fixtures
-            JAVA_HOME="$DISTILLPOD_FIREBASE_JAVA" PATH="$DISTILLPOD_FIREBASE_JAVA/bin:$PATH" firebase/node_modules/.bin/firebase --config firebase/firebase.json emulators:exec --only auth,firestore --project demo-distillpod-sync 'env DISTILLPOD_SERIAL=emulator-5554 scripts/sync-device-tests.sh'
+            JAVA_HOME="$DISTILLPOD_FIREBASE_JAVA" PATH="$DISTILLPOD_FIREBASE_JAVA/bin:$PATH" firebase/node_modules/.bin/firebase --config firebase/firebase.json emulators:exec --only auth,firestore,storage --project demo-distillpod-sync 'env DISTILLPOD_SERIAL=emulator-5554 scripts/sync-device-tests.sh'
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:

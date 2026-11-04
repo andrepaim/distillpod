@@ -29,7 +29,7 @@ import dev.distillpod.android.playback.SkippedMoment
 class PlaybackService : MediaSessionService() {
     private var session: MediaSession? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-    private data class Snapshot(val ids: List<String>, val id: String?, val position: Long, val duration: Long, val complete: Boolean, val speed: Float, val at: Long = System.currentTimeMillis(), val boundary: Boolean = false, val playing: Boolean = false, val elapsed: Long = android.os.SystemClock.elapsedRealtime())
+    private data class Snapshot(val ids: List<String>, val id: String?, val position: Long, val duration: Long, val complete: Boolean, val speed: Float, val at: Long = System.currentTimeMillis(), val boundary: Boolean = false, val playing: Boolean = false, val queueBoundary:Boolean=false, val elapsed: Long = android.os.SystemClock.elapsedRealtime())
     private val writes = Channel<Snapshot>(Channel.UNLIMITED)
     private val syncSession=java.util.UUID.randomUUID().toString()
     private var previousId: String? = null
@@ -55,16 +55,19 @@ class PlaybackService : MediaSessionService() {
             override fun onConnect(session: MediaSession, controller: MediaSession.ControllerInfo): MediaSession.ConnectionResult =
                 if (controller.packageName == packageName || controller.isTrusted) super.onConnect(session, controller) else MediaSession.ConnectionResult.reject()
         }).build()
-        fun snapshot(complete: Boolean = false, boundary: Boolean = false) {
+        fun snapshot(complete: Boolean = false, boundary: Boolean = false, queueBoundary:Boolean=false) {
             if (restoring) return
             val id = player.currentMediaItem?.mediaId
             graph.activeFiles.playback = player.currentMediaItem?.localConfiguration?.uri?.takeIf { it.scheme == "file" }?.path
             graph.activeFiles.queued = (0 until player.mediaItemCount).mapNotNull { player.getMediaItemAt(it).localConfiguration?.uri?.takeIf { uri -> uri.scheme == "file" }?.path }.toSet()
             writes.trySend(Snapshot((0 until player.mediaItemCount).map { player.getMediaItemAt(it).mediaId }, id,
-                player.currentPosition.coerceAtLeast(0), player.duration.coerceAtLeast(0), complete, player.playbackParameters.speed, boundary=boundary, playing=player.isPlaying))
+                player.currentPosition.coerceAtLeast(0), player.duration.coerceAtLeast(0), complete, player.playbackParameters.speed, boundary=boundary, playing=player.isPlaying,queueBoundary=queueBoundary))
             previousId = id; previousDuration = player.duration.coerceAtLeast(0); previousPosition = player.currentPosition.coerceAtLeast(0)
         }
         player.addListener(object : Player.Listener {
+            override fun onTimelineChanged(timeline:androidx.media3.common.Timeline,reason:Int) {
+                if(reason==Player.TIMELINE_CHANGE_REASON_PLAYLIST_CHANGED)snapshot(queueBoundary=true)
+            }
             override fun onMediaItemTransition(item: MediaItem?, reason: Int) {
                 if (!restoring && reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO && previousId != null) {
                     writes.trySend(Snapshot(emptyList(), previousId, if (previousDuration > 0) previousDuration else previousPosition, previousDuration, true, player.playbackParameters.speed, boundary=true))
@@ -93,8 +96,13 @@ class PlaybackService : MediaSessionService() {
                         if (ep != null && (value.playing || value.boundary)) graph.portableSync.checkpoint(ep.id, value.position, value.duration, value.complete, value.at, syncSession, value.elapsed, value.boundary, active=value.playing)
                         if (value.ids.isNotEmpty() || value.id == null) {
                             val known = value.ids.filter { dao.episode(it) != null }.distinct()
-                            if (known != lastQueue) {
-                                dao.clearQueue(); dao.insertQueue(known.mapIndexed { index, id -> QueueEntryEntity(id, index) }); lastQueue = known
+                            val imported=graph.importedQueue.value==known
+                            if(imported)graph.importedQueue.value=null
+                            if(imported)lastQueue=known
+                            else if(lastQueue==null) {
+                                dao.clearQueue();dao.insertQueue(known.mapIndexed {index,id->QueueEntryEntity(id,index)});lastQueue=known
+                            } else if(value.queueBoundary && known!=lastQueue) {
+                                graph.collectionSync.queue(known);lastQueue=known
                             }
                             dao.putPlayerSession(PlayerSessionEntity(episodeId = value.id, speed = value.speed))
                         }
@@ -116,6 +124,21 @@ class PlaybackService : MediaSessionService() {
             }
             restoring = false; snapshot()
             while (isActive) { snapshot(player.playbackState == Player.STATE_ENDED); delay(1000) }
+        }
+        scope.launch {
+            dao.observeQueue().collect {entries->
+                if(restoring || player.mediaItemCount!=0 || entries.isEmpty())return@collect
+                val restored=withContext(Dispatchers.IO) {
+                    entries.mapNotNull {entry->dao.episode(entry.episodeId)?.let {ep->mediaItem(ep,dao.podcast(ep.podcastId))}}
+                }
+                if(player.mediaItemCount==0 && restored.isNotEmpty()) {
+                    restoring=true
+                    try {
+                        val position=withContext(Dispatchers.IO) {dao.episode(restored.first().mediaId)?.positionMs?:0}
+                        if(player.mediaItemCount==0){player.setMediaItems(restored,0,position);player.prepare()}
+                    } finally {restoring=false}
+                }
+            }
         }
         scope.launch {
             dao.observeEpisodes().collect { episodes ->
