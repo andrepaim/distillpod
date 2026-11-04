@@ -48,10 +48,14 @@ class ManagedBackups(
     private suspend fun location() = Location.parse(settings.value("managedBackup").first())
     private fun choice(record: BackupArchive.Record, local: Boolean = false) = Choice(record.id, record.at, record.version, record.shows, record.episodes, record.moments, local)
     private fun status(message: String, working: Boolean = true) { state.value = state.value.copy(message = message, working = working, error = false, chooseBackup = false) }
+    private val operationGuard = Any()
+    private var activeOperation: Any? = null
 
     private fun operation(message: String, block: suspend (File) -> Unit) {
-        if (state.value.working) return
-        status(message)
+        val operation = synchronized(operationGuard) {
+            if (state.value.working) return
+            Any().also { activeOperation = it; status(message) }
+        }
         scope.launch {
             val folder = File(context.cacheDir, "managed-backup-${UUID.randomUUID()}")
             try {
@@ -70,7 +74,11 @@ class ManagedBackups(
                 })
             } finally {
                 withContext(NonCancellable + Dispatchers.IO) { folder.deleteRecursively() }
-                if (state.value.working) state.value = state.value.copy(working = false, error = true, message = "Backup interrupted. Retry when ready; any verified recovery copy has been kept.")
+                // A completed result enables the next action before this operation's
+                // temporary-folder cleanup returns. Never interrupt that newer action.
+                synchronized(operationGuard) {
+                    if (activeOperation === operation && state.value.working) state.value = state.value.copy(working = false, error = true, message = "Backup interrupted. Retry when ready; any verified recovery copy has been kept.")
+                }
             }
         }
     }

@@ -1,0 +1,40 @@
+{
+  "date": "2026-11-04",
+  "versionName": "0.7.1-alpha.1",
+  "versionCode": 13,
+  "jvm": { "coreTests": 48, "appTests": 86, "failures": 0 },
+  "releaseToolTests": { "tests": 11, "failures": 0 },
+  "lint": { "debug": "passed", "release": "passed" },
+  "builds": { "debug": "passed", "release": "passed", "androidTest": "passed" },
+  "emulator": {
+    "platform": "Android 16, API 36.1, x86_64",
+    "ordinaryAcceptance": { "tests": 30, "failures": 0, "seconds": 160.135 },
+    "finalRecoveryAndIntegrationRegression": { "tests": 4, "failures": 0, "seconds": 68.757 },
+    "lockedTranscription": {
+      "fixture": "Pinned whisper.cpp JFK sample repeated to 330 seconds; verified multilingual Tiny model",
+      "realNativeInference": true,
+      "savedWindowsMs": [[0, 120000], [120000, 240000], [240000, 330000]],
+      "pausedAfterFirstCheckpoint": true,
+      "sameRevisionAfterResume": true,
+      "unfinishedLiveProgressIsNotSavedCoverage": true,
+      "recoveryWorkerRetainsScheduledRetryWhileServiceRuns": true,
+      "scheduledTranscriptJobsCancelledBeforeScreenOff": true,
+      "completedWhileDisplayOff": true,
+      "foregroundServiceTypeObserved": "mediaProcessing (0x00002000)"
+    }
+  },
+  "signature": {
+    "certificateSha256": "5f384697c782acfaba9db54bca0149b1a7f59bfb9b21fcef70360b3c392fc5c7",
+    "releaseMetadataGuard": "passed",
+    "zipAlignment": "passed",
+    "debuggable": false
+  },
+  "scope": {
+    "fixturesRunOnOwnerPhone": false,
+    "liveAccountRequestsUsedForValidation": false,
+    "historicalOSStopReasonRecovered": false,
+    "naturalDeepDozeOrExhaustedJobQuotaReproduced": false,
+    "longSamsungScreenLockedTrial": "not run; screen-off and checkpoint regression ran on an isolated emulator"
+  },
+  "research": "docs/android/background-transcription.md"
+}

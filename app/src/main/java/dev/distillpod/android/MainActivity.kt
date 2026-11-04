@@ -33,7 +33,14 @@ class MainActivity : ComponentActivity() {
         }
         setContent { ProductApp(model) }
     }
-    override fun onResume() { super.onResume(); applicationContext.appGraph.account.foreground(true) }
+    override fun onResume() {
+        super.onResume()
+        applicationContext.appGraph.account.foreground(true)
+        lifecycleScope.launch {
+            applicationContext.appGraph.ready.await()
+            if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) applicationContext.appGraph.transcription.resumeQueued()
+        }
+    }
     override fun onPause() { applicationContext.appGraph.account.foreground(false); super.onPause() }
     override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); if (intent.getBooleanExtra("openPlayer", false)) model.open("player") }
 }

@@ -134,6 +134,6 @@ fun workForeground(context: Context, workId: java.util.UUID, title: String, medi
     val notification = NotificationCompat.Builder(context, "processing").setSmallIcon(android.R.drawable.ic_popup_sync)
         .setContentTitle(title).setContentText("DistillPod · tap to view progress").setContentIntent(intent).setOngoing(true)
         .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Pause", WorkManager.getInstance(context).createCancelPendingIntent(workId)).build()
-    val type = if (media && Build.VERSION.SDK_INT >= 35) ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROCESSING or ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC else ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+    val type = if (media && Build.VERSION.SDK_INT >= 35) ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROCESSING else ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
     return ForegroundInfo(workId.hashCode() and Int.MAX_VALUE, notification, type)
 }

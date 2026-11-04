@@ -16,6 +16,7 @@
         </activity>
         <activity android:name=".DiagnosticsActivity" android:exported="false" android:launchMode="singleTop" />
         <service android:name="androidx.work.impl.foreground.SystemForegroundService" android:foregroundServiceType="dataSync|mediaProcessing" xmlns:tools="http://schemas.android.com/tools" tools:node="merge" />
+        <service android:name=".work.TranscriptionService" android:exported="false" android:foregroundServiceType="dataSync|mediaProcessing" />
         <service android:name=".PlaybackService" android:exported="true" android:foregroundServiceType="mediaPlayback">
             <intent-filter><action android:name="androidx.media3.session.MediaSessionService" /></intent-filter>
         </service>

@@ -7,10 +7,12 @@ import dev.distillpod.android.AudioClipDecoder
 import dev.distillpod.android.NativeWhisper
 import dev.distillpod.android.appGraph
 import dev.distillpod.android.work.workForeground
+import dev.distillpod.android.work.TranscriptionService
 import dev.distillpod.core.*
 import java.io.File
 import java.util.UUID
 import java.util.concurrent.Executors
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.*
@@ -29,11 +31,14 @@ enum class TranscriptStage { PUBLISHER, DOWNLOADING, CHECKING_MODEL, DECODING, S
 data class TranscriptProgress(val revision: String, val run: String, val stage: TranscriptStage,
     val workedMs: Long, val durationMs: Long, val chunkStartMs: Long = 0, val chunkEndMs: Long = 0)
 
+internal class TranscriptExecution(val stopped: () -> Boolean, val foreground: suspend () -> Unit, val reschedule: Boolean)
+
 class TranscriptionRepository(private val graph: AppGraph) {
     private val dao = graph.db.library()
     private val manager get() = WorkManager.getInstance(graph.context)
     private val processing = Mutex()
     private val controls = Mutex()
+    private val running = ConcurrentHashMap<String, Job>()
     private val live = MutableStateFlow<Map<String, TranscriptProgress>>(emptyMap())
     val progress = live.asStateFlow()
     suspend fun prepare(id: String, forceLocal: Boolean = false) = controls.withLock { prepareInternal(id, forceLocal) }
@@ -47,24 +52,50 @@ class TranscriptionRepository(private val graph: AppGraph) {
             if (old.state in listOf("processing", "queued") && live.value[id]?.let { it.revision == old.revision && it.stage != TranscriptStage.QUEUED } == true) return
             live.update { it - id }
             val current = old.copy(state = "queued", error = null)
-            dao.putTranscript(current); enqueue(current, nextStart(current) ?: 0); return
+            dao.putTranscript(current); dispatch(current); return
         }
         live.update { it - id }
         manager.cancelAllWorkByTag("transcript:$id")
+        running[id]?.cancel()
         val publisher = !forceLocal && !ep.transcriptUrl.isNullOrBlank() && !(old?.source == "publisher" && old.state == "partial")
         val current = TranscriptEntity(id, UUID.randomUUID().toString(), ep.mediaFingerprint, if (publisher) "publisher" else prefs.model,
             prefs.language, if (publisher) "publisher" else "whisper", durationMs = ep.durationMs)
         graph.db.withTransaction { dao.deleteSegments(id); dao.deleteCoverage(id); dao.putTranscript(current) }
         dao.analysis(id)?.let { dao.putAnalysis(it.copy(state = "stale", error = "Transcript changed. Analyze the current source again.")) }
-        enqueue(current, 0)
+        dispatch(current)
     }
     suspend fun pause(id: String) = controls.withLock {
         live.update { it - id }
         dao.transcript(id)?.let { dao.putTranscript(it.copy(state = "paused", error = null)) }
+        running[id]?.cancel()
         manager.cancelAllWorkByTag("transcript:$id")
     }
     suspend fun resumeModel(id: String) { dao.transcripts().filter { it.model == id && it.state == "waiting_model" }.forEach { prepare(it.episodeId) } }
-    suspend fun recover() { dao.transcripts().filter { it.state in listOf("queued", "processing") }.forEach { enqueue(it, nextStart(it) ?: 0) } }
+    suspend fun recover() {
+        if (!TranscriptionService.isRunning) pending().forEach { enqueue(it, nextStart(it) ?: 0) }
+    }
+    suspend fun resumeQueued() { pending().firstOrNull()?.let { dispatch(it) } }
+    private suspend fun pending() = dao.transcripts().filter { it.state in listOf("queued", "processing") }
+    private suspend fun dispatch(row: TranscriptEntity) {
+        if (!TranscriptionService.start(graph.context)) enqueue(row, nextStart(row) ?: 0)
+    }
+    internal suspend fun nextForeground(): TranscriptEntity? {
+        val prefs = graph.settings.flow.first()
+        for (row in pending()) {
+            val ep = dao.episode(row.episodeId) ?: continue
+            val network = ep.localFile?.let { File(it).isFile } != true || row.source == "publisher"
+            if (transcriptionAllowed(graph.context, prefs, network)) return row
+            enqueue(row, nextStart(row) ?: 0)
+        }
+        return null
+    }
+    internal suspend fun pausePending(message: String) {
+        for (row in pending()) {
+            pause(row.episodeId)
+            dao.transcript(row.episodeId)?.takeIf { it.revision == row.revision && it.state == "paused" }
+                ?.let { dao.putTranscript(it.copy(error = message)) }
+        }
+    }
 
     private suspend fun enqueue(row: TranscriptEntity, start: Long) {
         val prefs = graph.settings.flow.first()
@@ -92,9 +123,16 @@ class TranscriptionRepository(private val graph: AppGraph) {
         return null
     }
 
-    suspend fun process(id: String, revision: String, worker: CoroutineWorker) = processing.withLock { processChunk(id, revision, worker) }
+    suspend fun process(id: String, revision: String, worker: CoroutineWorker) = process(id, revision, TranscriptExecution(
+        { worker.isStopped }, { worker.setForeground(workForeground(graph.context, worker.id, "Preparing transcript", true)) }, true))
 
-    private suspend fun processChunk(id: String, revision: String, worker: CoroutineWorker) {
+    internal suspend fun process(id: String, revision: String, execution: TranscriptExecution) = processing.withLock {
+        val job = currentCoroutineContext().job
+        running[id] = job
+        try { processChunk(id, revision, execution) } finally { running.remove(id, job) }
+    }
+
+    private suspend fun processChunk(id: String, revision: String, execution: TranscriptExecution) {
         var row = dao.transcript(id) ?: return
         if (row.revision != revision || row.state in listOf("paused", "ready", "stale")) return
         val run = UUID.randomUUID().toString()
@@ -106,7 +144,7 @@ class TranscriptionRepository(private val graph: AppGraph) {
             }
         }
         try {
-            worker.setForeground(workForeground(graph.context, worker.id, "Preparing transcript", true))
+            execution.foreground()
             dao.putTranscript(row.copy(state = "processing", error = null))
             val initialEp = dao.episode(id) ?: return
             if (row.source == "publisher") {
@@ -136,7 +174,7 @@ class TranscriptionRepository(private val graph: AppGraph) {
                 val start = nextStart(row) ?: run { dao.putTranscript(row.copy(state = "ready")); graph.captures.transcriptUpdated(id); return }
                 val decodeStart = (start - 2000).coerceAtLeast(0)
                 report(TranscriptStage.DECODING, start = start, end = start + CHUNK_MS)
-                val decoded = withContext(Dispatchers.IO) { AudioClipDecoder().decodeChunk(source, wave, decodeStart, CHUNK_MS + start - decodeStart) { worker.isStopped } }
+                val decoded = withContext(Dispatchers.IO) { AudioClipDecoder().decodeChunk(source, wave, decodeStart, CHUNK_MS + start - decodeStart, execution.stopped) }
                 val duration = decoded.sourceDurationMs
                 require(duration > 0) { "This source has no reliable duration. Use a timed publisher transcript or another audio source." }
                 dao.duration(id, duration)
@@ -182,7 +220,8 @@ class TranscriptionRepository(private val graph: AppGraph) {
                 if (current.revision == revision && current.state !in listOf("paused", "stale")) {
                     val next = nextStart(current)
                     require(next != start) { "This audio window could not be decoded completely. Completed chunks are saved." }
-                    if (next == null) dao.putTranscript(current.copy(state = "ready", processedMs = duration)) else enqueue(current, next)
+                    if (next == null) dao.putTranscript(current.copy(state = "ready", processedMs = duration))
+                    else if (execution.reschedule) enqueue(current, next)
                 }
             } finally { wave.delete(); graph.activeFiles.release(source); graph.activeFiles.release(modelPath) }
         } catch (error: Exception) {
@@ -240,7 +279,19 @@ private suspend fun nativeTranscribe(model: File, samples: FloatArray, language:
 class TranscriptWorker(context: android.content.Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result {
         applicationContext.appGraph.ready.await()
-        applicationContext.appGraph.transcription.process(inputData.getString("episode") ?: return Result.failure(), inputData.getString("revision") ?: return Result.failure(), this)
+        val episode = inputData.getString("episode") ?: return Result.failure()
+        val revision = inputData.getString("revision") ?: return Result.failure()
+        // A direct foreground session owns all its chunks. Do not spend job quota
+        // waiting for its native-inference mutex or create another foreground service.
+        if (TranscriptionService.isRunning) {
+            TranscriptionService.start(applicationContext)
+            val row = applicationContext.appGraph.db.library().transcript(episode)
+            // Retain the constrained recovery request until the foreground owner
+            // finishes. Otherwise a constraint change during service shutdown can
+            // lose its replacement to ExistingWorkPolicy.KEEP while this job exits.
+            return if (row?.revision == revision && row.state in listOf("queued", "processing")) Result.retry() else Result.success()
+        }
+        applicationContext.appGraph.transcription.process(episode, revision, this)
         return Result.success()
     }
 }

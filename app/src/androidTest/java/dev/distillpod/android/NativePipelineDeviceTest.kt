@@ -8,6 +8,12 @@ import androidx.lifecycle.ViewModelProvider
 import dev.distillpod.android.features.AppViewModel
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.uiautomator.UiDevice
+import androidx.work.WorkManager
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkInfo
+import androidx.work.workDataOf
+import dev.distillpod.android.work.TranscriptionService
 import dev.distillpod.android.data.*
 import dev.distillpod.core.PcmWaveWriter
 import dev.distillpod.core.readWhisperWave
@@ -48,15 +54,16 @@ class NativePipelineDeviceTest {
             val samples = readWhisperWave(assets.open("jfk.wav").use { it.readBytes() })
             val wave = ByteBuffer.allocate(samples.size * 2).order(ByteOrder.LITTLE_ENDIAN)
             samples.forEach { wave.putShort((it * 32768).toInt().coerceIn(-32768, 32767).toShort()) }
-            PcmWaveWriter(source, 16000, 1).use { writer -> repeat(20) { writer.append(ByteBuffer.wrap(wave.array())) }; writer.finish() }
+            PcmWaveWriter(source, 16000, 1).use { writer -> repeat(30) { writer.append(ByteBuffer.wrap(wave.array())) }; writer.finish() }
             dao.putPodcast(PodcastEntity(id, "https://example.test/$id", "Native pipeline fixture"))
-            dao.putEpisode(EpisodeEntity(id, id, id, "Native pipeline fixture", "https://example.test/audio", durationMs = 220000,
+            dao.putEpisode(EpisodeEntity(id, id, id, "Native pipeline fixture", "https://example.test/audio", durationMs = 330000,
                 localFile = source.absolutePath, downloadState = "downloaded", downloadedBytes = source.length(), totalBytes = source.length(), mediaFingerprint = id))
             graph.transcription.prepare(id, true)
             await { graph.transcription.progress.value[id]?.let {
                 it.stage == TranscriptStage.TRANSCRIBING && it.workedMs in 1 until 120000
             } == true }
             val liveRun = graph.transcription.progress.value[id]!!.run
+            assertTrue("User-started inference owns a direct foreground service", TranscriptionService.isRunning)
             graph.transcription.prepare(id)
             assertEquals("Joining active preparation keeps live progress", liveRun, graph.transcription.progress.value[id]!!.run)
             assertEquals("Live progress must not publish unfinished coverage", 0L, dao.transcript(id)!!.processedMs)
@@ -71,6 +78,16 @@ class NativePipelineDeviceTest {
             }
             val firstLive = graph.transcription.progress.value[id]!!.workedMs
             await { (graph.transcription.progress.value[id]?.workedMs ?: 0) > firstLive }
+            val manager = WorkManager.getInstance(graph.context)
+            val recovery = OneTimeWorkRequestBuilder<TranscriptWorker>()
+                .setInputData(workDataOf("episode" to id, "revision" to dao.transcript(id)!!.revision))
+                .addTag("transcript:$id").build()
+            manager.enqueue(recovery).result.get()
+            await {
+                val info = manager.getWorkInfoById(recovery.id).get()
+                info != null && info.runAttemptCount > 0 && info.state == WorkInfo.State.ENQUEUED
+            }
+            assertFalse("Recovery remains scheduled while the foreground session owns inference", manager.getWorkInfoById(recovery.id).get()!!.state.isFinished)
             await { (dao.transcript(id)?.processedMs ?: 0) >= 120000 || dao.transcript(id)?.state == "failed" }
             assertNotEquals("failed", dao.transcript(id)?.state)
             graph.transcription.pause(id)
@@ -80,12 +97,21 @@ class NativePipelineDeviceTest {
             val firstCoverage = dao.coverage(id, checkpoint.revision).first()
             assertEquals(0L, firstCoverage.startMs); assertEquals(120000L, firstCoverage.endMs)
             graph.transcription.prepare(id)
-            await { dao.transcript(id)?.state in listOf("ready", "failed") }
+            val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
+            try {
+                // Removing every scheduled transcript job must not interrupt the direct session.
+                manager.cancelAllWorkByTag("transcript:$id").result.get()
+                device.pressHome()
+                device.sleep()
+                assertFalse(graph.context.getSystemService(android.os.PowerManager::class.java).isInteractive)
+                await { dao.transcript(id)?.state in listOf("ready", "failed") }
+                assertFalse("Completion must happen before the screen is woken", graph.context.getSystemService(android.os.PowerManager::class.java).isInteractive)
+            } finally { device.wakeUp() }
             val completed = dao.transcript(id)!!
             assertEquals(completed.error, "ready", completed.state)
             assertEquals(checkpoint.revision, completed.revision)
-            assertEquals(220000L, completed.processedMs)
-            assertEquals(listOf(0L, 120000L), dao.coverage(id, completed.revision).map { it.startMs })
+            assertEquals(330000L, completed.processedMs)
+            assertEquals(listOf(0L, 120000L, 240000L), dao.coverage(id, completed.revision).map { it.startMs })
             assertTrue(dao.segments(id, completed.revision).any { it.text.contains("country", true) })
         } finally {
             graph.transcription.pause(id)
