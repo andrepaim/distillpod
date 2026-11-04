@@ -167,3 +167,12 @@ A read-only infrastructure check found billing disabled and zero Storage buckets
 - Real Auth/Firestore/Storage targeted acceptance: **13 passed**, plus both seed/resume invocations after an actual process force-stop.
 - Firestore: **27 passed**. Storage: **4 passed**. Python release/emulator tools: **11 passed**.
 - Existing billing account linked to this project and a USD 5 monthly alert budget created. Bucket provisioning is still being resolved; rules and phone rollout remain gated on a working private bucket.
+
+
+## Spark-only rollback — November 4
+
+The owner explicitly declined Blaze and selected local-only transcripts. The project billing account was unlinked; the Cloud Billing API confirmed `billingEnabled=false`, with no billing account linked. A subsequent read-only API check also confirmed billing disabled. A private empty content bucket had been provisioned and rules deployed, but no production full-content uploads or protocol upgrade occurred. The owner's phone remains on its existing 0.8.0-alpha.1 basic-sync installation with its library intact. No new release was published.
+
+Builds now set `sync_content_enabled=false`, regardless of a configured bucket, preventing construction of the production Storage adapter, artifact capture, upload or download. Queue/preferences activation uses Firestore independently of Storage. Settings describes the actual scope and directs text transfer to manual Backup & Restore. The experimental artifact code and demo tests remain inactive development work; full-content production deployment is cancelled. Billing must not be enabled without explicit authorization.
+
+Validation: app JVM tests, debug APK/test-APK builds and debug lint pass. The `sparkBuildKeepsContentStorageDisabled` instrumentation regression verifies the build resource and runtime content gate. All four targeted Settings/isolation/device regressions passed on the isolated test emulator, including this new guard. The owner phone and live Google-account emulator were not used.

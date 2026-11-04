@@ -15,6 +15,11 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class SubscriptionSyncUiDeviceTest {
     @get:Rule val compose=createAndroidComposeRule<MainActivity>()
+    @Test fun sparkBuildKeepsContentStorageDisabled() {
+        val context=compose.activity.applicationContext
+        org.junit.Assert.assertFalse("A client bucket configuration must not enable paid content sync",context.resources.getBoolean(R.bool.sync_content_enabled))
+        org.junit.Assert.assertFalse(context.appGraph.syncAccount.contentConfigured)
+    }
     @Test fun fixtureChangesCannotLeaveDeferredProductionIntents()=runBlocking<Unit> {
         val context=compose.activity.applicationContext
         val name="cloud-guard-${java.util.UUID.randomUUID()}.db"

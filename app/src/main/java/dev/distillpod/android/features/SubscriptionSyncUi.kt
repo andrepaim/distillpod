@@ -43,8 +43,7 @@ import dev.distillpod.android.sync.SubscriptionSyncStore
     }
     Column(verticalArrangement=Arrangement.spacedBy(10.dp)) {
         Text("Library sync",style=MaterialTheme.typography.titleLarge)
-        Text(if(fullScope==null)"Connect Google to sync public podcast subscriptions, listening progress, completion and saved moments between your phones. Transcripts and other library data still use Backup & Restore." else "Your approved public library, queue, preferences and finished text sync between your phones. Downloads, models and processing stay on this phone.",style=MaterialTheme.typography.bodySmall)
-        if(fullScope!=null)Text("Queue, portable preferences, finished transcripts, summaries, conversations and explanations also sync for approved public sources.",style=MaterialTheme.typography.bodySmall)
+        Text(if(fullScope==null)"Connect Google to sync public podcast subscriptions, listening progress, completion and saved moments between your phones. Transcripts and other library data still use Backup & Restore." else "Your approved public subscriptions, listening data, queue and portable preferences sync between your phones. Transcripts, other finished text, downloads and models stay on this phone.",style=MaterialTheme.typography.bodySmall)
         Text("Your library works offline. Only approved public sources and their portable listening data sync. Other feeds, downloads and credentials stay on this phone.",style=MaterialTheme.typography.bodySmall)
         if(!state.configured) {
             Text("Cloud sync is unavailable in this build.",color=MaterialTheme.colorScheme.onSurfaceVariant)
@@ -52,8 +51,8 @@ import dev.distillpod.android.sync.SubscriptionSyncStore
             val ownedContent=contentStates.filter {it.uid==binding?.uid && it.generation==binding?.generation}
             val pendingContent=ownedContent.count {it.state in setOf("prepared","downloaded","waiting")}
             if((excludedQueue?.sequence?:0)>0)Text("${excludedQueue?.sequence} queue entries stay on this phone because their sources are not shared.",style=MaterialTheme.typography.bodySmall)
-            if(fullScope!=null && pendingContent>0)Text("$pendingContent saved content uploads or restores pending",color=MaterialTheme.colorScheme.secondary)
-            ownedContent.filter {it.state=="alternate"}.forEachIndexed {index,item->
+            if(account.contentConfigured && fullScope!=null && pendingContent>0)Text("$pendingContent saved content uploads or restores pending",color=MaterialTheme.colorScheme.secondary)
+            ownedContent.filter {account.contentConfigured && it.state=="alternate"}.forEachIndexed {index,item->
                 Text("${vm.episodes.value.firstOrNull {it.id==item.episodeId}?.title?:"Saved source"} · saved source version ${index+1}. This version needs review. Your current source is preserved.",style=MaterialTheme.typography.bodySmall)
                 TextButton(onClick={vm.action("select-content"){account.useSavedContent(item.hash)}}){Text("Use saved source version ${index+1}")}
             }
@@ -82,9 +81,9 @@ import dev.distillpod.android.sync.SubscriptionSyncStore
                     TextButton(onClick={reviewing=true}){Text("Add existing subscriptions to sync")}
                 }
                 if(fullScope==null) {
-                    Text("Enable the remaining library types to restore finished text on another phone without regenerating it.",style=MaterialTheme.typography.bodySmall)
-                    OutlinedButton(onClick={vm.action("full-library-sync"){account.enableFullScope()}},enabled=account.contentConfigured && binding?.enabled==true){Text("Enable remaining library sync")}
-                    if(!account.contentConfigured)Text("Finished-content storage is unavailable in this build. Existing sync and your local library remain available.",style=MaterialTheme.typography.bodySmall)
+                    Text("You can also sync your queue and portable preferences using the free plan.",style=MaterialTheme.typography.bodySmall)
+                    OutlinedButton(onClick={vm.action("full-library-sync"){account.enableFullScope()}},enabled=binding?.enabled==true){Text("Sync queue & preferences")}
+                    if(!account.contentConfigured)Text("Transcripts and other finished text stay local. Use Backup & Restore to transfer them.",style=MaterialTheme.typography.bodySmall)
                 }
                 TextButton(onClick={vm.action("sync-signout"){account.disconnect()}}){Text("Sign out of sync")}
             }

@@ -2,17 +2,21 @@
 
 Date: November 4, 2026
 
-Status: Implementation in progress on `feat/firebase-sync-telemetry`; extended portable-library sync implemented and in final deployment validation; operational recovery/account lifecycle/telemetry gates remain open.
+Status: Implementation in progress on `feat/firebase-sync-telemetry`; owner-selected deployment is Spark with local-only transcripts. Queue/preferences sync is available; paid content deployment is cancelled. Operational recovery/account lifecycle/telemetry gates remain open.
 
 Scope: Optional account-based, offline-first library synchronization and privacy-controlled diagnostics/usage analytics for the native Android app.
 
 Method: Test-driven development (TDD), with separate evidence for local tests, Firebase emulator tests, and live service acceptance.
 
+## Owner constraint — Spark only, November 4
+
+The owner explicitly declined Blaze and chose local-only transcripts. Billing was unlinked and verified disabled with no billing account linked. Do not enable billing again without explicit authorization. Production builds disable the paid content extension regardless of client bucket configuration. Queue and portable preferences can use protocol 2 with Firestore on Spark; transcript/analysis/conversation/explanation text remains local and transferable through the existing manual backup. The Storage implementation and emulator tests are retained as inactive development work, not an enabled product feature.
+
 ## Extended portable-library increment — November 4
 
 Implementation now includes versioned queue order and per-key portable preferences, immutable compressed finished-content artifacts, account/generation-scoped Storage rules, source/hash/size validation, atomic restore, and protocol-2 compatibility gating. Finished transcripts, completed analyses, conversation branches and explanations restore without regenerating AI/transcription. Existing source alternatives and active processing are preserved. Room schema 7 adds portable preference values and artifact staging state.
 
-Local core/Room/security tests and two-client Android Auth/Firestore/Storage acceptance pass; final verification and live deployment are tracked in [TDD evidence](evidence/firebase-sync-tdd.md). The initial live project still requires its private bucket and billing setup. The source retains metadata-only/basic sync until the extended scope successfully probes storage and upgrades the account.
+Local core/Room/security tests and two-client Android Auth/Firestore/Storage acceptance pass; final verification and live deployment are tracked in [TDD evidence](evidence/firebase-sync-tdd.md). Production content deployment was cancelled following the owner’s Spark-only decision above. Billing was unlinked before any full-content uploads; existing basic sync remains available. The queue/preferences option upgrades the account protocol independently of the disabled Storage adapter.
 
 This increment does not complete the entire plan: account profile switching, broad alias/conflict/performance coverage, independent cloud recovery/retention/erasure, telemetry delivery, App Check and public release automation remain separate gates. Immutable objects/history are retained; do not enable pruning until recovery and old-device tests pass.
 
@@ -49,7 +53,7 @@ Starting source: `a1e8456afdab0c9d9206235951abfe9a2a65cbd6`, with the previously
 
 Sign in once with Google to connect a DistillPod sync account. Keep using the app offline. Changes survive process death and synchronize automatically when Android permits network work. Signing into another phone restores the portable library without selecting a Drive folder or file. ChatGPT authorization remains a separate, device-local provider connection.
 
-The finished feature includes subscriptions, listening progress, completion, saved moments, queue, portable preferences, finished transcripts, summaries/chapters/ad ranges, conversations and stored research. Downloaded audio, models, credentials and active processing/playback remain local. Restore must explain those exclusions.
+The original full-feature scope included subscriptions, listening progress, completion, saved moments, queue, portable preferences, finished transcripts, summaries/chapters/ad ranges, conversations and stored research. The current owner-selected scope excludes cloud transcript/analysis/conversation/research storage; those remain local. Downloaded audio, models, credentials and active processing/playback remain local. Restore must explain those exclusions.
 
 Telemetry provides crash diagnostics, transcription/playback/sync reliability measurements, and aggregate feature usage without collecting content. A signed-out user can continue using the local app. A cloud outage does not block playback, capture, local transcription or access to downloaded data.
 

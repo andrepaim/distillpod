@@ -30,6 +30,8 @@ android {
     ndkVersion = "27.2.12479018"
     externalNativeBuild { cmake { path = file("src/main/cpp/CMakeLists.txt"); version = "3.22.1" } }
     defaultConfig {
+        // Owner-selected Spark deployment: paid content storage must remain disabled.
+        resValue("bool", "sync_content_enabled", "false")
         for ((resource, key) in listOf("sync_storage_bucket" to "bucket", "sync_project_id" to "project", "sync_app_id" to "app", "sync_api_key" to "api", "sync_web_client_id" to "web")) {
             val value = clientString(key)
             require(value.matches(Regex("[A-Za-z0-9_.:/-]*"))) { "Invalid Firebase client configuration" }

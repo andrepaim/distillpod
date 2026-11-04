@@ -40,7 +40,7 @@ class SubscriptionSyncAccount(private val graph:AppGraph) {
     private val auth by lazy { FirebaseAuth.getInstance(app) }
     val fullScope=graph.db.sync().observeView("__extended_scope")
     val contentStates=graph.db.sync().observeArtifacts()
-    val contentConfigured get()=mutable.value.configured && context.getString(R.string.sync_storage_bucket).isNotBlank()
+    val contentConfigured get()=context.resources.getBoolean(R.bool.sync_content_enabled) && mutable.value.configured && context.getString(R.string.sync_storage_bucket).isNotBlank()
     private val artifacts by lazy {
         check(contentConfigured) {"Cloud content storage is unavailable in this build"}
         ArtifactSync(graph.db,ContentFiles(context),FirebaseContentObjects(auth,com.google.firebase.storage.FirebaseStorage.getInstance(app,"gs://"+context.getString(R.string.sync_storage_bucket)),ContentFiles(context),UploadSessions(context)))
@@ -89,16 +89,17 @@ class SubscriptionSyncAccount(private val graph:AppGraph) {
         finally { mutable.update { it.copy(busy=false) };connecting.unlock() }
     }
     suspend fun enableFullScope() {
-        check(contentConfigured) {"Cloud content storage is unavailable in this build"}
+        check(mutable.value.configured) {"Connect Google first"}
         val binding=graph.db.sync().binding()?:error("Connect Google first")
         check(binding.enabled && auth.currentUser?.uid==binding.uid)
-        artifacts.probe(dev.distillpod.core.sync.SyncOwner(binding.uid,binding.generation))
+        if(contentConfigured)artifacts.probe(dev.distillpod.core.sync.SyncOwner(binding.uid,binding.generation))
         cloud.enableFullScope()
         graph.db.sync().putView(SyncViewEntity("__extended_scope",version=1))
         graph.collectionSync.queue(graph.db.library().queue().map {it.episodeId})
         val prefs=graph.settings.flow.first()
         for((name,value) in mapOf("model" to prefs.model,"language" to prefs.language,"aiModel" to prefs.selectedAiModel))graph.collectionSync.preference(name,value)
-        artifacts.capture();kick()
+        if(contentConfigured)artifacts.capture()
+        kick()
     }
     suspend fun useSavedContent(hash:String)=withContext(Dispatchers.IO){useSavedContentOnIo(hash)}
     private suspend fun useSavedContentOnIo(hash:String) {
@@ -148,7 +149,7 @@ class SubscriptionSyncAccount(private val graph:AppGraph) {
         if(!mutable.value.configured)return true
         graph.ready.await()
         val b=graph.db.sync().binding()
-        if(contentConfigured && b?.enabled==true && signedIn(b.uid) && graph.db.sync().view("__extended_scope")==null) {
+        if(b?.enabled==true && signedIn(b.uid) && graph.db.sync().view("__extended_scope")==null) {
             val head=cloud.head()
             if(head.owner==dev.distillpod.core.sync.SyncOwner(b.uid,b.generation) && head.protocol>=2)graph.db.sync().putView(SyncViewEntity("__extended_scope",version=1))
         }
