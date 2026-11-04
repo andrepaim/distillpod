@@ -99,6 +99,7 @@ This repository contains the native Android app. The previous self-hosted web ve
 
 - [Build and test](docs/development.md)
 - [Release process and signing](docs/releases.md)
+- [Planned Firebase sync and telemetry — tasks and TDD gates](docs/android/firebase-sync-telemetry-plan.md)
 - [Repository migration and web archive](docs/legacy-web.md)
 - [Third-party notices](THIRD_PARTY_NOTICES.md)
 - [Icon design source](design/icon-proposal/README.md)

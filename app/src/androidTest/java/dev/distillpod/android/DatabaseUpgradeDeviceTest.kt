@@ -15,13 +15,15 @@ import java.util.UUID
 
 @RunWith(AndroidJUnit4::class)
 class DatabaseUpgradeDeviceTest {
-    @Test fun schemaOneUpgradesWithoutLosingProgressSavedMomentsOrMessages() = runBlocking {
+    @Test fun schemaOneUpgradesWithoutLosingProgressSavedMomentsOrMessages() = upgradeFixture(1)
+    @Test fun schemaTwoUpgradesWithoutLosingProgressSavedMomentsOrMessages() = upgradeFixture(2)
+    private fun upgradeFixture(from: Int) = runBlocking {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         val name = "migration-test-${UUID.randomUUID()}.db"
         val file = context.getDatabasePath(name).apply { parentFile!!.mkdirs() }
         try {
-            val schema = JSONObject(instrumentation.context.assets.open("dev.distillpod.android.data.AppDatabase/1.json").bufferedReader().use { it.readText() }).getJSONObject("database")
+            val schema = JSONObject(instrumentation.context.assets.open("dev.distillpod.android.data.AppDatabase/$from.json").bufferedReader().use { it.readText() }).getJSONObject("database")
             val entities = schema.getJSONArray("entities")
             SQLiteDatabase.openOrCreateDatabase(file, null).use { old ->
                 repeat(entities.length()) { i -> val entity = entities.getJSONObject(i)
@@ -43,11 +45,12 @@ class DatabaseUpgradeDeviceTest {
                 insert("podcasts", mapOf("id" to "p", "feedUrl" to "https://example.test/feed", "title" to "Upgrade fixture", "subscribed" to 1))
                 insert("episodes", mapOf("id" to "e", "podcastId" to "p", "guid" to "guid", "title" to "Episode", "audioUrl" to "https://example.test/audio", "positionMs" to 23000))
                 insert("distillations", mapOf("id" to "d", "episodeId" to "e", "excerpt" to "Saved source", "state" to "succeeded"))
-                insert("messages", mapOf("id" to "m", "episodeId" to "e", "role" to "assistant", "text" to "Saved reply", "state" to "succeeded"))
-                old.version = 1
+                insert("messages", mapOf("id" to "m", "episodeId" to "e", "role" to "assistant", "text" to "Saved reply", "state" to "succeeded") + if (from >= 2) mapOf("sourcesJson" to "[]") else emptyMap())
+                old.version = from
             }
-            val upgraded = Room.databaseBuilder(context, AppDatabase::class.java, name).addMigrations(AppDatabase.MIGRATION_1_2).build()
+            val upgraded = Room.databaseBuilder(context, AppDatabase::class.java, name).addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3).build()
             try {
+                assertTrue(upgraded.sync().pending("alice", "g1").isEmpty())
                 assertEquals(23000L, upgraded.library().episode("e")!!.positionMs)
                 assertEquals("Saved source", upgraded.library().distillation("d")!!.excerpt)
                 assertEquals("Saved reply", upgraded.library().message("m")!!.text)

@@ -10,6 +10,8 @@ The first deliverable is a working Android authentication and transcription expe
 
 See [implementation status](android/implementation-status.md) for delivered code, test evidence and remaining gates. The November 2 personal alpha has [physical summary/chat/ad-review and database-upgrade evidence](android/evidence/s22-understanding-tests.txt), [account renewal and backup restore evidence](android/evidence/s22-renewal-restore-tests.txt), and [local build/test evidence](android/evidence/personal-alpha-build.json). The owner chose a fresh Android library, so legacy server/browser migration is deferred for this delivery. Task checkboxes represent full acceptance criteria, not partial code coverage.
 
+The optional cloud extension is planned separately in the [Firebase sync and telemetry implementation plan](android/firebase-sync-telemetry-plan.md), including complete scope, TDD tasks, account isolation, recovery and release gates. That plan does not change the delivered capabilities recorded here.
+
 ## 1. Outcomes and working assumptions
 
 ### Required outcomes

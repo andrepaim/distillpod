@@ -1,0 +1,66 @@
+rules_version = '2';
+service cloud.firestore {
+ match /databases/{database}/documents {
+  function owner(uid) { return request.auth != null && request.auth.uid == uid; }
+  function head(uid) { return get(/databases/$(database)/documents/users/$(uid)).data; }
+  function nextHead(uid) { return getAfter(/databases/$(database)/documents/users/$(uid)).data; }
+  function entity(uid,key) { return getAfter(/databases/$(database)/documents/users/$(uid)/entities/$(key)).data; }
+  function change(uid,seq) { return getAfter(/databases/$(database)/documents/users/$(uid)/changes/$(string(seq))).data; }
+  function receipt(uid,id) { return getAfter(/databases/$(database)/documents/users/$(uid)/receipts/$(id)).data; }
+  function id(value) { return value is string && value.matches('[A-Za-z0-9_-]{1,128}'); }
+  function validPayload(p) {
+   return p is map && p.keys().hasOnly(['subscribed','feedUrl','title','author','positionMs','completed','episodeId','podcastId','guid','audioUrl','sessionId','deviceId','deviceSequence','startMs','endMs','excerpt','quote','insight','revision','fingerprint','createdAt'])
+    && (!('feedUrl' in p) || (p.feedUrl is string && p.feedUrl.matches('https://[^?@#]+')))
+    && (!('audioUrl' in p) || (p.audioUrl is string && p.audioUrl.matches('https://[^?@#]+')));
+  }
+  function validRecord(uid,d) {
+   return d.keys().hasOnly(['version','payload','deleted','generation','sequence','operationId'])
+    && d.version is int && d.version > 0 && d.deleted is bool && id(d.operationId)
+    && d.generation == head(uid).generation && head(uid).active == true
+    && d.sequence == head(uid).sequence + 1 && d.sequence == nextHead(uid).sequence
+    && validPayload(d.payload) && (!d.deleted || d.payload.size() == 0);
+  }
+  match /users/{uid} {
+   allow read: if owner(uid);
+   allow create: if owner(uid) && request.resource.data.keys().hasOnly(['generation','sequence','active','protocol'])
+    && id(request.resource.data.generation) && request.resource.data.sequence == 0
+    && request.resource.data.active == true && request.resource.data.protocol == 1;
+   allow update: if owner(uid) && resource.data.active == true
+    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['sequence'])
+    && request.resource.data.sequence == resource.data.sequence + 1
+    && change(uid,request.resource.data.sequence).sequence == request.resource.data.sequence;
+   match /entities/{key} {
+    allow read: if owner(uid);
+    function companions() {
+     let d = request.resource.data;
+     let c = change(uid,d.sequence);
+     let r = receipt(uid,d.operationId);
+     return c.key == key && c.diff(d).affectedKeys().hasOnly(['key'])
+      && r.key == key && r.version == d.version && r.sequence == d.sequence && r.generation == d.generation;
+    }
+    allow create: if owner(uid) && id(key) && validRecord(uid,request.resource.data) && request.resource.data.version == 1 && companions();
+    allow update: if owner(uid) && validRecord(uid,request.resource.data) && request.resource.data.version == resource.data.version + 1 && companions();
+   }
+   match /changes/{sequence} {
+    allow read: if owner(uid);
+    allow create: if owner(uid) && request.resource.data.sequence == head(uid).sequence + 1
+     && sequence == string(request.resource.data.sequence) && id(request.resource.data.key)
+     && request.resource.data.keys().hasOnly(['key','version','payload','deleted','generation','sequence','operationId'])
+     && request.resource.data.diff(entity(uid,request.resource.data.key)).affectedKeys().hasOnly(['key'])
+     && request.resource.data.sequence == nextHead(uid).sequence;
+   }
+   match /receipts/{operationId} {
+    allow read: if owner(uid);
+    allow create: if owner(uid) && id(operationId)
+     && request.resource.data.keys().hasOnly(['signature','key','version','sequence','generation'])
+     && request.resource.data.signature is string && request.resource.data.signature.size() <= 131072
+     && id(request.resource.data.key)
+     && entity(uid,request.resource.data.key).operationId == operationId
+     && request.resource.data.version == entity(uid,request.resource.data.key).version
+     && request.resource.data.sequence == head(uid).sequence + 1
+     && request.resource.data.sequence == nextHead(uid).sequence
+     && request.resource.data.generation == head(uid).generation;
+   }
+  }
+ }
+}

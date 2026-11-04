@@ -1,0 +1,54 @@
+import {before, after, beforeEach, test} from 'node:test';
+import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+import {initializeTestEnvironment, assertFails, assertSucceeds} from '@firebase/rules-unit-testing';
+import {doc, getDoc, getDocFromServer, setDoc, runTransaction, collection, query, orderBy, getDocs} from 'firebase/firestore';
+
+// Fail closed: these tests must never use an authenticated production endpoint.
+const endpoint = process.env.FIRESTORE_EMULATOR_HOST;
+if (!endpoint || !/^127\.0\.0\.1:8085$|^localhost:8085$/.test(endpoint)) throw Error('Isolated Firestore emulator required');
+let env;
+before(async () => { env = await initializeTestEnvironment({projectId:'demo-distillpod-sync', firestore:{
+  host:'127.0.0.1', port:8085, rules:await readFile('firestore.rules','utf8')}}); });
+after(async()=>env?.cleanup());
+beforeEach(async()=>env.clearFirestore());
+const db = uid => env.authenticatedContext(uid).firestore();
+const control = uid => `users/${uid}`;
+async function seed(uid='alice') { await env.withSecurityRulesDisabled(async ctx=>{
+  await setDoc(doc(ctx.firestore(),control(uid)),{generation:'g1',sequence:0,active:true,protocol:1});
+}); }
+async function commit(database, {uid='alice',id='op1',key='item1',baseVersion=0,payload={subscribed:'true'},deleted=false,generation='g1'}={}) {
+ let observedSequence;
+ for(let attempt=0;attempt<5;attempt++) {
+ try { return await runTransaction(database,async tx=>{
+  const headRef=doc(database,control(uid)), entityRef=doc(database,`${control(uid)}/entities/${key}`), receiptRef=doc(database,`${control(uid)}/receipts/${id}`);
+  const [head,entity,receipt]=await Promise.all([tx.get(headRef),tx.get(entityRef),tx.get(receiptRef)]);
+  observedSequence=head.data().sequence;
+  const signature=JSON.stringify({key,baseVersion,payload,deleted,generation});
+  if(receipt.exists()) { if(receipt.data().signature!==signature) throw Error('Operation ID reused'); return receipt.data(); }
+  if(head.data().generation!==generation || !head.data().active) throw Error('Account unavailable');
+  if((entity.exists()?entity.data().version:0)!==baseVersion) throw Error('Conflict');
+  const sequence=head.data().sequence+1;
+  const value={version:baseVersion+1,payload:deleted?{}:payload,deleted,generation,sequence,operationId:id};
+  const result={signature,key,version:value.version,sequence,generation};
+  tx.update(headRef,{sequence}); tx.set(entityRef,value);
+  tx.set(doc(database,`${control(uid)}/changes/${String(sequence)}`),{...value,key}); tx.set(receiptRef,result);
+  return result;
+ }); } catch(error) {
+   // Rules can observe a competing commit before the SDK precondition retry.
+   // Retry only after proving the same account head advanced; never ignore denial.
+   if(error.code!=='permission-denied' || observedSequence===undefined || attempt===4) throw error;
+   const latest=(await getDocFromServer(doc(database,control(uid)))).data();
+   if(!latest.active || latest.generation!==generation || latest.sequence<=observedSequence) throw error;
+ }
+ }
+}
+test('owner commit and retry produce one change',async()=>{await seed();const a=db('alice');const first=await commit(a);assert.deepEqual(await commit(a),first);assert.equal((await getDocs(collection(a,'users/alice/changes'))).size,1);});
+test('two devices commit unrelated changes with unique sequences',async()=>{await seed();await Promise.all([commit(db('alice')),commit(db('alice'),{id:'op2',key:'item2'})]);assert.deepEqual((await getDocs(query(collection(db('alice'),'users/alice/changes'),orderBy('sequence')))).docs.map(x=>x.data().sequence),[1,2]);});
+test('stale device cannot resurrect tombstone',async()=>{await seed();const a=db('alice');await commit(a);await commit(a,{id:'delete1',baseVersion:1,deleted:true});await assert.rejects(commit(a,{id:'stale1'}),/Conflict/);assert.equal((await getDoc(doc(a,'users/alice/entities/item1'))).data().deleted,true);});
+test('operation ID cannot be reused with different payload',async()=>{await seed();const a=db('alice');await commit(a);await assert.rejects(commit(a,{payload:{subscribed:'false'}}),/reused/);});
+test('unauthenticated and other user cannot read or list',async()=>{await seed();await commit(db('alice'));for(const database of [db('bob'),env.unauthenticatedContext().firestore()]) {await assertFails(getDoc(doc(database,'users/alice')));await assertFails(getDocs(collection(database,'users/alice/entities')));}});
+test('owner cannot bypass transaction with direct entity write',async()=>{await seed();await assertFails(setDoc(doc(db('alice'),'users/alice/entities/item1'),{version:1,payload:{},deleted:false,generation:'g1',sequence:1,operationId:'op1'}));});
+test('owner cannot change account generation',async()=>{await seed();await assertFails(setDoc(doc(db('alice'),'users/alice'),{generation:'g2',sequence:0,active:true,protocol:1}));});
+test('receipt and changes cannot be overwritten',async()=>{await seed();const a=db('alice');await commit(a);await assertFails(setDoc(doc(a,'users/alice/receipts/op1'),{signature:'bad'}));await assertFails(setDoc(doc(a,'users/alice/changes/1'),{sequence:100}));});
+test('unexpected entity fields rejected',async()=>{await seed();const a=db('alice');await assertFails(setDoc(doc(a,'users/alice/entities/item1'),{accessToken:'secret'}));});

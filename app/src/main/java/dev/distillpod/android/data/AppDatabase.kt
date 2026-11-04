@@ -1,5 +1,7 @@
 package dev.distillpod.android.data
 
+import dev.distillpod.android.sync.SyncDao
+import dev.distillpod.android.sync.SyncOutboxEntity
 import android.content.Context
 import androidx.room.*
 import kotlinx.coroutines.flow.Flow
@@ -151,9 +153,10 @@ interface LibraryDao {
 
 @Database(entities = [PodcastEntity::class, EpisodeEntity::class, QueueEntryEntity::class, PlayerSessionEntity::class,
     TranscriptEntity::class, SegmentEntity::class, CoverageEntity::class, DistillationEntity::class, ModelEntity::class,
-    AnalysisEntity::class, AnalysisPartEntity::class, MessageEntity::class, ResearchEntity::class, SuggestionEntity::class], version = 2, exportSchema = true)
+    AnalysisEntity::class, AnalysisPartEntity::class, MessageEntity::class, ResearchEntity::class, SuggestionEntity::class, SyncOutboxEntity::class], version = 3, exportSchema = true)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun library(): LibraryDao
+    abstract fun sync(): SyncDao
     companion object {
         val MIGRATION_1_2 = object : androidx.room.migration.Migration(1, 2) {
             override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
@@ -168,6 +171,12 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("ALTER TABLE messages ADD COLUMN attempt TEXT NOT NULL DEFAULT ''")
             }
         }
-        fun open(context: Context): AppDatabase = Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "library.db").addMigrations(MIGRATION_1_2).build()
+        val MIGRATION_2_3 = object : androidx.room.migration.Migration(2, 3) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS sync_outbox (operationId TEXT NOT NULL, uid TEXT NOT NULL, generation TEXT NOT NULL, entityKey TEXT NOT NULL, baseVersion INTEGER NOT NULL, payload TEXT NOT NULL, deleted INTEGER NOT NULL, PRIMARY KEY(operationId))")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_sync_outbox_uid_generation ON sync_outbox (uid,generation)")
+            }
+        }
+        fun open(context: Context): AppDatabase = Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "library.db").addMigrations(MIGRATION_1_2, MIGRATION_2_3).build()
     }
 }
