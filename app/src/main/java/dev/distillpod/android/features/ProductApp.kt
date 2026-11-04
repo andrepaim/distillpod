@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -82,6 +83,7 @@ private fun date(ms: Long) = if (ms <= 0) "" else DateTimeFormatter.ofPattern("d
     val busy by vm.busy.collectAsStateWithLifecycle()
     val loaded by vm.loaded.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
+    val screenState = rememberSaveableStateHolder()
     LaunchedEffect(Unit) { for (message in vm.messages) snackbar.showSnackbar(message) }
     BackHandler(stack.size > 1) { vm.back() }
     val title = when {
@@ -90,6 +92,9 @@ private fun date(ms: Long) = if (ms <= 0) "" else DateTimeFormatter.ofPattern("d
         route == "saved" || route.startsWith("capture:") -> "Saved moments"
         route == "queue" -> "Listening queue"
         route == "settings" -> "Settings"
+        route == "shows" -> "Your shows"
+        route.startsWith("settings:") -> when(route.substringAfter(':')) { "sync" -> "Library sync"; "ai" -> "ChatGPT"; "transcription" -> "Local transcription"; "storage" -> "Downloads & storage"; "library" -> "Import & notifications"; else -> "About DistillPod" }
+        route.startsWith("transcript:") -> "Transcript"
         route == "backup" -> "Backup & Restore"
         route == "player" -> "Now playing"
         route.startsWith("analysis:") -> "Episode insights"
@@ -107,7 +112,7 @@ private fun date(ms: Long) = if (ms <= 0) "" else DateTimeFormatter.ofPattern("d
                 actions = {
                     if (route == "library" || route.startsWith("podcast:")) IconButton(onClick = { vm.refresh(if (route.startsWith("podcast:")) route.substringAfter(':') else null) }, enabled = "refresh" !in busy) { Icon(Icons.Default.Refresh, "Refresh feeds") }
                     if (route == "player") IconButton(onClick = { vm.root("queue") }) { Icon(Icons.Default.QueueMusic, "Open queue") }
-                    else if (route != "settings") IconButton(onClick = { vm.open("settings") }) { Icon(Icons.Default.Settings, "Settings") }
+                    else if (!route.startsWith("settings")) IconButton(onClick = { vm.open("settings") }) { Icon(Icons.Default.Settings, "Settings") }
                 }, colors = TopAppBarDefaults.topAppBarColors(containerColor = ink))
         }, bottomBar = {
             Column {
@@ -125,13 +130,15 @@ private fun date(ms: Long) = if (ms <= 0) "" else DateTimeFormatter.ofPattern("d
         }) { padding ->
             Box(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)
                 .then(if (route == "player") Modifier.navigationBarsPadding() else Modifier)) {
+                screenState.SaveableStateProvider(route) {
                 when {
                     !loaded -> CircularProgressIndicator(Modifier.align(Alignment.Center))
                     route == "library" || route.startsWith("podcast:") -> LibraryPage(vm, podcasts, episodes, transcripts, captures, player, route.takeIf { it.startsWith("podcast:") }?.substringAfter(':'))
                     route == "search" -> SearchPage(vm, podcasts)
                     route == "queue" -> QueuePage(vm, episodes, podcasts, player)
                     route == "saved" -> SavedPage(vm, captures, episodes, podcasts)
-                    route == "settings" -> SettingsPage(vm, preferences, account, models, episodes)
+                    route == "shows" -> ShowsPage(vm, podcasts)
+                    route == "settings" || route.startsWith("settings:") -> SettingsPage(vm, preferences, account, models, episodes, route.substringAfter(':', "overview"))
                     route == "backup" -> BackupPage(vm)
                     route == "player" -> PlayerPage(vm, episodes.firstOrNull { it.id == player.episodeId }, podcasts, player)
                     route.startsWith("episode:") -> EpisodePage(vm, episodes.firstOrNull { it.id == route.substringAfter(':') }, podcasts, player)
@@ -141,6 +148,7 @@ private fun date(ms: Long) = if (ms <= 0) "" else DateTimeFormatter.ofPattern("d
                     route.startsWith("chat:") -> EpisodeChatPage(vm, episodes.firstOrNull { it.id == route.substringAfter(':') })
                     route.startsWith("research:") -> ExplanationPage(vm, route.substringAfter(':'))
                     route == "recommendations" -> RecommendationsPage(vm)
+                }
                 }
             }
         }
@@ -189,7 +197,7 @@ private fun date(ms: Long) = if (ms <= 0) "" else DateTimeFormatter.ofPattern("d
                 { if (current) vm.toggle() else vm.play(resume.id) })
         }
         if (podcastId == null && subscribed.isNotEmpty()) item(key = "shows") {
-            SectionHeading("Your shows", action = "Find more", onAction = { vm.root("search") })
+            SectionHeading("Your shows", "${subscribed.size} followed", action = "See all", onAction = { vm.open("shows") })
             if (subscribed.size == 1) {
                 val show = subscribed.single()
                 Surface(onClick = { vm.open("podcast:${show.id}") }, shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surface, modifier = Modifier.fillMaxWidth().padding(top = 6.dp)) {
@@ -323,8 +331,8 @@ private fun date(ms: Long) = if (ms <= 0) "" else DateTimeFormatter.ofPattern("d
             }
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = { vm.skip(-15000) }, modifier = Modifier.size(64.dp)) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) { Icon(Icons.Default.Replay, "Back 15 seconds", Modifier.size(28.dp)); Text("15 s", style = MaterialTheme.typography.labelSmall) }
+            IconButton(onClick = { vm.skip(-10000) }, modifier = Modifier.size(64.dp)) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) { Icon(Icons.Default.Replay, "Back 10 seconds", Modifier.size(28.dp)); Text("10 s", style = MaterialTheme.typography.labelSmall) }
             }
             FilledIconButton(onClick = vm::toggle, shape = androidx.compose.foundation.shape.CircleShape, modifier = Modifier.size(76.dp)) { Icon(if (player.playing) Icons.Default.Pause else Icons.Default.PlayArrow, if (player.playing) "Pause" else "Play", Modifier.size(40.dp)) }
             IconButton(onClick = { vm.skip(30000) }, modifier = Modifier.size(64.dp)) {
@@ -432,9 +440,18 @@ private fun date(ms: Long) = if (ms <= 0) "" else DateTimeFormatter.ofPattern("d
 private fun captureState(state: String) = when (state) { "waiting_transcript" -> "Waiting for transcript"; "waiting_auth" -> "Connect ChatGPT to continue"; "waiting_quota" -> "Plan allowance unavailable"; "queued", "running" -> "Generating insight"; "failed" -> "Needs retry"; "review_source" -> "Review source"; "no_speech" -> "No speech in this window"; "imported" -> "Imported"; else -> "Saved" }
 @Composable private fun SavedPage(vm: AppViewModel, captures: List<DistillationEntity>, episodes: List<EpisodeEntity>, podcasts: List<PodcastEntity>) {
     if (captures.isEmpty()) { Empty("Keep the moments that matter", "Save the last minute in the player. Your quotes, insights and original sources will appear here.", "Open library", { vm.root("library") }); return }
-    LazyColumn(contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        item { SectionHeading("Your collection", "${captures.size} ${if (captures.size == 1) "moment" else "moments"} to revisit") }
-        items(captures, key = { it.id }) { saved ->
+    var query by rememberSaveable { mutableStateOf("") }
+    val matching = remember(captures,episodes,podcasts,query) { captures.filter { saved ->
+        val ep=episodes.firstOrNull {it.id==saved.episodeId}
+        val show=podcasts.firstOrNull {it.id==ep?.podcastId}
+        query.isBlank() || listOfNotNull(saved.quote,saved.excerpt,saved.insight,ep?.title,show?.title).any {it.contains(query.trim(),ignoreCase=true)}
+    } }
+    Column(Modifier.fillMaxSize().padding(horizontal=20.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
+    LocalSearch(query,{query=it},"Search saved moments","Clear saved search")
+    LazyColumn(contentPadding = PaddingValues(bottom=20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        item { SectionHeading("Your collection", "${matching.size} ${if (matching.size == 1) "moment" else "moments"} to revisit") }
+        if(matching.isEmpty())item { Text("No matching moments",style=MaterialTheme.typography.titleMedium); TextButton(onClick={query=""}) {Text("Clear search")} }
+        items(matching, key = { it.id }) { saved ->
             val ep = episodes.firstOrNull { it.id == saved.episodeId }
             val podcast = podcasts.firstOrNull { it.id == ep?.podcastId }
             Card(onClick = { vm.open("capture:${saved.id}") }, shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
@@ -460,6 +477,7 @@ private fun captureState(state: String) = when (state) { "waiting_transcript" ->
         }
     }
 }
+}
 @Composable private fun CapturePage(vm: AppViewModel, capture: DistillationEntity?, episodes: List<EpisodeEntity>) {
     if (capture == null) return
     val context = LocalContext.current
@@ -474,7 +492,7 @@ private fun captureState(state: String) = when (state) { "waiting_transcript" ->
         }
         if(capture.state=="saved" && capture.excerpt.isBlank() && ep!=null) OutlinedButton(onClick={vm.generateCapture(capture.id)}) {Text("Prepare saved moment")}
         if (capture.state == "waiting_transcript" && ep != null) TranscriptTools(vm, ep)
-        if (capture.state == "waiting_auth") Button(onClick = { vm.open("settings") }) { Text("Connect ChatGPT") }
+        if (capture.state == "waiting_auth") Button(onClick = { vm.open("settings:ai") }) { Text("Connect ChatGPT") }
         if (capture.state == "review_source") Text("This moment was captured before downloaded audio was verified. Review the excerpt below before sending it to ChatGPT.", color = MaterialTheme.colorScheme.tertiary)
         if (capture.excerpt.isNotBlank() && capture.state in listOf("review_source", "waiting_auth", "waiting_quota", "failed", "saved")) {
             Button(onClick = { vm.generateCapture(capture.id, true) }) { Text(if (capture.state == "review_source") "Generate insight from this source" else if(capture.state=="saved") "Generate insight" else "Retry insight") }
@@ -499,13 +517,14 @@ private fun captureState(state: String) = when (state) { "waiting_transcript" ->
 }
 
 @OptIn(ExperimentalLayoutApi::class)
-@Composable private fun SettingsPage(vm: AppViewModel, prefs: Preferences, account: AccountState, models: List<ModelEntity>, episodes: List<EpisodeEntity>) {
+@Composable private fun SettingsPage(vm: AppViewModel, prefs: Preferences, account: AccountState, models: List<ModelEntity>, episodes: List<EpisodeEntity>, section:String="overview") {
     val context = LocalContext.current
     val version = remember(context) { context.packageManager.getPackageInfo(context.packageName, 0).versionName.orEmpty() }
-    LaunchedEffect(account.connected) { if (account.connected) vm.graph.account.refreshModels() }
+    if(section=="overview") {SettingsOverview(vm,account.connected);return}
+    LaunchedEffect(account.connected,section) { if (account.connected && section=="ai") vm.graph.account.refreshModels() }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        SubscriptionSyncSettings(vm)
-        HorizontalDivider()
+        if(section=="sync") SubscriptionSyncSettings(vm)
+        if(section=="ai") {
         Text("ChatGPT", style = MaterialTheme.typography.titleLarge)
         Text(if (account.connected) "Connected" else "Not connected", color = if (account.connected) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurfaceVariant)
         Text(account.message, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -525,7 +544,9 @@ private fun captureState(state: String) = when (state) { "waiting_transcript" ->
                 TextButton(onClick = { vm.graph.account.refreshModels() }) { Text("Refresh model access") }
             }
         }
-        HorizontalDivider(); Text("Local transcription", style = MaterialTheme.typography.titleLarge)
+        }
+        if(section=="transcription") {
+        Text("Local transcription", style = MaterialTheme.typography.titleLarge)
         Text("Tiny and Base support English and Portuguese. Model files stay on this phone.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         whisperModels.forEach { spec ->
             val status = models.firstOrNull { it.id == spec.id }
@@ -543,6 +564,8 @@ private fun captureState(state: String) = when (state) { "waiting_transcript" ->
         }
         Text("Language", style = MaterialTheme.typography.titleSmall)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf("auto" to "Auto", "en" to "English", "pt" to "Português").forEach { (key, title) -> FilterChip(selected = prefs.language == key, onClick = { vm.text("language", key) }, label = { Text(title) }) } }
+        }
+        if(section=="storage") {
         SettingSwitch("Wi-Fi / unmetered downloads only", "Audio and model downloads wait for an unmetered network.", prefs.wifiOnly) { vm.flag("wifi", it) }
         SettingSwitch("Transcribe while charging", "Pause new transcription chunks until power is connected.", prefs.chargingOnly) { vm.flag("charging", it) }
         SettingSwitch("Refresh subscriptions", "Check your followed feeds periodically when Android permits.", prefs.refresh) { vm.flag("refresh", it) }
@@ -552,11 +575,12 @@ private fun captureState(state: String) = when (state) { "waiting_transcript" ->
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf(1L, 2L, 5L).forEach { gb -> FilterChip(selected = prefs.storageLimitBytes == gb * 1024 * 1024 * 1024, onClick = { vm.action("settings") { vm.graph.settings.storage(gb * 1024 * 1024 * 1024) } }, label = { Text("$gb GB") }) } }
         OutlinedButton(onClick = vm::clearUnusedAudio) { Text("Clear unused audio") }
         Text("Removes leftover cache files after feed changes. Downloads, resumable partials, queued audio and processing files are kept.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        HorizontalDivider()
-        DataControls(vm)
-        HorizontalDivider()
+        }
+        if(section=="library") DataControls(vm)
+        if(section=="about") {
         Text("DistillPod · $version", style = MaterialTheme.typography.labelLarge)
         TextButton(onClick = { context.startActivity(Intent(context, DiagnosticsActivity::class.java)) }) { Text("Developer checks") }
+        }
     }
 }
 @Composable private fun SettingSwitch(title: String, detail: String, checked: Boolean, onChange: (Boolean) -> Unit) {

@@ -8,6 +8,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.semantics.contentDescription
@@ -67,7 +72,7 @@ import dev.distillpod.android.data.TranscriptStage
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             when (row?.state) {
                 "processing", "queued" -> OutlinedButton(onClick = { vm.pauseTranscript(ep.id) }) { Text("Pause transcript") }
-                "waiting_model" -> Button(onClick = { vm.open("settings") }) { Text("Download a model") }
+                "waiting_model" -> Button(onClick = { vm.open("settings:transcription") }) { Text("Download a model") }
                 "ready" -> {}
                 else -> Button(onClick = { vm.prepareTranscript(ep.id) }, enabled = "transcript:${ep.id}" !in busy) { Text(if (row == null || row.state == "stale") "Prepare transcript" else "Resume transcript") }
             }
@@ -83,13 +88,34 @@ import dev.distillpod.android.data.TranscriptStage
     val row = transcripts.firstOrNull { it.episodeId == ep.id }
     var segments by remember(ep.id, row?.revision) { mutableStateOf<List<SegmentEntity>>(emptyList()) }
     LaunchedEffect(ep.id, row?.revision, row?.processedMs) { segments = row?.let { vm.graph.db.library().segments(ep.id, it.revision) } ?: emptyList() }
-    LazyColumn(contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        item { Text(ep.title, style = MaterialTheme.typography.titleLarge); TranscriptTools(vm, ep) }
-        item { Text("Tap a timestamp to listen. Segment timings include surrounding words at excerpt boundaries.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall) }
-        items(segments, key = { "${it.startMs}:${it.ordinal}" }) { segment ->
-            Column(Modifier.fillMaxWidth().clickable { vm.play(ep.id, segment.startMs) }.padding(vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(timestamp(segment.startMs), color = MaterialTheme.colorScheme.secondary, style = MaterialTheme.typography.labelLarge)
-                Text(segment.text, style = MaterialTheme.typography.bodyLarge)
+    var query by rememberSaveable(ep.id) { mutableStateOf("") }
+    var options by rememberSaveable(ep.id) { mutableStateOf(false) }
+    val player by vm.player.collectAsStateWithLifecycle()
+    val matching=remember(segments,query) {segments.filter {query.isBlank() || it.text.contains(query.trim(),ignoreCase=true)}}
+    Column(Modifier.fillMaxSize().padding(horizontal=20.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
+        LocalSearch(query,{query=it},"Search transcript","Clear transcript search")
+        LazyColumn(contentPadding = PaddingValues(bottom=20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            item {
+                Text(ep.title,style=MaterialTheme.typography.titleLarge)
+                Text("${matching.size} passages · tap a time to listen",modifier=Modifier.padding(top=8.dp),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                if(row?.state!="ready")TranscriptTools(vm,ep)
+                else {
+                    TextButton(onClick={options=!options}) {Text(if(options)"Hide preparation options" else "Preparation options")}
+                    if(options)TranscriptTools(vm,ep)
+                }
+            }
+            if(matching.isEmpty())item {
+                Text(if(query.isBlank())"Your transcript will appear here" else "No matching passages",style=MaterialTheme.typography.titleMedium)
+                if(query.isNotBlank())TextButton(onClick={query=""}){Text("Clear search")}
+            }
+            items(matching, key = { "${it.startMs}:${it.ordinal}" }) { segment ->
+                val active=player.episodeId==ep.id && player.positionMs>=segment.startMs && player.positionMs<segment.endMs
+                Surface(shape=RoundedCornerShape(18.dp),color=if(active)MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,modifier=Modifier.fillMaxWidth().semantics {selected=active}) {
+                    Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
+                        TextButton(onClick={vm.play(ep.id,segment.startMs)},contentPadding=PaddingValues(horizontal=0.dp)) {Text("${timestamp(segment.startMs)} · Listen")}
+                        SelectionContainer {Text(segment.text,style=MaterialTheme.typography.bodyLarge.copy(lineHeight=28.sp))}
+                    }
+                }
             }
         }
     }

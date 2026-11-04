@@ -47,7 +47,7 @@ private fun objects(json: String): List<JSONObject> = runCatching { val a = JSON
         Text(ep.title, style = MaterialTheme.typography.titleLarge)
         Text("Analysis sends transcript parts to ChatGPT and uses your plan allowance. Completed parts are reused after an interruption.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (!current) TranscriptTools(vm, ep)
-        if (!account.connected) OutlinedButton(onClick = { vm.open("settings") }) { Text("Connect ChatGPT") }
+        if (!account.connected) OutlinedButton(onClick = { vm.open("settings:ai") }) { Text("Connect ChatGPT") }
         if (row?.state in listOf("queued", "running")) {
             LinearProgressIndicator(Modifier.fillMaxWidth())
             Text("${row!!.completedParts} of ${row.totalParts.takeIf { it > 0 }?.toString() ?: "…"} parts saved")
@@ -121,7 +121,7 @@ private fun objects(json: String): List<JSONObject> = runCatching { val a = JSON
             }
         }
         Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            if (!account.connected) TextButton(onClick = { vm.open("settings") }) { Text("Connect ChatGPT to ask questions") }
+            if (!account.connected) TextButton(onClick = { vm.open("settings:ai") }) { Text("Connect ChatGPT to ask questions") }
             OutlinedTextField(draft, vm::chatDraft, label = { Text("Ask about this episode") }, modifier = Modifier.fillMaxWidth(), maxLines = 4, enabled = ready)
             Button(onClick = { vm.ask(ep.id) }, modifier = Modifier.fillMaxWidth(), enabled = ready && account.connected && !running && draft.trim().length >= 2 && "ask:${ep.id}" !in busy) { Text("Send question") }
         }
