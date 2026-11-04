@@ -19,8 +19,8 @@ import dev.distillpod.android.data.PodcastEntity
     var selected by remember { mutableStateOf(preselected.intersect(feeds.map { it.id }.toSet())) }
     AlertDialog(onDismissRequest=onDismiss,title={Text("Choose public feeds to sync")},text={
         Column(verticalArrangement=Arrangement.spacedBy(12.dp)) {
-            Text("Selected feed addresses and show details will be stored in your cloud account. Leave private access links unselected. Password and query-bearing links stay on this phone.")
-            if(feeds.isEmpty())Text(if(newAccount)"Your cloud subscriptions will be restored after sign-in." else "Your existing public subscriptions are already selected.")
+            Text("Selected public feed details, listening progress and saved moments will be stored in your cloud account. Leave private access links unselected. Password and query-bearing links stay on this phone.")
+            if(feeds.isEmpty())Text(if(newAccount)"Your cloud subscriptions, progress and saved moments will be restored after sign-in." else "Your existing public subscriptions are already selected.")
             else {
                 TextButton(onClick={selected=feeds.map {it.id}.toSet()}){Text("Select all as public")}
                 LazyColumn(Modifier.heightIn(max=280.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {

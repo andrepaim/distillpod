@@ -8,7 +8,7 @@ service cloud.firestore {
   function change(uid,seq) { return getAfter(/databases/$(database)/documents/users/$(uid)/changes/$(string(seq))).data; }
   function receipt(uid,id) { return getAfter(/databases/$(database)/documents/users/$(uid)/receipts/$(id)).data; }
   function id(value) { return value is string && value.matches('[A-Za-z0-9_-]{1,128}'); }
-  function validPayload(p) {
+  function subscriptionPayload(p) {
    return p is map && p.keys().hasOnly(['subscribed','podcastId','feedUrl','originalFeedUrl','title','author'])
     && p.keys().hasAll(['subscribed','podcastId','feedUrl','originalFeedUrl','title','author'])
     && p.subscribed == 'true' && id(p.podcastId)
@@ -17,12 +17,49 @@ service cloud.firestore {
     && p.feedUrl is string && p.feedUrl.size() <= 2048 && p.feedUrl.matches('https?://[^/?@#]+(/[^?#]*)?')
     && p.originalFeedUrl is string && p.originalFeedUrl.size() <= 2048 && p.originalFeedUrl.matches('https?://[^/?@#]+(/[^?#]*)?');
   }
-  function validRecord(uid,d) {
+  function text(value,max) { return value is string && value.toUtf8().size() <= max; }
+  function publicUrl(value) { return text(value,2048) && value.matches('https?://[^/?@#]+(/[^?#]*)?'); }
+  function number(value) { return value is string && value.matches('0|[1-9][0-9]{0,15}') && int(value) < 9000000000000000; }
+  function identityFields() { return ['episodeId','podcastId','feedUrl','originalFeedUrl','podcastTitle','podcastAuthor','guid','title','audioUrl','durationMs','fingerprint']; }
+  function episodeIdentity(p) {
+   return p.keys().hasAll(identityFields()) && id(p.episodeId) && p.episodeId.size() <= 100 && id(p.podcastId) && p.podcastId.size() <= 100
+    && publicUrl(p.feedUrl) && publicUrl(p.originalFeedUrl) && publicUrl(p.audioUrl)
+    && text(p.guid,2048) && p.guid.size() > 0 && text(p.title,1000) && text(p.podcastTitle,1000) && text(p.podcastAuthor,1000)
+    && text(p.fingerprint,1000) && number(p.durationMs);
+  }
+  function progressPayload(key,p) {
+   return p.keys().hasOnly(identityFields().concat(['positionMs','sessionId','deviceId','deviceSequence']))
+    && p.keys().hasAll(['positionMs','sessionId','deviceId','deviceSequence']) && episodeIdentity(p)
+    && key == 'progress_' + p.episodeId && number(p.positionMs) && number(p.deviceSequence)
+    && id(p.sessionId) && p.sessionId.size() <= 100 && id(p.deviceId) && p.deviceId.size() <= 100;
+  }
+  function completionPayload(key,p) {
+   return p.keys().hasOnly(identityFields().concat(['completed','origin','sessionId']))
+    && p.keys().hasAll(['completed','origin','sessionId']) && episodeIdentity(p)
+    && key == 'completion_' + p.episodeId && p.completed in ['true','false'] && p.origin in ['explicit','automatic']
+    && id(p.sessionId) && p.sessionId.size() <= 100;
+  }
+  function momentPayload(key,p) {
+   return p.keys().hasOnly(identityFields().concat(['momentId','startMs','endMs','excerpt','quote','insight','revision','createdAt','model']))
+    && p.keys().hasAll(['momentId','startMs','endMs','excerpt','quote','insight','revision','createdAt','model']) && episodeIdentity(p)
+    && id(p.momentId) && p.momentId.size() <= 100 && key == 'moment_' + p.momentId
+    && number(p.startMs) && number(p.endMs) && int(p.endMs) >= int(p.startMs) && number(p.createdAt)
+    && text(p.excerpt,98304) && text(p.quote,98304) && text(p.insight,98304)
+    && p.excerpt.toUtf8().size()+p.quote.toUtf8().size()+p.insight.toUtf8().size() <= 98304
+    && text(p.revision,1000) && text(p.model,1000);
+  }
+  function validPayload(key,p) {
+   return p is map && ((key.matches('subscription_.*') && subscriptionPayload(p))
+    || (key.matches('progress_.*') && progressPayload(key,p))
+    || (key.matches('completion_.*') && completionPayload(key,p))
+    || (key.matches('moment_.*') && momentPayload(key,p)));
+  }
+  function validRecord(uid,key,d) {
    return d.keys().hasOnly(['version','payload','deleted','generation','sequence','operationId'])
     && d.sequence is int && d.version is int && d.version > 0 && d.version < 9000000000000000 && d.deleted is bool && id(d.operationId)
     && d.generation == head(uid).generation && head(uid).active == true
     && d.sequence == head(uid).sequence + 1 && d.sequence == nextHead(uid).sequence
-    && ((d.deleted && d.payload is map && d.payload.size() == 0) || (!d.deleted && validPayload(d.payload)));
+    && ((d.deleted && key.matches('(subscription|moment)_.*') && d.payload is map && d.payload.size() == 0) || (!d.deleted && validPayload(key,d.payload)));
   }
   match /users/{uid} {
    allow read: if owner(uid);
@@ -42,8 +79,8 @@ service cloud.firestore {
      return c.key == key && c.diff(d).affectedKeys().hasOnly(['key'])
       && r.key == key && r.version == d.version && r.sequence == d.sequence && r.generation == d.generation;
     }
-    allow create: if owner(uid) && key.matches('subscription_[A-Za-z0-9_-]{1,115}') && validRecord(uid,request.resource.data) && request.resource.data.version == 1 && companions();
-    allow update: if owner(uid) && key.matches('subscription_[A-Za-z0-9_-]{1,115}') && validRecord(uid,request.resource.data) && request.resource.data.version == resource.data.version + 1 && companions();
+    allow create: if owner(uid) && key.matches('(subscription|progress|completion|moment)_[A-Za-z0-9_-]{1,115}') && validRecord(uid,key,request.resource.data) && request.resource.data.version == 1 && companions();
+    allow update: if owner(uid) && key.matches('(subscription|progress|completion|moment)_[A-Za-z0-9_-]{1,115}') && validRecord(uid,key,request.resource.data) && request.resource.data.version == resource.data.version + 1 && companions();
    }
    match /changes/{sequence} {
     allow read: if owner(uid);

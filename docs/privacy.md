@@ -1,12 +1,12 @@
 # Privacy and data handling
 
-DistillPod keeps its library, queue, listening position, transcripts, saved excerpts and generated text in its private Android storage. ChatGPT credentials are encrypted with a key held by Android Keystore. Optional Firebase sign-in uses Firebase's SDK-managed app-private credential storage. Android application backup is disabled; neither provider's credentials enter library exports or subscription sync. This is a personal-alpha implementation; the repository's validation reports are not an independent security audit.
+DistillPod keeps its library, queue, listening position, transcripts, saved excerpts and generated text in its private Android storage. ChatGPT credentials are encrypted with a key held by Android Keystore. Optional Firebase sign-in uses Firebase's SDK-managed app-private credential storage. Android application backup is disabled; neither provider's credentials enter library exports or library sync. This is a personal-alpha implementation; the repository's validation reports are not an independent security audit.
 
-## Optional subscription sync
+## Optional library sync
 
-The sync feature branch adds Google sign-in and Firebase storage for approved subscriptions: feed addresses, original feed addresses, show titles/authors, follow/unfollow state, record versions and retry/change metadata. It does not yet synchronize listening progress, episodes, audio, transcripts, saved moments, conversations, preferences or models. Manual Backup & Restore remains the way to transfer those portable library records.
+The sync feature branch adds Google sign-in and Firebase storage for approved public subscriptions, listening progress, completion and saved moments. Cloud records include public feed/media addresses, feed-scoped episode identity and minimal display metadata, session/sequence identifiers, original positions/intervals, saved excerpts and completed quotes/insights with their model/source provenance. Record versions, operation receipts and ordered changes support retries and conflict review. Full RSS catalogues, audio, transcripts, analyses, conversations, queue, preferences and models do not synchronize yet; portable records outside this scope still require Backup & Restore. Local job states, attempts and private file paths never enter sync.
 
-On first connection, review which existing feeds to share. Existing and manually added sources are not uploaded automatically, because private RSS access tokens can be embedded in URL paths. Directory-result follows are treated as public sources. Password-bearing or query-bearing addresses are excluded even when selected. Feed-sharing choices are local and must be reviewed again after a manual library restore; cloud-restored subscriptions retain the account's prior sharing decision.
+On first connection, review which existing feeds to share. Existing and manually added sources are not uploaded automatically, because private RSS access tokens can be embedded in URL paths. Directory-result follows are treated as public sources. Password-bearing or query-bearing feed/media addresses are excluded even when the source is selected. Oversized records stay local. Feed-sharing choices are local and must be reviewed again after a manual library restore; cloud-restored subscriptions retain the account's prior sharing decision.
 
 Firebase Authentication receives the Google identity used to sign in. The library stays bound to its original Firebase user ID. A different account cannot adopt its outbox or upload its retained local data. Signing out pauses cloud work and keeps the offline library. Multiple local account profiles are not implemented yet. Unfollowing creates a cloud deletion marker while preserving local episode data; this does not erase historical cloud changes. Complete account erasure and independent dated cloud recovery are later milestones.
 
@@ -14,7 +14,7 @@ Cloud records are protected by per-user security rules and the provider's transp
 
 ## Telemetry status
 
-The feature branch contains a tested event/consent boundary. Firebase Analytics, Crashlytics and Performance SDK adapters and live collection are not yet enabled. Enabling subscription sync does not opt into telemetry.
+The feature branch contains a tested event/consent boundary. Firebase Analytics, Crashlytics and Performance SDK adapters and live collection are not yet enabled. Enabling library sync does not opt into telemetry.
 
 ## Network requests
 

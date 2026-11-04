@@ -19,6 +19,7 @@ class DatabaseUpgradeDeviceTest {
     @Test fun schemaTwoUpgradesWithoutLosingProgressSavedMomentsOrMessages() = upgradeFixture(2)
     @Test fun schemaThreeUpgradesWithoutLosingProgressSavedMomentsOrMessages() = upgradeFixture(3)
     @Test fun schemaFourUpgradesWithoutLosingProgressSavedMomentsOrMessages() = upgradeFixture(4)
+    @Test fun schemaFiveUpgradesWithoutLosingProgressSavedMomentsOrMessages() = upgradeFixture(5)
     private fun upgradeFixture(from: Int) = runBlocking {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
@@ -48,11 +49,17 @@ class DatabaseUpgradeDeviceTest {
                 insert("episodes", mapOf("id" to "e", "podcastId" to "p", "guid" to "guid", "title" to "Episode", "audioUrl" to "https://example.test/audio", "positionMs" to 23000))
                 insert("distillations", mapOf("id" to "d", "episodeId" to "e", "excerpt" to "Saved source", "state" to "succeeded"))
                 insert("messages", mapOf("id" to "m", "episodeId" to "e", "role" to "assistant", "text" to "Saved reply", "state" to "succeeded") + if (from >= 2) mapOf("sourcesJson" to "[]") else emptyMap())
+                if(from>=3)insert("sync_outbox",mapOf("operationId" to "old-operation","uid" to "alice","generation" to "g1","entityKey" to "subscription_old","baseVersion" to 6,"payload" to "{}"))
+                if(from>=4) {
+                    insert("sync_binding",mapOf("id" to 0,"uid" to "alice","generation" to "g1","enabled" to 1,"lease" to "old-lease"))
+                    insert("sync_remote",mapOf("uid" to "alice","generation" to "g1","entityKey" to "subscription_old","version" to 7,"payload" to "{}","sequence" to 7))
+                }
                 old.version = from
             }
-            val upgraded = Room.databaseBuilder(context, AppDatabase::class.java, name).addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4, AppDatabase.MIGRATION_4_5).build()
+            val upgraded = Room.databaseBuilder(context, AppDatabase::class.java, name).addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4, AppDatabase.MIGRATION_4_5, AppDatabase.MIGRATION_5_6).build()
             try {
-                assertTrue(upgraded.sync().pending("alice", "g1").isEmpty())
+                assertEquals(if(from>=3)listOf("old-operation") else emptyList<String>(),upgraded.sync().pending("alice", "g1"))
+                if(from>=4)assertEquals(7L,upgraded.sync().view("subscription_old")!!.version)
                 assertEquals(23000L, upgraded.library().episode("e")!!.positionMs)
                 assertEquals("Saved source", upgraded.library().distillation("d")!!.excerpt)
                 assertEquals("Saved reply", upgraded.library().message("m")!!.text)

@@ -26,6 +26,7 @@ class SubscriptionSyncStore(private val db: AppDatabase, private val isolatedDem
         newlyApproved.forEach { db.sync().approve(SyncPublicFeedEntity(it)) }
         if(old!=null)newlyApproved.forEach { id -> db.library().podcast(id)?.let { enqueue(it,false) } }
         if(old==null) db.library().podcasts().filter { it.subscribed }.forEach { enqueue(it,true) }
+        PortableLibrarySync(db,isolatedDemo).seed(newlyApproved.toSet())
     }
     suspend fun pause() = db.withTransaction {
         if(!allowed())return@withTransaction

@@ -472,11 +472,12 @@ private fun captureState(state: String) = when (state) { "waiting_transcript" ->
             LinearProgressIndicator(Modifier.fillMaxWidth())
             OutlinedButton(onClick = { vm.cancelCapture(capture.id) }) { Text("Pause generation") }
         }
+        if(capture.state=="saved" && capture.excerpt.isBlank() && ep!=null) OutlinedButton(onClick={vm.generateCapture(capture.id)}) {Text("Prepare saved moment")}
         if (capture.state == "waiting_transcript" && ep != null) TranscriptTools(vm, ep)
         if (capture.state == "waiting_auth") Button(onClick = { vm.open("settings") }) { Text("Connect ChatGPT") }
         if (capture.state == "review_source") Text("This moment was captured before downloaded audio was verified. Review the excerpt below before sending it to ChatGPT.", color = MaterialTheme.colorScheme.tertiary)
-        if (capture.excerpt.isNotBlank() && capture.state in listOf("review_source", "waiting_auth", "waiting_quota", "failed")) {
-            Button(onClick = { vm.generateCapture(capture.id, true) }) { Text(if (capture.state == "review_source") "Generate insight from this source" else "Retry insight") }
+        if (capture.excerpt.isNotBlank() && capture.state in listOf("review_source", "waiting_auth", "waiting_quota", "failed", "saved")) {
+            Button(onClick = { vm.generateCapture(capture.id, true) }) { Text(if (capture.state == "review_source") "Generate insight from this source" else if(capture.state=="saved") "Generate insight" else "Retry insight") }
             Text("Retrying a request can use more of your ChatGPT allowance.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         capture.quote?.let { SelectionContainer { Text("“$it”", style = MaterialTheme.typography.headlineSmall) } }

@@ -2,13 +2,21 @@
 
 Date: November 4, 2026
 
-Status: Implementation in progress on `feat/firebase-sync-telemetry`; subscription-only milestone implemented, full portable-library sync and telemetry still open.
+Status: Implementation in progress on `feat/firebase-sync-telemetry`; subscriptions/progress/completion/saved-moment increment validated; remaining portable-library sync and telemetry still open.
 
 Scope: Optional account-based, offline-first library synchronization and privacy-controlled diagnostics/usage analytics for the native Android app.
 
 Method: Test-driven development (TDD), with separate evidence for local tests, Firebase emulator tests, and live service acceptance.
 
-## Subscription milestone checkpoint — November 4
+## Core-library increment — November 4
+
+The branch now extends subscription sync to significant listening progress, separate completion actions, minimal episode restoration and saved moments. New TDD cycles cover periodic coalescing, rewinds, in-flight checkpoints, visible revision versus remote conflict candidate, paused/stopped handoff, restoration without jobs/downloads, moment deletion and source privacy. Validation: 205 JVM tests, 20 rules tests, 40 ordinary Android tests, 11 targeted Android tests and two individual process-restart invocations passed. Room schema 6 retains visible revisions and active session/checkpoint metadata. Detailed validation and outstanding limits are recorded in [TDD evidence](evidence/firebase-sync-tdd.md).
+
+Live Google account selection/token exchange and empty-library server sync succeeded on the visible emulator, with cached sign-in verified after process restart. An independent test-only Android emulator runs synthetic Auth/Firestore acceptance; fixtures are never installed in the live account's library. The owner's physical phone remains on the saved pre-Firebase build.
+
+This increment does not complete P6: recoverable account profiles, broader source-alias/fingerprint handling and the full acceptance/performance matrix still need work. Telemetry SDK integration and the later full-data/backups/erasure/release milestones remain open. Billing remains disabled.
+
+## Subscription milestone checkpoint — November 4 (historical)
 
 Implemented after foundation commit `cee4a3d`: native Google sign-in integration; one-account library binding; subscription eligibility/review; atomic follow/unfollow intent; Firebase server transactions; bounded worker/retry/bootstrap/cursors; explicit conflict choices; Settings controls and fresh-library restoration. Existing/manual feeds require selection; directory follows establish public provenance. Private tokens in URL paths are not inferred from URL shape.
 
@@ -50,7 +58,7 @@ Milestone B is not the completed task. All phases below are required for the ful
 
 ## 2. Baseline and decisions
 
-The current app uses Room 2.7.2 with database schema version 2. `AppDatabase.kt` contains relational entities and flows used by playback, library and AI repositories. Episode rows combine portable progress with device-specific download fields. Transcript rows combine content identity and local job state. `LibraryBackup.kt` imports missing records; it is not a conflict-aware sync mechanism. The existing implementation plan is historical; this document defines the optional cloud extension.
+At the plan baseline, the app used Room 2.7.2 with database schema version 2. `AppDatabase.kt` contains relational entities and flows used by playback, library and AI repositories. Episode rows combine portable progress with device-specific download fields. Transcript rows combine content identity and local job state. `LibraryBackup.kt` imports missing records; it is not a conflict-aware sync mechanism. The existing implementation plan is historical; this document defines the optional cloud extension.
 
 | Decision | Selected approach | Reason / boundary |
 | --- | --- | --- |
@@ -229,7 +237,7 @@ Dependencies: P0 → P1 → P2 → P3. P4 telemetry can proceed after P0; P5 sta
 - [ ] Add schema migration(s), exported schema fixtures and account/profile ownership.
 - [ ] Add outbox, remote bases, cursors, conflicts, artifact state and bounded local journal.
 - [ ] Route every portable write through the atomic helper; explicitly classify local-only writes.
-- [ ] Coalesce unsent progress updates without modifying an operation already in flight; acknowledge by operation identity/version.
+- [x] Coalesce unsent progress updates without modifying an operation already in flight; acknowledge by operation identity/version.
 - [ ] Make imports and first sign-in baseline enumeration crash-safe and idempotent.
 - [ ] Handle disk-full/database failure without reporting a saved or synced action that was not persisted.
 

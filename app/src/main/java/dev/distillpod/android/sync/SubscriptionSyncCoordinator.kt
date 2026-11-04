@@ -26,7 +26,7 @@ class SubscriptionSyncCoordinator(private val db:AppDatabase,private val cloud:S
     private val mutex=Mutex()
     private suspend fun valid(b:SyncBindingEntity):Boolean {
         val now=dao.binding()
-        return now?.enabled==true && now.lease==b.lease && now.uid==b.uid && cloud.uid==b.uid
+        return now?.enabled==true && now.lease==b.lease && now.uid==b.uid && now.generation==b.generation && cloud.uid==b.uid
     }
     private suspend fun update(b:SyncBindingEntity,block:(SyncBindingEntity)->SyncBindingEntity):Boolean=db.withTransaction {
         if(!valid(b)) return@withTransaction false
@@ -71,6 +71,10 @@ class SubscriptionSyncCoordinator(private val db:AppDatabase,private val cloud:S
                         remember(b,confirmed)
                         dao.acknowledge(b.uid,b.generation,op.operationId)
                         dao.advanceOwnBase(b.uid,b.generation,op.entityKey,op.baseVersion,confirmed.version)
+                        if(PortableRecord.isPortable(op.entityKey)) {
+                            val view=dao.view(op.entityKey)
+                            if(view!=null && view.version==op.baseVersion && (!op.entityKey.startsWith("progress_") || view.sessionId==confirmed.payload["sessionId"]))dao.putView(view.copy(version=confirmed.version))
+                        }
                         if(dao.forKey(b.uid,b.generation,op.entityKey).isEmpty()) {
                             val latest=dao.remote(b.uid,b.generation,op.entityKey)!!
                             projectSubscription(db,CloudSubscription(latest.entityKey,latest.version,SubscriptionSyncStore.decode(latest.payload),latest.deleted,latest.sequence))
@@ -102,7 +106,7 @@ class SubscriptionSyncCoordinator(private val db:AppDatabase,private val cloud:S
             if(old!=null && old.version>=record.version)continue
             val pending=dao.forKey(b.uid,b.generation,record.key)
             // An initial local copy identical in follow intent is a merge, not a new re-follow.
-            val baselineMatch=pending.isNotEmpty() && pending.all { it.baseline } && !record.deleted && pending.all {
+            val baselineMatch=record.key.startsWith("subscription_") && pending.isNotEmpty() && pending.all { it.baseline } && !record.deleted && pending.all {
                 SubscriptionSyncStore.decode(it.payload)["feedUrl"]==record.payload["feedUrl"]
             }
             if(baselineMatch)pending.forEach { dao.acknowledge(b.uid,b.generation,it.operationId) }
@@ -116,9 +120,9 @@ class SubscriptionSyncCoordinator(private val db:AppDatabase,private val cloud:S
         true
     }
     private fun validate(b:SyncBindingEntity,r:CloudSubscription) {
-        check(r.key.startsWith("subscription_") && r.version>0 && r.sequence>0)
+        check((r.key.startsWith("subscription_") || PortableRecord.isPortable(r.key)) && r.version>0 && r.sequence>0)
         SyncProtocol.validate(SyncMutation("remote",SyncOwner(b.uid,b.generation),r.key,r.version-1,r.payload,r.deleted))
-        if(!r.deleted) { require(r.payload["podcastId"]?.matches(Regex("[A-Za-z0-9_-]{1,128}"))==true);require(r.payload["feedUrl"]!=null) }
+        if(!r.deleted && r.key.startsWith("subscription_")) { require(r.payload["podcastId"]?.matches(Regex("[A-Za-z0-9_-]{1,128}"))==true);require(r.payload["feedUrl"]!=null) }
     }
     private suspend fun remember(b:SyncBindingEntity,r:CloudSubscription) {
         validate(b,r)
@@ -131,6 +135,7 @@ class SubscriptionSyncCoordinator(private val db:AppDatabase,private val cloud:S
 }
 
 internal suspend fun projectSubscription(db:AppDatabase,r:CloudSubscription) {
+        if(PortableRecord.isPortable(r.key)){projectPortable(db,r);return}
         val p=r.payload
         val old=if(r.deleted) {
             // Tombstones deliberately contain no content; find local identity by the stable key.

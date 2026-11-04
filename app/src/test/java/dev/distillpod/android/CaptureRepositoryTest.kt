@@ -42,6 +42,36 @@ class CaptureRepositoryTest {
             assertEquals("succeeded", saved.state); assertEquals("test-model", saved.model)
         } finally { db.close() }
     }
+    @Test fun `capture source and finished insight are durable portable changes`() = runBlocking {
+        val db=database()
+        try {
+            seed(db)
+            dev.distillpod.android.sync.SubscriptionSyncStore(db).bind(dev.distillpod.core.sync.SyncOwner("alice","g1"),setOf("pod"))
+            val repo=CaptureRepository(db,ai("""{"quote":"Small daily routines","insight":"Consistent routines help turn practice into lasting skills."}"""),{true},{},{})
+            val id=repo.capture("ep",10000,true)
+            val before=db.sync().forKey("alice","g1","moment_$id").single()
+            assertEquals("Small daily routines help build lasting skills.",dev.distillpod.android.sync.SubscriptionSyncStore.decode(before.payload)["excerpt"])
+            repo.run(id)
+            val after=db.sync().forKey("alice","g1","moment_$id").single()
+            assertEquals("Consistent routines help turn practice into lasting skills.",dev.distillpod.android.sync.SubscriptionSyncStore.decode(after.payload)["insight"])
+        } finally {db.close()}
+    }
+    @Test fun `AI response after moment deletion cannot resurrect the local row or cloud content`()=runBlocking {
+        val db=database()
+        try {
+            seed(db)
+            dev.distillpod.android.sync.SubscriptionSyncStore(db).bind(dev.distillpod.core.sync.SyncOwner("alice","g1"),setOf("pod"))
+            var id=""
+            val gateway=object:AiGateway {override suspend fun complete(instructions:String,input:String,onDelta:(String)->Unit):AiText {
+                dev.distillpod.android.sync.PortableLibrarySync(db).deleteMoment(id)
+                return AiText("""{"quote":"Small daily routines","insight":"Consistent routines help turn practice into lasting skills."}""","test-model")
+            }}
+            val repo=CaptureRepository(db,gateway,{true},{},{})
+            id=repo.capture("ep",10000,true);repo.run(id)
+            assertNull(db.library().distillation(id))
+            assertTrue(db.sync().forKey("alice","g1","moment_$id").single().deleted)
+        } finally {db.close()}
+    }
     @Test fun `quota retains the excerpt and does not automatically enqueue retries`() = runBlocking {
         val db = database()
         try {

@@ -13,12 +13,13 @@ object SyncProtocol {
     private val safeId = Regex("[A-Za-z0-9_-]{1,128}")
     private val allowed = setOf("subscribed", "feedUrl", "originalFeedUrl", "title", "author", "positionMs", "completed",
         "episodeId", "podcastId", "guid", "audioUrl", "sessionId", "deviceId", "deviceSequence",
-        "startMs", "endMs", "excerpt", "quote", "insight", "revision", "fingerprint", "createdAt")
+        "podcastTitle", "podcastAuthor", "durationMs", "momentId", "model", "origin", "startMs", "endMs", "excerpt", "quote", "insight", "revision", "fingerprint", "createdAt")
     fun validate(mutation: SyncMutation) {
         require(listOf(mutation.id, mutation.owner.uid, mutation.owner.generation, mutation.key).all { safeId.matches(it) })
         require(mutation.baseVersion in 0 until Long.MAX_VALUE)
         require(mutation.payload.keys.all { it in allowed })
         require(mutation.payload.entries.sumOf { it.key.toByteArray(Charsets.UTF_8).size.toLong() + it.value.toByteArray(Charsets.UTF_8).size } <= 128 * 1024)
+        PortableRecord.validate(mutation)
         for (field in listOf("feedUrl", "audioUrl", "originalFeedUrl")) mutation.payload[field]?.let {
             require(it.toByteArray(Charsets.UTF_8).size <= 2048)
             val uri = try { java.net.URI(it) } catch (_: Exception) { throw IllegalArgumentException("Invalid public locator") }

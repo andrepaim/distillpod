@@ -84,3 +84,45 @@ The owner enabled Google sign-in in Firebase Console. The Android web client ID 
 ### Remaining acceptance
 
 Live Google account selection/token exchange and a real-phone signed upgrade are not demonstrated by emulator credentials. The alpha supports one bound account per existing library and rejects account adoption; multiple local profiles remain a later milestone. Full-data sync, cloud erasure/recovery/retention, telemetry SDK integration/ingestion, App Check, live staging and configured release automation remain open. Existing lock-screen source changes remain separate and uncommitted by this milestone. Normal app builds keep cloud access available when configured; the isolated instrumentation runner disables automatic production access even with a cached real login. Deferred fixture intents are suppressed too, so they cannot upload later after testing.
+
+## Portable core-library increment — November 4
+
+Starting source: `c2afa83d27c95426e1c13ae8f3a7b7382f178da9` on `feat/firebase-sync-telemetry`. The previously dirty lock-screen controls, version/release notes and their tests/evidence remain separate. Playback sync hunks were staged independently of those controls.
+
+### Red/green cycles
+
+| Behavior | Observed red | Green |
+| --- | --- | --- |
+| Portable progress/moment persistence and transport | `PortableLibrarySyncTest`: 7 behavioral failures out of 9 with a compiling local-only persistence seam | Durable outbox, restoration, rewind/session conflicts, completion and privacy cases pass |
+| Actual capture source and completed insight | `CaptureRepositoryTest`: 1 failure out of 7 because no moment operation was recorded | Capture/hydration/completion record portable snapshots atomically with the source row |
+| Server support for new record types | Node suite: 3 failures out of 20 because progress, moment and completion writes were denied | All 20 rule cases pass; malformed identity/types, job states, private media links and stale revisions rejected |
+| Incoming active-session divergence | 1 failure out of 11: sync reported success while a newer remote position remained hidden | Durable local candidate and explicit conflict retained; playback position preserved |
+| Paused handoff | 1 failure out of 12: a paused session manufactured a conflict for a newer cloud position | Paused snapshots no longer overwrite remote handoff; explicit pause/seek boundaries still save |
+| Service stop checkpoint | 1 failure out of 13: latest local position had no cloud intent on stop | Final checkpoint queues immediately, releases active protection and follows the last serialized service write |
+
+Additional regression cases cover an edit during server acknowledgement, outer-transaction rollback, a newer pulled moment revision not becoming the base of an unseen local edit, separate explicit-unplayed versus stale automatic completion, instrumentation suppression, and an actual AI response delivered after moment deletion. No fake crash/native job state is restored from cloud moment content.
+
+Local commands use JDK 17 and the existing Android SDK for Gradle; JDK 21/Node 22 for the isolated Firebase emulator. Raw synthetic logs are in `/tmp/distillpod-portable-*.log`; client configuration stays outside Git.
+
+### Live Google acceptance
+
+The visible `Medium_Phone_API_36.1` emulator had no Google accounts before this check. Only its disposable fixture app data was cleared. The owner entered Google credentials directly in Google's UI and confirmed completion. DistillPod then showed its signed-in account and “Subscriptions synced”. Force-stop/relaunch preserved the account, completed server sync and displayed the sign-out control. Only an empty account library was used; no synthetic library was uploaded to the live project. The phone was not used for these checks.
+
+A second, fresh test-only AVD (`DistillPod_Sync_Test`, emulator-5558) runs ordinary and synthetic cloud tests independently. Its named SDK clients use only `demo-distillpod-sync`. The Google sign-in emulator (emulator-5556) never receives synthetic instrumentation or fixtures after sign-in.
+
+### Validation checkpoint
+
+- JVM/core/Room: **71 core + 134 app = 205 tests**, no failures; lint and debug/test APK builds passed.
+- Firestore rules: **20 passed**, no skips.
+- First expanded Android SDK run: **10 passed**, including schemas 1–5 upgrading to 6, public review/Settings/isolation and the two independent SDK clients. The SDK scenario restores progress/completion/moments without downloads or transcript jobs, preserves an offline rewind versus another active session, applies an explicit conflict choice and synchronizes moment deletion. Actual process restart seed/resume invocations also passed individually.
+- First ordinary Android run: **39 passed**, no skips, 234.551 seconds. This preceded the final paused/stop handoff refinements and the extra restored-moment UI case; final verification is recorded below when complete.
+
+This increment remains partial against the full plan: queue/preferences/artifacts/conversations, recoverable profiles, account erasure/backups/retention, telemetry SDK delivery, App Check, live performance/cost measurement and configured release automation are still open. It is not a new published release or a Firebase installation on the physical phone.
+
+### Final increment verification
+
+- Final ordinary Android acceptance: **40 passed**, no skips, 190.049 seconds. This includes paused/stop handoff refinements and the restored-incomplete-moment UI case, which stays saved with an explicit preparation action and no transcript job.
+- Final Auth/Firestore Android acceptance: **11 passed**, no skips. Schema 3–5 fixtures retain an existing pending operation; schema 4–5 fixtures also migrate their visible remote base to schema 6. Two-client progress/moment restore/conflict/delete and isolation remain green. Actual force-stop seed/resume invocations each pass separately.
+- JVM: **205 passed** (71 core, 134 app). Lint and APK/test-APK builds pass. Firestore rules: **20 passed**, no skips.
+
+The local ordinary suite includes the pre-existing uncommitted lock-screen test; committed-source CI intentionally does not include that separate test. No Firebase release was published.

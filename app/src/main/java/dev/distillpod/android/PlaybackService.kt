@@ -29,8 +29,9 @@ import dev.distillpod.android.playback.SkippedMoment
 class PlaybackService : MediaSessionService() {
     private var session: MediaSession? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-    private data class Snapshot(val ids: List<String>, val id: String?, val position: Long, val duration: Long, val complete: Boolean, val speed: Float, val at: Long = System.currentTimeMillis())
+    private data class Snapshot(val ids: List<String>, val id: String?, val position: Long, val duration: Long, val complete: Boolean, val speed: Float, val at: Long = System.currentTimeMillis(), val boundary: Boolean = false, val playing: Boolean = false, val elapsed: Long = android.os.SystemClock.elapsedRealtime())
     private val writes = Channel<Snapshot>(Channel.UNLIMITED)
+    private val syncSession=java.util.UUID.randomUUID().toString()
     private var previousId: String? = null
     private var previousDuration = 0L
     private var previousPosition = 0L
@@ -54,30 +55,34 @@ class PlaybackService : MediaSessionService() {
             override fun onConnect(session: MediaSession, controller: MediaSession.ControllerInfo): MediaSession.ConnectionResult =
                 if (controller.packageName == packageName || controller.isTrusted) super.onConnect(session, controller) else MediaSession.ConnectionResult.reject()
         }).build()
-        fun snapshot(complete: Boolean = false) {
+        fun snapshot(complete: Boolean = false, boundary: Boolean = false) {
             if (restoring) return
             val id = player.currentMediaItem?.mediaId
             graph.activeFiles.playback = player.currentMediaItem?.localConfiguration?.uri?.takeIf { it.scheme == "file" }?.path
             graph.activeFiles.queued = (0 until player.mediaItemCount).mapNotNull { player.getMediaItemAt(it).localConfiguration?.uri?.takeIf { uri -> uri.scheme == "file" }?.path }.toSet()
             writes.trySend(Snapshot((0 until player.mediaItemCount).map { player.getMediaItemAt(it).mediaId }, id,
-                player.currentPosition.coerceAtLeast(0), player.duration.coerceAtLeast(0), complete, player.playbackParameters.speed))
+                player.currentPosition.coerceAtLeast(0), player.duration.coerceAtLeast(0), complete, player.playbackParameters.speed, boundary=boundary, playing=player.isPlaying))
             previousId = id; previousDuration = player.duration.coerceAtLeast(0); previousPosition = player.currentPosition.coerceAtLeast(0)
         }
         player.addListener(object : Player.Listener {
             override fun onMediaItemTransition(item: MediaItem?, reason: Int) {
                 if (!restoring && reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO && previousId != null) {
-                    writes.trySend(Snapshot(emptyList(), previousId, if (previousDuration > 0) previousDuration else previousPosition, previousDuration, true, player.playbackParameters.speed))
+                    writes.trySend(Snapshot(emptyList(), previousId, if (previousDuration > 0) previousDuration else previousPosition, previousDuration, true, player.playbackParameters.speed, boundary=true))
                 }
                 snapshot()
             }
-            override fun onEvents(p: Player, events: Player.Events) { snapshot(p.playbackState == Player.STATE_ENDED) }
+            override fun onEvents(p: Player, events: Player.Events) {
+                snapshot(p.playbackState == Player.STATE_ENDED, events.contains(Player.EVENT_IS_PLAYING_CHANGED) || events.contains(Player.EVENT_PLAY_WHEN_READY_CHANGED))
+            }
             override fun onPositionDiscontinuity(oldPosition: Player.PositionInfo, newPosition: Player.PositionInfo, reason: Int) {
                 if (reason == Player.DISCONTINUITY_REASON_SEEK) player.currentMediaItem?.mediaId?.let { id ->
                     adSkipping.seek(id, newPosition.positionMs, adConfigs[id]?.ranges ?: emptyList())
+                    snapshot(boundary=true)
                 }
             }
         })
         scope.launch(Dispatchers.IO) {
+            graph.ready.await()
             var lastQueue: List<String>? = null
             for (value in writes) {
                 try {
@@ -85,7 +90,7 @@ class PlaybackService : MediaSessionService() {
                     // Diagnostics may play a temporary clip; it must not replace the podcast queue.
                     if (value.id != null && ep == null) continue
                     graph.db.withTransaction {
-                        if (ep != null) dao.progress(ep.id, value.position.coerceAtMost(value.duration.takeIf { it > 0 } ?: Long.MAX_VALUE), value.duration, value.complete, value.at)
+                        if (ep != null && (value.playing || value.boundary)) graph.portableSync.checkpoint(ep.id, value.position, value.duration, value.complete, value.at, syncSession, value.elapsed, value.boundary, active=value.playing)
                         if (value.ids.isNotEmpty() || value.id == null) {
                             val known = value.ids.filter { dao.episode(it) != null }.distinct()
                             if (known != lastQueue) {
@@ -162,7 +167,24 @@ class PlaybackService : MediaSessionService() {
     override fun onDestroy() {
         applicationContext.appGraph.activeFiles.playback = null
         applicationContext.appGraph.activeFiles.queued = emptySet()
+        val player=session?.player
+        val finalId=player?.currentMediaItem?.mediaId
+        val finalPosition=player?.currentPosition?.coerceAtLeast(0)?:0
+        val finalDuration=player?.duration?.coerceAtLeast(0)?:0
+        val stoppedAt=System.currentTimeMillis()
+        val stoppedElapsed=android.os.SystemClock.elapsedRealtime()
+        val serviceJob=scope.coroutineContext[Job]
         session?.let { it.player.release(); it.release() }; session = null
-        writes.close(); scope.cancel(); super.onDestroy()
+        writes.close(); scope.cancel()
+        // The application scope can finish the final atomic checkpoint after service jobs stop.
+        // Joining prevents an older queued snapshot from overwriting this final position.
+        if(finalId!=null)applicationContext.appGraph.scope.launch(Dispatchers.IO) {
+            serviceJob?.join()
+            runCatching {
+                applicationContext.appGraph.ready.await()
+                applicationContext.appGraph.portableSync.finishPlayback(finalId,finalPosition,finalDuration,stoppedAt,syncSession,stoppedElapsed)
+            }
+        }
+        super.onDestroy()
     }
 }

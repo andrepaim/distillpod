@@ -12,6 +12,10 @@ data class SyncOutboxEntity(
 )
 @Dao
 interface SyncDao {
+    @Query("SELECT * FROM sync_views WHERE entityKey=:key") suspend fun view(key:String):SyncViewEntity?
+    @Upsert suspend fun putView(value:SyncViewEntity)
+    @Query("UPDATE sync_views SET active=0") suspend fun releasePlaybackViews()
+
     @Insert(onConflict=OnConflictStrategy.IGNORE) suspend fun approve(value:SyncPublicFeedEntity)
     @Query("DELETE FROM sync_public_feeds") suspend fun clearApprovals()
     @Query("SELECT * FROM sync_public_feeds WHERE podcastId=:id") suspend fun approved(id:String):SyncPublicFeedEntity?
@@ -28,6 +32,7 @@ interface SyncDao {
     @Query("SELECT COUNT(*) FROM sync_outbox") suspend fun count(): Int
     @Query("SELECT * FROM sync_outbox WHERE uid=:uid AND generation=:generation") fun observeOperations(uid:String,generation:String): kotlinx.coroutines.flow.Flow<List<SyncOutboxEntity>>
     @Query("SELECT * FROM sync_remote WHERE uid=:uid AND generation=:generation AND entityKey=:key") suspend fun remote(uid:String,generation:String,key:String): SyncRemoteEntity?
+    @Query("SELECT * FROM sync_remote WHERE uid=:uid AND generation=:generation AND entityKey=:key") fun observeRemote(uid:String,generation:String,key:String):kotlinx.coroutines.flow.Flow<SyncRemoteEntity?>
     @Upsert suspend fun putRemote(value: SyncRemoteEntity)
     @Query("DELETE FROM sync_outbox WHERE uid=:uid AND generation=:generation AND entityKey=:key AND state='queued'") suspend fun removeQueued(uid:String,generation:String,key:String)
     @Query("UPDATE sync_outbox SET state=:state WHERE operationId=:id") suspend fun state(id:String,state:String)
@@ -53,3 +58,8 @@ data class SyncRemoteEntity(val uid: String, val generation: String, val entityK
 
 @Entity(tableName="sync_public_feeds")
 data class SyncPublicFeedEntity(@PrimaryKey val podcastId:String)
+
+/** The revision actually shown locally, distinct from a newer remote conflict candidate. */
+@Entity(tableName="sync_views")
+data class SyncViewEntity(@PrimaryKey val entityKey:String,val version:Long=0,val sessionId:String="",
+    val sequence:Long=0,val checkpointAt:Long=0,val active:Boolean=false,val completionBase:Long=0)

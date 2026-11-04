@@ -27,6 +27,23 @@ class SubscriptionSyncUiDeviceTest {
             org.junit.Assert.assertEquals(0,store.pendingCount())
         } finally {db.close();context.deleteDatabase(name)}
     }
+    @Test fun restoredIncompleteMomentStaysSavedUntilExplicitPreparation()=runBlocking<Unit> {
+        val graph=compose.activity.applicationContext.appGraph
+        graph.ready.await()
+        val id="restored-ui-"+java.util.UUID.randomUUID().toString()
+        try {
+            graph.db.library().putPodcast(dev.distillpod.android.data.PodcastEntity(id,"https://example.test/$id","Restored source",subscribed=false))
+            graph.db.library().putEpisode(dev.distillpod.android.data.EpisodeEntity(id,id,"guid","Restored episode","https://example.test/audio"))
+            graph.db.library().putDistillation(dev.distillpod.android.data.DistillationEntity(id,id,0,10000,state="saved"))
+            withContext(Dispatchers.Main) {ViewModelProvider(compose.activity,AppViewModel.factory(graph))[AppViewModel::class.java].open("capture:$id")}
+            compose.onNodeWithText("Prepare saved moment").performScrollTo().assertIsDisplayed()
+            org.junit.Assert.assertEquals("saved",graph.db.library().distillation(id)!!.state)
+            org.junit.Assert.assertNull(graph.db.library().transcript(id))
+        } finally {
+            withContext(Dispatchers.Main) {ViewModelProvider(compose.activity,AppViewModel.factory(graph))[AppViewModel::class.java].root("library")}
+            graph.db.library().deletePodcast(id)
+        }
+    }
     @Test fun settingsExplainSubscriptionScopeAndKeepGoogleSeparateFromChatGpt()=runBlocking<Unit> {
         val graph=compose.activity.applicationContext.appGraph
         graph.ready.await()
@@ -34,10 +51,10 @@ class SubscriptionSyncUiDeviceTest {
         withContext(Dispatchers.Main) {
             ViewModelProvider(compose.activity,AppViewModel.factory(graph))[AppViewModel::class.java].root("settings")
         }
-        compose.onNodeWithText("Subscription sync").assertIsDisplayed()
-        compose.onNodeWithText("Connect Google to sync public podcast subscriptions between your phones. Listening progress, saved moments and transcripts still use Backup & Restore in this version.").assertIsDisplayed()
+        compose.onNodeWithText("Library sync").assertIsDisplayed()
+        compose.onNodeWithText("Connect Google to sync public podcast subscriptions, listening progress, completion and saved moments between your phones. Transcripts and other library data still use Backup & Restore.").assertIsDisplayed()
         if(graph.syncAccount.state.value.configured) {
-            compose.onNodeWithText("Connect Google & sync subscriptions").assertIsDisplayed()
+            compose.onNodeWithText("Connect Google & sync library").assertIsDisplayed()
         } else compose.onNodeWithText("Cloud sync is unavailable in this build.").assertIsDisplayed()
         compose.onNodeWithText("ChatGPT").performScrollTo().assertIsDisplayed()
     }

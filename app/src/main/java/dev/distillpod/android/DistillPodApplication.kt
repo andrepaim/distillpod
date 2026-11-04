@@ -25,6 +25,7 @@ class AppGraph(val context: Context) {
         .addInterceptor { it.proceed(it.request().newBuilder().header("User-Agent", "DistillPod/0.2 (Android)").build()) }.build()
     val syncAccount by lazy { dev.distillpod.android.sync.SubscriptionSyncAccount(this) }
     val podcasts = PodcastRepository(db, http, onSubscriptionChanged = { syncAccount.kick() }, onFeedNeeded = { jobs.refresh(it) })
+    val portableSync by lazy {dev.distillpod.android.sync.PortableLibrarySync(db,changed={syncAccount.kick()})}
     val activeFiles = ActiveFiles()
     val media = MediaRepository(context, db, settings, ResumableDownloader(http), activeFiles)
     val account = AccountRepository(context, scope)
@@ -34,14 +35,14 @@ class AppGraph(val context: Context) {
     val playback by lazy { dev.distillpod.android.playback.PlaybackRepository(context, db, scope) }
     val ai by lazy { dev.distillpod.android.ai.ChatGptGateway(account.session, settings) }
     val transcription by lazy { TranscriptionRepository(this) }
-    val captures by lazy { CaptureRepository(db, ai, { account.state.value.connected }, { transcription.prepare(it) }, jobs::capture) }
+    val captures by lazy { CaptureRepository(db, ai, { account.state.value.connected }, { transcription.prepare(it) }, jobs::capture,{syncAccount.kick()}) }
     val understanding by lazy { EpisodeUnderstanding(db, ai, jobs::analyze, jobs::reply) }
     val explanations by lazy { MomentExplanation(db, ai, jobs::explain) }
     val recommendations by lazy { Recommendations(db, settings, podcasts, http, ai, jobs::recommend, jobs::recommendationPending) }
     val ready = CompletableDeferred<Unit>()
     init { scope.launch(Dispatchers.IO) {
         try {
-            importFeasibility(); understanding.recoverInterrupted(); explanations.recoverInterrupted(); recommendations.recoverInterrupted()
+            portableSync.releaseSessions(); importFeasibility(); understanding.recoverInterrupted(); explanations.recoverInterrupted(); recommendations.recoverInterrupted()
             db.library().distillations().filter { it.state == "queued" }.forEach { jobs.capture(it.id) }
             db.library().episodes().filter { it.downloadState in listOf("queued", "downloading") }.forEach { jobs.download(it.id) }
             db.library().observeModels().first().filter { it.state in listOf("queued", "downloading") }.forEach { jobs.model(it.id) }
