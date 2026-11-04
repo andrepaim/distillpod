@@ -472,11 +472,12 @@ private fun captureState(state: String) = when (state) { "waiting_transcript" ->
             LinearProgressIndicator(Modifier.fillMaxWidth())
             OutlinedButton(onClick = { vm.cancelCapture(capture.id) }) { Text("Pause generation") }
         }
+        if(capture.state=="saved" && capture.excerpt.isBlank() && ep!=null) OutlinedButton(onClick={vm.generateCapture(capture.id)}) {Text("Prepare saved moment")}
         if (capture.state == "waiting_transcript" && ep != null) TranscriptTools(vm, ep)
         if (capture.state == "waiting_auth") Button(onClick = { vm.open("settings") }) { Text("Connect ChatGPT") }
         if (capture.state == "review_source") Text("This moment was captured before downloaded audio was verified. Review the excerpt below before sending it to ChatGPT.", color = MaterialTheme.colorScheme.tertiary)
-        if (capture.excerpt.isNotBlank() && capture.state in listOf("review_source", "waiting_auth", "waiting_quota", "failed")) {
-            Button(onClick = { vm.generateCapture(capture.id, true) }) { Text(if (capture.state == "review_source") "Generate insight from this source" else "Retry insight") }
+        if (capture.excerpt.isNotBlank() && capture.state in listOf("review_source", "waiting_auth", "waiting_quota", "failed", "saved")) {
+            Button(onClick = { vm.generateCapture(capture.id, true) }) { Text(if (capture.state == "review_source") "Generate insight from this source" else if(capture.state=="saved") "Generate insight" else "Retry insight") }
             Text("Retrying a request can use more of your ChatGPT allowance.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         capture.quote?.let { SelectionContainer { Text("“$it”", style = MaterialTheme.typography.headlineSmall) } }
@@ -503,6 +504,8 @@ private fun captureState(state: String) = when (state) { "waiting_transcript" ->
     val version = remember(context) { context.packageManager.getPackageInfo(context.packageName, 0).versionName.orEmpty() }
     LaunchedEffect(account.connected) { if (account.connected) vm.graph.account.refreshModels() }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        SubscriptionSyncSettings(vm)
+        HorizontalDivider()
         Text("ChatGPT", style = MaterialTheme.typography.titleLarge)
         Text(if (account.connected) "Connected" else "Not connected", color = if (account.connected) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurfaceVariant)
         Text(account.message, color = MaterialTheme.colorScheme.onSurfaceVariant)

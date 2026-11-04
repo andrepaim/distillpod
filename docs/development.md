@@ -54,6 +54,10 @@ The browser integration check validates receipt of a real browser's callback and
 
 ## Workflows
 
+The optional sync feature has an isolated Firebase protocol/security suite. Use Node 22 and Java 21 for that suite (keep Java 17 for Android), then run `npm ci --prefix firebase --ignore-scripts --no-audit --no-fund` and `npm --prefix firebase run test:emulator`. It uses a demo project and localhost:8085; it needs no cloud credentials. See [Firebase test setup](../firebase/README.md) and the [implementation plan](android/firebase-sync-telemetry-plan.md). Do not run concurrent Gradle builds against the same checkout.
+
+The [library sync guide](android/subscription-sync.md) documents optional client configuration, Auth/Firestore Android acceptance, and the two-phase force-stop test. `scripts/sync-device-tests.sh` requires running cloud emulators and a verified Android emulator; it refuses physical-phone targets. The default build intentionally contains no production Firebase configuration. CI runs the ordinary device suite first and the explicit cloud acceptance afterward. `IsolatedTestRunner` disables automatic production cloud activity and deferred fixture intents; SDK cases inject demo clients explicitly.
+
 `ci.yml` runs Kotlin tests, lint/APK assembly, release-tool guards, host native validation and emulator acceptance on main pushes and pull requests. Its reusable form also gates the release workflow. Actions are pinned to reviewed commit SHAs; Dependabot checks those pins and Gradle dependencies weekly.
 
 `release.yml` accepts version tags from main history, requests the additional unsigned release build/lint, and signs only after all validation jobs pass. Signing secrets are available only in the protected alpha-release environment. The publishing job has repository-content write permission; test jobs have read permission. See [releases](releases.md).

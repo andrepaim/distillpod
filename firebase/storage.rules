@@ -1,0 +1,22 @@
+rules_version = '2';
+service firebase.storage {
+ match /b/{bucket}/o {
+  function active(uid,generation) {
+   let account=firestore.get(/databases/(default)/documents/users/$(uid)).data;
+   return request.auth != null && request.auth.uid == uid && account.active == true && account.generation == generation;
+  }
+  match /users/{uid}/{generation}/{allPaths=**} {
+   allow list: if active(uid,generation);
+  }
+  match /users/{uid}/{generation}/{hash} {
+   allow read: if active(uid,generation) && hash.matches('[a-f0-9]{64}[.]gz');
+   allow create: if resource == null && active(uid,generation) && hash.matches('[a-f0-9]{64}[.]gz')
+    && request.resource.size > 0 && request.resource.size <= 8388608
+    && request.resource.contentType == 'application/gzip'
+    && request.resource.metadata.keys().hasOnly(['hash','expandedBytes','schema'])
+    && request.resource.metadata.hash + '.gz' == hash && request.resource.metadata.schema == '1'
+    && request.resource.metadata.expandedBytes.matches('[1-9][0-9]{0,7}')
+    && int(request.resource.metadata.expandedBytes) <= 33554432;
+  }
+ }
+}

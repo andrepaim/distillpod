@@ -36,6 +36,7 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         applicationContext.appGraph.account.foreground(true)
+        applicationContext.appGraph.syncAccount.kick()
         lifecycleScope.launch {
             applicationContext.appGraph.ready.await()
             if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) applicationContext.appGraph.transcription.resumeQueued()

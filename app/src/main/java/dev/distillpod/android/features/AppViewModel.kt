@@ -67,7 +67,8 @@ class AppViewModel(val graph: AppGraph, private val saved: SavedStateHandle) : V
         directorySearch.submit(text)
     }
     fun subscribe(url: String) = action("subscribe:$url") {
-        val id = graph.podcasts.subscribe(url); messages.send("Subscribed"); open("podcast:$id")
+        val candidate = search.value.results.firstOrNull { it.feedUrl == url }
+        val id = if (candidate != null) graph.podcasts.follow(candidate) else graph.podcasts.subscribe(url); messages.send("Subscribed"); open("podcast:$id")
     }
     fun refresh(id: String? = null) = action("refresh") {
         if (id == null) graph.podcasts.refreshAll() else graph.podcasts.refresh(id)
@@ -85,13 +86,13 @@ class AppViewModel(val graph: AppGraph, private val saved: SavedStateHandle) : V
     fun pauseDownload(id: String) { graph.jobs.pauseDownload(id) }
     fun deleteDownload(id: String) = action("delete:$id") { graph.media.deleteDownload(id) }
     fun clearUnusedAudio() = action("storage") { messages.send("Cleared ${fileSize(graph.media.clearUnusedAudio())} of unused audio. Queued and active files were kept.") }
-    fun markCompleted(id: String, complete: Boolean) = action("completed:$id") { dao.markCompleted(id, complete) }
+    fun markCompleted(id: String, complete: Boolean) = action("completed:$id") { graph.portableSync.markCompleted(id, complete) }
     fun unsubscribe(id: String) = action("unsubscribe:$id") { graph.podcasts.unsubscribe(id); root("library") }
     fun downloadModel(id: String) = action("model:$id") { graph.jobs.model(id) }
     fun deleteModel(id: String) = action("model:$id") { graph.media.deleteModel(id) }
     fun flag(key: String, value: Boolean) = action("settings") { graph.settings.flag(key, value); graph.jobs.configureRefresh() }
     fun text(key: String, value: String) = action("settings") { graph.settings.text(key, value) }
-    fun deleteCapture(id: String) = action("capture:$id") { dao.deleteDistillation(id) }
+    fun deleteCapture(id: String) = action("capture:$id") { graph.portableSync.deleteMoment(id) }
     fun prepareTranscript(id: String, local: Boolean = false) = action("transcript:$id") { graph.transcription.prepare(id, local); messages.send("Transcript preparation queued") }
     fun pauseTranscript(id: String) = action("transcript:$id") { graph.transcription.pause(id) }
     fun captureMoment() = action("distill") {

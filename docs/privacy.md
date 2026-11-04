@@ -1,6 +1,24 @@
 # Privacy and data handling
 
-DistillPod keeps its library, queue, listening position, transcripts, saved excerpts and generated text in its private Android storage. Account credentials are encrypted with a key held by Android Keystore. This is a personal-alpha implementation; the repository's validation reports are not an independent security audit.
+DistillPod keeps its library, queue, listening position, transcripts, saved excerpts and generated text in its private Android storage. ChatGPT credentials are encrypted with a key held by Android Keystore. Optional Firebase sign-in uses Firebase's SDK-managed app-private credential storage. Android application backup is disabled; neither provider's credentials enter library exports or library sync. This is a personal-alpha implementation; the repository's validation reports are not an independent security audit.
+
+## Current Spark-only deployment
+
+Billing is disabled. Queue and portable preferences can synchronize through Firestore without enabling Cloud Storage. Transcripts and other finished text remain local; their experimental Storage adapter is disabled in builds. Manual Backup & Restore remains available for text transfer.
+
+## Optional library sync
+
+The sync feature branch adds Google sign-in and Firestore storage for approved public subscriptions, listening progress, completion and saved moments. Cloud records include public feed/media addresses, feed-scoped episode identity and minimal display metadata, session/sequence identifiers, original positions/intervals, saved excerpts and completed moment quotes/insights with their model/source provenance. Record versions, operation receipts and ordered changes support retries and conflict review. The extended scope adds queue and portable model/language/AI-model preferences. Full transcripts, episode analyses, conversation branches and explanations remain local: the experimental Cloud Storage adapter is disabled. Full RSS catalogues are refreshed from their source. Downloaded audio, models, unfinished computation and device policies remain local. Local job states, attempts and private file paths never enter sync.
+
+On first connection, review which existing feeds to share. Existing and manually added sources are not uploaded automatically, because private RSS access tokens can be embedded in URL paths. Directory-result follows are treated as public sources. Password-bearing or query-bearing feed/media addresses are excluded even when the source is selected. Oversized records stay local. Feed-sharing choices are local and must be reviewed again after a manual library restore; cloud-restored subscriptions retain the account's prior sharing decision.
+
+Firebase Authentication receives the Google identity used to sign in. The library stays bound to its original Firebase user ID. A different account cannot adopt its outbox or upload its retained local data. Signing out pauses cloud work and keeps the offline library. Multiple local account profiles are not implemented yet. Unfollowing creates a cloud deletion marker while preserving local episode data; this does not erase historical cloud changes. Complete account erasure and independent dated cloud recovery are later milestones.
+
+Cloud records are protected by per-user security rules and the provider's transport/storage encryption. This is not end-to-end encryption; the project administrator can access stored data. The database is in São Paulo; the content bucket is configured in the same region at deployment. Sync uses bounded work and retries, with foreground/network opportunities and periodic recovery. Android idle and force-stop can defer work; reopening the app resumes it.
+
+## Telemetry status
+
+The feature branch contains a tested event/consent boundary. Firebase Analytics, Crashlytics and Performance SDK adapters and live collection are not yet enabled. Enabling library sync does not opt into telemetry.
 
 ## Network requests
 

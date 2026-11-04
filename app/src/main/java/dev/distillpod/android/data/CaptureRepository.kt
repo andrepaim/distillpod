@@ -27,15 +27,18 @@ fun validatedQuote(text: String, excerpt: String): Pair<String, String> {
 }
 
 class CaptureRepository(private val db: AppDatabase, private val ai: AiGateway, private val connected: () -> Boolean,
-    private val prepare: suspend (String) -> Unit, private val enqueue: (String) -> Unit) {
+    private val prepare: suspend (String) -> Unit, private val enqueue: (String) -> Unit,
+    private val onPortableChanged:()->Unit={}) {
     private val dao = db.library()
+    private val portable=dev.distillpod.android.sync.PortableLibrarySync(db)
     suspend fun capture(id: String, position: Long, verifiedSource: Boolean): String {
         val ep = dao.episode(id) ?: error("Episode is unavailable")
         val saved = db.withTransaction {
             dao.recentCapture(id, position, System.currentTimeMillis() - 2000)
                 ?: DistillationEntity(UUID.randomUUID().toString(), id, (position - 60000).coerceAtLeast(0), position,
-                    fingerprint = if (verifiedSource) ep.mediaFingerprint else "unverified:${ep.id}").also { dao.putDistillation(it) }
+                    fingerprint = if (verifiedSource) ep.mediaFingerprint else "unverified:${ep.id}").also { dao.putDistillation(it);portable.recordMoment(it) }
         }
+        onPortableChanged()
         if (saved.state == "waiting_transcript") hydrate(saved)
         return saved.id
     }
@@ -55,10 +58,12 @@ class CaptureRepository(private val db: AppDatabase, private val ai: AiGateway, 
         }
         val updated = db.withTransaction {
             if (dao.distillation(saved.id)?.state != "waiting_transcript") false else {
-                dao.putDistillation(saved.copy(excerpt = text, revision = transcript.revision, fingerprint = ep.mediaFingerprint, state = state, attempt = UUID.randomUUID().toString(),
-                    error = if (state == "no_speech") "No transcribed speech was found in this window." else null)); true
+                val hydrated=saved.copy(excerpt = text, revision = transcript.revision, fingerprint = ep.mediaFingerprint, state = state, attempt = UUID.randomUUID().toString(),
+                    error = if (state == "no_speech") "No transcribed speech was found in this window." else null)
+                dao.putDistillation(hydrated);portable.recordMoment(hydrated); true
             }
         }
+        if(updated)onPortableChanged()
         if (updated && state == "queued") enqueue(saved.id)
     }
     suspend fun transcriptUpdated(id: String) { dao.distillations().filter { it.episodeId == id && it.state == "waiting_transcript" }.forEach { hydrate(it) } }
@@ -83,8 +88,10 @@ class CaptureRepository(private val db: AppDatabase, private val ai: AiGateway, 
             db.withTransaction {
                 val current = dao.distillation(id) ?: return@withTransaction
                 if (current.state != "running" || current.excerpt != saved.excerpt || current.attempt != saved.attempt) return@withTransaction
-                dao.putDistillation(current.copy(quote = quote, insight = insight, model = answer.model, state = "succeeded", error = null))
+                val finished=current.copy(quote = quote, insight = insight, model = answer.model, state = "succeeded", error = null)
+                dao.putDistillation(finished);portable.recordMoment(finished)
             }
+            onPortableChanged()
         } catch (error: Exception) {
             withContext(NonCancellable) {
                 db.withTransaction {

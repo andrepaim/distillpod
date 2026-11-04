@@ -125,6 +125,22 @@ class PlaybackRepository(context: Context, private val db: AppDatabase, private 
             }
         }
     }
+    suspend fun acceptCloudQueue(imported:(List<String>)->Unit) {
+        val all=db.library().episodes().associateBy {it.id};val podcasts=db.library().podcasts().associateBy {it.id}
+        val desired=db.library().queue().map {it.episodeId}.filter {it in all}
+        val c=controller()
+        withContext(Dispatchers.Main) {
+            val current=c.currentMediaItem?.mediaId
+            val ids=if(current!=null && current in all)listOf(current)+desired.filter {it!=current} else desired
+            if(ids.isEmpty() || ids==(0 until c.mediaItemCount).map {c.getMediaItemAt(it).mediaId})return@withContext
+            val index=ids.indexOf(current).coerceAtLeast(0)
+            val position=if(current in ids)c.currentPosition.coerceAtLeast(0) else all.getValue(ids[index]).positionMs
+            val playWhenReady=c.playWhenReady
+            imported(ids)
+            c.setMediaItems(ids.map {mediaItem(all.getValue(it),podcasts[all.getValue(it).podcastId])},index,position)
+            c.prepare();c.playWhenReady=playWhenReady
+        }
+    }
     suspend fun capture(): Pair<String, Long> { val c = controller(); return withContext(Dispatchers.Main) { (c.currentMediaItem?.mediaId ?: error("Play an episode first")) to c.currentPosition.coerceAtLeast(0) } }
     suspend fun captureSource(): Triple<String, Long, String?> { val c = controller(); return withContext(Dispatchers.Main) {
         Triple(c.currentMediaItem?.mediaId ?: error("Play an episode first"), c.currentPosition.coerceAtLeast(0), c.currentMediaItem?.localConfiguration?.uri?.takeIf { it.scheme == "file" }?.path)

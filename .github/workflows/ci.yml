@@ -20,6 +20,30 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  firebase:
+    name: Firebase protocol and security rules
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: firebase/package-lock.json
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Install locked emulator tools
+        run: npm ci --prefix firebase --ignore-scripts --no-audit --no-fund
+      - name: Validate isolated transactions and rules
+        run: |
+          npm --prefix firebase run test:emulator
+          npm --prefix firebase run test:storage
+
   android:
     name: Kotlin, lint and APK
     runs-on: ubuntu-24.04
@@ -93,6 +117,17 @@ jobs:
         with:
           submodules: recursive
           persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: firebase/package-lock.json
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Retain Firebase emulator runtime
+        run: echo "DISTILLPOD_FIREBASE_JAVA=$JAVA_HOME" >> "$GITHUB_ENV"
       - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: temurin
@@ -101,6 +136,8 @@ jobs:
         with:
           log-accepted-android-sdk-licenses: false
       - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+      - name: Install cloud emulator tools
+        run: npm ci --prefix firebase --ignore-scripts --no-audit --no-fund
       - name: Prepare verified public inference fixtures
         run: |
           scripts/prepare-fixtures.sh /tmp/distillpod-fixtures
@@ -116,10 +153,14 @@ jobs:
           target: google_apis
           arch: x86_64
           disable-animations: true
-          script: DISTILLPOD_SERIAL=emulator-5554 scripts/emulator-tests.sh /tmp/distillpod-fixtures
+          script: |
+            DISTILLPOD_SERIAL=emulator-5554 scripts/emulator-tests.sh /tmp/distillpod-fixtures
+            JAVA_HOME="$DISTILLPOD_FIREBASE_JAVA" PATH="$DISTILLPOD_FIREBASE_JAVA/bin:$PATH" firebase/node_modules/.bin/firebase --config firebase/firebase.json emulators:exec --only auth,firestore,storage --project demo-distillpod-sync 'env DISTILLPOD_SERIAL=emulator-5554 scripts/sync-device-tests.sh'
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: emulator-test-results
-          path: /tmp/distillpod-instrumentation.log
+          path: |
+            /tmp/distillpod-instrumentation.log
+            /tmp/distillpod-sync-device.log*
           retention-days: 14

@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.datastore.preferences.core.*
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.combine
 import org.json.JSONArray
 
 internal fun searchHistory(raw: String): List<String> = runCatching {
@@ -21,23 +22,32 @@ data class Preferences(
     val recommendations: Boolean = false,
 )
 
-class AppSettings(context: Context, private val store: androidx.datastore.core.DataStore<androidx.datastore.preferences.core.Preferences> = context.applicationContext.settingsDataStore) {
-    val flow = store.data.map { p -> Preferences(
+class AppSettings(context: Context, private val store: androidx.datastore.core.DataStore<androidx.datastore.preferences.core.Preferences> = context.applicationContext.settingsDataStore, private val db:AppDatabase?=null, private val portableChanged:()->Unit={}) {
+    private val localFlow = store.data.map { p -> Preferences(
         p[stringPreferencesKey("model")] ?: "tiny", p[stringPreferencesKey("language")] ?: "auto",
         p[booleanPreferencesKey("wifi")] ?: true, p[booleanPreferencesKey("charging")] ?: false,
         p[booleanPreferencesKey("refresh")] ?: true, p[booleanPreferencesKey("skipAds")] ?: false,
         p[longPreferencesKey("storageLimit")] ?: (2L * 1024 * 1024 * 1024), p[stringPreferencesKey("aiModel")] ?: "",
         p[booleanPreferencesKey("recommendations")] ?: false,
     ) }
+    val flow = if(db==null)localFlow else combine(localFlow,db.sync().observePreferences()) {local,rows->
+        val p=rows.associate {it.name to it.value}
+        local.copy(model=p["model"]?:local.model,language=p["language"]?:local.language,selectedAiModel=p["aiModel"]?:local.selectedAiModel)
+    }
     suspend fun restorePortable(value: PortablePreferences) {
         PortablePreferences.parse(value.json())
+        if(db!=null)for((name,text) in mapOf("model" to value.model,"language" to value.language,"aiModel" to value.aiModel))dev.distillpod.android.sync.CollectionSync(db,changed=portableChanged).preference(name,text)
         store.edit {
             it[stringPreferencesKey("model")] = value.model
             it[stringPreferencesKey("language")] = value.language
             it[stringPreferencesKey("aiModel")] = value.aiModel
         }
     }
-    suspend fun text(key: String, value: String) { store.edit { it[stringPreferencesKey(key)] = value } }
+    suspend fun text(key: String, value: String) {
+        if(db!=null && key in dev.distillpod.core.sync.CollectionRecord.preferences) {
+            dev.distillpod.android.sync.CollectionSync(db,changed=portableChanged).preference(key,value);return
+        }
+        store.edit { it[stringPreferencesKey(key)] = value } }
     suspend fun flag(key: String, value: Boolean) { store.edit { it[booleanPreferencesKey(key)] = value } }
     suspend fun storage(bytes: Long) { require(bytes >= 250_000_000); store.edit { it[longPreferencesKey("storageLimit")] = bytes } }
     fun value(key: String) = store.data.map { it[stringPreferencesKey(key)] ?: "" }
