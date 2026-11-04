@@ -1,5 +1,7 @@
 # DistillPod Android UI improvement proposal
 
+Follow-up: [full design review, November 4](full-design-review.md), including searchable collections, transcript reading and grouped settings.
+
 November 3, 2026. Owner authorization: research, choose and implement improvements independently. The completed playback reliability work is recorded in [background playback](background-playback.md).
 
 ## Direction

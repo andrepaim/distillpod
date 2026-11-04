@@ -1,0 +1,103 @@
+package dev.distillpod.android
+
+import androidx.compose.ui.test.*
+import androidx.activity.compose.setContent
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
+import dev.distillpod.android.features.ProductApp
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.lifecycle.ViewModelProvider
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.uiautomator.UiDevice
+import dev.distillpod.android.data.*
+import dev.distillpod.android.features.AppViewModel
+import kotlinx.coroutines.*
+import org.junit.*
+import org.junit.runner.RunWith
+import java.io.File
+
+@RunWith(AndroidJUnit4::class)
+class DesignReviewDeviceTest {
+    @get:Rule val compose=createAndroidComposeRule<MainActivity>()
+    private suspend fun open(route:String) {
+        val graph=compose.activity.applicationContext.appGraph
+        graph.ready.await()
+        withContext(Dispatchers.Main) {
+            val vm=ViewModelProvider(compose.activity,AppViewModel.factory(graph))[AppViewModel::class.java]
+            if(route=="saved")vm.root(route) else vm.open(route)
+        }
+    }
+    private fun shot(name:String) {
+        compose.waitForIdle()
+        UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).waitForIdle(1000)
+        val directory=File(compose.activity.filesDir,"design-review").apply {mkdirs()}
+        UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).takeScreenshot(File(directory,"$name.png"))
+    }
+    @Test fun settingsExposeBackupWithoutScrolling()=runBlocking<Unit> {
+        open("settings")
+        shot("settings-before-check")
+        compose.onNodeWithText("Backup & Restore").assertIsDisplayed().performClick()
+        compose.onNodeWithText("Connect a backup file once. DistillPod remembers it for your next backup and restore.").assertIsDisplayed()
+    }
+    @Test fun settingsRemainReachableWithLargeText()=runBlocking<Unit> {
+        val graph=compose.activity.applicationContext.appGraph
+        graph.ready.await()
+        withContext(Dispatchers.Main) {
+            val vm=ViewModelProvider(compose.activity,AppViewModel.factory(graph))[AppViewModel::class.java]
+            vm.open("settings")
+            compose.activity.setContent {CompositionLocalProvider(LocalDensity provides Density(graph.context.resources.displayMetrics.density,1.6f)){ProductApp(vm)}}
+        }
+        compose.onNodeWithText("Backup & Restore").assertIsDisplayed()
+        shot("settings-large-text")
+        compose.onNodeWithText("Local transcription").performScrollTo().performClick()
+        compose.onNodeWithText("Português").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithContentDescription("Back").performClick()
+        compose.onNodeWithText("Local transcription").assertIsDisplayed()
+    }
+    @Test fun gallerySearchFindsShowsBeyondTheRail()=runBlocking<Unit> {
+        val dao=compose.activity.applicationContext.appGraph.db.library()
+        val ids=(0..29).map {"review-show-$it"}
+        try {
+            ids.forEachIndexed {i,id->dao.putPodcast(PodcastEntity(id,"https://example.test/$id","Review show ${i.toString().padStart(2,'0')}",author="Independent voices"))}
+            open("shows")
+            compose.onNodeWithText("Search your shows").performTextInput("show 29")
+            compose.onNodeWithText("Search your shows").performImeAction()
+            compose.onNodeWithText("Review show 29").assertIsDisplayed()
+            compose.onNodeWithText("Review show 00").assertDoesNotExist()
+            shot("shows-search")
+            compose.onNodeWithText("Review show 29").performClick()
+            compose.onNodeWithContentDescription("Back").performClick()
+            compose.onNodeWithText("Search your shows").assertTextContains("show 29")
+            compose.onNodeWithContentDescription("Clear show search").performClick()
+            compose.onNodeWithText("Search your shows").performImeAction()
+            compose.onNodeWithText("Review show 00").assertIsDisplayed()
+            shot("shows")
+        } finally {ids.forEach {dao.deletePodcast(it)}}
+    }
+    @Test fun readerAndSavedSearchMatchLocalContent()=runBlocking<Unit> {
+        val dao=compose.activity.applicationContext.appGraph.db.library();val id="review-reading"
+        try {
+            dao.putPodcast(PodcastEntity(id,"https://example.test/$id","The Listening Room",author="Independent voices"))
+            dao.putEpisode(EpisodeEntity(id,id,id,"The art of paying attention","https://example.test/audio",durationMs=120000))
+            dao.putTranscript(TranscriptEntity(id,"review",id,"base","en",state="ready",durationMs=120000,processedMs=120000))
+            dao.putSegments(listOf(SegmentEntity(id,"review",0,60000,"Attention is a practice we can build every day."),SegmentEntity(id,"review",60000,120000,"Curiosity gives us another way to listen.",1)))
+            dao.putDistillation(DistillationEntity(id,id,0,60000,"Attention is a practice.",quote="Make room for curiosity.",insight="A small daily practice makes a difference.",state="succeeded"))
+            open("transcript:$id")
+            compose.onNodeWithText("Attention is a practice we can build every day.").assertIsDisplayed()
+            shot("transcript")
+            compose.onNodeWithText("Search transcript").performTextInput("curiosity")
+            compose.onNodeWithText("Curiosity gives us another way to listen.").assertIsDisplayed()
+            compose.onNodeWithText("Attention is a practice we can build every day.").assertDoesNotExist()
+            compose.onNodeWithContentDescription("Clear transcript search").performClick()
+            compose.onNodeWithText("Search transcript").performTextInput("zzzznoresult")
+            compose.onNodeWithText("No matching passages").assertIsDisplayed()
+            open("saved")
+            compose.onNodeWithText("Search saved moments").performTextInput("curiosity")
+            compose.onNodeWithText("Search saved moments").performImeAction()
+            compose.onNodeWithText("“Make room for curiosity.”").assertIsDisplayed()
+            shot("saved-search")
+        } finally {dao.deletePodcast(id)}
+    }
+}

@@ -86,10 +86,10 @@ class ListeningDesignDeviceTest {
             screenshot("library")
             withContext(Dispatchers.Main) { c.seekTo(45000) }
             compose.onNodeWithContentDescription("Open now playing").performClick()
-            compose.onNodeWithContentDescription("Back 15 seconds").performClick()
-            await { c.currentPosition in 29900..30100 }
+            compose.onNodeWithContentDescription("Back 10 seconds").performClick()
+            await { c.currentPosition in 34900..35100 }
             compose.onNodeWithContentDescription("Forward 30 seconds").performClick()
-            await { c.currentPosition in 59900..60100 }
+            await { c.currentPosition in 64900..65100 }
             compose.onNodeWithText("1.25×").performClick()
             await { c.playbackParameters.speed == 1.25f }
             compose.onNodeWithContentDescription("Episode playback position").assertIsDisplayed()
@@ -102,7 +102,7 @@ class ListeningDesignDeviceTest {
             compose.onNodeWithContentDescription("Move ${titles[2]} up").performClick()
             await { (0 until c.mediaItemCount).map { c.getMediaItemAt(it).mediaId } == listOf(ids[0], ids[2], ids[1]) }
             compose.waitUntil(5000) { vm.player.value.queue == listOf(ids[0], ids[2], ids[1]) }
-            assertEquals(60000L, withContext(Dispatchers.Main) { c.currentPosition })
+            assertEquals(65000L, withContext(Dispatchers.Main) { c.currentPosition })
             screenshot("queue")
             compose.onNodeWithText("Saved", useUnmergedTree = true).performClick()
             compose.onNode(hasScrollAction()).performScrollToNode(hasText("Useful ideas deserve a second listen.", substring = true))
@@ -116,7 +116,7 @@ class ListeningDesignDeviceTest {
                     CompositionLocalProvider(LocalDensity provides Density(graph.context.resources.displayMetrics.density, 1.6f)) { ProductApp(vm) }
                 }
             }
-            compose.onNodeWithContentDescription("Back 15 seconds").performScrollTo().assertIsDisplayed()
+            compose.onNodeWithContentDescription("Back 10 seconds").performScrollTo().assertIsDisplayed()
             compose.onNodeWithText("Distill last 60 seconds").performScrollTo().assertIsDisplayed()
             compose.onNodeWithText("Summary & chapters").performScrollTo().assertIsDisplayed()
             compose.onNodeWithText("Ask episode").performScrollTo().assertIsDisplayed()

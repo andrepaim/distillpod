@@ -56,11 +56,12 @@ class SubscriptionSyncUiDeviceTest {
         withContext(Dispatchers.Main) {
             ViewModelProvider(compose.activity,AppViewModel.factory(graph))[AppViewModel::class.java].root("settings")
         }
-        compose.onNodeWithText("Library sync").assertIsDisplayed()
+        compose.onNodeWithText("Library sync").assertIsDisplayed().performClick()
         compose.onNodeWithText("Connect Google to sync public podcast subscriptions, listening progress, completion and saved moments between your phones. Transcripts and other library data still use Backup & Restore.").assertIsDisplayed()
         if(graph.syncAccount.state.value.configured) {
             compose.onNodeWithText("Connect Google & sync library").assertIsDisplayed()
         } else compose.onNodeWithText("Cloud sync is unavailable in this build.").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Back").performClick()
         compose.onNodeWithText("ChatGPT").performScrollTo().assertIsDisplayed()
     }
 }

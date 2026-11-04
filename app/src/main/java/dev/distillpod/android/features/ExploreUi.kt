@@ -43,7 +43,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
             }
             else -> {
                 row.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-                if (!account.connected) OutlinedButton(onClick = { vm.open("settings") }) { Text("Connect ChatGPT") }
+                if (!account.connected) OutlinedButton(onClick = { vm.open("settings:ai") }) { Text("Connect ChatGPT") }
                 if (moment != null) Button(onClick = { vm.explain(moment.id) }, enabled = account.connected) { Text("Retry explanation") }
             }
         }
@@ -75,7 +75,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
         item { OutlinedTextField(topics, vm::suggestionTopics, label = { Text("Topics, languages or interests") }, modifier = Modifier.fillMaxWidth(), maxLines = 4, enabled = !running) }
         item { Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(history, { history = it }, enabled = !running); Text("Also send titles of podcasts I follow", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall) } }
         item {
-            if (!account.connected) OutlinedButton(onClick = { vm.open("settings") }) { Text("Connect ChatGPT") }
+            if (!account.connected) OutlinedButton(onClick = { vm.open("settings:ai") }) { Text("Connect ChatGPT") }
             else if (running) { LinearProgressIndicator(Modifier.fillMaxWidth()); TextButton(onClick = vm::cancelRecommendations) { Text("Cancel suggestions") } }
             else Button(onClick = { vm.recommend(history) }, enabled = topics.trim().length >= 2, modifier = Modifier.fillMaxWidth()) { Text("Find suggestions") }
             if (error.isNotBlank()) Text(error, color = MaterialTheme.colorScheme.error)
