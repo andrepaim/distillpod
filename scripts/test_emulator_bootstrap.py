@@ -63,6 +63,7 @@ elif cmd[:3]==['shell','am','instrument']:print('INSTRUMENTATION_STATUS_CODE: 0\
         command = next(call for call in calls if call[:3] == ["shell", "am", "instrument"])
         self.assertIn("#realDirectoryShowsPublisherThumbnails", " ".join(command))
         self.assertIn("AutoRestartDeviceTest", " ".join(command))
+        self.assertIn("LiveMomentQualityDeviceTest", " ".join(command))
         phases=[call for call in calls if call[:3]==["shell","am","instrument"]]
         self.assertEqual(4,len(phases))
         self.assertIn("AutoBrowserDeviceTest"," ".join(phases[1]))

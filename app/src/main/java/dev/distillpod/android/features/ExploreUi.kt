@@ -1,5 +1,9 @@
 package dev.distillpod.android.features
 
+import dev.distillpod.android.data.explanationMoment
+import dev.distillpod.android.data.explanationMatches
+import dev.distillpod.android.data.sourceStartMs
+
 import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -48,9 +52,11 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
             }
         }
         if (moment != null) {
+            val source=explanationMoment(row,moment)
             HorizontalDivider(); Text("Saved source", style = MaterialTheme.typography.titleMedium)
-            SelectionContainer { Text(moment.excerpt, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-            TextButton(onClick = { vm.play(moment.episodeId, moment.startMs); vm.open("player") }) { Text("Listen to source · ${timestamp(moment.startMs)}") }
+            if(!explanationMatches(row,moment))Text("This explanation belongs to a previous version of the distill.",style=MaterialTheme.typography.bodySmall)
+            SelectionContainer { Text(source.excerpt.ifBlank { "The original excerpt was not saved with this older explanation." }, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            TextButton(onClick = { vm.play(source.episodeId, source.sourceStartMs); vm.open("player") }) { Text("Listen to source · ${timestamp(source.sourceStartMs)}") }
         }
     }
 }

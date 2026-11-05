@@ -120,7 +120,14 @@ class AppViewModel(val graph: AppGraph, private val saved: SavedStateHandle) : V
         open("capture:$saved")
     }
     fun generateCapture(id: String, confirm: Boolean = false) = action("capture:$id") { graph.captures.generate(id, confirm) }
-    fun cancelCapture(id: String) = action("capture:$id") { graph.jobs.cancelCapture(id); dao.distillation(id)?.let { dao.putDistillation(it.copy(state = "failed", error = "Generation paused. Your source is saved.")) } }
+    fun improveCapture(id: String, expanded: Boolean = false) = action("capture:$id") { graph.captures.improve(id, expanded) }
+    fun retranscribeCapture(id: String) = action("capture:$id") {
+        val moment=dao.distillation(id) ?: return@action
+        graph.transcription.prepare(moment.episodeId, forceLocal=true)
+        graph.captures.improve(id, expanded=true)
+    }
+    fun restoreCapture(id: String, version: String) = action("capture:$id") { graph.captures.restoreVersion(id, version) }
+    fun cancelCapture(id: String) = action("capture:$id") { graph.jobs.cancelCapture(id); graph.captures.cancel(id) }
     fun exportOpml(uri: android.net.Uri) = action("opml") {
         val xml = graph.podcasts.exportOpml()
         withContext(Dispatchers.IO) { graph.context.contentResolver.openOutputStream(uri, "wt")!!.bufferedWriter().use { it.write(xml) } }
@@ -158,9 +165,9 @@ class AppViewModel(val graph: AppGraph, private val saved: SavedStateHandle) : V
     }
     suspend fun explanationText(id: String): String {
         val report = dao.research(id) ?: error("Explanation is unavailable")
-        val capture = dao.distillation(report.distillationId) ?: error("Source is unavailable")
+        val capture = explanationMoment(report, dao.distillation(report.distillationId) ?: error("Source is unavailable"))
         val ep = dao.episode(capture.episodeId)
-        return "Transcript explanation · DistillPod\n\n${report.report}\n\nSource: ${ep?.title ?: "Podcast"} · ${timestamp(capture.startMs)}–${timestamp(capture.endMs)}\n\nSaved excerpt:\n${capture.excerpt}\n\nThis explanation uses the saved transcript. No web research was performed."
+        return "Transcript explanation · DistillPod\n\n${report.report}\n\nSource: ${ep?.title ?: "Podcast"} · ${timestamp(capture.sourceStartMs)}–${timestamp(capture.sourceEndMs)}\n\nSaved excerpt:\n${capture.excerpt.ifBlank { "The original excerpt was not saved with this older explanation." }}\n\nThis explanation uses the saved transcript. No web research was performed."
     }
     fun exportExplanation(id: String, uri: android.net.Uri) = action("export:$id") {
         val text = explanationText(id)

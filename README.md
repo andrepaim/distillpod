@@ -17,7 +17,7 @@ Connect your ChatGPT account for episode understanding and saved insights. Episo
 
 ## Turn listening into understanding
 
-An idea catches your attention. Tap **Distill last 60 seconds** and keep listening. DistillPod saves the source window immediately, then uses its transcript to extract a quote and explain the central idea. Open Saved to revisit it, explore it further or replay the original moment. Your capture stays saved if transcription or an AI request needs a retry.
+An idea catches your attention. Tap **Distill last 60 seconds** and keep listening. DistillPod saves the source window immediately, then uses bounded surrounding transcript context to select a complete thought. A second AI request checks the takeaway against the source; a supporting quote appears when it can stand alone faithfully. Open Saved to revisit it, explore it further or replay the original moment. Your capture stays saved if transcription or an AI request needs a retry. Improve a saved distill without losing its previous version. See [contextual distills](docs/android/contextual-distills.md) for behavior, sync compatibility and evaluation limits.
 
 | What you want to do | How DistillPod helps |
 | --- | --- |
@@ -33,7 +33,7 @@ The listening tools support that workflow: podcast search, public RSS subscripti
 
 **AI is central to the DistillPod experience.** Connect an eligible ChatGPT account in Settings to generate quotes and insights, summaries and chapters, episode answers, explanations and podcast suggestions. Requests use your ChatGPT plan allowance; available models and usage limits depend on your account.
 
-Episode understanding starts with a transcript. DistillPod prefers a suitable publisher transcript. You can enable [existing online transcript lookup](docs/android/online-transcripts.md) in Settings before falling back to Whisper on your phone. Lookup is off by default, uses approved public shows, and never uploads audio or creates cloud transcription jobs. For local transcription, choose Tiny or Base, with automatic language detection or an explicit English or Portuguese setting. Preparation shows progress and supports pause/resume. Full-episode summaries and chat need a complete transcript; saved moments can use the transcript for their source window.
+Episode understanding starts with a transcript. Preparation starts automatically when an episode plays; **Settings → Local transcription → Transcribe when playing** is on by default and can be disabled. DistillPod prefers a suitable publisher transcript. You can enable [existing online transcript lookup](docs/android/online-transcripts.md) in Settings before falling back to Whisper on your phone. Lookup is off by default, uses approved public shows, and never uploads audio or creates cloud transcription jobs. For local transcription, download Tiny or Base once, with automatic language detection or an explicit English or Portuguese setting. Preparation respects download and power settings, shows progress and supports pause/resume. Full-episode summaries and chat need a complete transcript; saved moments can use the transcript for their source window.
 
 Playback, local transcription and source-moment capture also work without ChatGPT, but DistillPod is designed around the connected AI experience.
 

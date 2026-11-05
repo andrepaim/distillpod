@@ -79,3 +79,19 @@ test('preferences exclude identity device policies and invalid values',async()=>
 test('finished content manifest stores only public identity and a verified descriptor',async()=>{await seed('alice',2);await assertSucceeds(commit(db('alice'),{key:'artifact_episode1',payload:{...episodeIdentity,hash:'a'.repeat(64),expandedBytes:'1000',schema:'1'}}));});
 test('full-scope protocol upgrade is owner-only monotonic and keeps generation',async()=>{await seed();const a=db('alice');await assertSucceeds(setDoc(doc(a,'users/alice'),{generation:'g1',sequence:0,active:true,protocol:2}));await assertFails(setDoc(doc(a,'users/alice'),{generation:'g1',sequence:0,active:true,protocol:1}));await assertFails(setDoc(doc(db('bob'),'users/alice'),{generation:'g1',sequence:0,active:true,protocol:2}));});
 test('old protocol cannot publish record types older clients cannot read',async()=>{await seed();await assertFails(commit(db('alice'),{key:'preference_model',payload:{value:'tiny'}}));});
+
+test('contextual moments require protocol three and cannot be downgraded by old writers',async()=>{
+ await seed('alice',2);const a=db('alice');const newer={...moment,momentSchema:'2',sourceJson:'{}',quote:''};
+ await assertFails(commit(a,{key:'moment_moment1',payload:newer}));
+ await assertSucceeds(setDoc(doc(a,'users/alice'),{generation:'g1',sequence:0,active:true,protocol:3}));
+ await assertSucceeds(commit(a,{key:'moment_moment1',payload:newer}));
+ await assertFails(commit(a,{key:'moment_moment1',id:'old',baseVersion:1,payload:moment}));
+ await assertSucceeds(commit(a,{key:'moment_moment1',id:'delete',baseVersion:1,deleted:true}));
+ await assertFails(setDoc(doc(a,'users/alice'),{generation:'g1',sequence:2,active:true,protocol:2}));
+});
+test('protocol three validates moment schema and bounds metadata',async()=>{
+ await seed('alice',3);const a=db('alice');
+ for(const [i,extra] of [{momentSchema:'3',sourceJson:''},{momentSchema:'2'},{sourceJson:''},{momentSchema:'2',sourceJson:'x'.repeat(32769)}].entries())
+  await assertFails(commit(a,{key:'moment_moment1',id:`bad-context-${i}`,payload:{...moment,...extra}}));
+ await assertSucceeds(commit(a,{key:'moment_moment1',payload:{...moment,momentSchema:'2',sourceJson:'',quote:''}}));
+});

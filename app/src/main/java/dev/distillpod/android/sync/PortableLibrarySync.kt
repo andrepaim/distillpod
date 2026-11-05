@@ -51,9 +51,13 @@ class PortableLibrarySync(private val db:AppDatabase,private val isolatedDemo:Bo
     /** Called inside a transaction which has already checked the AI attempt/source identity. */
     internal suspend fun recordMoment(value:DistillationEntity) {
         val ep=dao.episode(value.episodeId) ?: return
-        val payload=identity(ep)?.plus(mapOf("momentId" to value.id,"startMs" to value.startMs.toString(),"endMs" to value.endMs.toString(),
+        var payload=identity(ep)?.plus(mapOf("momentId" to value.id,"startMs" to value.startMs.toString(),"endMs" to value.endMs.toString(),
             "excerpt" to value.excerpt,"quote" to (value.quote?:""),"insight" to (value.insight?:""),"revision" to value.revision,
             "fingerprint" to value.fingerprint,"createdAt" to value.createdAt.toString(),"model" to (value.model?:""))) ?: return
+        if(value.sourceJson.isNotBlank() || sync.view("__contextual_moments")!=null) {
+            MomentGeneration.validateSource(value.sourceJson,value.startMs,value.endMs)
+            payload=payload+mapOf("momentSchema" to "2","sourceJson" to value.sourceJson)
+        }
         enqueue("moment_${value.id}",payload)
     }
     suspend fun deleteMoment(id:String) {
@@ -144,8 +148,16 @@ internal suspend fun projectPortable(db:AppDatabase,r:CloudSubscription,force:Bo
         r.key.startsWith("completion_")->dao.markCompleted(ep.id,p.getValue("completed").toBooleanStrict())
         else-> {
             val insight=p.getValue("insight").ifBlank {null};val quote=p.getValue("quote").ifBlank {null}
-            dao.putDistillation(DistillationEntity(p.getValue("momentId"),ep.id,p.getValue("startMs").toLong(),p.getValue("endMs").toLong(),p.getValue("excerpt"),quote,insight,
-                p.getValue("revision"),p.getValue("fingerprint"),state=if(insight!=null && quote!=null)"succeeded" else "saved",createdAt=p.getValue("createdAt").toLong(),model=p.getValue("model").ifBlank {null}))
+            val source=p["sourceJson"].orEmpty()
+            MomentGeneration.validateSource(source,p.getValue("startMs").toLong(),p.getValue("endMs").toLong())
+            val restored=DistillationEntity(p.getValue("momentId"),ep.id,p.getValue("startMs").toLong(),p.getValue("endMs").toLong(),p.getValue("excerpt"),quote,insight,
+                p.getValue("revision"),p.getValue("fingerprint"),state=if(insight!=null)"succeeded" else "saved",createdAt=p.getValue("createdAt").toLong(),model=p.getValue("model").ifBlank {null},sourceJson=source)
+            val local=dao.distillation(restored.id)
+            // An acknowledgement of our own snapshot must not erase a queued/reviewing attempt.
+            if(local==null || momentSnapshot(local)!=momentSnapshot(restored) || force) {
+                if(local!=null && local.insight!=null)dao.putMomentVersion(MomentVersionEntity(UUID.randomUUID().toString(),local.id,momentSnapshot(local)))
+                dao.putDistillation(restored)
+            }
         }
     }
     db.sync().putView(oldView.copy(version=r.version,active=false))

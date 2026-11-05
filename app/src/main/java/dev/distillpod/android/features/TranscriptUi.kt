@@ -29,6 +29,7 @@ import dev.distillpod.android.data.TranscriptStage
     val effective = effectiveTranscripts.firstOrNull { it.episodeId == ep.id }
     val row = transcripts.firstOrNull { it.episodeId == ep.id }
     val busy by vm.busy.collectAsStateWithLifecycle()
+    val prefs by vm.graph.preferences.collectAsStateWithLifecycle()
     val progress by vm.graph.transcription.progress.collectAsStateWithLifecycle()
     val live = progress[ep.id]?.takeIf { it.revision == row?.revision }
     val running = row?.state in listOf("queued", "processing")
@@ -62,12 +63,12 @@ import dev.distillpod.android.data.TranscriptStage
             }
             "queued" -> "Queued · waiting for power, network or an Android processing slot"
             "processing" -> "Preparing on this phone · ${timestamp(row.processedMs)} completed"
-            "waiting_model" -> "Download the selected model in Settings to continue"
+            "waiting_model" -> if (prefs.transcribeOnPlayback) "Download a model to enable automatic transcription" else "Download the selected model in Settings to continue"
             "paused" -> "Paused · completed chunks are saved"
             "partial" -> "Publisher transcript has partial coverage"
             "stale" -> "Audio changed · prepare a new transcript"
             "failed" -> "Preparation could not finish · completed chunks are saved"
-            else -> "Prepare a transcript to browse text and capture insights. Audio stays on your phone."
+            else -> if (prefs.transcribeOnPlayback) "A transcript will be prepared when you play this episode. Audio stays on your phone." else "Prepare a transcript to browse text and capture insights. Audio stays on your phone."
         }, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
         if (row != null && row.state != "ready") {
             if (duration > 0) LinearProgressIndicator(progress = { animated }, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Transcript preparation progress" })

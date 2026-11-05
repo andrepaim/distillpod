@@ -441,7 +441,7 @@ private fun date(ms: Long) = if (ms <= 0) "" else DateTimeFormatter.ofPattern("d
     }
 }
 
-private fun captureState(state: String) = when (state) { "waiting_transcript" -> "Waiting for transcript"; "waiting_auth" -> "Connect ChatGPT to continue"; "waiting_quota" -> "Plan allowance unavailable"; "queued", "running" -> "Generating insight"; "failed" -> "Needs retry"; "review_source" -> "Review source"; "no_speech" -> "No speech in this window"; "imported" -> "Imported"; else -> "Saved" }
+private fun captureState(state: String) = when (state) { "waiting_transcript" -> "Waiting for transcript"; "waiting_auth" -> "Connect ChatGPT to continue"; "waiting_quota" -> "Plan allowance unavailable"; "queued", "running" -> "Finding the idea"; "reviewing" -> "Checking the source"; "needs_context" -> "Needs more context"; "unclear_source" -> "Review the transcript"; "failed" -> "Needs retry"; "review_source" -> "Review source"; "no_speech" -> "No speech in this window"; "imported" -> "Imported"; else -> "Saved" }
 @Composable private fun SavedPage(vm: AppViewModel, captures: List<DistillationEntity>, episodes: List<EpisodeEntity>, podcasts: List<PodcastEntity>) {
 
     var query by rememberSaveable { mutableStateOf("") }
@@ -466,15 +466,15 @@ private fun captureState(state: String) = when (state) { "waiting_transcript" ->
                         Icon(Icons.Default.FormatQuote, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
                         StatusLabel(captureState(saved.state), saved.state == "succeeded")
                     }
-                    Text(saved.quote?.let { "“$it”" } ?: saved.excerpt.take(200).ifBlank { "Moment saved" }, maxLines = 5, overflow = TextOverflow.Ellipsis,
+                    Text(saved.insight ?: "Moment saved · ${captureState(saved.state)}", maxLines = 5, overflow = TextOverflow.Ellipsis,
                         style = MaterialTheme.typography.titleLarge.copy(fontFamily = FontFamily.Serif, lineHeight = 28.sp), fontWeight = FontWeight.Normal)
-                    saved.insight?.let { Text(it, maxLines = 3, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    saved.quote?.let { Text("“$it”", maxLines = 3, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                     HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = .3f))
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                         Cover(ep?.imageUrl ?: podcast?.imageUrl, Modifier.size(36.dp))
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                             Text(ep?.title ?: "Episode", maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelMedium)
-                            Text("${timestamp(saved.startMs)} – ${timestamp(saved.endMs)} · Original source", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("${timestamp(saved.sourceStartMs)} – ${timestamp(saved.sourceEndMs)} · Source passage", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         Icon(Icons.Default.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
@@ -490,38 +490,41 @@ private fun captureState(state: String) = when (state) { "waiting_transcript" ->
     val ep = episodes.firstOrNull { it.id == capture.episodeId }
     var createPost by rememberSaveable { mutableStateOf(false) }
     if (createPost) CreatePostSheet(vm,capture.id) { createPost = false }
-    val share = listOfNotNull(capture.quote?.let { "“$it”" }, capture.insight, ep?.title?.let { "$it · ${timestamp(capture.startMs)}" }).joinToString("\n\n")
+    val share = listOfNotNull(capture.insight, capture.quote?.let { "“$it”" }, ep?.title?.let { "$it · ${timestamp(capture.sourceStartMs)}–${timestamp(capture.sourceEndMs)}" }).joinToString("\n\n")
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
         Button(onClick = { createPost = true }, enabled = capture.excerpt.isNotBlank()) { Text("Create post") }
         TextButton(onClick = { vm.open("posts:${capture.id}") }) { Text("Posts from this moment") }
         Text(captureState(capture.state), color = MaterialTheme.colorScheme.secondary)
         if (ep != null && capture.fingerprint.isNotBlank() && capture.fingerprint != ep.mediaFingerprint) Text("The audio source changed since this moment was saved. The saved text is preserved; review the audio before relying on its replay time.", color = MaterialTheme.colorScheme.tertiary, style = MaterialTheme.typography.bodySmall)
-        if (capture.state in listOf("queued", "running")) {
+        if (capture.state in listOf("waiting_transcript", "queued", "running", "reviewing")) {
             LinearProgressIndicator(Modifier.fillMaxWidth())
             OutlinedButton(onClick = { vm.cancelCapture(capture.id) }) { Text("Pause generation") }
         }
         if(capture.state=="saved" && capture.excerpt.isBlank() && ep!=null) OutlinedButton(onClick={vm.generateCapture(capture.id)}) {Text("Prepare saved moment")}
         if (capture.state == "waiting_transcript" && ep != null) TranscriptTools(vm, ep)
         if (capture.state == "waiting_auth") Button(onClick = { vm.open("settings:ai") }) { Text("Connect ChatGPT") }
-        if (capture.state == "review_source") Text("This moment was captured before downloaded audio was verified. Review the excerpt below before sending it to ChatGPT.", color = MaterialTheme.colorScheme.tertiary)
+        if (capture.state == "review_source") Text("Review the proposed source context below before sending it to ChatGPT. The saved result is kept until its replacement passes review.", color = MaterialTheme.colorScheme.tertiary)
         if (capture.excerpt.isNotBlank() && capture.state in listOf("review_source", "waiting_auth", "waiting_quota", "failed", "saved")) {
             Button(onClick = { vm.generateCapture(capture.id, true) }) { Text(if (capture.state == "review_source") "Generate insight from this source" else if(capture.state=="saved") "Generate insight" else "Retry insight") }
             Text("Retrying a request can use more of your ChatGPT allowance.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        capture.quote?.let { SelectionContainer { Text("“$it”", style = MaterialTheme.typography.headlineSmall) } }
-        capture.insight?.let { SelectionContainer { Text(it, style = MaterialTheme.typography.bodyLarge) } }
+        capture.insight?.let { SelectionContainer { Text(it, style = MaterialTheme.typography.headlineSmall) } }
+        capture.quote?.let { SelectionContainer { Text("“$it”", style = MaterialTheme.typography.bodyLarge) } }
+        MomentQualityTools(vm, capture, ep)
         val reports by vm.research.collectAsStateWithLifecycle()
-        val latest = reports.firstOrNull { it.distillationId == capture.id && it.state in listOf("queued", "running", "succeeded") }
+        val latest = reports.firstOrNull { it.distillationId == capture.id && it.state in listOf("queued", "running", "succeeded") && explanationMatches(it,capture) }
         if (capture.excerpt.isNotBlank()) OutlinedButton(onClick = { if (latest == null) vm.explain(capture.id) else vm.open("research:${latest.id}") }) { Text(if (latest?.state == "succeeded") "Read explanation" else "Explain this idea") }
         Text(ep?.title ?: "Episode", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Button(onClick = { vm.play(capture.episodeId, capture.startMs); vm.open("player") }) { Text("Replay source · ${timestamp(capture.startMs)}") }
+        Button(onClick = { vm.play(capture.episodeId, capture.sourceStartMs); vm.open("player") }) { Text("Replay source · ${timestamp(capture.sourceStartMs)}") }
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             OutlinedButton(onClick = { context.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("DistillPod", share)) }) { Text("Copy") }
             OutlinedButton(onClick = { context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, share), "Share saved moment")) }) { Text("Share") }
         }
         capture.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        HorizontalDivider(); Text("Source excerpt", style = MaterialTheme.typography.titleMedium)
-        SelectionContainer { Text(capture.excerpt.ifBlank { "The source text is waiting for a transcript." }, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        var showSource by rememberSaveable(capture.id) { mutableStateOf(false) }
+        HorizontalDivider()
+        TextButton(onClick = { showSource = !showSource }) { Text(if(showSource) "Hide source passage" else "Read source passage") }
+        if(showSource) SelectionContainer { Text(capture.excerpt.ifBlank { "The source text is waiting for a transcript." }, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         TextButton(onClick = { vm.deleteCapture(capture.id); vm.back() }) { Text("Delete saved moment", color = MaterialTheme.colorScheme.error) }
     }
 }
@@ -557,6 +560,7 @@ private fun captureState(state: String) = when (state) { "waiting_transcript" ->
         }
         if(section=="transcription") {
         Text("Local transcription", style = MaterialTheme.typography.titleLarge)
+        SettingSwitch("Transcribe when playing", "Automatically prepare transcripts for episodes you play. Uses your download and processing settings. Turning this off leaves existing jobs running; use Pause transcript to stop one.", prefs.transcribeOnPlayback) { vm.flag("transcribeOnPlayback", it) }
         SettingSwitch("Look for existing online transcripts", "Before Whisper, search PodcastTranscript.ai for public shows. Sends the episode title; never uploads audio or starts cloud transcription. Off for unapproved private feeds.", prefs.onlineTranscripts) { vm.flag("onlineTranscripts", it) }
         Text("Tiny and Base support English and Portuguese. Model files stay on this phone.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         whisperModels.forEach { spec ->
@@ -600,6 +604,6 @@ private fun captureState(state: String) = when (state) { "waiting_transcript" ->
 @Composable private fun SettingSwitch(title: String, detail: String, checked: Boolean, onChange: (Boolean) -> Unit) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         Column(Modifier.weight(1f)) { Text(title, style = MaterialTheme.typography.titleSmall); Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-        Switch(checked, onChange)
+        Switch(checked, onChange, modifier = Modifier.semantics { contentDescription = title })
     }
 }

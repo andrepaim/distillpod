@@ -11,7 +11,7 @@ sealed interface MergeDecision {
 }
 object SyncProtocol {
     private val safeId = Regex("[A-Za-z0-9_-]{1,128}")
-    private val allowed = setOf("hash", "expandedBytes", "schema", "items", "value", "subscribed", "feedUrl", "originalFeedUrl", "title", "author", "positionMs", "completed",
+    private val allowed = setOf("momentSchema", "sourceJson", "hash", "expandedBytes", "schema", "items", "value", "subscribed", "feedUrl", "originalFeedUrl", "title", "author", "positionMs", "completed",
         "episodeId", "podcastId", "guid", "audioUrl", "sessionId", "deviceId", "deviceSequence",
         "podcastTitle", "podcastAuthor", "durationMs", "momentId", "model", "origin", "startMs", "endMs", "excerpt", "quote", "insight", "revision", "fingerprint", "createdAt")
     fun validate(mutation: SyncMutation) {

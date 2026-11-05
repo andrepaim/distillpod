@@ -25,8 +25,14 @@ class DistillSoundSettingTest {
             val store=PreferenceDataStoreFactory.create(scope=scope){file}
             val settings=AppSettings(context,store)
             assertTrue(settings.flow.first().distillSound)
+            assertTrue(settings.flow.first().transcribeOnPlayback)
+            settings.flag("transcribeOnPlayback",false)
+            assertTrue(settings.flow.first().distillSound)
             settings.flag("distillSound",false)
-            assertFalse(AppSettings(context,store).flow.first().distillSound)
+            settings.flag("transcribeOnPlayback",true)
+            val restored=AppSettings(context,store).flow.first()
+            assertFalse(restored.distillSound)
+            assertTrue(restored.transcribeOnPlayback)
         } finally {scope.cancel();file.delete()}
     }
 }

@@ -67,7 +67,7 @@ class PostRepository(private val db: AppDatabase) {
         val show = dao.podcast(episode.podcastId) ?: error("Podcast is unavailable")
         val publicSource = db.sync().approved(show.id) != null
         val quote = moment.quote.orEmpty().takeIf { dev.distillpod.core.sourceQuoteMatches(it, moment.excerpt) }.orEmpty()
-        val content = PostContent(show.title.take(2000), episode.title.take(2000), moment.excerpt.take(24000), moment.startMs, moment.endMs, moment.fingerprint,
+        val content = PostContent(show.title.take(2000), episode.title.take(2000), moment.excerpt.take(24000), moment.sourceStartMs, moment.sourceEndMs, moment.fingerprint,
             sourceUrl = if (publicSource) (dev.distillpod.core.postSourceUrl(episode.webpageUrl) ?: dev.distillpod.core.postSourceUrl(show.websiteUrl)).orEmpty() else "",
             destination = destination, headline = "", takeaway = moment.insight.orEmpty().take(2500), quote = quote,
             layout = if (quote.isNotBlank()) "Quote" else "Idea")
