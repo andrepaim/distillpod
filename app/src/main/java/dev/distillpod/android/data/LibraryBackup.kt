@@ -10,8 +10,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 private const val BACKUP_LIMIT = 32 * 1024 * 1024
-private val backupTables = listOf("podcasts", "episodes", "transcripts", "segments", "transcript_coverage", "distillations",
-    "analyses", "analysis_parts", "messages", "research", "suggestions", "queue", "player_session")
+private val backupTables = listOf("podcasts", "episodes", "transcripts", "online_transcripts", "segments", "transcript_coverage", "distillations",
+    "analyses", "analysis_parts", "messages", "research", "suggestions", "queue", "player_session", "post_drafts")
 data class BackupPreview internal constructor(internal val payload: String, val counts: Map<String, Int>, val conflicts: Int,
     val createdAt: Long = 0, val appVersion: String = "Unknown (older backup)", val preferences: PortablePreferences? = null) {
     val episodes get() = counts["episodes"] ?: 0
@@ -51,7 +51,7 @@ class LibraryBackup(private val db: AppDatabase) {
         val createdAt = System.currentTimeMillis()
         val payload = if (preferences == null) tables.toString() else JSONObject().put("library", tables)
             .put("preferences", PortablePreferences.parse(preferences.json()).json()).put("createdAt", createdAt).put("appVersion", appVersion.take(100)).toString()
-        val bytes = JSONObject().put("format", "distillpod-library").put("version", if (preferences == null) 1 else 2).put("databaseSchema", 2)
+        val bytes = JSONObject().put("format", "distillpod-library").put("version", if (preferences == null) 1 else 2).put("databaseSchema", 4)
             .put("createdAt", createdAt).put("payload", payload).put("sha256", sha(payload)).toString().toByteArray(Charsets.UTF_8)
         require(bytes.size <= BACKUP_LIMIT) { "This library exceeds the 32 MB backup limit" }
         bytes
@@ -60,7 +60,7 @@ class LibraryBackup(private val db: AppDatabase) {
     suspend fun preview(input: InputStream): BackupPreview = withContext(Dispatchers.IO) {
         val bytes = input.readBytesBounded()
         val root = JSONObject(bytes.toString(Charsets.UTF_8))
-        require(root.optString("format") == "distillpod-library" && root.optInt("version") in 1..2 && root.optInt("databaseSchema") in 1..2) { "This backup format is not supported" }
+        require(root.optString("format") == "distillpod-library" && root.optInt("version") in 1..2 && root.optInt("databaseSchema") in 1..4) { "This backup format is not supported" }
         val original = root.getString("payload")
         require(sha(original) == root.getString("sha256")) { "The backup integrity check failed" }
         val content = if (root.getInt("version") == 2) JSONObject(original) else null
@@ -80,8 +80,21 @@ class LibraryBackup(private val db: AppDatabase) {
             repeat(messages.length()) { messages.getJSONObject(it).put("sourcesJson", "[]").put("revision", "").put("fingerprint", "").put("model", JSONObject.NULL).put("attempt", "") }
             tables.toString()
         } else library
+        val normalized = JSONObject(payload)
+        if (root.getInt("databaseSchema") < 3) {
+            normalized.put("post_drafts", JSONArray())
+            for ((table, field) in listOf("podcasts" to "websiteUrl", "episodes" to "webpageUrl")) {
+                val rows = normalized.getJSONArray(table)
+                repeat(rows.length()) { rows.getJSONObject(it).put(field, JSONObject.NULL) }
+            }
+        }
+        if (root.getInt("databaseSchema") < 4) {
+            normalized.put("online_transcripts", JSONArray())
+            val rows = normalized.getJSONArray("transcripts")
+            repeat(rows.length()) { rows.getJSONObject(it).put("lookupOnline", 0).put("replaceOnline", 0) }
+        }
         db.withTransaction {
-            val tables = validated(payload)
+            val tables = validated(normalized.toString())
             mapExistingIdentities(tables)
             val counts = backupTables.associateWith { tables.getJSONArray(it).length() }
             var conflicts = 0
@@ -90,7 +103,7 @@ class LibraryBackup(private val db: AppDatabase) {
                 val rows = tables.getJSONArray(table)
                 repeat(rows.length()) { i -> if (exists(table, keys, rows.getJSONObject(i))) conflicts++ }
             }
-            BackupPreview(payload, counts, conflicts, createdAt, appVersion, preferences)
+            BackupPreview(normalized.toString(), counts, conflicts, createdAt, appVersion, preferences)
         }
     }
 
@@ -184,7 +197,7 @@ class LibraryBackup(private val db: AppDatabase) {
                     }
                 }
                 require(ids.add(JSONArray(cols.filter { it.primary }.map { row.get(it.name) }).toString())) { "Duplicate backup record" }
-                listOf("feedUrl", "audioUrl", "transcriptUrl", "originalFeedUrl", "imageUrl").forEach { name ->
+                listOf("feedUrl", "audioUrl", "transcriptUrl", "originalFeedUrl", "imageUrl", "websiteUrl", "webpageUrl").forEach { name ->
                     if (row.has(name) && !row.isNull(name) && row.getString(name).isNotBlank()) publicHttpUrl(row.getString(name))
                 }
                 listOf("positionMs", "durationMs", "startMs", "endMs", "processedMs").forEach { name ->
@@ -192,6 +205,13 @@ class LibraryBackup(private val db: AppDatabase) {
                 }
                 if (row.has("startMs") && row.has("endMs")) require(row.getLong("endMs") >= row.getLong("startMs")) { "Invalid backup time range" }
                 if (table == "player_session") require(row.getDouble("speed") in 0.5..3.0 && row.getInt("id") == 0) { "Invalid player settings" }
+                if (table == "post_drafts") JSONObject(row.getString("content"))
+                if (table == "online_transcripts") {
+                    val segments = row.getString("segmentsJson")
+                    require(row.getString("contentHash") == dev.distillpod.core.episodeId("online-transcript", segments)) { "Online transcript integrity check failed" }
+                    decodeOnlineSegments(row.getString("episodeId"), row.getString("revision"), segments, row.getLong("durationMs"))
+                    require(row.getInt("selected") in 0..1)
+                }
                 portable(table, row)
             }
         }
@@ -204,7 +224,10 @@ class LibraryBackup(private val db: AppDatabase) {
                 .put("etag", JSONObject.NULL).put("lastModified", JSONObject.NULL).put("error", JSONObject.NULL)
         }
         val state = row.optString("state")
-        if (table == "transcripts" && state in listOf("processing", "queued")) row.put("state", "paused")
+        if (table == "transcripts") {
+            if (state in listOf("processing", "queued")) row.put("state", "paused")
+            row.put("lookupOnline", 0).put("replaceOnline", 0)
+        }
         if (table in listOf("distillations", "analyses", "messages", "research") && state in listOf("running", "queued", "processing", "waiting_transcript")) {
             row.put("state", "failed").put("error", "Restored from backup. Review the source and retry when ready.")
         }

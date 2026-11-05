@@ -24,7 +24,18 @@ class AppViewModel(val graph: AppGraph, private val saved: SavedStateHandle) : V
     val podcasts = dao.observePodcasts().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     val episodes = dao.observeEpisodes().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     val captures = dao.observeDistillations().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
-    val transcripts = dao.observeTranscripts().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    val localTranscripts = dao.observeTranscripts().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    val onlineTranscripts = dao.observeOnlineTranscripts().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    val transcripts = combine(localTranscripts, onlineTranscripts, episodes) { local, online, library ->
+        val localById = local.associateBy { it.episodeId }
+        val onlineById = online.associateBy { it.episodeId }
+        library.mapNotNull { ep ->
+            val row = localById[ep.id]
+            val cached = onlineById[ep.id]?.takeIf { it.matches(ep) }
+            if (row?.state == "ready" && row.source != "online" && row.fingerprint == ep.mediaFingerprint) row
+            else cached?.transcript(ep) ?: row
+        }
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     val models = dao.observeModels().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     val analyses = dao.observeAnalyses().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     val chat = dao.observeMessages().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())

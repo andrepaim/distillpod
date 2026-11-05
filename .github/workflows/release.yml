@@ -30,6 +30,8 @@ jobs:
     uses: ./.github/workflows/ci.yml
     with:
       build_release: true
+    secrets:
+      FIREBASE_CONFIG_JSON: ${{ secrets.FIREBASE_CONFIG_JSON }}
 
   publish:
     name: Sign and publish alpha APK
@@ -77,9 +79,9 @@ jobs:
           printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$signing_file"
           mkdir -p dist
           apk="dist/distillpod-${GITHUB_REF_NAME#v}.apk"
-          "$tools/zipalign" -p -f 4 "$candidate" "$RUNNER_TEMP/aligned.apk"
+          "$tools/zipalign" -P 16 -f 4 "$candidate" "$RUNNER_TEMP/aligned.apk"
           "$tools/apksigner" sign --ks "$signing_file" --ks-key-alias "$KEY_ALIAS" --ks-pass env:KEYSTORE_PASSWORD --key-pass env:KEY_PASSWORD --out "$apk" "$RUNNER_TEMP/aligned.apk"
-          "$tools/zipalign" -c -p 4 "$apk"
+          "$tools/zipalign" -c -P 16 4 "$apk"
           python3 scripts/release_metadata.py --tag "$GITHUB_REF_NAME" --apk "$apk" --build-tools "$tools" --verify-signature > dist/build-info.json
           python3 -c 'import json,os,pathlib;p=pathlib.Path("dist/build-info.json");d=json.loads(p.read_text());d["commit"]=os.environ["GITHUB_SHA"];d["workflowRun"]=os.environ["GITHUB_SERVER_URL"]+"/"+os.environ["GITHUB_REPOSITORY"]+"/actions/runs/"+os.environ["GITHUB_RUN_ID"];p.write_text(json.dumps(d,indent=2)+"\n")'
           (cd dist && sha256sum *.apk build-info.json > SHA256SUMS)

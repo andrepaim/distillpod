@@ -1,0 +1,46 @@
+{
+  "validated_at_utc": "2026-11-05T09:50:06.304789+00:00",
+  "source": "working tree based on 95a0f18",
+  "command": "./gradlew :core:test :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleDebugAndroidTest",
+  "result": "passed",
+  "jvm_tests": {
+    "core": {
+      "tests": 82,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "app": {
+      "tests": 166,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "focused_online_tests_included": 16,
+  "lint": "passed; no errors",
+  "public_api_smoke": {
+    "method": "GET only",
+    "requests": [
+      "public transcript list (limit=1)",
+      "public transcript detail with segments",
+      "exact public episode-title search"
+    ],
+    "matching_search_result": true,
+    "authenticated": false,
+    "cloud_jobs_created": false
+  },
+  "artifacts": {
+    "app/build/outputs/apk/debug/app-debug.apk": {
+      "sha256": "014c23e597518adb7f1b7854c01bfeaad00f619a493aa6ad01fa4c098523d1af",
+      "bytes": 88322756
+    },
+    "app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk": {
+      "sha256": "917f0dd30b6dc6cfff941e66f697c0500b2542b417ac3e10593c8378f386b3f5",
+      "bytes": 3432877
+    }
+  },
+  "device_tests": "test APK compiled; not executed on device in this session",
+  "installed_on_owner_device": false,
+  "published": false
+}

@@ -547,6 +547,7 @@ private fun captureState(state: String) = when (state) { "waiting_transcript" ->
         }
         if(section=="transcription") {
         Text("Local transcription", style = MaterialTheme.typography.titleLarge)
+        SettingSwitch("Look for existing online transcripts", "Before Whisper, search PodcastTranscript.ai for public shows. Sends the episode title; never uploads audio or starts cloud transcription. Off for unapproved private feeds.", prefs.onlineTranscripts) { vm.flag("onlineTranscripts", it) }
         Text("Tiny and Base support English and Portuguese. Model files stay on this phone.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         whisperModels.forEach { spec ->
             val status = models.firstOrNull { it.id == spec.id }

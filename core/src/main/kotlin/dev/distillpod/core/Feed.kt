@@ -13,8 +13,8 @@ import org.w3c.dom.Document
 /** Feed identity is independent of redirect/enclosure URLs. Optional metadata preserves older callers. */
 data class FeedEpisode(val id: String, val guid: String, val title: String, val audioUrl: String,
     val durationMs: Long?, val transcriptUrl: String?, val publishedAt: String?, val description: String = "",
-    val imageUrl: String? = null, val mimeType: String? = null, val transcriptType: String? = null)
-data class Feed(val title: String, val episodes: List<FeedEpisode>, val author: String = "", val description: String = "", val imageUrl: String? = null)
+    val imageUrl: String? = null, val mimeType: String? = null, val transcriptType: String? = null, val webpageUrl: String? = null)
+data class Feed(val title: String, val episodes: List<FeedEpisode>, val author: String = "", val description: String = "", val imageUrl: String? = null, val websiteUrl: String? = null)
 
 fun plainDescription(text: String): String = text.replace(Regex("(?is)<(script|style)\\b[^>]*>.*?</\\1>"), "")
     .replace(Regex("<[^>]*>"), " ").replace("&nbsp;", " ").replace("&amp;", "&").replace("&lt;", "<")
@@ -37,6 +37,11 @@ internal fun feedFromDocument(feedUrl: String, document: Document, baseUrl: Stri
     fun url(raw: String?): String? = raw?.trim()?.takeIf { it.isNotBlank() }?.let {
         runCatching { URI(baseUrl).resolve(it).takeIf { u -> u.scheme?.lowercase() in setOf("https", "http") && u.host != null && u.userInfo == null }?.toASCIIString() }.getOrNull()
     }
+    fun Element.webpage(): String? = if (namespaceURI == "http://www.w3.org/2005/Atom") {
+        children("link").firstNotNullOfOrNull { link ->
+            if (link.getAttribute("rel") in listOf("", "alternate") && link.getAttribute("type") in listOf("", "text/html", "application/xhtml+xml")) url(link.getAttribute("href")) else null
+        }
+    } else url(text("link"))
     fun Element.image(): String? = children("image").firstNotNullOfOrNull { url(it.getAttribute("href").ifBlank { it.text("url") ?: "" }) }
         ?: children("thumbnail").firstNotNullOfOrNull { url(it.getAttribute("url")) }
     fun duration(raw: String?): Long? = raw?.trim()?.let {
@@ -64,9 +69,9 @@ internal fun feedFromDocument(feedUrl: String, document: Document, baseUrl: Stri
             duration(item.text("duration")), url(timed?.getAttribute("url")),
             date(item.text(if (atom) "published" else "pubDate") ?: item.text("updated")),
             plainDescription(item.text("description") ?: item.text("summary") ?: item.text("encoded") ?: item.text("content") ?: ""),
-            item.image() ?: showImage, enclosure?.getAttribute("type")?.takeIf(String::isNotBlank), timed?.getAttribute("type")?.takeIf(String::isNotBlank))
+            item.image() ?: showImage, enclosure?.getAttribute("type")?.takeIf(String::isNotBlank), timed?.getAttribute("type")?.takeIf(String::isNotBlank), item.webpage())
     }.distinctBy { it.id }
     val author = channel.children("author").firstOrNull()?.let { it.text("name") ?: it.textContent.trim() } ?: channel.text("managingEditor") ?: ""
     return Feed(plainDescription(channel.text("title") ?: "Untitled"), episodes, plainDescription(author),
-        plainDescription(channel.text("description") ?: channel.text("subtitle") ?: ""), showImage)
+        plainDescription(channel.text("description") ?: channel.text("subtitle") ?: ""), showImage, channel.webpage())
 }

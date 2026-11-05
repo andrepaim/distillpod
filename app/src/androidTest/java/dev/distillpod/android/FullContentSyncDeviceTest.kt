@@ -29,18 +29,20 @@ class FullContentSyncDeviceTest {
     @Test fun queuePreferencesTranscriptAnalysisConversationAndResearchRestoreWithoutJobs()=runBlocking {
         assumeTrue(InstrumentationRegistry.getArguments().getString("syncEmulators")=="true")
         check(Build.HARDWARE.contains("ranchu") || Build.FINGERPRINT.contains("generic"))
+        val host=InstrumentationRegistry.getArguments().getString("syncEmulatorHost")?:"10.0.2.2"
+        require(host in listOf("10.0.2.2","127.0.0.1"))
         val context=InstrumentationRegistry.getInstrumentation().targetContext
         val tag=UUID.randomUUID().toString();val bucket="demo-distillpod-sync.appspot.com"
         val options=FirebaseOptions.Builder().setProjectId("demo-distillpod-sync").setApplicationId("1:123456789:android:1234567890abcdef")
             .setApiKey("fake-api-key").setStorageBucket(bucket).build()
         val appA=FirebaseApp.initializeApp(context,options,"content-a-$tag");val appB=FirebaseApp.initializeApp(context,options,"content-b-$tag")
-        fun auth(app:FirebaseApp)=FirebaseAuth.getInstance(app).apply {useEmulator("10.0.2.2",9099)}
+        fun auth(app:FirebaseApp)=FirebaseAuth.getInstance(app).apply {useEmulator(host,9099)}
         fun firestore(app:FirebaseApp)=FirebaseFirestore.getInstance(app).apply {
-            firestoreSettings=FirebaseFirestoreSettings.Builder().setLocalCacheSettings(MemoryCacheSettings.newBuilder().build()).build();useEmulator("10.0.2.2",8085)
+            firestoreSettings=FirebaseFirestoreSettings.Builder().setLocalCacheSettings(MemoryCacheSettings.newBuilder().build()).build();useEmulator(host,8085)
         }
         val authA=auth(appA);val authB=auth(appB);val fsA=firestore(appA);val fsB=firestore(appB)
-        val storageA=FirebaseStorage.getInstance(appA).apply {useEmulator("10.0.2.2",9199)}
-        val storageB=FirebaseStorage.getInstance(appB).apply {useEmulator("10.0.2.2",9199)}
+        val storageA=FirebaseStorage.getInstance(appA).apply {useEmulator(host,9199)}
+        val storageB=FirebaseStorage.getInstance(appB).apply {useEmulator(host,9199)}
         val nameA="content-a-$tag.db";val nameB="content-b-$tag.db"
         val a=Room.databaseBuilder(context,AppDatabase::class.java,nameA).build();val b=Room.databaseBuilder(context,AppDatabase::class.java,nameB).build()
         val dirA=File(context.cacheDir,"content-a-$tag");val dirB=File(context.cacheDir,"content-b-$tag")

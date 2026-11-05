@@ -36,8 +36,9 @@ class AppGraph(val context: Context) {
     val playbackEvents = dev.distillpod.android.playback.PlaybackEvents()
     val playback by lazy { dev.distillpod.android.playback.PlaybackRepository(context, db, scope) }
     val ai by lazy { dev.distillpod.android.ai.ChatGptGateway(account.session, settings) }
+    val onlineTranscripts by lazy { OnlineTranscriptRepository(this) }
     val transcription by lazy { TranscriptionRepository(this) }
-    val captures by lazy { CaptureRepository(db, ai, { account.state.value.connected }, { transcription.prepare(it) }, jobs::capture,{syncAccount.kick()}) }
+    val captures by lazy { CaptureRepository(db, ai, { account.state.value.connected }, { transcription.prepare(it, allowOnline = false) }, jobs::capture,{syncAccount.kick()}) }
     val understanding by lazy { EpisodeUnderstanding(db, ai, jobs::analyze, jobs::reply) }
     val explanations by lazy { MomentExplanation(db, ai, jobs::explain) }
     val recommendations by lazy { Recommendations(db, settings, podcasts, http, ai, jobs::recommend, jobs::recommendationPending) }

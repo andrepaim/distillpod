@@ -19,6 +19,7 @@ data class PodcastEntity(
     val subscribed: Boolean = true, val etag: String? = null, val lastModified: String? = null,
     val refreshedAt: Long = 0, val error: String? = null,
     val originalFeedUrl: String = "",
+    val websiteUrl: String? = null,
 )
 
 @Entity(tableName = "episodes", foreignKeys = [ForeignKey(entity = PodcastEntity::class, parentColumns = ["id"], childColumns = ["podcastId"], onDelete = ForeignKey.CASCADE)],
@@ -31,6 +32,7 @@ data class EpisodeEntity(
     val localFile: String? = null, val downloadState: String = "none", val downloadedBytes: Long = 0,
     val totalBytes: Long = 0, val etag: String? = null, val lastModified: String? = null,
     val mediaFingerprint: String = "", val error: String? = null,
+    val webpageUrl: String? = null,
 )
 
 @Entity(tableName = "queue", foreignKeys = [ForeignKey(entity = EpisodeEntity::class, parentColumns = ["id"], childColumns = ["episodeId"], onDelete = ForeignKey.CASCADE)], indices = [Index("sortOrder")])
@@ -44,6 +46,8 @@ data class TranscriptEntity(
     @PrimaryKey val episodeId: String, val revision: String, val fingerprint: String, val model: String,
     val language: String, val source: String = "whisper", val state: String = "queued",
     val durationMs: Long = 0, val processedMs: Long = 0, val error: String? = null,
+    @ColumnInfo(defaultValue = "0") val lookupOnline: Boolean = false,
+    @ColumnInfo(defaultValue = "0") val replaceOnline: Boolean = false,
 )
 
 @Entity(tableName = "segments", primaryKeys = ["episodeId", "revision", "startMs", "ordinal"],
@@ -89,6 +93,18 @@ data class SuggestionEntity(@PrimaryKey val feedUrl: String, val title: String, 
 
 @Dao
 interface LibraryDao {
+    @Query("SELECT * FROM online_transcripts") fun observeOnlineTranscripts(): Flow<List<OnlineTranscriptEntity>>
+    @Query("SELECT * FROM online_transcripts WHERE episodeId=:id") suspend fun onlineTranscript(id: String): OnlineTranscriptEntity?
+    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun putOnlineTranscript(value: OnlineTranscriptEntity)
+    @Query("UPDATE online_transcripts SET selected=0 WHERE episodeId=:id") suspend fun deselectOnline(id: String)
+    @Query("SELECT * FROM transcript_lookup WHERE episodeId=:id") suspend fun transcriptLookup(id: String): TranscriptLookupEntity?
+    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun putTranscriptLookup(value: TranscriptLookupEntity)
+
+    @Query("SELECT * FROM post_drafts ORDER BY updatedAt DESC") fun observePosts(): Flow<List<PostDraftEntity>>
+    @Query("SELECT * FROM post_drafts WHERE id=:id") suspend fun post(id: String): PostDraftEntity?
+    @Upsert suspend fun putPost(value: PostDraftEntity)
+    @Query("DELETE FROM post_drafts WHERE id=:id") suspend fun deletePost(id: String)
+
     @Query("SELECT * FROM podcasts ORDER BY title COLLATE NOCASE") fun observePodcasts(): Flow<List<PodcastEntity>>
     @Query("SELECT * FROM podcasts ORDER BY title COLLATE NOCASE") suspend fun podcasts(): List<PodcastEntity>
     @Query("SELECT * FROM podcasts WHERE id=:id") suspend fun podcast(id: String): PodcastEntity?
@@ -157,9 +173,9 @@ interface LibraryDao {
     @Query("UPDATE suggestions SET dismissed=1 WHERE feedUrl=:url") suspend fun dismissSuggestion(url: String)
 }
 
-@Database(entities = [PodcastEntity::class, EpisodeEntity::class, QueueEntryEntity::class, PlayerSessionEntity::class,
+@Database(entities = [OnlineTranscriptEntity::class, TranscriptLookupEntity::class, PostDraftEntity::class, PodcastEntity::class, EpisodeEntity::class, QueueEntryEntity::class, PlayerSessionEntity::class,
     TranscriptEntity::class, SegmentEntity::class, CoverageEntity::class, DistillationEntity::class, ModelEntity::class,
-    AnalysisEntity::class, AnalysisPartEntity::class, MessageEntity::class, ResearchEntity::class, SuggestionEntity::class, SyncOutboxEntity::class, SyncBindingEntity::class, SyncRemoteEntity::class, SyncPublicFeedEntity::class, SyncViewEntity::class, SyncPreferenceEntity::class, SyncArtifactEntity::class], version = 7, exportSchema = true)
+    AnalysisEntity::class, AnalysisPartEntity::class, MessageEntity::class, ResearchEntity::class, SuggestionEntity::class, SyncOutboxEntity::class, SyncBindingEntity::class, SyncRemoteEntity::class, SyncPublicFeedEntity::class, SyncViewEntity::class, SyncPreferenceEntity::class, SyncArtifactEntity::class], version = 8, exportSchema = true)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun library(): LibraryDao
     abstract fun sync(): SyncDao
@@ -208,6 +224,18 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("CREATE TABLE IF NOT EXISTS sync_preferences (name TEXT NOT NULL, value TEXT NOT NULL, PRIMARY KEY(name))")
             }
         }
-        fun open(context: Context): AppDatabase = Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "library.db").addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7).build()
+        val MIGRATION_7_8 = object : androidx.room.migration.Migration(7, 8) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE podcasts ADD COLUMN websiteUrl TEXT")
+                db.execSQL("ALTER TABLE episodes ADD COLUMN webpageUrl TEXT")
+                db.execSQL("CREATE TABLE IF NOT EXISTS post_drafts (id TEXT NOT NULL, sourceMomentId TEXT, content TEXT NOT NULL, revision INTEGER NOT NULL, updatedAt INTEGER NOT NULL, PRIMARY KEY(id), FOREIGN KEY(sourceMomentId) REFERENCES distillations(id) ON UPDATE NO ACTION ON DELETE SET NULL)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_post_drafts_sourceMomentId ON post_drafts(sourceMomentId)")
+                db.execSQL("ALTER TABLE transcripts ADD COLUMN lookupOnline INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE transcripts ADD COLUMN replaceOnline INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("CREATE TABLE IF NOT EXISTS online_transcripts (episodeId TEXT NOT NULL, revision TEXT NOT NULL, audioUrl TEXT NOT NULL, providerId TEXT NOT NULL, retrievedAt INTEGER NOT NULL, createdAt TEXT NOT NULL, durationMs INTEGER NOT NULL, language TEXT NOT NULL, segmentsJson TEXT NOT NULL, contentHash TEXT NOT NULL, selected INTEGER NOT NULL, PRIMARY KEY(episodeId), FOREIGN KEY(episodeId) REFERENCES episodes(id) ON UPDATE NO ACTION ON DELETE CASCADE)")
+                db.execSQL("CREATE TABLE IF NOT EXISTS transcript_lookup (episodeId TEXT NOT NULL, identity TEXT NOT NULL, retryAt INTEGER NOT NULL, PRIMARY KEY(episodeId), FOREIGN KEY(episodeId) REFERENCES episodes(id) ON UPDATE NO ACTION ON DELETE CASCADE)")
+            }
+        }
+        fun open(context: Context): AppDatabase = Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "library.db").addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8).build()
     }
 }

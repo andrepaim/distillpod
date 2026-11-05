@@ -13,7 +13,7 @@
 
 DistillPod is for people who listen to podcasts to learn. Use AI to summarize an episode, ask questions about what was said, and turn a moment worth remembering into a quote and insight you can revisit. Each saved moment keeps its place in the original audio, so you can return to the source.
 
-Connect your ChatGPT account for episode understanding and saved insights. Transcription runs locally on your phone, using Whisper when a suitable publisher transcript is unavailable.
+Connect your ChatGPT account for episode understanding and saved insights. Episode understanding uses publisher transcripts, optional existing online transcripts, or Whisper running locally on your phone.
 
 ## Turn listening into understanding
 
@@ -33,7 +33,7 @@ The listening tools support that workflow: podcast search, public RSS subscripti
 
 **AI is central to the DistillPod experience.** Connect an eligible ChatGPT account in Settings to generate quotes and insights, summaries and chapters, episode answers, explanations and podcast suggestions. Requests use your ChatGPT plan allowance; available models and usage limits depend on your account.
 
-Episode understanding starts with a transcript. DistillPod prefers a suitable publisher transcript; otherwise, Whisper transcribes the audio on your phone. Choose Tiny or Base, with automatic language detection or an explicit English or Portuguese setting. Preparation shows progress and supports pause/resume. Full-episode summaries and chat need a complete transcript; saved moments can use the transcript for their source window.
+Episode understanding starts with a transcript. DistillPod prefers a suitable publisher transcript. You can enable [existing online transcript lookup](docs/android/online-transcripts.md) in Settings before falling back to Whisper on your phone. Lookup is off by default, uses approved public shows, and never uploads audio or creates cloud transcription jobs. Choose Tiny or Base, with automatic language detection or an explicit English or Portuguese setting. Preparation shows progress and supports pause/resume. Full-episode summaries and chat need a complete transcript; saved moments can use the transcript for their source window.
 
 Playback, local transcription and source-moment capture also work without ChatGPT, but DistillPod is designed around the connected AI experience.
 
@@ -104,6 +104,7 @@ This repository contains the native Android app. The previous self-hosted web ve
 - [Planned Firebase sync and telemetry — tasks and TDD gates](docs/android/firebase-sync-telemetry-plan.md)
 - [Repository migration and web archive](docs/legacy-web.md)
 - [Third-party notices](THIRD_PARTY_NOTICES.md)
+- [Existing online transcripts before Whisper](docs/android/online-transcripts.md)
 - [Icon design source](design/icon-proposal/README.md)
 
 The retired Python/React server and its Docker setup remain available in the web archive. Their setup instructions and feature list do not describe the Android app.

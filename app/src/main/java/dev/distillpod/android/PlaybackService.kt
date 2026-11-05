@@ -159,7 +159,7 @@ class PlaybackService : MediaSessionService() {
             combine(dao.observeEpisodes(), dao.observeAnalyses(), dao.observeTranscripts(), graph.preferences) { episodes, analyses, transcripts, prefs ->
                 if (!prefs.skipAds) emptyMap() else episodes.mapNotNull { ep ->
                     val analysis = analyses.firstOrNull { it.episodeId == ep.id && it.state == "succeeded" } ?: return@mapNotNull null
-                    if (transcripts.none { it.episodeId == ep.id && it.revision == analysis.revision && it.fingerprint == ep.mediaFingerprint && it.state == "ready" }) return@mapNotNull null
+                    if (transcripts.none { it.episodeId == ep.id && it.revision == analysis.revision && it.fingerprint == ep.mediaFingerprint && it.state == "ready" && it.source != "online" }) return@mapNotNull null
                     val file = ep.localFile?.takeIf { File(it).isFile } ?: return@mapNotNull null
                     val ranges = runCatching { val ads = JSONArray(analysis.adsJson)
                         (0 until ads.length()).mapNotNull { i -> val ad = ads.getJSONObject(i)
