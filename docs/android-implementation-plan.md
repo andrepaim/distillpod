@@ -1,7 +1,7 @@
 # DistillPod Android implementation plan
 
 Date: November 1, 2026
-Status: Implementation started on `feat/native-android`; feasibility gates remain open
+Status: Historical implementation plan, started on `feat/native-android`. The native personal alpha and later increments are now on `main`; remaining acceptance gates are tracked in [implementation status](android/implementation-status.md).
 Baseline: `master`, commit `758cbc07f6d35b39d39a4fc66c57553e00297b79`
 
 Build a native Android podcast app that stores its library on the phone, transcribes audio locally, and uses the owner's existing eligible ChatGPT subscription for text AI features. The primary design requires no DistillPod server. OpenAI inference still happens in the cloud; local storage and local transcription do not make those requests offline.
@@ -78,9 +78,9 @@ Local Android transcription has an upstream [whisper.cpp example](https://github
 
 No third-party package is selected solely because its README lists Android support. The preferred path is the published direct protocol. Codex in Termux or embedded Linux is a conditional fallback, not a hidden dependency of the primary app.
 
-## 3. Current code and migration map
+## 3. Original web baseline and migration map
 
-The current app is a React/TypeScript frontend and FastAPI backend. Most AI features call Claude CLI; transcription uses faster-whisper. SQLite stores server data, while browser storage holds queue and progress. This is a new Android implementation of the workflows, not a wrapper around the existing web UI.
+At this plan’s November 1 baseline, the app was a React/TypeScript frontend and FastAPI backend (now archived on `legacy/web`). Most AI features called Claude CLI; transcription used faster-whisper. SQLite stored server data, while browser storage held queue and progress. This is a new Android implementation of the workflows, not a wrapper around the existing web UI.
 
 | Existing source | Current responsibility | Android destination |
 | --- | --- | --- |

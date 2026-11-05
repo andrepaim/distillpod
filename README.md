@@ -13,7 +13,9 @@
 
 DistillPod is for people who listen to podcasts to learn. Use AI to summarize an episode, ask questions about what was said, and turn a moment worth remembering into a quote and insight you can revisit. Each saved moment keeps its place in the original audio, so you can return to the source.
 
-Connect your ChatGPT account for episode understanding and saved insights. Episode understanding uses publisher transcripts, optional existing online transcripts, or Whisper running locally on your phone.
+Connect your ChatGPT account for episode understanding and saved insights. Episode understanding uses publisher transcripts, optional existing online transcripts, or Whisper running locally on your phone. Optional Google sign-in synchronizes supported library data between installations; ChatGPT and Google are separate connections.
+
+This README describes the code on `main`. As of November 5, 2026, the source version is **0.10.1-alpha.1 (code 19)**; the latest [published APK is 0.7.1-alpha.1](https://github.com/andrepaim/distillpod/releases/tag/v0.7.1-alpha.1). Newer source features described here are not all available in that APK. See [implementation status](docs/android/implementation-status.md) for source, release and device-validation boundaries.
 
 ## Turn listening into understanding
 
@@ -33,7 +35,7 @@ The listening tools support that workflow: podcast search, public RSS subscripti
 
 **AI is central to the DistillPod experience.** Connect an eligible ChatGPT account in Settings to generate quotes and insights, summaries and chapters, episode answers, explanations and podcast suggestions. Requests use your ChatGPT plan allowance; available models and usage limits depend on your account.
 
-Episode understanding starts with a transcript. DistillPod prefers a suitable publisher transcript. You can enable [existing online transcript lookup](docs/android/online-transcripts.md) in Settings before falling back to Whisper on your phone. Lookup is off by default, uses approved public shows, and never uploads audio or creates cloud transcription jobs. Choose Tiny or Base, with automatic language detection or an explicit English or Portuguese setting. Preparation shows progress and supports pause/resume. Full-episode summaries and chat need a complete transcript; saved moments can use the transcript for their source window.
+Episode understanding starts with a transcript. DistillPod prefers a suitable publisher transcript. You can enable [existing online transcript lookup](docs/android/online-transcripts.md) in Settings before falling back to Whisper on your phone. Lookup is off by default, uses approved public shows, and never uploads audio or creates cloud transcription jobs. For local transcription, choose Tiny or Base, with automatic language detection or an explicit English or Portuguese setting. Preparation shows progress and supports pause/resume. Full-episode summaries and chat need a complete transcript; saved moments can use the transcript for their source window.
 
 Playback, local transcription and source-moment capture also work without ChatGPT, but DistillPod is designed around the connected AI experience.
 
@@ -53,19 +55,19 @@ Use the APK attached to a release for updates. CI debug artifacts use temporary 
 
 ## Your data
 
-Your library, listening progress, queue, transcripts and saved moments live on your phone. Whisper transcription runs locally. Model and episode downloads require access to their hosts; podcast search, artwork and feed refresh contact their respective providers.
+Your library, listening progress, queue, transcripts and saved moments are stored on your phone. Optional [library sync](docs/android/subscription-sync.md) sends approved public subscriptions, progress, completion and saved moments to Firebase; queue and portable preferences are an additional opt-in. Full transcripts, analyses, episode chat and explanations stay local. Whisper transcription runs locally. Model and episode downloads require access to their hosts; podcast search, artwork and feed refresh contact their respective providers.
 
 AI requests send the relevant transcript text, questions or interests to OpenAI through your connected ChatGPT account. Podcast suggestions include followed-show titles only when you select that option. DistillPod does not send episode audio for cloud transcription.
 
 Library backups include saved insights and chat history, but exclude account credentials, downloaded audio and model binaries; reconnect and re-download those separately when moving to another device.
 
-There is no required DistillPod server. See [privacy and data handling](docs/privacy.md).
+There is no required DistillPod server. Firebase sync is optional, and live analytics/crash collection is not enabled. See [privacy and data handling](docs/privacy.md).
 
 ## Current status
 
 DistillPod is a **personal alpha**. The S22 Ultra has been used for real subscription/search, playback, download, local transcription and saved-moment flows, along with ChatGPT sign-in, quote/insight generation, summaries and episode chat. A separate 60-minute screen-locked playback test passed. CI runs Kotlin tests, lint, native validation and isolated emulator acceptance before an APK can be released.
 
-The sync feature branch adds [optional library sync](docs/android/subscription-sync.md), with Google sign-in, offline subscriptions, listening progress, completion, saved moments, queue and portable preferences with explicit conflict choices. Existing published APKs do not include it yet. The project uses the free Spark plan with billing disabled. Transcripts and other finished text stay local and can be transferred through Backup & Restore; the experimental Cloud Storage extension is disabled in builds. Operational recovery, account lifecycle and live telemetry remain later milestones in the [implementation plan](docs/android/firebase-sync-telemetry-plan.md).
+[Optional library sync](docs/android/subscription-sync.md) is implemented on `main`, with Google sign-in, offline changes and explicit conflict choices. It requires a configured build; ordinary source/debug builds show sync as unavailable, while the release workflow requires Firebase client configuration. The selected deployment uses Spark with billing disabled. Transcripts and other finished text stay local and can be transferred through Backup & Restore; the experimental Cloud Storage extension is disabled in builds. Multiple local account profiles, complete account erasure, independent dated cloud recovery and live telemetry remain later milestones in the [implementation plan](docs/android/firebase-sync-telemetry-plan.md).
 
 AI summaries, answers and explanations use the episode transcript and can miss context or contain mistakes; use the source references and audio replay to check them. Saved-idea explanations currently use the transcript only; web research is not implemented in the Android app.
 
@@ -89,6 +91,7 @@ core/         Android-independent Kotlin logic
 third_party/  Pinned whisper.cpp submodule
 native-tests/ Host-side native bridge validation
 scripts/      Emulator, fixture and release tooling
+firebase/     Sync security rules and isolated emulator tests
 docs/         Usage, development, release process and validation
 branding/     Selected Listening Drop icon
 ```
@@ -101,7 +104,9 @@ This repository contains the native Android app. The previous self-hosted web ve
 
 - [Build and test](docs/development.md)
 - [Release process and signing](docs/releases.md)
-- [Planned Firebase sync and telemetry — tasks and TDD gates](docs/android/firebase-sync-telemetry-plan.md)
+- [Optional library sync — usage, configuration and limitations](docs/android/subscription-sync.md)
+- [Firebase sync and telemetry — implementation plan and remaining gates](docs/android/firebase-sync-telemetry-plan.md)
+- [Current implementation status and validation evidence](docs/android/implementation-status.md)
 - [Repository migration and web archive](docs/legacy-web.md)
 - [Third-party notices](THIRD_PARTY_NOTICES.md)
 - [Existing online transcripts before Whisper](docs/android/online-transcripts.md)

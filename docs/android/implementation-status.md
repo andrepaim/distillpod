@@ -1,76 +1,51 @@
 # Android implementation status
 
-Branch: `feat/native-android`. Updated November 3, 2026.
+Reviewed against `main` on November 5, 2026. This page distinguishes implemented code, downloadable releases and dated device evidence.
 
-The native personal alpha replaces the feasibility launcher on the owner's S22 Ultra. The original diagnostics remain in Settings → Developer checks. The application ID, signing certificate and encrypted ChatGPT connection are preserved across upgrades. The owner explicitly chose **a fresh Android library**; existing server/browser migration is outside this delivery, and the web application remains intact.
+## Source and distribution
 
-## Delivered application
+| Item | State at this review |
+| --- | --- |
+| Main source | `0.10.1-alpha.1`, version code `19`, from [gradle.properties](../../gradle.properties) |
+| Latest published APK | [0.7.1-alpha.1](https://github.com/andrepaim/distillpod/releases/tag/v0.7.1-alpha.1), published November 4 |
+| Latest recorded phone update | S25 in-place installation of 0.10.1-alpha.1, code 19, November 5; not a published release |
+| Database | Room schema 8 with migrations from schemas 1–7; no destructive fallback |
+| Supported Android/package | Android 10+ (`minSdk 29`), ARM64 and x86_64; `dev.distillpod.android` |
+| Default source/debug build | No production Firebase configuration; library sync shows unavailable |
+| Release workflow | Requires Firebase client configuration, validates an unsigned candidate and retains the personal-alpha signing identity |
 
-- Room library with schema 1→2 migration and exported schemas, separate from the old harness database. Its non-destructive feasibility import preserves any old episodes, progress and moments without copying or clearing credentials.
-- Public podcast search, direct RSS/Atom subscriptions, safe plain descriptions, conditional refresh, cached browsing and OPML transfer. Streaming feed parsing retains the latest 200 entries without loading a complete large archive.
-- Media3 background streaming/offline player, original-timeline progress, seek, speed, played controls and ordered queue.
-- Researched and implemented 0.3.0 UI: resume card, adaptive show section, compact episode cards, artwork mini-player/queue shortcut, focused player with correct 15/30-second labels, organised queue, quote-focused Saved collection and wrapping controls. [Proposal and verification](ui-improvement-proposal.md).
-- Constrained persistent downloads, safe range/validator resume, cancellation that waits for the writer to close, pinned model hashes/sizes, storage limit, protected active/queued files and unused-cache cleanup.
-- Publisher transcripts and local Whisper chunks with bounded decode, durable coverage/revisions, prioritized capture windows, pause/resume, model/language controls and recovery. Compressed chunks retain actual decoded source timestamps; integer frame limits prevent rounding overflow. Incomplete coverage produces a recoverable failure rather than an unscheduled queued job.
-- Preceding-minute captures saved before AI work, source-review gating, quote/excerpt validation, auth/quota/interruption recovery, saved library, copy/share and source replay.
-- Bounded summary/chapter analysis with completed-part checkpoints, sorted validated timestamps and source seeking. Ads are reviewable, disabled by default, tied to the transcript/audio revision, and skipped only in verified downloaded audio. Deliberate seeking/Undo replays a range normally.
-- Persistent grounded episode chat with bounded retrieval/history, streamed incomplete replies, validated source references and retry without duplicate user questions. Unsupported answers are visibly qualified.
-- Saved-moment explanations explicitly labeled as transcript-only, with source provenance and text export/share. **Web research is not enabled** and no web citations are invented.
-- Requested podcast suggestions using up to three AI directory searches, at most nine feed checks and six verified results. Followed/dismissed feeds stay excluded; sending followed-show titles is an explicit opt-in. No automatic AI recommendation schedule is enabled.
-- Original credential vault plus application-owned authorization, encrypted pending-attempt recovery, registration reuse, selected-account matching, serialized renewal, completion-only commits and explicit quota recovery. Retries carry request identities so old callbacks cannot overwrite a newer attempt.
-- Settings → Backup & Restore remembers a user-selected Drive/file-provider document for one-tap saves and an in-app dated history. It keeps bounded snapshots, byte read-back, private recovery copies and optional portable preferences; standalone JSON transfers remain supported. Versioned JSON library backup retains checksum/limits, schema upgrade, preview and transactional merge. See the [backup guide](drive-backup.md) and [validation receipt](evidence/drive-backup-validation.json). Feed aliases/scoped GUIDs map to existing local identities, existing records win, and changed source timings are invalidated. Credentials, model binaries and device audio paths are excluded; interrupted restored AI work requires explicit retry.
+The phone update retained its certificate, Firebase client configuration and existing library data; the online-transcript setting was visible and off. This is update/data-preservation evidence, not a live phone sync test or a store release. See the [online-transcript installation report](online-transcripts.md#s25-installation--november-5). Release notes in [current.md](../releases/current.md) describe the candidate for its matching tag.
 
-- Search/discovery 0.4.0: publisher thumbnails, preview sheets, featured first result, creator/category metadata, Follow/Open states, topic tiles, local recent searches, RSS entry and distinct loading/empty/retry states. Canceled or obsolete requests cannot overwrite newer results. [Proposal and result](search-ui-proposal.md).
+## Implemented on main
 
-## Current evidence
+- **Library and discovery:** Room storage, public search through Apple's iTunes directory, direct RSS/Atom subscriptions, conditional refresh, cached browsing and OPML transfer. Feed parsing retains the latest 200 entries. The library has a searchable, alphabetically ordered show gallery; Saved and transcripts have text search, and Settings is grouped by task.
+- **Listening:** Media3 background streaming/offline playback, original-timeline position, speed, played controls and a persistent ordered queue. The full player rewinds 10 seconds and advances 30 seconds. Downloads support bounded storage, range/validator resume, cancellation and protection for active/queued media.
+- **Transcripts:** suitable publisher transcripts, optional read-only PodcastTranscript.ai lookup for approved public shows, then local Tiny/Base Whisper. Online lookup defaults off and never uploads audio or creates a cloud transcription job. Local chunks keep durable coverage, progress and pause/resume. Full-episode AI requires complete text; saved audio windows and automatic ad skipping require publisher/local timing. [Controls and validation](online-transcripts.md).
+- **Saved moments and AI:** preceding-minute captures persist before preparation or generation. Connected ChatGPT supplies quotes/insights, summaries/chapters, grounded episode chat, transcript-only saved-idea explanations and requested podcast suggestions with checked feeds. Captures survive failures for review/retry. Ad skipping is reviewed, opt-in, source-bound and limited to verified downloaded audio. Web research is not implemented.
+- **Backup and restore:** remembered document access, one-tap saves, bounded dated ZIP history, byte read-back and private recovery copies. Standalone JSON remains supported. Restore previews and merges missing records while keeping existing data; portable model/language/AI-model preferences are optional. Credentials, downloaded media and models are excluded. [Backup guide](drive-backup.md).
+- **Optional Firebase library sync:** Google sign-in, one-account library binding, public-feed review, durable offline changes, progress, completion and saved moments. Protocol 2 adds queue and portable preferences, with explicit conflict choices. Full transcripts, analyses, conversations and explanations stay local in the selected Spark deployment; the experimental Storage adapter is disabled by `sync_content_enabled=false`. [Usage and configuration](subscription-sync.md).
+- **Identity and release:** encrypted ChatGPT credentials, application-owned authorization/recovery and serialized renewal. Google sync sign-in is separate. CI gates signed alpha publication on Kotlin, lint, native, Firebase and isolated Android acceptance. [Release process](../releases.md).
 
-Installed **0.4.1-alpha** adds the owner's selected lavender Listening Drop launcher icon, with adaptive and monochrome resources. The [icon build receipt](evidence/launcher-icon-build.json) records build/lint, matching installed APK and signing certificate, visual S22 home-screen inspection, successful icon launch, and unchanged library/account/settings/playback state. Its changes are limited to icon resources, manifest references and version metadata.
+## Validation evidence
 
-[The preceding 0.4.0 search build receipt](evidence/search-ui-build.json) records the behavior suite and cleanup. That local suite passes 48 core and 62 app JVM tests, lint and both APK assemblies. Three device flows pass; both search flows additionally pass at Android system font scale 160%. Those behavior suites were not rerun for the icon-only revision. The [earlier playback receipt](evidence/background-playback-build.json) identifies the hour-test build; service behavior is unchanged.
+These are dated results, not claims that every scenario was rerun for the current source. Receipts identify the tested revision, device and limitations.
 
+| Area | Recorded evidence and boundary |
+| --- | --- |
+| Online transcripts and upgrades, November 5 | [Validation receipt](evidence/online-transcripts-validation.json): 248 JVM tests (82 core, 166 app), debug lint and app/instrumentation builds. JVM upgrade regression covers schemas 1–7. Device tests were compiled at that checkpoint; the later S25 update separately verifies preservation. |
+| Library sync, November 4 | [TDD receipt](evidence/firebase-sync-tdd.md): protocol/rules, Room and independently authenticated demo clients, queue/preferences, finished-content experiment and force-stop recovery. Live Google sign-in/empty-library sync was checked on a visible emulator; synthetic fixtures used a separate demo environment. |
+| Backup history | [Standalone backup receipt](evidence/drive-backup-validation.json): physical Drive JSON round trip. The later [remembered-history flow](drive-backup.md) has JVM/provider and isolated system-picker coverage; its physical Drive validation remains outstanding. |
+| Library, audio and AI on S22 | [Product tests](evidence/s22-product-tests.txt), [capture](evidence/s22-live-capture-tests.txt), [renewal/restore](evidence/s22-renewal-restore-tests.txt), [understanding](evidence/s22-understanding-tests.txt) and [exploration](evidence/s22-exploration-integration.json) cover their stated earlier builds. |
+| Complete local episode | [Nine checks](evidence/s22-complete-episode-tests.txt) and [metadata](evidence/s22-full-episode.json): a 646.426-second enclosure, six chunks, 161 segments and complete coverage in 94.457 seconds after timestamp/codec-tail corrections. This is not broad language-accuracy evidence. |
+| Locked-screen playback | [Hour protocol and result](background-playback.md): 60m16.841s on S22 with no errors/underruns or rebuffering, plus synthetic focus and restart checks. USB-connected/muted conditions do not establish unplugged battery or real Bluetooth reliability. |
+| Earlier UI and icon | [Navigation/large text](evidence/s22-ui-redesign-tests.txt), [search build](evidence/search-ui-build.json) and [icon build](evidence/launcher-icon-build.json) record the earlier 0.3/0.4 builds, not acceptance of the later gallery/settings revision. |
 
-Physical S22 evidence:
+The current [CI workflow](../../.github/workflows/ci.yml) runs JVM tests, lint/debug assembly, release-tool guards, host native checks, Firestore/Storage rules and isolated Android acceptance. Release runs additionally build/lint an unsigned configured release candidate. Ordinary CI excludes live account and opt-in public/long-running tests. See [development](../development.md) for reproducible commands.
 
-- [UI navigation and action flow](evidence/s22-ui-redesign-tests.txt): resume/pause, mini-player, actual seek/speed, queue reorder without position loss, saved source navigation, filter empty-state recovery and controls at 160% text. Owner queue/position/speed/volume are restored and fixture rows/audio removed.
+## Remaining acceptance
 
-- [Eight production/audio checks](evidence/s22-product-tests.txt): subscribe, stream, download, publisher transcript, capture, Saved, recreation, replay, plus a repeated 220-second native source split into pause/resume checkpoints.
-- [Real account capture](evidence/s22-live-capture-tests.txt), [deliberate renewal and restore](evidence/s22-renewal-restore-tests.txt): production quote/insight completion, a real token renewal followed by completed inference, and restore into a separate database. No credentials or generated result text are exported.
-- [Summary/chat/ad-review checks](evidence/s22-understanding-tests.txt): schema 1→2 retains progress, moments and messages; reviewed skip/replay/source UI works; the real account completes summary and grounded reply workers.
-- [Six final phone checks](evidence/s22-final-phone-tests.txt): the updated core, migration, public network, large Naruhodo feed, and Tiny/Base with real English/Portuguese clips. [Benchmark notes](podcast-benchmark.md) distinguish speed measurements from unmeasured language accuracy and sustained behavior.
-- [Live exploration metadata](evidence/s22-exploration-integration.json): a public-source explanation and six real verified feed suggestions, using isolated library/preferences and no owner history.
+This remains a personal alpha. Real Bluetooth/telephone interruptions, simultaneous playback/transcription, multi-hour English/Portuguese quality, sustained unplugged battery use, Android job quotas over days, TalkBack/localization, broader devices/ABIs and the seven-day owner trial need further evidence. Earlier large-text checks do not establish accessibility of every current screen.
 
-The complete public-episode test found and reproduced codec frame rounding and seek-offset coverage defects. The fixes bound selected frames, preserve actual PCM timestamps and handle verified codec-padding tails. The corrected [complete-episode device run](evidence/s22-complete-episode-tests.txt) passed all nine checks. A 646.426-second downloaded enclosure completed six chunks, 161 segments and full coverage in 94.457 seconds; [metadata](evidence/s22-full-episode.json) records the result. Files without a reliable duration fail clearly rather than publishing a partial episode as complete.
+Multiple local sync profiles, complete cloud account erasure, independent dated cloud recovery/retention, App Check, staging and live telemetry remain open. The telemetry consent/event boundary exists in core; Analytics, Crashlytics and Performance collection are not enabled. Cloud sync does not replace independent backups.
 
-## TDD evidence
-
-Tests were written and run before their implementations. Expected failing compilation identified missing transcript/queue/feed/OAuth/job APIs, WAV decoding, Android persistence/identity/stream classes, the provider, credential envelope, native bridge header, authorization session and Compose screen. Implementations were added after those failures. Subsequent failures and final outcomes belong in the validation receipt below.
-
-Core tests cover boundary timestamps, coverage gaps, GUID collisions, queue load failure, malformed feeds and external entities, timed subtitles, invalid WAV formats, callback spoofing, state duplication, consent denial, PKCE, interrupted jobs and authenticated credential encryption.
-
-Android JVM tests use Robolectric and MockWebServer for persistence, signed JWT claims/signatures, consent scope denial, token exchange, streamed response interruption, request configuration, quota classification and screen actions. These are simulated Android tests, not physical-device evidence.
-
-Native tests use explicit runtime checks, including Release builds, rather than assertions that disappear under NDEBUG. Real inference uses the upstream JFK sample and a separately downloaded tiny.en model. No account credentials, models or personal audio are committed.
-
-## Remaining acceptance and release work
-
-This is a personal alpha for an owner trial. The real locked-screen hour, synthetic audio-focus interruptions and force-stop/reopen checks passed. Real Bluetooth/telephone interruptions, simultaneous playback/transcription, multi-hour English/Portuguese quality, unplugged battery behavior, Android job quotas over days, TalkBack/large-text/localization review, broader device/ABI checks and the seven-day trial remain open. The USB-connected hour does not establish those remaining scenarios.
-
-Web research/tool availability and public distribution are separate work. The app uses a labeled transcript explanation when no web-research adapter is enabled. The owner chose a fresh library, so server/browser migration is deferred rather than performed against an unknown remote deployment.
-
-The APK retains the local development signing certificate so it upgrades the existing installation without deleting the account. It is not presented as a public-store release. No API-key fallback, separately billed provider, mandatory server or automatic AI schedule has been introduced. The full [implementation plan](../android-implementation-plan.md) retains unchecked acceptance criteria where evidence is incomplete.
-
-## Final installed acceptance
-
-The final APK passed [all nine installed-build checks](evidence/s22-installed-alpha-acceptance.txt), including complete-episode transcription after both compressed-timestamp corrections and the duration-verification guard. The installed APK checksum matches the versioned release artifact. Model files are retained for daily use; the separate fixture/test package is removed after validation.
-
-## Transcript progress correction — 0.2.1-alpha
-
-Native progress/segment callbacks now update an animated preparation bar and active audio counter within each chunk. Loading/decoding/saving phases remain visible, while saved coverage still commits only after chunk validation. See [the progress correction](transcription-progress.md) and its device evidence.
-
-## Background playback validation
-
-The player explicitly enables its Media3 CPU wake lock for screen-off playback. The physical S22 completed 60m16.841s locked playback with zero errors/underruns, no rebuffering and only 4 ms final position drift. Synthetic transient/permanent audio-focus checks and force-stop/reopen restored position, queue and speed correctly. The owner queue/settings were restored and test artifacts removed. [Protocol, results and limitations](background-playback.md) include the brief light thermal status and the USB/muted setup. Real Bluetooth remains open because no hardware was available.
-
-## Existing online transcript lookup — November 5
-
-The working tree adds opt-in existing-transcript lookup between RSS publisher transcripts and Whisper, with exact enclosure matching, bounded read-only requests, local caching, offline/error fallback, retained text during local replacement and backup support. Online text supports reading and episode AI; saved audio windows and ad skipping retain publisher/local timing requirements. See [design, controls and validation](online-transcripts.md). Installed over the existing app on the owner’s USB-connected S25 as **0.10.1-alpha.1 (code 19)** on November 5. The non-debuggable APK retains the existing certificate and Firebase configuration, with paid content sync disabled. Before/after private exports verify existing library tables and portable preferences; the new setting is visible and remains off. This phone update has not been published as a release.
+The older web app is archived on `legacy/web` and tagged `web-legacy-final`. The owner chose a fresh Android library; automatic migration from the server/browser database remains deferred. Public-store distribution and a future signing transition require separate work. Historical acceptance checklists in the [original Android plan](../android-implementation-plan.md) and [Firebase plan](firebase-sync-telemetry-plan.md) remain open where their full criteria lack evidence.

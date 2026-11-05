@@ -2,6 +2,8 @@
 
 Install the APK attached to a [GitHub release](https://github.com/andrepaim/distillpod/releases). Android 10 or later is required. A newer compatible release installs over the current app; keep the application installed to retain its private data.
 
+This guide follows `main`, which can be ahead of the downloadable APK. Check the release notes and [implementation status](android/implementation-status.md) for feature availability in your build.
+
 ## Connect ChatGPT
 
 Start in **Settings → ChatGPT → Continue with ChatGPT**. The connection powers DistillPod's quotes and insights, episode summaries and chapters, episode chat, saved-idea explanations and interest-based podcast suggestions. Account/model eligibility and plan limits apply; requests use your ChatGPT plan allowance.
@@ -10,13 +12,13 @@ Complete browser sign-in and return to DistillPod for its final connection resul
 
 ## Follow your shows
 
-Open Search and enter a show name or creator. Preview the artwork and publisher, then Follow. The directory is external, so a show might require its public RSS address instead. Add RSS feed accepts that address directly. Settings also imports OPML subscription lists.
+Open Search and enter a show name or creator. Preview the artwork and publisher, then Follow. Search uses Apple’s iTunes podcast directory, so a show might require its public RSS address instead. Add RSS feed accepts that address directly. Settings also imports OPML subscription lists.
 
 A subscription fetches feed metadata and episode listings. Download audio explicitly from an episode when you want offline playback. Search history is local and can be cleared.
 
 ## Listen
 
-The library offers Continue listening, followed shows and recent episodes. Use Play next or Add to queue to choose what comes next. The mini-player opens the full player and queue. Playback can continue with the screen locked; Android media controls offer transport actions.
+The library offers Continue listening, followed shows and recent episodes. The show gallery lists followed shows alphabetically and offers local search. Saved and transcript screens also offer text search. Use Play next or Add to queue to choose what comes next. The mini-player opens the full player and queue. The player rewinds 10 seconds and advances 30 seconds; speed choices are 1×, 1.25×, 1.5× and 2×. Playback can continue with the screen locked; Android media controls offer transport actions.
 
 Downloaded episodes can play without a network connection. Streaming requires access to the publisher's audio host. Listen from the original source timeline; reviewed ad ranges are optional, and seeking into a range lets you hear it normally.
 
@@ -25,6 +27,8 @@ Downloaded episodes can play without a network connection. Streaming requires ac
 Publisher transcripts are used when suitable. Optionally enable **Settings → Local transcription → Look for existing online transcripts** to search PodcastTranscript.ai for an existing transcript of a public show before Whisper. Lookup sends the episode title, requires a directory follow or explicit public-source approval, and never uploads audio or starts cloud transcription. If lookup is disabled, unavailable or finds no suitable match, choose Tiny or Base in Settings and download the model. Prepare the episode transcript from its tools. Local processing shows its current phase and progress, and completed chunks remain available after pause/resume. Longer recordings take time and use battery; model and language choices affect performance.
 
 Automatic language detection, English and Português are available. A partial transcript is identified as partial rather than treated as complete. Online transcripts support reading and episode understanding; saved moments and automatic ad skipping still require publisher or local timing. **Transcribe locally again** bypasses online lookup. See [lookup design and limitations](android/online-transcripts.md).
+
+Audio and model downloads default to Wi-Fi/unmetered networks. In **Settings → Downloads & storage**, adjust the download policy if needed. If **Transcribe while charging** is enabled, connect power to let new transcription chunks run.
 
 ## Understand an episode
 
@@ -35,6 +39,14 @@ Once the complete transcript is ready, open **Summary & chapters** to generate a
 While listening, select Distill last 60 seconds. DistillPod records that original source window immediately. Open Saved to revisit the excerpt and replay it. Source preparation or AI failure retains the capture for review and retry.
 
 With ChatGPT connected and the source transcript ready, DistillPod can generate a quote and concise insight for the saved moment. Source review may be required before generation. Choose **Explain this idea** to explore the excerpt further through an explanation, practical reflection and questions to investigate. Explanations use the transcript; they do not search the web.
+
+## Sync supported library data
+
+In a configured build, open **Settings → Library sync → Connect Google & sync library**. Review existing feeds, approve only public sources, then choose the Google account for this library. Google sign-in is separate from ChatGPT and from the Drive file picker. An unconfigured source/debug build shows “Cloud sync is unavailable in this build.”
+
+Approved subscriptions, listening progress, played status and saved moments synchronize. **Sync queue & preferences** additionally shares queue order and transcription model/language/AI-model choices. Full transcripts, analyses, episode chat and explanations still require Backup & Restore for transfer. Downloads, models and credentials stay on each device.
+
+Use the same Google account on another installation. Offline changes wait for reconnection; conflicts offer **Keep this phone’s choice** or **Use the cloud choice**. Pause or sign out to stop sync while keeping the local library. The library remains bound to its original account; account switching and complete account erasure are not implemented. Sync propagates changes and deletions, so keep independent backups. See the [sync guide](android/subscription-sync.md).
 
 ## Back up or move devices
 

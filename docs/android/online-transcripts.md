@@ -1,6 +1,6 @@
 # Existing online transcripts before local transcription
 
-November 5, 2026. Implemented in the working tree; validation is recorded below. This is a read-only lookup of transcripts that already exist, followed by local Whisper when no suitable result is available.
+November 5, 2026. Implemented on `main`; dated validation is recorded below. This is a read-only lookup of transcripts that already exist, followed by local Whisper when no suitable result is available.
 
 ## Source order and controls
 
@@ -62,4 +62,4 @@ Run from the repository root with JDK 17:
 
 ## S25 installation — November 5
 
-Installed **0.10.1-alpha.1 (version code 19)** as an in-place USB update on the owner’s S25, using version overrides for the phone build. Release lint and assembly pass. The non-debuggable APK matches the installed signing certificate and Firebase client configuration, keeps paid content sync disabled, and passes 16 KB alignment checks. Private before/after exports verify that existing library tables, the queue, saved text and portable preferences are preserved; the new tables start empty. The app opens and the online-lookup setting is visible and off. No fixture/test APK or cloud transcription job was used on the phone. The signed artifact and private verification receipt are retained outside the repository. This is a phone installation, not a published release.
+Installed **0.10.1-alpha.1 (version code 19)** as an in-place USB update on the owner’s S25, using version overrides for the phone build (the same version is now recorded in `gradle.properties`). Release lint and assembly pass. The non-debuggable APK matches the installed signing certificate and Firebase client configuration, keeps paid content sync disabled, and passes 16 KB alignment checks. Private before/after exports verify that existing library tables, the queue, saved text and portable preferences are preserved; the new tables start empty. The app opens and the online-lookup setting is visible and off. No fixture/test APK or cloud transcription job was used on the phone. The signed artifact and private verification receipt are retained outside the repository. This is a phone installation, not a published release.

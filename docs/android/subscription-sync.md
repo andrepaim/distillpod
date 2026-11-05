@@ -1,6 +1,6 @@
 # Library sync alpha
 
-Implemented on `feat/firebase-sync-telemetry`; not yet in a published APK release. This is an incremental implementation of the [complete sync and telemetry plan](firebase-sync-telemetry-plan.md).
+Implemented on `main`. This is an incremental implementation of the [complete sync and telemetry plan](firebase-sync-telemetry-plan.md). Source, device-installed builds and published APKs have separate validation and availability; see [implementation status](implementation-status.md).
 
 ## Use
 
@@ -24,7 +24,7 @@ The default source build has no production Firebase client configuration and sho
 ./gradlew :app:assembleDebug -PdistillpodFirebaseConfig=/absolute/path/google-services.json
 ```
 
-The configuration supplies client project/app/API identifiers and the Google web client ID. It is packaged in the APK and is not an authorization secret. Privileged credentials, OAuth codes, signing keys and Firebase CLI tokens must never enter the build or repository. Rules provide authorization. The APK's certificate must match the Google provider registration. The current release workflow does not yet inject this optional configuration; release automation is a later plan gate.
+The configuration supplies client project/app/API identifiers and the Google web client ID. It is packaged in the APK and is not an authorization secret. Privileged credentials, OAuth codes, signing keys and Firebase CLI tokens must never enter the build or repository. Rules provide authorization. The APK's certificate must match the Google provider registration. The release workflow requires the `FIREBASE_CONFIG_JSON` repository secret and passes a private temporary configuration file through `distillpodFirebaseConfig` to the unsigned release build. Missing configuration fails distribution validation. Ordinary PR/debug builds remain unconfigured. See [release configuration and signing](../releases.md).
 
 The dedicated project is `distillpod-native-sync`, with a Standard/default Firestore database in `southamerica-east1`, deletion protection enabled. Billing was briefly linked during content-storage provisioning, then unlinked at the owner’s request; billing is now disabled and the project uses Spark. Do not enable billing without explicit authorization. Google provider setup and SHA-1/SHA-256 registration are complete. Real Google sign-in, the Firebase token exchange, a server-backed sync and cached sign-in after process restart were verified on the visible emulator on November 4. No synthetic library was uploaded to the live project; synthetic SDK acceptance uses a separate emulator and demo Firebase project. Deploy the validated library rules using the explicit project argument; do not rely on an inherited CLI default.
 
@@ -38,7 +38,13 @@ npm --prefix firebase run test:emulator
 npm --prefix firebase run test:storage
 ```
 
-Build the debug and instrumentation APKs and start an isolated Android emulator. With Java 21 active for the Firebase CLI, run from the repository root:
+Build the debug and instrumentation APKs with Java 17 and start an isolated Android emulator:
+
+```sh
+./gradlew :app:assembleDebug :app:assembleDebugAndroidTest
+```
+
+The ordinary [emulator suite](../development.md#isolated-emulator-acceptance) also builds these APKs with its required speech fixtures. With Java 21 active for the Firebase CLI, run from the repository root:
 
 ```sh
 firebase/node_modules/.bin/firebase --config firebase/firebase.json emulators:exec --only auth,firestore,storage --project demo-distillpod-sync 'env DISTILLPOD_SERIAL=emulator-5554 scripts/sync-device-tests.sh'
@@ -46,7 +52,7 @@ firebase/node_modules/.bin/firebase --config firebase/firebase.json emulators:ex
 
 Set `DISTILLPOD_ADB` to Windows ADB when using WSL. The script verifies an emulator target. The SDK tests use independently authenticated named Firebase apps and separate Room databases on one Android emulator, not two physical phones. They cover concurrent edits, restore, sign-out/account denial and cross-user rules. A separate two-phase test force-stops the package between recording an offline intent and uploading it in a new process. Firebase emulators remain running across those phases.
 
-CI runs ordinary Android regressions and then this targeted Auth/Firestore acceptance. The ordinary script excludes SDK/server-specific cases; the explicit cloud stage runs them with required arguments. The isolated test runner disables automatic production sync and deferred intent recording before Application creation, even in configured APKs. Demo stores opt in separately. Test fixtures use only the demo project and synthetic accounts. No live Google sign-in, production test library upload or owner-phone update is claimed by these tests. Google account selection/provider behavior still needs a live manual check before treating the sign-in path as verified on a real phone.
+CI runs ordinary Android regressions and then this targeted Auth/Firestore/Storage acceptance. Storage cases exercise the disabled finished-content experiment with injected demo clients. The ordinary script excludes SDK/server-specific cases; the explicit cloud stage runs them with required arguments. The isolated test runner disables automatic production sync and deferred intent recording before Application creation, even in configured APKs. Demo stores opt in separately. Test fixtures use only the demo project and synthetic accounts. No live Google sign-in, production test library upload or owner-phone update is claimed by these tests. Google account selection/provider behavior still needs a live manual check before treating the sign-in path as verified on a real phone.
 
 ## Listening progress and moments
 
@@ -54,7 +60,7 @@ Local playback saves frequently for crash recovery. Cloud checkpoints coalesce w
 
 Played/unplayed actions are separate versioned records. A stale automatic end-of-playback event cannot undo a newer explicit mark-unplayed. Saved moments carry their original interval, excerpt, completed quote/insight, revision, fingerprint and model; local generation state and attempts never enter the cloud. Incomplete restored moments remain saved without automatically starting transcription or consuming AI allowance. Deletions use empty tombstones; stale in-flight generation cannot recreate a deleted row.
 
-Room schema 6 adds locally visible revisions and durable session/checkpoint state. Its migration preserves library rows and the existing outbox. Remote projections preserve downloads, queue and local media fields. Private/query-bearing media addresses and oversized snapshots remain local; Backup & Restore is still required for excluded records and for the remaining portable library types.
+The schema 5→6 migration adds locally visible revisions and durable session/checkpoint state. The current database is schema 8; it retains migrations from schemas 1–7. Its migration preserves library rows and the existing outbox. Remote projections preserve downloads, queue and local media fields. Private/query-bearing media addresses and oversized snapshots remain local; Backup & Restore is still required for excluded records and for the remaining portable library types.
 
 ## Extended library scope
 
