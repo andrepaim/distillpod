@@ -1,0 +1,38 @@
+{
+  "coreTests": 85,
+  "appTests": 191,
+  "failed": 0,
+  "lint": "release passed",
+  "ui": {
+    "device": "API 36 emulator",
+    "fontScale": 1.6,
+    "passed": true
+  },
+  "live": {
+    "learning": {
+      "discussion": true,
+      "sourceCount": 4,
+      "infographic": true,
+      "renderedFromRecordedLiveInputs": true
+    },
+    "attention": {
+      "ownerHistorySent": false,
+      "illustrationMethod": "AI-designed vector scenes, rendered locally",
+      "discussion": true,
+      "sourceCount": 5,
+      "infographic": true,
+      "dimensions": "1080x1350"
+    },
+    "feedback": {
+      "ownerHistorySent": false,
+      "illustrationMethod": "AI-designed vector scenes, rendered locally",
+      "discussion": true,
+      "sourceCount": 4,
+      "infographic": true,
+      "dimensions": "1080x1350"
+    }
+  },
+  "ownerHistorySent": false,
+  "publicationAttempted": false,
+  "status": "Preview validated and installed for owner review"
+}

@@ -55,3 +55,11 @@ Settings → Backup & Restore → Create backup file connects a Drive document o
 Credentials, downloaded audio, model binaries and private device file paths are excluded. Reconnect the account and re-download audio/models on a destination installation. OPML transfers subscriptions only.
 
 Developer checks are diagnostics for deliberate testing. They are not needed for normal listening, and fixture suites belong on an isolated emulator.
+
+## Create a social post
+
+Open a prepared saved moment and tap **Create post**. Choose **Quote & discussion** for a well-spaced text post built around an exact quote, or **Infographic** for an illustrated explanation enriched with web research. The app chooses language, structure and visual treatment automatically and begins generation immediately through the connected ChatGPT account.
+
+The completed result offers **Share** and an optional **Change** instruction. The menu includes copying, direct discussion editing, undo, image saving and deletion as applicable. You can leave the screen during generation; failed or canceled changes preserve the last completed version. Finish publication in the receiving app, and copy the infographic description separately if the recipient does not retain it.
+
+Find results through **Saved → Your posts**, even after deleting the original moment. Posts and infographic assets are local and included in bounded library backups; library sync does not upload them. Infographics use AI-designed vector scenes rendered locally because the current account connection does not support the hosted image-generation tool. Reopening or sharing a completed result does not regenerate it.

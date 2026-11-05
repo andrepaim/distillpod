@@ -1,0 +1,55 @@
+{
+  "feature": "Create post V1",
+  "date": "2026-11-05T11:38:08.967097+00:00",
+  "base": "069a1d0",
+  "branch": "feat/social-sharing",
+  "validation_checkout": "isolated checkout containing only social-sharing changes",
+  "jvm": {
+    "core": {
+      "tests": 85,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "app": {
+      "tests": 176,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "checks": [
+    ":core:test",
+    ":app:testDebugUnitTest",
+    ":app:lintDebug",
+    ":app:assembleDebug",
+    ":app:assembleDebugAndroidTest"
+  ],
+  "android": {
+    "device": "disposable emulator-5556",
+    "api": 36,
+    "test": "SocialPostDeviceTest#createEditPreviewAndRecoverDetachedDraftWithLargeText",
+    "passed": 1,
+    "seconds": 7.508,
+    "font_scale": 1.6,
+    "covers": [
+      "capture entry point",
+      "editable draft",
+      "autosave",
+      "quote preview",
+      "mint theme",
+      "square layout",
+      "image-description copy",
+      "source deletion retains draft",
+      "draft discovery from Saved"
+    ]
+  },
+  "apk_sha256": "6aac8a261b6bf90b9cbe85f91a7e627182a614b3092b19de0f1e8653be43edfd",
+  "screenshot": "social-sharing-preview.png",
+  "limitations": [
+    "No live ChatGPT request: composition validated with injected gateway fixtures.",
+    "LinkedIn and Instagram are not installed on the test emulator; recipient-specific composer handoff remains unverified.",
+    "TalkBack and physical-device acceptance remain to be run.",
+    "AI illustrations, carousels and public hosting are later milestones."
+  ]
+}

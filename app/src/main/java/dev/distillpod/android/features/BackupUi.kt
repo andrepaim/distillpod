@@ -29,7 +29,7 @@ import java.util.Locale
     documents: dev.distillpod.android.data.BackupDocuments,
     onDestination: (android.net.Uri?) -> Unit = documents::save,
 ) {
-    val export = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json"), onDestination)
+    val export = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream"), onDestination)
     LaunchedEffect(documents) {
         documents.destinations.receiveAsFlow().collect { name ->
             try { export.launch(name) }

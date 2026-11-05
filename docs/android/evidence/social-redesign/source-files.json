@@ -1,0 +1,29 @@
+{
+  "baseline": "93a2238",
+  "sha256": {
+    "app/src/androidTest/java/dev/distillpod/android/SocialPostDeviceTest.kt": "87291958639d32bd08c0b3dccf5cb2b6ef868d6068312738a6a9ecffc11f92a3",
+    "app/src/main/java/dev/distillpod/android/DistillPodApplication.kt": "2f9ec309db35370feb53eee081b875147d2acc4b61261a709cf28a44c1b28ece",
+    "app/src/main/java/dev/distillpod/android/data/BackupDocuments.kt": "a4d61a9b3dc218b7bd1dcb220d4a911bec122e61d86417e44585a68b05d84001",
+    "app/src/main/java/dev/distillpod/android/data/LibraryBackup.kt": "5ee8207c56af839451fa70dd1c90c33c0876c813ee933ffa8291d8c85b73df3e",
+    "app/src/main/java/dev/distillpod/android/features/AppViewModel.kt": "65c2ce3d1b46e56a0dea48f4045104186a35579017aaecfed0da5ce5a996ff8d",
+    "app/src/main/java/dev/distillpod/android/features/BackupUi.kt": "6220c86f911fe032c85271cdcea51715d2e04e1d487a67867fd29a74d8512f85",
+    "app/src/main/java/dev/distillpod/android/features/PostEditorUi.kt": "a2dbf228f4f1f689dd43a34dadc01f40ef6ea2b8fcf0f74ae1851a813e12fde9",
+    "app/src/main/java/dev/distillpod/android/features/ProductApp.kt": "ad09820d8c93991524159f5e12027cc057638aeb9f9198381d19b09f1fd7aba1",
+    "app/src/main/java/dev/distillpod/android/sharing/PostShareController.kt": "9e0b1676014f4071bc4c604bdb4adbfd2f9f66a8cc372cc3ebc9563fc786477c",
+    "app/src/androidTest/java/dev/distillpod/android/SocialCapabilityDeviceTest.kt": "5a152d1581ef224cc8f4f0fa84d719df41c145112c179b7b222a7ac45353943f",
+    "app/src/androidTest/java/dev/distillpod/android/SocialOutputDeviceTest.kt": "e32cf88cac06a38ab985350f9a1a7fc812d22886f2d74479c189fddb22396587",
+    "app/src/main/java/dev/distillpod/android/ai/SocialTools.kt": "afccd51cd5613c700c58137f05d814ab93d3934176384d980059d4dd496c56eb",
+    "app/src/main/java/dev/distillpod/android/data/PostBackupBundle.kt": "eb31b815e58846eeea026de73e77f95c652d6b9ebff4686a6e87251c27bb9a9e",
+    "app/src/main/java/dev/distillpod/android/data/SocialComposer.kt": "5e5452485b53a07fcaa77aef347d4bbcdd6bc951a317bdf12bac92cd5e8f7049",
+    "app/src/main/java/dev/distillpod/android/data/SocialResult.kt": "c6c7bff8548a75c6d2b49454a47db16829a23802a15559797dd35e4ccd305e79",
+    "app/src/main/java/dev/distillpod/android/sharing/InfographicRenderer.kt": "21152798cec319766bcf3586db6fff15c23685fed939f388119127d02023f365",
+    "app/src/main/java/dev/distillpod/android/sharing/PostAssets.kt": "47e38abcfb37db7719dbe2abab7225907171089866419aea7a831cb5c111d308",
+    "app/src/main/java/dev/distillpod/android/sharing/VectorIllustrations.kt": "24727e1fb8d76b39d49b80d1f584dfe5057d3f18cb26c708f9b7cce662878755",
+    "app/src/main/java/dev/distillpod/android/work/SocialPostWorker.kt": "6504658d927e01bb4094696f8730ee09b0840fc68ab667550517f992a0298ad5",
+    "app/src/test/java/dev/distillpod/android/SocialResultTest.kt": "760a3db98e82b9e7721d697b6edb30850a94f86f20bd12178b66bb6b894290c7",
+    "app/src/test/java/dev/distillpod/android/SocialToolsTest.kt": "6468535e6a76ce052d38f1a2a0d6ef04503b8e65e72222c0e6015dd0b231a059",
+    "app/src/test/resources/social-learning-brief.json": "0d02689fca87c2a9378ae34c1e7469a2dffddccdafbe7e14122b97b819fd5cdf",
+    "app/src/test/resources/social-learning-illustration.json": "1f8edea764d4b0a50bba615efa38d1ec5d4606e8b111fda171461078274c175e",
+    "app/src/test/resources/social-learning-sources.json": "6f7eb15d959bf2bc48d07235e5c1de49d311a3cde02791c20d90f47ca316497b"
+  }
+}

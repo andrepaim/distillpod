@@ -13,13 +13,13 @@ private const val BACKUP_LIMIT = 32 * 1024 * 1024
 private val backupTables = listOf("podcasts", "episodes", "transcripts", "online_transcripts", "segments", "transcript_coverage", "distillations",
     "analyses", "analysis_parts", "messages", "research", "suggestions", "queue", "player_session", "post_drafts")
 data class BackupPreview internal constructor(internal val payload: String, val counts: Map<String, Int>, val conflicts: Int,
-    val createdAt: Long = 0, val appVersion: String = "Unknown (older backup)", val preferences: PortablePreferences? = null) {
+    val createdAt: Long = 0, val appVersion: String = "Unknown (older backup)", val preferences: PortablePreferences? = null, internal val assets: Map<String, ByteArray> = emptyMap()) {
     val episodes get() = counts["episodes"] ?: 0
     val moments get() = counts["distillations"] ?: 0
 }
 
 /** A bounded, versioned data transfer. Only allowlisted library tables enter this format. */
-class LibraryBackup(private val db: AppDatabase) {
+class LibraryBackup(private val db: AppDatabase, private val assets: dev.distillpod.android.sharing.PostAssets? = null) {
     private data class Column(val name: String, val type: String, val required: Boolean, val primary: Boolean)
     private fun columns(table: String): List<Column> = db.openHelper.readableDatabase.query("PRAGMA table_info(`$table`)").use { cursor ->
         buildList { while (cursor.moveToNext()) add(Column(cursor.getString(1), cursor.getString(2), cursor.getInt(3) != 0, cursor.getInt(5) != 0)) }
@@ -51,16 +51,16 @@ class LibraryBackup(private val db: AppDatabase) {
         val createdAt = System.currentTimeMillis()
         val payload = if (preferences == null) tables.toString() else JSONObject().put("library", tables)
             .put("preferences", PortablePreferences.parse(preferences.json()).json()).put("createdAt", createdAt).put("appVersion", appVersion.take(100)).toString()
-        val bytes = JSONObject().put("format", "distillpod-library").put("version", if (preferences == null) 1 else 2).put("databaseSchema", 4)
+        val bytes = JSONObject().put("format", "distillpod-library").put("version", if (preferences == null) 1 else 2).put("databaseSchema", 5)
             .put("createdAt", createdAt).put("payload", payload).put("sha256", sha(payload)).toString().toByteArray(Charsets.UTF_8)
         require(bytes.size <= BACKUP_LIMIT) { "This library exceeds the 32 MB backup limit" }
-        bytes
+        PostBackupBundle.pack(bytes, PostBackupBundle.references(tables), assets)
     }
 
     suspend fun preview(input: InputStream): BackupPreview = withContext(Dispatchers.IO) {
-        val bytes = input.readBytesBounded()
+        val (bytes, images) = PostBackupBundle.unpack(input.readBytesBounded())
         val root = JSONObject(bytes.toString(Charsets.UTF_8))
-        require(root.optString("format") == "distillpod-library" && root.optInt("version") in 1..2 && root.optInt("databaseSchema") in 1..4) { "This backup format is not supported" }
+        require(root.optString("format") == "distillpod-library" && root.optInt("version") in 1..2 && root.optInt("databaseSchema") in 1..5) { "This backup format is not supported" }
         val original = root.getString("payload")
         require(sha(original) == root.getString("sha256")) { "The backup integrity check failed" }
         val content = if (root.getInt("version") == 2) JSONObject(original) else null
@@ -95,6 +95,7 @@ class LibraryBackup(private val db: AppDatabase) {
         }
         db.withTransaction {
             val tables = validated(normalized.toString())
+            require(PostBackupBundle.references(tables) == images.keys) { "Backup infographic assets do not match the library" }
             mapExistingIdentities(tables)
             val counts = backupTables.associateWith { tables.getJSONArray(it).length() }
             var conflicts = 0
@@ -103,13 +104,20 @@ class LibraryBackup(private val db: AppDatabase) {
                 val rows = tables.getJSONArray(table)
                 repeat(rows.length()) { i -> if (exists(table, keys, rows.getJSONObject(i))) conflicts++ }
             }
-            BackupPreview(normalized.toString(), counts, conflicts, createdAt, appVersion, preferences)
+            BackupPreview(normalized.toString(), counts, conflicts, createdAt, appVersion, preferences, images)
         }
     }
 
     /** Keep existing rows. A malformed or conflicting relationship rolls the entire import back. */
     suspend fun merge(preview: BackupPreview): Int = db.withTransaction {
         val tables = validated(preview.payload)
+        require(PostBackupBundle.references(tables) == preview.assets.keys) { "Backup infographic assets changed" }
+        if (preview.assets.isNotEmpty()) {
+            require(assets != null) { "Infographic storage is unavailable" }
+            preview.assets.forEach { (hash, bytes) -> require(assets.put(bytes) == hash) }
+        }
+        // Immutable files precede the transaction commit: a failed merge may leave harmless unreferenced
+        // blobs, but can never commit a post pointing to an absent image or remove a concurrent image.
         mapExistingIdentities(tables)
         var inserted = 0
         var queueOrder = db.library().queue().maxOfOrNull { it.sortOrder } ?: -1
@@ -205,7 +213,7 @@ class LibraryBackup(private val db: AppDatabase) {
                 }
                 if (row.has("startMs") && row.has("endMs")) require(row.getLong("endMs") >= row.getLong("startMs")) { "Invalid backup time range" }
                 if (table == "player_session") require(row.getDouble("speed") in 0.5..3.0 && row.getInt("id") == 0) { "Invalid player settings" }
-                if (table == "post_drafts") JSONObject(row.getString("content"))
+                if (table == "post_drafts") SocialResult.parse(row.getString("content"))
                 if (table == "online_transcripts") {
                     val segments = row.getString("segmentsJson")
                     require(row.getString("contentHash") == dev.distillpod.core.episodeId("online-transcript", segments)) { "Online transcript integrity check failed" }
@@ -219,6 +227,10 @@ class LibraryBackup(private val db: AppDatabase) {
     }
 
     private fun portable(table: String, row: JSONObject) {
+        if (table == "post_drafts") {
+            val post = SocialResult.parse(row.getString("content"))
+            if (post.stage in listOf("queued", "preparing", "researching", "illustrating")) row.put("content",post.copy(stage="failed", attempt=java.util.UUID.randomUUID().toString(), error="Restored from backup. Retry when ready.").json())
+        }
         if (table == "episodes") {
             row.put("localFile", JSONObject.NULL).put("downloadState", "none").put("downloadedBytes", 0)
                 .put("etag", JSONObject.NULL).put("lastModified", JSONObject.NULL).put("error", JSONObject.NULL)
