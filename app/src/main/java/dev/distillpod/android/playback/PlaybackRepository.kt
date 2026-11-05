@@ -72,10 +72,10 @@ class PlaybackRepository(context: Context, private val db: AppDatabase, private 
                 controller.prepare(); controller.play(); return@withContext
             }
             val queue = (0 until controller.mediaItemCount).map { controller.getMediaItemAt(it).mediaId }.filter { it in all }
-            val ids = if (id in queue) queue else listOf(id) + queue
+            val ids = dev.distillpod.android.auto.AutoPlayback.selectionIds(id, queue)
             val index = ids.indexOf(id)
             controller.setMediaItems(ids.map { mediaItem(all.getValue(it), podcasts[all.getValue(it).podcastId]) }, index,
-                positionMs ?: ep.positionMs.takeUnless { ep.completed && ep.durationMs > 0 && it >= ep.durationMs - 3000 } ?: 0)
+                positionMs ?: ep.positionMs.takeUnless { ep.completed } ?: 0)
             controller.prepare(); controller.play()
         }
     }
