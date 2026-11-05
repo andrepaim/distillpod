@@ -52,7 +52,7 @@ Commit through `CaptureRepository.save`, then dispatch `prepareSaved`. Keep the 
 
 ### Confirmation sound dependency
 
-The existing `feat/distill-confirmation-sound` work at `3fe6cc3` is merged into this isolated feature branch. It provides the owner-selected pen-scribble asset, independent sound setting, repository-level after-commit hook, and regression tests. All capture surfaces share that hook, so new saves sound once and repository-deduplicated requests, recovery and failed saves do not sound. Its original branch/worktree is not changed. Validate the combined result; historical sound tests alone do not validate this feature.
+Reuse the confirmation implementation on main at `8fabf40`, originally developed on `feat/distill-confirmation-sound` at `3fe6cc3`. It provides the owner-selected pen-scribble asset, independent sound setting, repository-level after-commit hook, and regression tests. All capture surfaces share that hook, so new saves sound once and repository-deduplicated requests, recovery and failed saves do not sound. Its original branch/worktree is not changed. Validate the combined result; historical sound tests alone do not validate this feature.
 
 ## Delivery steps
 
@@ -88,4 +88,27 @@ Physical acceptance should record phone OS, earbud firmware, Soundcore version, 
 
 ## Evidence
 
-Implementation and validation results will be recorded here after the checks run. Physical Liberty 4 NC behavior is not yet validated.
+Validated implementation: `5622ceb`, based on main `8fabf40`, on 2026-11-05. The feature tree was byte-identical before and after rebasing onto the updated main (`accab9318eb13c2494dc3722cd347bd249d701e1`). This receipt is a documentation-only follow-up.
+
+| Check | Result |
+| --- | --- |
+| `:core:test` | 91 tests passed |
+| `:app:testDebugUnitTest` | 272 tests passed, including 12 new headphone tests |
+| `:app:lintDebug` | Passed |
+| `:app:assembleDebug` and `:app:assembleDebugAndroidTest` | Passed |
+| `python3 -m unittest discover -s scripts -p 'test_*.py'` | 15 tests passed |
+| `HeadphoneDistillDeviceTest` | Passed on an isolated Windows-hosted Android 16 / API 36 x86_64 emulator |
+| `DistillSoundDeviceTest` | Passed on the same emulator |
+| Documentation links and `git diff --check` | Passed |
+
+The headphone device test uses both a platform media controller and Android's system media-key route. It verifies repeat suppression, original capture position, preserved two-episode playback, screen-off capture, unchanged direct modern skip controls and pause handling, and disabling capture without restarting the service. It uses silent local WAVs and complete synthetic transcript coverage, with no AI or account requests. The sound test separately verifies native confirmation playback after a committed save; it does not establish perceived loudness or Bluetooth routing.
+
+Reproduce the JVM/build checks with the commands in [development](../development.md). For the targeted emulator checks, install both debug APKs on a verified disposable emulator, then run:
+
+```sh
+adb -s emulator-5560 shell am instrument -w -r \
+  -e class dev.distillpod.android.HeadphoneDistillDeviceTest,dev.distillpod.android.DistillSoundDeviceTest \
+  dev.distillpod.android.test/dev.distillpod.android.IsolatedTestRunner
+```
+
+The completed instrumentation run reported **OK (2 tests)**. Match the serial to your disposable emulator; the headphone test refuses physical hardware. No owner-phone installation, physical-earbud check, live-account action, APK publication or remote CI run was performed. Physical Liberty 4 NC triple-tap mapping, one-earbud/multipoint behavior and Bluetooth confirmation sound remain unvalidated.
