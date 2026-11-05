@@ -64,9 +64,10 @@ elif cmd[:3]==['shell','am','instrument']:print('INSTRUMENTATION_STATUS_CODE: 0\
         self.assertIn("#realDirectoryShowsPublisherThumbnails", " ".join(command))
         self.assertIn("AutoRestartDeviceTest", " ".join(command))
         phases=[call for call in calls if call[:3]==["shell","am","instrument"]]
-        self.assertEqual(3,len(phases))
-        self.assertIn("prepareCheckpoint"," ".join(phases[1]))
-        self.assertIn("verifyCheckpoint"," ".join(phases[2]))
+        self.assertEqual(4,len(phases))
+        self.assertIn("AutoBrowserDeviceTest"," ".join(phases[1]))
+        self.assertIn("prepareCheckpoint"," ".join(phases[2]))
+        self.assertIn("verifyCheckpoint"," ".join(phases[3]))
         self.assertTrue(any(call==["shell","am","force-stop","dev.distillpod.android"] for call in calls))
         self.assertTrue(any(call[:3] == ["shell", "am", "clear-debug-app"] for call in calls))
 
