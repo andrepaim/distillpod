@@ -1,6 +1,6 @@
 # Android Auto implementation plan
 
-Date: November 5, 2026. Status: core implementation and automated service checks completed on `feat/android-auto`; signed S22/Android Auto preview exercised. Final corrected-build head-unit checks and physical-car acceptance remain open.
+Date: November 5, 2026. Status: core implementation and automated service checks completed on `feat/android-auto`; signed S22/Android Auto preview exercised. Corrected signed preview installed and launcher-enabled on the S25; physical-car acceptance remains open.
 
 Make DistillPod available in the Android Auto launcher when the owner connects the S25 Ultra to a compatible car. The car should browse the existing library, resume episodes, play downloads offline, and save moments through a Distill action. The phone remains responsible for playback and storage.
 
@@ -46,7 +46,7 @@ Keep the existing `PlaybackService` component name and one player/session. Avoid
 
 Implemented: catalog and continuation folders, asynchronous browser/search/selection callbacks, startup coordination, subscriptions, voice request matching, queue/resume policy, −10s/+30s actions, durable Distill acceptance and recovery, cached thumbnails, compatible lock-screen controls, media-search intents, emulator CI integration and a signed S22 preview. See [TDD evidence](evidence/android-auto-tdd.md), [validation](evidence/android-auto-validation.md) and the [user guide](android-auto.md).
 
-Milestone A was demonstrated with the S22 and official Desktop Head Unit: DistillPod appeared in the launcher and opened the four sections. Local/service checks passed. During later checks another task replaced the phone build with a social preview; exclusive phone installation coordination is required to finish the corrected-build head-unit pass. Physical car, full assistant speech routing, long locked playback, interruption hardware and 10,000-episode target measurements remain open.
+Milestone A was demonstrated with the S22 and official Desktop Head Unit: DistillPod appeared in the launcher and opened the four sections. Local/service checks passed. During later S22 checks another task replaced the phone build with a social preview. The owner then supplied the S25; the corrected signed preview was installed there, all library tables/preferences were preserved, and Android Auto listed and enabled DistillPod for the owner’s car test. Physical car, full assistant speech routing, long locked playback, interruption hardware and 10,000-episode target measurements remain open.
 
 ## Car experience
 

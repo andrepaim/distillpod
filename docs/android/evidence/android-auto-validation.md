@@ -26,9 +26,17 @@ Further exact seek and capture checks on the corrected phone build are pending: 
 
 Personal screenshots, APKs, signing/configuration verification and library snapshots are stored under the private path recorded in `/tmp/distillpod-auto-s22-dir`. No personal screenshots or transcript content are checked in.
 
+## S25 installation for owner car testing
+
+The owner subsequently provided the S25 Ultra (SM-S938B) and requested installation for their own car test. The signed `0.10.1-alpha.1-auto-preview`, code 19, source `bac4958`, was installed over `0.10.1-alpha.1` with replacement. Certificate and APK checksum were verified; Firebase client resources matched the installed build and paid content remained disabled.
+
+Private before/after JSON exports matched every library table and all preferences, including transcripts, queue and saved content. The application UID remained unchanged. Android's service query resolved the media browser service. Android Auto `17.9.664044-release` developer mode and Unknown sources were configured, and Customize launcher showed DistillPod listed and enabled. No head-unit server was started on the S25; this setup is for the owner's real car connection. DistillPod was left open afterward.
+
+Private evidence is recorded in `/tmp/distillpod-auto-s25-dir`. This completes the requested S25 installation and car-launcher preparation; actual vehicle results await the owner's test.
+
 ## Remaining acceptance gates
 
-- Corrected-build head-unit seek/capture, fresh thumbnail refresh, reconnect and short screen-locked playback on the reserved phone.
+- Corrected-build car seek/capture, fresh thumbnail refresh, reconnect and short screen-locked playback; the owner is testing with the S25.
 - Actual car USB validation; wireless Android Auto if the owner's car supports it.
 - Actual Gemini/Assistant speech recognition and app-name routing in the phone's configured language. Synthetic request-matching tests pass; a recorded speech attempt through DHU was inconclusive.
 - Real 60-minute screen-locked playback, navigation/call/Bluetooth interruptions and target performance measurements with 10,000 episodes.
