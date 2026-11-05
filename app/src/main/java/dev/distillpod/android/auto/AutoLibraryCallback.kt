@@ -4,6 +4,8 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.C
 import androidx.media3.common.Player
 import android.os.Bundle
+import android.content.Intent
+import dev.distillpod.android.playback.HeadphoneDistillButton
 import dev.distillpod.android.playback.PlaybackControls
 import androidx.media3.session.*
 import androidx.media3.session.MediaLibraryService.LibraryParams
@@ -26,12 +28,16 @@ class AutoLibraryCallback(
     private val saveMoment: suspend (String,Long,String?) -> String = {_,_,_->throw IllegalStateException("Capture is unavailable")},
     private val prepareMoment: (String)->Unit = {},
     artwork: ((String?)->android.net.Uri)?=null,
+    private val headphoneDistillEnabled: () -> Boolean = { false },
+    private val onHeadphoneCaptureFailure: () -> Unit = {},
+    private val isTrustedMediaButtonCaller: (MediaSession.ControllerInfo) -> Boolean = { false },
 ): MediaLibrarySession.Callback {
     companion object { const val DISTILL="dev.distillpod.android.DISTILL_MOMENT" }
     private val catalog=AutoCatalog(db,artwork)
     private val playback=AutoPlayback(db)
     private val subscriptions=mutableSetOf<String>()
     private var captureBusy=false
+    private val headphoneButton = HeadphoneDistillButton()
     private fun layout(label:String="Distill last 60 seconds",enabled:Boolean=true)=listOf(
         PlaybackControls.buttons[0],
         CommandButton.Builder(CommandButton.ICON_UNDEFINED).setCustomIconResId(dev.distillpod.android.R.drawable.ic_media_distill)
@@ -135,6 +141,20 @@ class AutoLibraryCallback(
         val selected=playback.select(id,db.library().queue().map {it.episodeId})
         MediaSession.MediaItemsWithStartPosition(selected.items,selected.index,selected.position)
     }
+    override fun onMediaButtonEvent(session: MediaSession, controllerInfo: MediaSession.ControllerInfo, intent: Intent): Boolean {
+        // Media3 1.5.1 marks legacy key-event callers untrusted without consulting Android.
+        if (controllerInfo.packageName != packageName && !controllerInfo.isTrusted &&
+            !isTrustedMediaButtonCaller(controllerInfo)) return false
+        return headphoneButton.handle(intent, headphoneDistillEnabled()) {
+            val result = captureMoment(session)
+            result.addListener({
+                if (!result.isCancelled && runCatching { result.get().resultCode }.getOrNull() !in
+                    listOf(SessionResult.RESULT_SUCCESS, SessionError.INFO_CANCELLED)) {
+                    scope.launch(Dispatchers.Main.immediate) { onHeadphoneCaptureFailure() }
+                }
+            }, Executor { it.run() })
+        }
+    }
     override fun onCustomCommand(session:MediaSession,controller:MediaSession.ControllerInfo,customCommand:SessionCommand,args:Bundle):ListenableFuture<SessionResult> {
         if(customCommand==PlaybackControls.back || customCommand==PlaybackControls.forward) {
             if(!session.player.isCurrentMediaItemSeekable)return com.google.common.util.concurrent.Futures.immediateFuture(SessionResult(SessionError.ERROR_NOT_SUPPORTED))
@@ -142,6 +162,9 @@ class AutoLibraryCallback(
             return com.google.common.util.concurrent.Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
         }
         if(customCommand.customAction!=DISTILL)return super.onCustomCommand(session,controller,customCommand,args)
+        return captureMoment(session)
+    }
+    private fun captureMoment(session: MediaSession): ListenableFuture<SessionResult> {
         val player=session.player
         val item=player.currentMediaItem?:return com.google.common.util.concurrent.Futures.immediateFuture(SessionResult(SessionError.ERROR_INVALID_STATE))
         if(captureBusy)return com.google.common.util.concurrent.Futures.immediateFuture(SessionResult(SessionError.INFO_CANCELLED))
