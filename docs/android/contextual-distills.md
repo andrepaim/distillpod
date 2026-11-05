@@ -4,7 +4,7 @@ A distill preserves the original tap and capture range, then selects one complet
 
 ## Capture and generation
 
-`MomentContexts` inspects 120 seconds before the tap and 15 seconds after it, clamped to the episode. Explicit expansion permits 180 seconds before the tap. Following speech may only finish a thought already underway. Transcription prioritizes all chunks required by that range. Publisher and local Whisper transcripts remain eligible; online lookup timing remains ineligible.
+`MomentContexts` inspects 120 seconds before the tap and 15 seconds after it, clamped to the episode. If the feed omits the episode duration, a complete transcript matching the current media supplies the end boundary; partial transcripts do not. Explicit expansion permits 180 seconds before the tap. Following speech may only finish a thought already underway. Transcription prioritizes all chunks required by that range. Publisher and local Whisper transcripts remain eligible; online lookup timing remains ineligible.
 
 Sentence candidates use the original transcript spelling and enclosing segment times. Segments extending outside the bounded context are excluded. Punctuation is a candidate boundary, not evidence of semantic completeness. Context is limited to 24,000 characters; oversized input fails without truncation.
 

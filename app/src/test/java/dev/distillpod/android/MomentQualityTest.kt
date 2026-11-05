@@ -71,6 +71,43 @@ class MomentQualityTest {
         db.library().putCoverage(CoverageEntity("e","r",60000,75000));repo.transcriptUpdated("e")
         assertEquals("queued",db.library().distillation(id)!!.state)
     }
+    @Test fun `complete publisher transcript bounds capture and expansion when feed duration is missing`()=fixture { db ->
+        val dao=db.library()
+        dao.putEpisode(dao.episode("e")!!.copy(durationMs=0))
+        dao.putTranscript(dao.transcript("e")!!.copy(source="publisher",model="publisher"))
+        dao.deleteSegments("e")
+        dao.putSegments(listOf(SegmentEntity("e","r",180000,200000,"There is a fixed amount of work. That is a mistaken belief: lower costs can create additional demand.")))
+        var prepared=0;var calls=0
+        val repo=repository(db,gateway { prompt,_ -> calls++;if(prompt==MomentGeneration.generatePrompt)ready else accepted }){prepared++}
+        val id=repo.capture("e",195000,true)
+        assertEquals("queued",dao.distillation(id)!!.state)
+        repo.run(id)
+        val result=dao.distillation(id)!!
+        assertEquals("succeeded",result.state);assertEquals(200000L,result.sourceEndMs)
+        assertEquals(135000L,result.startMs);assertEquals(195000L,result.endMs)
+        repo.improve(id,true)
+        val expanded=dao.distillation(id)!!
+        val context=MomentGeneration.context(dao.momentAttempt(expanded.attempt)!!.contextJson)
+        assertEquals("queued",expanded.state);assertEquals(TimeRange(15000,200000),context.range)
+        repo.run(id)
+        assertEquals("succeeded",dao.distillation(id)!!.state);assertEquals(0,prepared);assertEquals(4,calls)
+    }
+    @Test fun `unknown duration waits for partial transcript then resumes when publisher transcript is complete`()=fixture { db ->
+        val dao=db.library()
+        dao.putEpisode(dao.episode("e")!!.copy(durationMs=0))
+        dao.putTranscript(dao.transcript("e")!!.copy(source="publisher",model="publisher",state="partial"))
+        dao.deleteSegments("e")
+        dao.putSegments(listOf(SegmentEntity("e","r",180000,200000,"There is a fixed amount of work. That is a mistaken belief: lower costs can create additional demand.")))
+        var prepared=0;var calls=0
+        val repo=repository(db,gateway { prompt,_ -> calls++;if(prompt==MomentGeneration.generatePrompt)ready else accepted }){prepared++}
+        val id=repo.capture("e",195000,true);repo.run(id)
+        assertEquals("waiting_transcript",dao.distillation(id)!!.state);assertEquals(1,prepared);assertEquals(0,calls)
+        dao.putTranscript(dao.transcript("e")!!.copy(state="ready"))
+        repo.transcriptUpdated("e")
+        assertEquals("queued",dao.distillation(id)!!.state)
+        repo.run(id)
+        assertEquals("succeeded",dao.distillation(id)!!.state);assertEquals(1,prepared);assertEquals(2,calls)
+    }
     @Test fun `failed improvement preserves published result and successful replacement has restorable history`()=fixture { db ->
         var reject=false
         val ai=gateway { prompt,_ -> if(prompt==MomentGeneration.generatePrompt){if(reject)"""{"outcome":"needs_context"}""" else ready} else accepted }

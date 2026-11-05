@@ -41,7 +41,12 @@ class CaptureRepository(private val db: AppDatabase, private val ai: AiGateway, 
         val attempt = dao.momentAttempt(saved.attempt) ?: MomentAttemptEntity(UUID.randomUUID().toString(),saved.id,"{\"expanded\":false}")
         val expanded = JSONObject(attempt.contextJson).optBoolean("expanded")
         val transcript = dao.transcript(ep.id)?.takeUnless { it.source == "online" }
-        val range = MomentContexts.range(saved.endMs, ep.durationMs, expanded)
+        // Publisher transcripts can be complete even when the feed has no episode duration.
+        // Only a complete, matching transcript can supply the missing end boundary.
+        val duration = ep.durationMs.takeIf { it > 0 }
+            ?: transcript?.takeIf { it.state == "ready" && it.fingerprint == ep.mediaFingerprint && it.durationMs > 0 }?.durationMs
+            ?: 0L
+        val range = MomentContexts.range(saved.endMs, duration, expanded)
         val coverage = transcript?.let { dao.coverage(ep.id,it.revision).map { c -> TimeRange(c.startMs,c.endMs) } }.orEmpty()
         val covered = transcript != null && transcript.fingerprint == ep.mediaFingerprint && normalizeRanges(coverage,Long.MAX_VALUE)
             .any { it.startMs <= range.startMs && it.endMs >= range.endMs }
