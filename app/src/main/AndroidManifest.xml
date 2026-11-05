@@ -11,17 +11,27 @@
         <provider android:name="androidx.core.content.FileProvider" android:authorities="${applicationId}.post-files" android:exported="false" android:grantUriPermissions="true">
             <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/post_file_paths" />
         </provider>
+        <provider android:name=".auto.AutoArtworkProvider" android:authorities="${applicationId}.auto.artwork" android:exported="true" />
+        <meta-data android:name="com.google.android.gms.car.application" android:resource="@xml/automotive_app_desc" />
         <activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTop">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.media.action.MEDIA_PLAY_FROM_SEARCH" />
+                <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
         <activity android:name=".DiagnosticsActivity" android:exported="false" android:launchMode="singleTop" />
         <service android:name="androidx.work.impl.foreground.SystemForegroundService" android:foregroundServiceType="dataSync|mediaProcessing" xmlns:tools="http://schemas.android.com/tools" tools:node="merge" />
         <service android:name=".work.TranscriptionService" android:exported="false" android:foregroundServiceType="dataSync|mediaProcessing" />
         <service android:name=".PlaybackService" android:exported="true" android:foregroundServiceType="mediaPlayback">
-            <intent-filter><action android:name="androidx.media3.session.MediaSessionService" /></intent-filter>
+            <intent-filter>
+                <action android:name="androidx.media3.session.MediaSessionService" />
+                <action android:name="androidx.media3.session.MediaLibraryService" />
+                <action android:name="android.media.browse.MediaBrowserService" />
+            </intent-filter>
         </service>
     </application>
 </manifest>

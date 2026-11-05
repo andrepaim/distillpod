@@ -23,6 +23,13 @@ class CaptureRepository(private val db: AppDatabase, private val ai: AiGateway, 
     private val busy = setOf("waiting_transcript", "queued", "running", "reviewing")
 
     suspend fun capture(id: String, position: Long, verifiedSource: Boolean): String {
+        val saved=save(id,position,verifiedSource)
+        prepareSaved(saved)
+        return saved
+    }
+    /** Durable acceptance is independent from preparation, authorization and inference. */
+    suspend fun save(id: String, position: Long, verifiedSource: Boolean): String {
+        require(position>=0) { "Playback position is invalid" }
         val ep = dao.episode(id) ?: error("Episode is unavailable")
         val saved = db.withTransaction {
             dao.recentCapture(id, position, System.currentTimeMillis() - 2000)
@@ -32,10 +39,16 @@ class CaptureRepository(private val db: AppDatabase, private val ai: AiGateway, 
                 }
         }
         onPortableChanged()
-        if (saved.state == "waiting_transcript") hydrate(saved)
         return saved.id
     }
-
+    suspend fun prepareSaved(id:String) {
+        dao.distillation(id)?.takeIf {it.state=="waiting_transcript"}?.let {hydrate(it)}
+    }
+    suspend fun resumeSaved() {
+        dao.distillations().filter {it.state=="waiting_transcript"}.forEach {
+            try {prepareSaved(it.id)} catch(cancelled:CancellationException) {throw cancelled} catch(_:Exception) { /* Retain for the next recovery. */ }
+        }
+    }
     private suspend fun hydrate(saved: DistillationEntity) {
         val ep = dao.episode(saved.episodeId) ?: return
         val attempt = dao.momentAttempt(saved.attempt) ?: MomentAttemptEntity(UUID.randomUUID().toString(),saved.id,"{\"expanded\":false}")

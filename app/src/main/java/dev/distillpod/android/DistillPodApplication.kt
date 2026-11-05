@@ -74,6 +74,7 @@ class AppGraph(val context: Context) {
                 }
             }
             jobs.configureRefresh(); transcription.recover(); ready.complete(Unit)
+            captures.resumeSaved()
         }
         catch (error: Exception) { ready.completeExceptionally(error) }
     } }
