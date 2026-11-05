@@ -43,6 +43,19 @@ class TranscriptionRepository(private val graph: AppGraph,
     private val live = MutableStateFlow<Map<String, TranscriptProgress>>(emptyMap())
     val progress = live.asStateFlow()
     suspend fun prepare(id: String, forceLocal: Boolean = false, allowOnline: Boolean = true) = controls.withLock { prepareInternal(id, forceLocal, allowOnline) }
+    /** Playback must not undo a pause, retry a failure or regenerate text after a model change. */
+    suspend fun prepareAutomatically(id: String) = controls.withLock {
+        if (!graph.settings.flow.first().transcribeOnPlayback) return@withLock
+        val ep = dao.episode(id) ?: return@withLock // Diagnostic clips are not library episodes.
+        // Download completion updates the audio fingerprint before the active chunk adopts it.
+        // A streaming-to-file playback transition must not replace that in-flight revision.
+        if (running[id]?.isActive == true) return@withLock
+        val old = dao.transcript(id)
+        if (old?.state == "paused") return@withLock
+        if (old != null && old.fingerprint == ep.mediaFingerprint && old.state != "stale") return@withLock
+        prepareInternal(id, forceLocal = false, allowOnline = true)
+    }
+
     private suspend fun prepareInternal(id: String, forceLocal: Boolean, allowOnline: Boolean) {
         val ep = dao.episode(id) ?: error("Episode is unavailable")
         val prefs = graph.settings.flow.first()
@@ -51,7 +64,7 @@ class TranscriptionRepository(private val graph: AppGraph,
         val onlineAllowed = allowOnline && !replacingOnline
         if (onlineAllowed && EpisodeTextResolver(graph.db).online(id) != null) return
         if (!allowOnline && old?.lookupOnline == true) dao.putTranscript(old.copy(lookupOnline = false))
-        if (!forceLocal && old != null && old.fingerprint == ep.mediaFingerprint &&
+        if (!forceLocal && old != null && old.state != "stale" && old.fingerprint == ep.mediaFingerprint &&
             (old.source == "publisher" && old.state != "partial" || old.model == prefs.model && old.language == prefs.language)) {
             if (old.state == "ready") return
             if (old.state in listOf("processing", "queued") && live.value[id]?.let { it.revision == old.revision && it.stage != TranscriptStage.QUEUED } == true) return
