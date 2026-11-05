@@ -90,6 +90,8 @@ private fun date(ms: Long) = if (ms <= 0) "" else DateTimeFormatter.ofPattern("d
         route == "library" -> "DistillPod"
         route == "search" -> "Discover"
         route == "saved" || route.startsWith("capture:") -> "Saved moments"
+        route == "posts" || route.startsWith("posts:") -> "Post drafts"
+        route.startsWith("post:") -> "Create post"
         route == "queue" -> "Listening queue"
         route == "settings" -> "Settings"
         route == "shows" -> "Your shows"
@@ -136,6 +138,8 @@ private fun date(ms: Long) = if (ms <= 0) "" else DateTimeFormatter.ofPattern("d
                     route == "library" || route.startsWith("podcast:") -> LibraryPage(vm, podcasts, episodes, transcripts, captures, player, route.takeIf { it.startsWith("podcast:") }?.substringAfter(':'))
                     route == "search" -> SearchPage(vm, podcasts)
                     route == "queue" -> QueuePage(vm, episodes, podcasts, player)
+                    route == "posts" || route.startsWith("posts:") -> PostDraftsPage(vm, route.substringAfter(':', "").takeIf { it.isNotBlank() })
+                    route.startsWith("post:") -> PostEditorPage(vm, route.substringAfter(':'))
                     route == "saved" -> SavedPage(vm, captures, episodes, podcasts)
                     route == "shows" -> ShowsPage(vm, podcasts)
                     route == "settings" || route.startsWith("settings:") -> SettingsPage(vm, preferences, account, models, episodes, route.substringAfter(':', "overview"))
@@ -439,7 +443,7 @@ private fun date(ms: Long) = if (ms <= 0) "" else DateTimeFormatter.ofPattern("d
 
 private fun captureState(state: String) = when (state) { "waiting_transcript" -> "Waiting for transcript"; "waiting_auth" -> "Connect ChatGPT to continue"; "waiting_quota" -> "Plan allowance unavailable"; "queued", "running" -> "Generating insight"; "failed" -> "Needs retry"; "review_source" -> "Review source"; "no_speech" -> "No speech in this window"; "imported" -> "Imported"; else -> "Saved" }
 @Composable private fun SavedPage(vm: AppViewModel, captures: List<DistillationEntity>, episodes: List<EpisodeEntity>, podcasts: List<PodcastEntity>) {
-    if (captures.isEmpty()) { Empty("Keep the moments that matter", "Save the last minute in the player. Your quotes, insights and original sources will appear here.", "Open library", { vm.root("library") }); return }
+
     var query by rememberSaveable { mutableStateOf("") }
     val matching = remember(captures,episodes,podcasts,query) { captures.filter { saved ->
         val ep=episodes.firstOrNull {it.id==saved.episodeId}
@@ -447,10 +451,12 @@ private fun captureState(state: String) = when (state) { "waiting_transcript" ->
         query.isBlank() || listOfNotNull(saved.quote,saved.excerpt,saved.insight,ep?.title,show?.title).any {it.contains(query.trim(),ignoreCase=true)}
     } }
     Column(Modifier.fillMaxSize().padding(horizontal=20.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
+    TextButton(onClick = { vm.open("posts") }) { Text("Post drafts") }
     LocalSearch(query,{query=it},"Search saved moments","Clear saved search")
     LazyColumn(contentPadding = PaddingValues(bottom=20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item { SectionHeading("Your collection", "${matching.size} ${if (matching.size == 1) "moment" else "moments"} to revisit") }
-        if(matching.isEmpty())item { Text("No matching moments",style=MaterialTheme.typography.titleMedium); TextButton(onClick={query=""}) {Text("Clear search")} }
+        if(captures.isEmpty())item { Empty("Keep the moments that matter", "Save the last minute in the player. Your quotes, insights and original sources will appear here.", "Open library", { vm.root("library") }) }
+        else if(matching.isEmpty())item { Text("No matching moments",style=MaterialTheme.typography.titleMedium); TextButton(onClick={query=""}) {Text("Clear search")} }
         items(matching, key = { it.id }) { saved ->
             val ep = episodes.firstOrNull { it.id == saved.episodeId }
             val podcast = podcasts.firstOrNull { it.id == ep?.podcastId }
@@ -484,6 +490,8 @@ private fun captureState(state: String) = when (state) { "waiting_transcript" ->
     val ep = episodes.firstOrNull { it.id == capture.episodeId }
     val share = listOfNotNull(capture.quote?.let { "“$it”" }, capture.insight, ep?.title?.let { "$it · ${timestamp(capture.startMs)}" }).joinToString("\n\n")
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+        Button(onClick = { vm.createPost(capture.id) }) { Text("Create post") }
+        TextButton(onClick = { vm.open("posts:${capture.id}") }) { Text("Post drafts for this moment") }
         Text(captureState(capture.state), color = MaterialTheme.colorScheme.secondary)
         if (ep != null && capture.fingerprint.isNotBlank() && capture.fingerprint != ep.mediaFingerprint) Text("The audio source changed since this moment was saved. The saved text is preserved; review the audio before relying on its replay time.", color = MaterialTheme.colorScheme.tertiary, style = MaterialTheme.typography.bodySmall)
         if (capture.state in listOf("queued", "running")) {

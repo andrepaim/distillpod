@@ -89,6 +89,7 @@ dependencies {
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
     androidTestImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.1")
     testImplementation("androidx.compose.ui:ui-test-junit4")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
     testImplementation("org.robolectric:robolectric:4.14.1")

@@ -31,6 +31,7 @@ class AppGraph(val context: Context) {
     val media = MediaRepository(context, db, settings, ResumableDownloader(http), activeFiles)
     val account = AccountRepository(context, scope)
     val jobs = AppJobs(context)
+    val posts by lazy { PostRepository(db) }
     val backup by lazy { LibraryBackup(db) }
     val importedQueue=kotlinx.coroutines.flow.MutableStateFlow<List<String>?>(null)
     val playbackEvents = dev.distillpod.android.playback.PlaybackEvents()

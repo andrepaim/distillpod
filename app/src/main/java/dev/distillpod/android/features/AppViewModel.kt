@@ -23,6 +23,7 @@ class AppViewModel(val graph: AppGraph, private val saved: SavedStateHandle) : V
     val recommendationError = graph.recommendations.error.stateIn(viewModelScope, SharingStarted.Eagerly, "")
     val podcasts = dao.observePodcasts().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     val episodes = dao.observeEpisodes().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    val posts = dao.observePosts().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     val captures = dao.observeDistillations().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     val localTranscripts = dao.observeTranscripts().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     val onlineTranscripts = dao.observeOnlineTranscripts().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
@@ -103,6 +104,12 @@ class AppViewModel(val graph: AppGraph, private val saved: SavedStateHandle) : V
     fun deleteModel(id: String) = action("model:$id") { graph.media.deleteModel(id) }
     fun flag(key: String, value: Boolean) = action("settings") { graph.settings.flag(key, value); graph.jobs.configureRefresh() }
     fun text(key: String, value: String) = action("settings") { graph.settings.text(key, value) }
+    fun createPost(momentId: String) = action("create-post:$momentId") {
+        val destination = graph.context.getSharedPreferences("post-editor", android.content.Context.MODE_PRIVATE).getString("destination", "LinkedIn") ?: "LinkedIn"
+        open("post:${graph.posts.create(momentId, destination).id}")
+    }
+    fun duplicatePost(id: String) = action("post:$id") { open("post:${graph.posts.duplicate(id).id}") }
+    fun deletePost(id: String) = action("post:$id") { graph.posts.delete(id) }
     fun deleteCapture(id: String) = action("capture:$id") { graph.portableSync.deleteMoment(id) }
     fun prepareTranscript(id: String, local: Boolean = false) = action("transcript:$id") { graph.transcription.prepare(id, local); messages.send("Transcript preparation queued") }
     fun pauseTranscript(id: String) = action("transcript:$id") { graph.transcription.pause(id) }

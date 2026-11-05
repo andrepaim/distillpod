@@ -205,7 +205,7 @@ class LibraryBackup(private val db: AppDatabase) {
                 }
                 if (row.has("startMs") && row.has("endMs")) require(row.getLong("endMs") >= row.getLong("startMs")) { "Invalid backup time range" }
                 if (table == "player_session") require(row.getDouble("speed") in 0.5..3.0 && row.getInt("id") == 0) { "Invalid player settings" }
-                if (table == "post_drafts") JSONObject(row.getString("content"))
+                if (table == "post_drafts") PostContent.parse(row.getString("content"))
                 if (table == "online_transcripts") {
                     val segments = row.getString("segmentsJson")
                     require(row.getString("contentHash") == dev.distillpod.core.episodeId("online-transcript", segments)) { "Online transcript integrity check failed" }

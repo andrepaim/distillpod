@@ -33,3 +33,9 @@ Whisper transcription runs locally on the phone. Requested AI operations send se
 Library backups contain readable personal library data: subscription and episode metadata, progress, queue, transcripts, saved moments and stored generated text, plus language/model choices. Manual Drive backup uses Android’s document picker; the selected provider manages cloud sync. Managed backups are ZIP histories containing readable JSON, with no passphrase encryption. Persistent access to the user-selected file is stored only on that installation. Verified recovery copies stay in private app storage. They exclude account credentials, downloaded audio, model binaries and device-private file paths. OPML contains subscription titles and feed addresses. Choose destinations carefully and share exports only deliberately.
 
 Do not include personal backups, feeds containing access tokens, recordings, account data or private screenshots in issue reports. A minimal reproduction on a development emulator is preferable. Repeated AI requests may consume additional plan allowance.
+
+### Social post drafts
+
+Post drafts and their original source snapshots remain on the device and are included in manual library backups. Existing library sync does not upload drafts. Explicit AI composition/rewrite actions send the saved excerpt, current post content and optional personal perspective through the connected ChatGPT account. Opening the editor or rendering a card does not make an AI request.
+
+Sharing exports the selected text/image to another app. Image exports in the app cache are available through temporary URI grants and cleaned after seven days on a subsequent export; images explicitly saved to Pictures/DistillPod remain until deleted by the user. Draft deletion does not recall exports or content already shared externally.

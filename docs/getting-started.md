@@ -43,3 +43,11 @@ Settings → Backup & Restore → Create backup file connects a Drive document o
 Credentials, downloaded audio, model binaries and private device file paths are excluded. Reconnect the account and re-download audio/models on a destination installation. OPML transfers subscriptions only.
 
 Developer checks are diagnostics for deliberate testing. They are not needed for normal listening, and fixture suites belong on an isolated emulator.
+
+## Create a social post
+
+Open a saved moment and choose **Create post**. Choose LinkedIn or Instagram, edit the takeaway and caption, and optionally add your perspective. **Design & preview** offers Quote/Idea layouts, three themes and portrait/square PNGs. Quotes must match the original excerpt; put paraphrases or labeled translations in the takeaway.
+
+**Draft with AI** and rewrite actions use your connected ChatGPT allowance. Review the suggested revision before accepting it. Manual editing, preview and export work without AI. Share text or an image, copy the caption or save an image in Pictures/DistillPod. Finish publication in the receiving app; paste the caption manually if necessary.
+
+Find drafts through **Saved → Post drafts**, even after deleting their original moments. Drafts are local and included in library backups; library sync does not sync post drafts. Source links are optional and must be public URLs without credentials or query parameters. AI illustrations and direct social publishing are not available in this version.
