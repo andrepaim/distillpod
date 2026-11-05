@@ -16,6 +16,6 @@ The Listening Drop icon paths were authored for DistillPod. Podcast titles, artw
 
 ## Distill confirmation sound
 
-`app/src/main/res/raw/distill_marker.wav` is adapted from **Marker (indelible marker), sound 0220**, recorded by **Joseph SARDIN / BigSoundBank**, released under **CC0 (public domain)**. Source: https://bigsoundbank.com/marqueur-feutre-indelebile-s0220.html . License: https://creativecommons.org/publicdomain/zero/1.0/ .
+`app/src/main/res/raw/distill_pen_click.wav` is adapted from **Pen click, sound 0613**, recorded by **Joseph SARDIN / BigSoundBank**, released under **CC0 (public domain)**. Source: https://bigsoundbank.com/pen-click-s0613.html . License: https://creativecommons.org/publicdomain/zero/1.0/ .
 
-The app includes a 420 ms excerpt with filtering, fades and gain adjustment. The source recording and permitted modifications are documented in [the audio asset record](docs/audio/distill-marker.md).
+The app includes a 180 ms excerpt with filtering, fades and gain adjustment. The source recording and permitted modifications are documented in [the audio asset record](docs/audio/distill-pen-click.md).

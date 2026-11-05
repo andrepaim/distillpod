@@ -57,8 +57,8 @@ internal class SoundPoolConfirmationAudio(context:Context):ConfirmationAudio {
     private var sample=0
     override fun prepare(onReady:(Boolean)->Unit) {
         pool.setOnLoadCompleteListener {_,sampleId,status->sample=sampleId;onReady(status==0)}
-        sample=pool.load(context,R.raw.distill_marker,1)
+        sample=pool.load(context,R.raw.distill_pen_click,1)
         if(sample==0)onReady(false)
     }
-    override fun play() {pool.play(sample,.55f,.55f,1,0,1f)}
+    override fun play() {pool.play(sample,1f,1f,1,0,1f)}
 }
