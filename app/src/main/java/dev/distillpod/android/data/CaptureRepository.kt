@@ -17,7 +17,7 @@ fun jsonObjectAnswer(text: String): JSONObject {
 }
 class CaptureRepository(private val db: AppDatabase, private val ai: AiGateway, private val connected: () -> Boolean,
     private val prepare: suspend (String) -> Unit, private val enqueue: (String) -> Unit,
-    private val onPortableChanged: () -> Unit = {}) {
+    private val onPortableChanged: () -> Unit = {}, private val onSaved: (String) -> Unit = {}) {
     private val dao = db.library()
     private val portable = dev.distillpod.android.sync.PortableLibrarySync(db)
     private val busy = setOf("waiting_transcript", "queued", "running", "reviewing")
@@ -31,14 +31,19 @@ class CaptureRepository(private val db: AppDatabase, private val ai: AiGateway, 
     suspend fun save(id: String, position: Long, verifiedSource: Boolean): String {
         require(position>=0) { "Playback position is invalid" }
         val ep = dao.episode(id) ?: error("Episode is unavailable")
-        val saved = db.withTransaction {
-            dao.recentCapture(id, position, System.currentTimeMillis() - 2000)
-                ?: DistillationEntity(UUID.randomUUID().toString(), id, (position - 60000).coerceAtLeast(0), position,
-                    fingerprint = if (verifiedSource) ep.mediaFingerprint else "unverified:${ep.id}", attempt = UUID.randomUUID().toString()).also {
-                    dao.putDistillation(it); dao.putMomentAttempt(MomentAttemptEntity(it.attempt,it.id,"{\"expanded\":false}")); portable.recordMoment(it)
-                }
+        val (saved,created) = db.withTransaction {
+            val recent=dao.recentCapture(id,position,System.currentTimeMillis()-2000)
+            if(recent!=null)recent to false else {
+                val fresh=DistillationEntity(UUID.randomUUID().toString(),id,(position-60000).coerceAtLeast(0),position,
+                    fingerprint=if(verifiedSource)ep.mediaFingerprint else "unverified:${ep.id}",attempt=UUID.randomUUID().toString())
+                dao.putDistillation(fresh)
+                dao.putMomentAttempt(MomentAttemptEntity(fresh.attempt,fresh.id,"{\"expanded\":false}"))
+                portable.recordMoment(fresh)
+                fresh to true
+            }
         }
         onPortableChanged()
+        if(created)try {onSaved(saved.id)}catch(_:Exception) { /* Optional feedback cannot fail a durable save. */ }
         return saved.id
     }
     suspend fun prepareSaved(id:String) {

@@ -12,4 +12,10 @@ DistillPod uses third-party components under their respective licenses. This lis
 - **Android Credential Manager and Google Identity / Play services authentication**: upstream AndroidX and Google SDK distributions and their respective licenses and notices.
 - **Manrope**: used by the optional design proposal only, bundled under the SIL Open Font License in `design/icon-proposal/assets/Manrope-OFL.txt`.
 
-The Listening Drop icon paths were authored for DistillPod. Podcast titles, artwork and recordings belong to their publishers and are loaded from their feeds/hosts; they are not application-owned brand assets. No personal podcast libraries, credentials, audio or model binaries are part of the source distribution.
+The Listening Drop icon paths were authored for DistillPod. Podcast titles, artwork and recordings belong to their publishers and are loaded from their feeds/hosts; they are not application-owned brand assets. No personal podcast libraries, credentials, podcast audio or model binaries are part of the source distribution.
+
+## Distill confirmation sound
+
+`app/src/main/res/raw/distill_scribble.wav` is adapted from **Marker (indelible marker), sound 0220**, recorded by **Joseph SARDIN / BigSoundBank**, released under **CC0 (public domain)**. Source: https://bigsoundbank.com/marqueur-feutre-indelebile-s0220.html . License: https://creativecommons.org/publicdomain/zero/1.0/ .
+
+The app includes two writing strokes combined into 550 ms, with filtering, compression, fades and gain adjustment. The source recording and permitted modifications are documented in [the audio asset record](docs/audio/distill-scribble.md).

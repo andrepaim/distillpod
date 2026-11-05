@@ -42,7 +42,11 @@ class AppGraph(val context: Context) {
     val ai by lazy { dev.distillpod.android.ai.ChatGptGateway(account.session, settings) }
     val onlineTranscripts by lazy { OnlineTranscriptRepository(this) }
     val transcription by lazy { TranscriptionRepository(this) }
-    val captures by lazy { CaptureRepository(db, ai, { account.state.value.connected }, { transcription.prepare(it, allowOnline = false) }, jobs::capture,{syncAccount.kick()}) }
+    private val confirmationSound by lazy {
+        dev.distillpod.android.playback.DistillConfirmationSound(scope,settings.flow.map {it.distillSound},
+            dev.distillpod.android.playback.SoundPoolConfirmationAudio(context))
+    }
+    val captures by lazy { CaptureRepository(db, ai, { account.state.value.connected }, { transcription.prepare(it, allowOnline = false) }, jobs::capture,{syncAccount.kick()},onSaved={confirmationSound.saved()}) }
     val understanding by lazy { EpisodeUnderstanding(db, ai, jobs::analyze, jobs::reply) }
     val explanations by lazy { MomentExplanation(db, ai, jobs::explain) }
     val recommendations by lazy { Recommendations(db, settings, podcasts, http, ai, jobs::recommend, jobs::recommendationPending) }

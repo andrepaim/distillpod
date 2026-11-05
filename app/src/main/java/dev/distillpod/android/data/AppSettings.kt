@@ -20,7 +20,7 @@ data class Preferences(
     val chargingOnly: Boolean = false, val refresh: Boolean = true, val skipAds: Boolean = false,
     val storageLimitBytes: Long = 2L * 1024 * 1024 * 1024, val selectedAiModel: String = "",
     val recommendations: Boolean = false, val onlineTranscripts: Boolean = false,
-    val transcribeOnPlayback: Boolean = true,
+    val transcribeOnPlayback: Boolean = true, val distillSound: Boolean = true,
 )
 
 class AppSettings(context: Context, private val store: androidx.datastore.core.DataStore<androidx.datastore.preferences.core.Preferences> = context.applicationContext.settingsDataStore, private val db:AppDatabase?=null, private val portableChanged:()->Unit={}) {
@@ -31,6 +31,7 @@ class AppSettings(context: Context, private val store: androidx.datastore.core.D
         p[longPreferencesKey("storageLimit")] ?: (2L * 1024 * 1024 * 1024), p[stringPreferencesKey("aiModel")] ?: "",
         p[booleanPreferencesKey("recommendations")] ?: false, p[booleanPreferencesKey("onlineTranscripts")] ?: false,
         p[booleanPreferencesKey("transcribeOnPlayback")] ?: true,
+        p[booleanPreferencesKey("distillSound")] ?: true,
     ) }
     val flow = if(db==null)localFlow else combine(localFlow,db.sync().observePreferences()) {local,rows->
         val p=rows.associate {it.name to it.value}
