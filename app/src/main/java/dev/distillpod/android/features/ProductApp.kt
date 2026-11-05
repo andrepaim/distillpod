@@ -588,7 +588,7 @@ private fun captureState(state: String) = when (state) { "waiting_transcript" ->
         Text("Removes leftover cache files after feed changes. Downloads, resumable partials, queued audio and processing files are kept.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if(section=="library") {
-            SettingSwitch("Distill confirmation sound", "Play a typewriter sound when a moment is saved. Uses media volume.", prefs.distillSound) {vm.flag("distillSound",it)}
+            SettingSwitch("Distill confirmation sound", "Play a pen scribble when a moment is saved. Uses media volume.", prefs.distillSound) {vm.flag("distillSound",it)}
             DataControls(vm)
         }
         if(section=="about") {

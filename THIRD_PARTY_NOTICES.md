@@ -16,6 +16,6 @@ The Listening Drop icon paths were authored for DistillPod. Podcast titles, artw
 
 ## Distill confirmation sound
 
-`app/src/main/res/raw/distill_typewriter.wav` is adapted from **Typewriter #1, sound 1065**, recorded by **Joseph SARDIN / BigSoundBank**, released under **CC0 (public domain)**. Source: https://bigsoundbank.com/typewriter-s1065.html . License: https://creativecommons.org/publicdomain/zero/1.0/ .
+`app/src/main/res/raw/distill_scribble.wav` is adapted from **Marker (indelible marker), sound 0220**, recorded by **Joseph SARDIN / BigSoundBank**, released under **CC0 (public domain)**. Source: https://bigsoundbank.com/marqueur-feutre-indelebile-s0220.html . License: https://creativecommons.org/publicdomain/zero/1.0/ .
 
-The app includes a 550 ms excerpt with filtering, compression, fades and gain adjustment. The source recording and permitted modifications are documented in [the audio asset record](docs/audio/distill-typewriter.md).
+The app includes two writing strokes combined into 550 ms, with filtering, compression, fades and gain adjustment. The source recording and permitted modifications are documented in [the audio asset record](docs/audio/distill-scribble.md).
