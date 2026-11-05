@@ -90,7 +90,7 @@ private fun date(ms: Long) = if (ms <= 0) "" else DateTimeFormatter.ofPattern("d
         route == "library" -> "DistillPod"
         route == "search" -> "Discover"
         route == "saved" || route.startsWith("capture:") -> "Saved moments"
-        route == "posts" || route.startsWith("posts:") -> "Post drafts"
+        route == "posts" || route.startsWith("posts:") -> "Your posts"
         route.startsWith("post:") -> "Create post"
         route == "queue" -> "Listening queue"
         route == "settings" -> "Settings"
@@ -451,7 +451,7 @@ private fun captureState(state: String) = when (state) { "waiting_transcript" ->
         query.isBlank() || listOfNotNull(saved.quote,saved.excerpt,saved.insight,ep?.title,show?.title).any {it.contains(query.trim(),ignoreCase=true)}
     } }
     Column(Modifier.fillMaxSize().padding(horizontal=20.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
-    TextButton(onClick = { vm.open("posts") }) { Text("Post drafts") }
+    TextButton(onClick = { vm.open("posts") }) { Text("Your posts") }
     LocalSearch(query,{query=it},"Search saved moments","Clear saved search")
     LazyColumn(contentPadding = PaddingValues(bottom=20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item { SectionHeading("Your collection", "${matching.size} ${if (matching.size == 1) "moment" else "moments"} to revisit") }
@@ -488,10 +488,12 @@ private fun captureState(state: String) = when (state) { "waiting_transcript" ->
     if (capture == null) return
     val context = LocalContext.current
     val ep = episodes.firstOrNull { it.id == capture.episodeId }
+    var createPost by rememberSaveable { mutableStateOf(false) }
+    if (createPost) CreatePostSheet(vm,capture.id) { createPost = false }
     val share = listOfNotNull(capture.quote?.let { "“$it”" }, capture.insight, ep?.title?.let { "$it · ${timestamp(capture.startMs)}" }).joinToString("\n\n")
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
-        Button(onClick = { vm.createPost(capture.id) }) { Text("Create post") }
-        TextButton(onClick = { vm.open("posts:${capture.id}") }) { Text("Post drafts for this moment") }
+        Button(onClick = { createPost = true }, enabled = capture.excerpt.isNotBlank()) { Text("Create post") }
+        TextButton(onClick = { vm.open("posts:${capture.id}") }) { Text("Posts from this moment") }
         Text(captureState(capture.state), color = MaterialTheme.colorScheme.secondary)
         if (ep != null && capture.fingerprint.isNotBlank() && capture.fingerprint != ep.mediaFingerprint) Text("The audio source changed since this moment was saved. The saved text is preserved; review the audio before relying on its replay time.", color = MaterialTheme.colorScheme.tertiary, style = MaterialTheme.typography.bodySmall)
         if (capture.state in listOf("queued", "running")) {

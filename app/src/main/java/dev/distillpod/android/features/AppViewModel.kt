@@ -104,9 +104,8 @@ class AppViewModel(val graph: AppGraph, private val saved: SavedStateHandle) : V
     fun deleteModel(id: String) = action("model:$id") { graph.media.deleteModel(id) }
     fun flag(key: String, value: Boolean) = action("settings") { graph.settings.flag(key, value); graph.jobs.configureRefresh() }
     fun text(key: String, value: String) = action("settings") { graph.settings.text(key, value) }
-    fun createPost(momentId: String) = action("create-post:$momentId") {
-        val destination = graph.context.getSharedPreferences("post-editor", android.content.Context.MODE_PRIVATE).getString("destination", "LinkedIn") ?: "LinkedIn"
-        open("post:${graph.posts.create(momentId, destination).id}")
+    fun createPost(momentId: String, format: String = "discussion") = action("create-post:$momentId") {
+        open("post:${graph.socialResults.create(momentId, format)}")
     }
     fun duplicatePost(id: String) = action("post:$id") { open("post:${graph.posts.duplicate(id).id}") }
     fun deletePost(id: String) = action("post:$id") { graph.posts.delete(id) }

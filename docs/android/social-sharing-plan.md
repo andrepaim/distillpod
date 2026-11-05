@@ -1,3 +1,3 @@
-# Saved moment sharing
+# Social sharing plan
 
-The specification, architecture and rollout are maintained in the [social sharing design document](social-sharing-design.md).
+The current plan is the [two-format redesign: Quote & discussion and Infographic](social-sharing-redesign.md). It replaces the original editor-heavy approach following owner testing.

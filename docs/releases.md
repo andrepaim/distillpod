@@ -1,12 +1,12 @@
 # Signed alpha APK releases
 
-Version name and monotonically increasing version code live in `gradle.properties`. Current releases are personal-alpha prereleases, not Play Store production releases.
+Version name and monotonically increasing version code live in `gradle.properties`. Current releases are personal-alpha prereleases, not Play Store production releases. Source versions and private phone builds can precede a published APK; `docs/releases/current.md` is the release-note input for the next matching tag, not proof that the APK has been published. See [implementation status](android/implementation-status.md) and [GitHub Releases](https://github.com/andrepaim/distillpod/releases).
 
 ## Publishing
 
 1. Update both version fields and `docs/releases/current.md` on main.
 2. Wait for Android CI to pass on that commit.
-3. Tag the matching commit, for example `v0.5.0-alpha.4`, and push the tag.
+3. Tag the matching commit, for example `v0.10.1-alpha.1` for the current source version, and push the tag.
 4. Publish APK verifies the tag against the source version and main history, reruns validation, builds an unsigned non-debuggable candidate, then signs and publishes a prerelease with APK, SHA256SUMS and build-info.json.
 
 Version codes increase even when an automation tag fails validation and produces no downloadable release. Do not reset version codes or move a published release tag. A rejected APK identity, signature, test or lint check prevents publication. Assets are attached to a draft before it is published.
@@ -31,10 +31,10 @@ The release job checks APK application ID, version name/code, non-debuggable sta
 
 ```sh
 ./gradlew :app:lintRelease :app:assembleRelease
-python3 scripts/release_metadata.py --tag v0.5.0-alpha.4
+python3 scripts/release_metadata.py --tag v0.10.1-alpha.1
 ```
 
-The local candidate is `app/build/outputs/apk/release/app-release-unsigned.apk`. It must be signed before installation. The repository has no signing password or keystore configuration in Gradle.
+The local candidate is `app/build/outputs/apk/release/app-release-unsigned.apk`. It must be signed before installation. The repository has no signing password or keystore configuration in Gradle. This local command omits Firebase configuration; add `-PdistillpodFirebaseConfig=/absolute/path/google-services.json` for a configured candidate. The publishing workflow requires that configuration even though local builds can omit it.
 
 Verify a downloaded release with `sha256sum --check SHA256SUMS`, then inspect it with Android Build Tools `apksigner verify --verbose --print-certs <apk>`. The workflow runs the same metadata guard used by `scripts/release_metadata.py` before and after signing.
 

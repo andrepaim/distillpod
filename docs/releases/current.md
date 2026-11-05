@@ -1,11 +1,12 @@
-DistillPod 0.10.1-alpha.1 adds optional lookup of existing online transcripts before on-device Whisper.
+DistillPod 0.11.0-alpha.1 turns saved moments into ready-to-share discussions and researched infographics.
 
-- Enable **Settings → Local transcription → Look for existing online transcripts** to search PodcastTranscript.ai for an already available transcript of an approved public show. It defaults to off and never uploads audio or creates cloud transcription jobs.
-- Preparation prefers a suitable publisher transcript, then the optional service lookup, then local Whisper. Enclosure identity, duration and timed passages are checked before adoption. Missing results, service errors and offline use retain the local fallback.
-- Online transcripts support reading, summaries, chapters and episode chat. Existing text stays available while a local replacement is paused or retried. Saved audio windows and automatic ad skipping still require publisher or local timing.
-- Downloaded online text and provenance are included in manual backups. Lookup consent remains device-local. Database upgrades preserve the existing library and listening data.
-- Includes the searchable show gallery, Saved/transcript search, grouped Settings, and 10-second rewind / 30-second forward player controls from the preceding UI review.
+- Open a prepared saved moment, tap **Create post**, and choose **Quote & discussion** or **Infographic**. Generation begins immediately; the result screen centers on **Share**, with an optional natural-language **Change** instruction.
+- Quote discussions use a verified quotation from the saved excerpt, thoughtful paragraphs and podcast attribution. Infographics combine web research, claim-level references and original AI-designed vector illustrations in a 1080 × 1350 PNG.
+- The existing ChatGPT connection supports web research but does not support the hosted image-generation tool. Illustrations are designed by the text model and rendered locally; no separate API key or paid-provider fallback is used.
+- Generation continues in the background. Canceled, interrupted or failed changes preserve the last completed version. Undo and direct discussion editing are available through the result menu. Existing drafts and source snapshots remain accessible.
+- Image results and their previous versions are included in bounded library backups with integrity checks. Posts remain local and are not uploaded by library sync. Native sharing opens the receiving app; finish publication there and copy the description separately if needed.
+- Retains optional online transcript lookup, library sync, playback and the existing saved-moment workflow.
 
-This release retains the personal-alpha signing identity and the existing Firebase client configuration. Paid content sync remains disabled. Install over the compatible alpha app; do not uninstall. Android 10+; ARM64 and x86_64.
+This personal-alpha release retains the existing signing certificate and Firebase client configuration. Paid content sync remains disabled. Install over the compatible alpha app; do not uninstall. Android 10+; ARM64 and x86_64. Version code: 20.
 
-Validation before publishing: 248 JVM tests, debug/release lint and APK builds, upgrades from database schemas 1–7, and an S25 in-place update with before/after library preservation checks. GitHub CI also gates publication on native, Firebase and isolated Android acceptance checks. See [online transcript design](https://github.com/andrepaim/distillpod/blob/main/docs/android/online-transcripts.md).
+Validation before publishing: 276 JVM tests, release lint/builds, large-text emulator acceptance and three live public English/Portuguese output samples. The release workflow additionally gates publication on native, Firebase and isolated Android acceptance checks. See the [design](https://github.com/andrepaim/distillpod/blob/main/docs/android/social-sharing-redesign.md) and [validation record](https://github.com/andrepaim/distillpod/blob/main/docs/android/evidence/social-redesign/validation.md). Actual publication to LinkedIn/Instagram is user-driven and was not performed by the tests.

@@ -32,7 +32,10 @@ class AppGraph(val context: Context) {
     val account = AccountRepository(context, scope)
     val jobs = AppJobs(context)
     val posts by lazy { PostRepository(db) }
-    val backup by lazy { LibraryBackup(db) }
+    val socialResults by lazy { SocialResultRepository(db) { id, attempt -> dev.distillpod.android.work.SocialPostJobs.enqueue(context, id, attempt) } }
+    val socialTools by lazy { dev.distillpod.android.ai.AccountSocialTools(account.session, settings) }
+    val postAssets by lazy { dev.distillpod.android.sharing.PostAssets(java.io.File(context.filesDir, "post-images")) }
+    val backup by lazy { LibraryBackup(db, postAssets) }
     val importedQueue=kotlinx.coroutines.flow.MutableStateFlow<List<String>?>(null)
     val playbackEvents = dev.distillpod.android.playback.PlaybackEvents()
     val playback by lazy { dev.distillpod.android.playback.PlaybackRepository(context, db, scope) }
@@ -61,6 +64,15 @@ class AppGraph(val context: Context) {
             db.library().distillations().filter { it.state == "queued" }.forEach { jobs.capture(it.id) }
             db.library().episodes().filter { it.downloadState in listOf("queued", "downloading") }.forEach { jobs.download(it.id) }
             db.library().observeModels().first().filter { it.state in listOf("queued", "downloading") }.forEach { jobs.model(it.id) }
+            db.library().observePosts().first().forEach { row ->
+                val post = runCatching { SocialResult.parse(row.content) }.getOrNull()
+                if (post != null && post.stage in listOf("queued", "preparing", "researching", "illustrating")) {
+                    // KEEP avoids duplicating active work after an ordinary app restart.
+                    val manager = androidx.work.WorkManager.getInstance(context)
+                    val pending = manager.getWorkInfosForUniqueWork("social:${row.id}").get().any { !it.state.isFinished }
+                    if (!pending) dev.distillpod.android.work.SocialPostJobs.enqueue(context,row.id,post.attempt)
+                }
+            }
             jobs.configureRefresh(); transcription.recover(); ready.complete(Unit)
             captures.resumeSaved()
         }
