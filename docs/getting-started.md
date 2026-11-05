@@ -58,8 +58,8 @@ Developer checks are diagnostics for deliberate testing. They are not needed for
 
 ## Create a social post
 
-Open a saved moment and choose **Create post**. Choose LinkedIn or Instagram, edit the takeaway and caption, and optionally add your perspective. **Design & preview** offers Quote/Idea layouts, three themes and portrait/square PNGs. Quotes must match the original excerpt; put paraphrases or labeled translations in the takeaway.
+Open a prepared saved moment and tap **Create post**. Choose **Quote & discussion** for a well-spaced text post built around an exact quote, or **Infographic** for an illustrated explanation enriched with web research. The app chooses language, structure and visual treatment automatically and begins generation immediately through the connected ChatGPT account.
 
-**Draft with AI** and rewrite actions use your connected ChatGPT allowance. Review the suggested revision before accepting it. Manual editing, preview and export work without AI. Share text or an image, copy the caption or save an image in Pictures/DistillPod. Finish publication in the receiving app; paste the caption manually if necessary.
+The completed result offers **Share** and an optional **Change** instruction. The menu includes copying, direct discussion editing, undo, image saving and deletion as applicable. You can leave the screen during generation; failed or canceled changes preserve the last completed version. Finish publication in the receiving app, and copy the infographic description separately if the recipient does not retain it.
 
-Find drafts through **Saved → Post drafts**, even after deleting their original moments. Drafts are local and included in library backups; library sync does not sync post drafts. Source links are optional and must be public URLs without credentials or query parameters. AI illustrations and direct social publishing are not available in this version.
+Find results through **Saved → Your posts**, even after deleting the original moment. Posts and infographic assets are local and included in bounded library backups; library sync does not upload them. Infographics use AI-designed vector scenes rendered locally because the current account connection does not support the hosted image-generation tool. Reopening or sharing a completed result does not regenerate it.
