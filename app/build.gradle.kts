@@ -48,6 +48,7 @@ android {
     buildTypes.getByName("release") { isDebuggable = false }
     sourceSets.getByName("androidTest").assets.srcDir(providers.gradleProperty("distillpodFixtureDir").getOrElse("src/androidTest/assets"))
     sourceSets.getByName("androidTest").assets.srcDir("schemas")
+    sourceSets.getByName("test").resources.srcDir("schemas")
     buildFeatures { compose = true }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }

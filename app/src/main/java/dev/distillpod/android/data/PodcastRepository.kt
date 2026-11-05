@@ -91,7 +91,7 @@ class PodcastRepository(private val db: AppDatabase, private val http: OkHttpCli
             val feed = response.body!!.byteStream().use { parseFeedStream(id, it, finalUrl) }
             db.withTransaction {
                 subscriptionSync.follow(PodcastEntity(id, finalUrl, feed.title, feed.author, feed.description, feed.imageUrl, true,
-                    response.header("ETag"), response.header("Last-Modified"), System.currentTimeMillis(), originalFeedUrl = url))
+                    response.header("ETag"), response.header("Last-Modified"), System.currentTimeMillis(), originalFeedUrl = url, websiteUrl = feed.websiteUrl))
                 saveEpisodes(id, feed.episodes)
             }
             onSubscriptionChanged()
@@ -114,7 +114,7 @@ class PodcastRepository(private val db: AppDatabase, private val http: OkHttpCli
                     // Keep stable IDs and locally saved state when redirect/metadata changes.
                     val latest = dao.podcast(id) ?: return@withTransaction
                     dao.putPodcast(latest.copy(title = feed.title, author = feed.author, description = feed.description,
-                        imageUrl = feed.imageUrl, etag = response.header("ETag"), lastModified = response.header("Last-Modified"),
+                        imageUrl = feed.imageUrl, websiteUrl = feed.websiteUrl, etag = response.header("ETag"), lastModified = response.header("Last-Modified"),
                         refreshedAt = System.currentTimeMillis(), error = null))
                     saveEpisodes(id, feed.episodes)
                 }
@@ -136,7 +136,7 @@ class PodcastRepository(private val db: AppDatabase, private val http: OkHttpCli
                 dao.analysis(old.id)?.let { dao.putAnalysis(it.copy(state = "stale", error = "The audio enclosure changed. Analyze the current source again.")) }
             }
             val base = old ?: EpisodeEntity(item.id, podcastId, item.guid, item.title, item.audioUrl)
-            base.copy(title = item.title, audioUrl = item.audioUrl, description = item.description,
+            base.copy(webpageUrl = item.webpageUrl ?: base.webpageUrl, title = item.title, audioUrl = item.audioUrl, description = item.description,
                 imageUrl = item.imageUrl, publishedAt = item.publishedAt?.let { runCatching { Instant.parse(it).toEpochMilli() }.getOrDefault(0) } ?: base.publishedAt,
                 durationMs = item.durationMs ?: base.durationMs, mimeType = item.mimeType, transcriptUrl = item.transcriptUrl, transcriptType = item.transcriptType,
                 localFile = if (changed) null else base.localFile, downloadState = if (changed) "none" else base.downloadState,

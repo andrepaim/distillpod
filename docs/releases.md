@@ -23,7 +23,9 @@ This is the retained local development identity for continuity, not a newly crea
 
 The `alpha-release` GitHub environment stores `ALPHA_KEYSTORE_BASE64`, `ALPHA_KEYSTORE_PASSWORD`, `ALPHA_KEY_ALIAS`, and `ALPHA_KEY_PASSWORD` as encrypted secrets. It permits release tags. The keystore is decoded only in the signing step, stored in a private temporary file and deleted on exit. It is excluded from Git, logs and artifacts. Keep a separate private backup: losing this identity affects future update compatibility.
 
-The release job checks APK application ID, version name/code, non-debuggable state, alignment and the actual signing certificate. It publishes a build-info record with commit and workflow URL. Fork pull requests and ordinary CI do not receive signing secrets.
+Distribution builds receive the `FIREBASE_CONFIG_JSON` repository secret through the reusable validation workflow. It contains the retained Android Firebase client configuration; a missing value fails the release build instead of silently disabling sync. It is written only to a private runner-temporary file and removed afterward. Ordinary PR/debug/emulator builds remain unconfigured and receive no production Firebase configuration.
+
+The release job checks APK application ID, version name/code, non-debuggable state, 16 KB native-library alignment and the actual signing certificate. It publishes a build-info record with commit and workflow URL. Fork pull requests and ordinary CI do not receive signing secrets.
 
 ## Build or inspect locally
 

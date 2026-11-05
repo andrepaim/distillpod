@@ -25,16 +25,18 @@ import java.util.UUID
 class SubscriptionRestartDeviceTest {
     @Test fun offlineIntentSurvivesActualProcessRestart()=runBlocking {
         val args=InstrumentationRegistry.getArguments()
+        val host=args.getString("syncEmulatorHost")?:"10.0.2.2"
+        require(host in listOf("10.0.2.2","127.0.0.1"))
         assumeTrue(args.getString("syncEmulators")=="true" && args.getString("syncRestartPhase") in listOf("seed","resume"))
         check(Build.HARDWARE.contains("ranchu") || Build.FINGERPRINT.contains("generic"))
         val context=InstrumentationRegistry.getInstrumentation().targetContext
         val fixture=context.getFileStreamPath("sync-restart-fixture.json")
         val options=FirebaseOptions.Builder().setProjectId("demo-distillpod-sync").setApplicationId("1:123456789:android:1234567890abcdef").setApiKey("fake-api-key").build()
         val app=FirebaseApp.initializeApp(context,options,"sync-restart-client")
-        val auth=FirebaseAuth.getInstance(app).apply {useEmulator("10.0.2.2",9099)}
+        val auth=FirebaseAuth.getInstance(app).apply {useEmulator(host,9099)}
         val firestore=FirebaseFirestore.getInstance(app).apply {
             firestoreSettings=FirebaseFirestoreSettings.Builder().setLocalCacheSettings(MemoryCacheSettings.newBuilder().build()).build()
-            useEmulator("10.0.2.2",8085)
+            useEmulator(host,8085)
         }
         try { withTimeout(60000) {
             val cloud=FirebaseSubscriptionCloud(auth,firestore)

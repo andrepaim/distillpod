@@ -22,9 +22,9 @@ Downloaded episodes can play without a network connection. Streaming requires ac
 
 ## Prepare a transcript
 
-Publisher transcripts are used when suitable. Otherwise choose Tiny or Base in Settings and download the model. Prepare the episode transcript from its tools. Local processing shows its current phase and progress, and completed chunks remain available after pause/resume. Longer recordings take time and use battery; model and language choices affect performance.
+Publisher transcripts are used when suitable. Optionally enable **Settings → Local transcription → Look for existing online transcripts** to search PodcastTranscript.ai for an existing transcript of a public show before Whisper. Lookup sends the episode title, requires a directory follow or explicit public-source approval, and never uploads audio or starts cloud transcription. If lookup is disabled, unavailable or finds no suitable match, choose Tiny or Base in Settings and download the model. Prepare the episode transcript from its tools. Local processing shows its current phase and progress, and completed chunks remain available after pause/resume. Longer recordings take time and use battery; model and language choices affect performance.
 
-Automatic language detection, English and Português are available. A partial transcript is identified as partial rather than treated as complete.
+Automatic language detection, English and Português are available. A partial transcript is identified as partial rather than treated as complete. Online transcripts support reading and episode understanding; saved moments and automatic ad skipping still require publisher or local timing. **Transcribe locally again** bypasses online lookup. See [lookup design and limitations](android/online-transcripts.md).
 
 ## Understand an episode
 

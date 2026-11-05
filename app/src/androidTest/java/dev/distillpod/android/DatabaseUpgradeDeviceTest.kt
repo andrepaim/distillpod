@@ -21,6 +21,7 @@ class DatabaseUpgradeDeviceTest {
     @Test fun schemaFourUpgradesWithoutLosingProgressSavedMomentsOrMessages() = upgradeFixture(4)
     @Test fun schemaFiveUpgradesWithoutLosingProgressSavedMomentsOrMessages() = upgradeFixture(5)
     @Test fun schemaSixUpgradesWithoutLosingProgressSavedMomentsOrMessages() = upgradeFixture(6)
+    @Test fun schemaSevenUpgradesWithoutLosingProgressSavedMomentsOrMessages() = upgradeFixture(7)
     private fun upgradeFixture(from: Int) = runBlocking {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
@@ -58,7 +59,7 @@ class DatabaseUpgradeDeviceTest {
                 if(from>=6)insert("sync_views",mapOf("entityKey" to "subscription_old","version" to 7,"sessionId" to "retained-session"))
                 old.version = from
             }
-            val upgraded = Room.databaseBuilder(context, AppDatabase::class.java, name).addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4, AppDatabase.MIGRATION_4_5, AppDatabase.MIGRATION_5_6, AppDatabase.MIGRATION_6_7).build()
+            val upgraded = Room.databaseBuilder(context, AppDatabase::class.java, name).addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4, AppDatabase.MIGRATION_4_5, AppDatabase.MIGRATION_5_6, AppDatabase.MIGRATION_6_7, AppDatabase.MIGRATION_7_8).build()
             try {
                 assertEquals(if(from>=3)listOf("old-operation") else emptyList<String>(),upgraded.sync().pending("alice", "g1"))
                 if(from>=4)assertEquals(7L,upgraded.sync().view("subscription_old")!!.version)

@@ -50,9 +50,10 @@ internal fun validatedAnalysis(text: String, segments: List<SegmentEntity>): JSO
 class EpisodeUnderstanding(private val db: AppDatabase, private val ai: AiGateway,
     private val enqueueAnalysis: (String) -> Unit, private val enqueueReply: (String) -> Unit) {
     private val dao = db.library()
+    private val textSource = EpisodeTextResolver(db)
     private suspend fun source(id: String, revision: String? = null): TranscriptEntity {
         val ep = dao.episode(id) ?: error("Episode is unavailable")
-        val row = dao.transcript(id)
+        val row = textSource.complete(id)
         require(row != null && row.state == "ready" && row.fingerprint == ep.mediaFingerprint && (revision == null || row.revision == revision)) { "Prepare a complete transcript of the current audio first" }
         return row
     }
@@ -70,7 +71,7 @@ class EpisodeUnderstanding(private val db: AppDatabase, private val ai: AiGatewa
         val row = db.withTransaction { dao.analysis(id)?.takeIf { it.state == "queued" }?.also { dao.putAnalysis(it.copy(state = "running", error = null)) } } ?: return
         try {
             val transcript = source(id, row.revision)
-            val parts = transcriptParts(dao.segments(id, row.revision))
+            val parts = transcriptParts(textSource.segments(id, row.revision))
             require(parts.isNotEmpty()) { "No speech is available to analyze" }
             updateAnalysis(row) { it.copy(totalParts = parts.size) }
             val completed = dao.analysisParts(id, row.revision).associateBy { it.part }.toMutableMap()
@@ -122,7 +123,7 @@ class EpisodeUnderstanding(private val db: AppDatabase, private val ai: AiGatewa
     }
     suspend fun approveAd(id: String, index: Int, approved: Boolean) = db.withTransaction {
         val row = dao.analysis(id) ?: return@withTransaction
-        source(id, row.revision)
+        require(source(id, row.revision).source != "online") { "Prepare a publisher or local transcript before enabling ad skipping" }
         val ads = JSONArray(row.adsJson)
         require(index in 0 until ads.length())
         ads.getJSONObject(index).put("approved", approved)
@@ -158,7 +159,7 @@ class EpisodeUnderstanding(private val db: AppDatabase, private val ai: AiGatewa
             source(row.episodeId, row.revision)
             val question = dao.message(row.replyTo ?: error("Question is unavailable")) ?: error("Question is unavailable")
             val words = question.text.lowercase().split(Regex("[^\\p{L}\\p{N}]+")).filter { it.length > 2 }.toSet()
-            val segments = dao.segments(row.episodeId, row.revision)
+            val segments = textSource.segments(row.episodeId, row.revision)
             val ranked = segments.indices.sortedByDescending { i -> words.count { segments[i].text.contains(it, true) } }
             val candidates = linkedSetOf<Int>()
             ranked.take(16).forEach { i -> for (j in (i - 1).coerceAtLeast(0)..(i + 1).coerceAtMost(segments.lastIndex)) candidates.add(j) }

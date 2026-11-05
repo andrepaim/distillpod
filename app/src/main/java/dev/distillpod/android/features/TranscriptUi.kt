@@ -24,7 +24,9 @@ import dev.distillpod.android.data.TranscriptStage
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable fun TranscriptTools(vm: AppViewModel, ep: EpisodeEntity) {
-    val transcripts by vm.transcripts.collectAsStateWithLifecycle()
+    val transcripts by vm.localTranscripts.collectAsStateWithLifecycle()
+    val effectiveTranscripts by vm.transcripts.collectAsStateWithLifecycle()
+    val effective = effectiveTranscripts.firstOrNull { it.episodeId == ep.id }
     val row = transcripts.firstOrNull { it.episodeId == ep.id }
     val busy by vm.busy.collectAsStateWithLifecycle()
     val progress by vm.graph.transcription.progress.collectAsStateWithLifecycle()
@@ -40,6 +42,7 @@ import dev.distillpod.android.data.TranscriptStage
     val animated by animateFloatAsState(fraction, tween(650), label = "Transcript progress")
     val stage = if (running) live?.stage else null
     val phaseText = when (stage) {
+        TranscriptStage.ONLINE -> "Looking for an existing online transcript"
         TranscriptStage.PUBLISHER -> "Loading publisher transcript"
         TranscriptStage.DOWNLOADING -> if (ep.totalBytes > 0) "Downloading audio · ${(ep.downloadedBytes * 100 / ep.totalBytes).coerceIn(0, 100)}%" else "Downloading audio"
         TranscriptStage.CHECKING_MODEL -> "Checking transcription model"
@@ -52,7 +55,11 @@ import dev.distillpod.android.data.TranscriptStage
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("Transcript", style = MaterialTheme.typography.titleMedium)
         Text(phaseText ?: when (row?.state) {
-            "ready" -> if (row.source == "publisher") "Publisher transcript · segment timings" else "On-device transcript · ${row.model} · segment timings"
+            "ready" -> when (row.source) {
+                "publisher" -> "Publisher transcript · segment timings"
+                "online" -> "Online transcript · PodcastTranscript.ai · segment timings"
+                else -> "On-device transcript · ${row.model} · segment timings"
+            }
             "queued" -> "Queued · waiting for power, network or an Android processing slot"
             "processing" -> "Preparing on this phone · ${timestamp(row.processedMs)} completed"
             "waiting_model" -> "Download the selected model in Settings to continue"
@@ -68,6 +75,7 @@ import dev.distillpod.android.data.TranscriptStage
             if (running) Text("${timestamp(saved)} saved${if (live != null && live.chunkEndMs > live.chunkStartMs) " · current chunk ${timestamp(live.chunkStartMs)}–${timestamp(live.chunkEndMs)}" else ""}",
                 style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
+        if (effective?.source == "online") Text("Online timings may differ from your audio. Saved moments and ad skipping use a publisher or local transcript.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         row?.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             when (row?.state) {
@@ -76,9 +84,9 @@ import dev.distillpod.android.data.TranscriptStage
                 "ready" -> {}
                 else -> Button(onClick = { vm.prepareTranscript(ep.id) }, enabled = "transcript:${ep.id}" !in busy) { Text(if (row == null || row.state == "stale") "Prepare transcript" else "Resume transcript") }
             }
-            if (row != null && row.processedMs > 0) OutlinedButton(onClick = { vm.open("transcript:${ep.id}") }) { Text("Read transcript") }
+            if ((effective?.processedMs ?: 0) > 0) OutlinedButton(onClick = { vm.open("transcript:${ep.id}") }) { Text("Read transcript") }
         }
-        if (row?.state in listOf("ready", "partial", "failed")) TextButton(onClick = { vm.prepareTranscript(ep.id, true) }) { Text("Transcribe locally again") }
+        if (effective?.source == "online" || row?.state in listOf("ready", "partial", "failed")) TextButton(onClick = { vm.prepareTranscript(ep.id, true) }) { Text("Transcribe locally again") }
     }
 }
 
@@ -87,7 +95,7 @@ import dev.distillpod.android.data.TranscriptStage
     val transcripts by vm.transcripts.collectAsStateWithLifecycle()
     val row = transcripts.firstOrNull { it.episodeId == ep.id }
     var segments by remember(ep.id, row?.revision) { mutableStateOf<List<SegmentEntity>>(emptyList()) }
-    LaunchedEffect(ep.id, row?.revision, row?.processedMs) { segments = row?.let { vm.graph.db.library().segments(ep.id, it.revision) } ?: emptyList() }
+    LaunchedEffect(ep.id, row?.revision, row?.processedMs) { segments = row?.let { dev.distillpod.android.data.EpisodeTextResolver(vm.graph.db).segments(ep.id, it.revision) } ?: emptyList() }
     var query by rememberSaveable(ep.id) { mutableStateOf("") }
     var options by rememberSaveable(ep.id) { mutableStateOf(false) }
     val player by vm.player.collectAsStateWithLifecycle()

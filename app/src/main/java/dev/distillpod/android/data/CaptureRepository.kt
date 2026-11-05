@@ -44,7 +44,8 @@ class CaptureRepository(private val db: AppDatabase, private val ai: AiGateway, 
     }
     private suspend fun hydrate(saved: DistillationEntity) {
         val ep = dao.episode(saved.episodeId) ?: return
-        val transcript = dao.transcript(saved.episodeId)
+        // Remote segment timing is useful for reading; a saved audio window needs local/publisher coverage.
+        val transcript = dao.transcript(saved.episodeId)?.takeUnless { it.source == "online" }
         val coverage = if (transcript == null) emptyList() else dao.coverage(ep.id, transcript.revision).map { TimeRange(it.startMs, it.endMs) }
         val complete = transcript != null && transcript.fingerprint == ep.mediaFingerprint && normalizeRanges(coverage, Long.MAX_VALUE)
             .any { it.startMs <= saved.startMs && it.endMs >= saved.endMs }

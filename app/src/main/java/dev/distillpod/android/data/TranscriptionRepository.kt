@@ -27,13 +27,14 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 private const val CHUNK_MS = 120_000L
-enum class TranscriptStage { PUBLISHER, DOWNLOADING, CHECKING_MODEL, DECODING, STARTING, TRANSCRIBING, SAVING, QUEUED }
+enum class TranscriptStage { ONLINE, PUBLISHER, DOWNLOADING, CHECKING_MODEL, DECODING, STARTING, TRANSCRIBING, SAVING, QUEUED }
 data class TranscriptProgress(val revision: String, val run: String, val stage: TranscriptStage,
     val workedMs: Long, val durationMs: Long, val chunkStartMs: Long = 0, val chunkEndMs: Long = 0)
 
 internal class TranscriptExecution(val stopped: () -> Boolean, val foreground: suspend () -> Unit, val reschedule: Boolean)
 
-class TranscriptionRepository(private val graph: AppGraph) {
+class TranscriptionRepository(private val graph: AppGraph,
+    private val onlineLookup: suspend (EpisodeEntity, TranscriptEntity) -> Boolean = { ep, row -> graph.onlineTranscripts.lookup(ep, row) }) {
     private val dao = graph.db.library()
     private val manager get() = WorkManager.getInstance(graph.context)
     private val processing = Mutex()
@@ -41,17 +42,21 @@ class TranscriptionRepository(private val graph: AppGraph) {
     private val running = ConcurrentHashMap<String, Job>()
     private val live = MutableStateFlow<Map<String, TranscriptProgress>>(emptyMap())
     val progress = live.asStateFlow()
-    suspend fun prepare(id: String, forceLocal: Boolean = false) = controls.withLock { prepareInternal(id, forceLocal) }
-    private suspend fun prepareInternal(id: String, forceLocal: Boolean) {
+    suspend fun prepare(id: String, forceLocal: Boolean = false, allowOnline: Boolean = true) = controls.withLock { prepareInternal(id, forceLocal, allowOnline) }
+    private suspend fun prepareInternal(id: String, forceLocal: Boolean, allowOnline: Boolean) {
         val ep = dao.episode(id) ?: error("Episode is unavailable")
         val prefs = graph.settings.flow.first()
         val old = dao.transcript(id)
+        val replacingOnline = forceLocal || old?.let { it.replaceOnline && it.state !in listOf("ready", "stale") } == true
+        val onlineAllowed = allowOnline && !replacingOnline
+        if (onlineAllowed && EpisodeTextResolver(graph.db).online(id) != null) return
+        if (!allowOnline && old?.lookupOnline == true) dao.putTranscript(old.copy(lookupOnline = false))
         if (!forceLocal && old != null && old.fingerprint == ep.mediaFingerprint &&
             (old.source == "publisher" && old.state != "partial" || old.model == prefs.model && old.language == prefs.language)) {
             if (old.state == "ready") return
             if (old.state in listOf("processing", "queued") && live.value[id]?.let { it.revision == old.revision && it.stage != TranscriptStage.QUEUED } == true) return
             live.update { it - id }
-            val current = old.copy(state = "queued", error = null)
+            val current = old.copy(state = "queued", error = null, lookupOnline = onlineAllowed && prefs.onlineTranscripts)
             dao.putTranscript(current); dispatch(current); return
         }
         live.update { it - id }
@@ -59,9 +64,9 @@ class TranscriptionRepository(private val graph: AppGraph) {
         running[id]?.cancel()
         val publisher = !forceLocal && !ep.transcriptUrl.isNullOrBlank() && !(old?.source == "publisher" && old.state == "partial")
         val current = TranscriptEntity(id, UUID.randomUUID().toString(), ep.mediaFingerprint, if (publisher) "publisher" else prefs.model,
-            prefs.language, if (publisher) "publisher" else "whisper", durationMs = ep.durationMs)
+            prefs.language, if (publisher) "publisher" else "whisper", durationMs = ep.durationMs, lookupOnline = onlineAllowed && prefs.onlineTranscripts, replaceOnline = replacingOnline || !allowOnline)
         graph.db.withTransaction { dao.deleteSegments(id); dao.deleteCoverage(id); dao.putTranscript(current) }
-        dao.analysis(id)?.let { dao.putAnalysis(it.copy(state = "stale", error = "Transcript changed. Analyze the current source again.")) }
+        dao.analysis(id)?.takeIf { it.revision == old?.revision && old.source != "online" }?.let { dao.putAnalysis(it.copy(state = "stale", error = "Transcript changed. Analyze the current source again.")) }
         dispatch(current)
     }
     suspend fun pause(id: String) = controls.withLock {
@@ -153,9 +158,18 @@ class TranscriptionRepository(private val graph: AppGraph) {
                     if (error is CancellationException) throw error
                     false
                 }
-                if (published == true) { graph.captures.transcriptUpdated(id); return }
+                if (published) { graph.captures.transcriptUpdated(id); return }
                 val prefs = graph.settings.flow.first()
                 row = row.copy(source = "whisper", model = prefs.model, language = prefs.language)
+                dao.putTranscript(row)
+            }
+            if (row.lookupOnline) {
+                report(TranscriptStage.ONLINE)
+                if (onlineLookup(initialEp, row)) return
+                currentCoroutineContext().ensureActive()
+                val current = dao.transcript(id) ?: return
+                if (current.revision != revision || current.state in listOf("paused", "stale")) return
+                row = current.copy(lookupOnline = false)
                 dao.putTranscript(row)
             }
             val modelPath = File(graph.media.modelsDirectory, "${row.model}.bin")
@@ -171,7 +185,13 @@ class TranscriptionRepository(private val graph: AppGraph) {
             try {
                 report(TranscriptStage.CHECKING_MODEL)
                 val model = graph.media.verifiedModel(row.model)
-                val start = nextStart(row) ?: run { dao.putTranscript(row.copy(state = "ready")); graph.captures.transcriptUpdated(id); return }
+                val start = nextStart(row) ?: run {
+                    graph.db.withTransaction {
+                        dao.putTranscript(row.copy(state = "ready"))
+                        dao.deselectOnline(id)
+                    }
+                    graph.captures.transcriptUpdated(id); return
+                }
                 val decodeStart = (start - 2000).coerceAtLeast(0)
                 report(TranscriptStage.DECODING, start = start, end = start + CHUNK_MS)
                 val decoded = withContext(Dispatchers.IO) { AudioClipDecoder().decodeChunk(source, wave, decodeStart, CHUNK_MS + start - decodeStart, execution.stopped) }
@@ -220,7 +240,12 @@ class TranscriptionRepository(private val graph: AppGraph) {
                 if (current.revision == revision && current.state !in listOf("paused", "stale")) {
                     val next = nextStart(current)
                     require(next != start) { "This audio window could not be decoded completely. Completed chunks are saved." }
-                    if (next == null) dao.putTranscript(current.copy(state = "ready", processedMs = duration))
+                    if (next == null) {
+                        graph.db.withTransaction {
+                            dao.putTranscript(current.copy(state = "ready", processedMs = duration))
+                            dao.deselectOnline(id)
+                        }
+                    }
                     else if (execution.reschedule) enqueue(current, next)
                 }
             } finally { wave.delete(); graph.activeFiles.release(source); graph.activeFiles.release(modelPath) }

@@ -71,7 +71,7 @@ private fun objects(json: String): List<JSONObject> = runCatching { val a = JSON
                     Text("${timestamp(ad.getLong("startMs"))} – ${timestamp(ad.getLong("endMs"))}")
                     Text(ad.getString("reason"), style = MaterialTheme.typography.bodySmall)
                     TextButton(onClick = { vm.play(ep.id, ad.getLong("startMs")); vm.open("player") }) { Text("Listen to range") }
-                    Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(checked = ad.optBoolean("approved"), onCheckedChange = { vm.approveAd(ep.id, index, it) }); Text("Approve this range for skipping") }
+                    Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(checked = ad.optBoolean("approved"), onCheckedChange = { vm.approveAd(ep.id, index, it) }, enabled = transcript?.source != "online"); Text("Approve this range for skipping") }
                 } }
             }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {

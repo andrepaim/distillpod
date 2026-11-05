@@ -24,6 +24,8 @@ The feature branch contains a tested event/consent boundary. Firebase Analytics,
 
 Podcast directory searches send the query to the directory provider. Following/refreshing a feed, loading its artwork and streaming/downloading an episode contact the corresponding hosts. Model downloads contact their configured upstream host. These services can observe the requests made to them.
 
+Optional existing-transcript lookup sends the episode title to PodcastTranscript.ai for approved public sources. It defaults to off, never submits audio or creates a cloud transcription job, and does not share the feed/enclosure URL, listening progress, saved moments or credentials. The provider can observe the query and network address. Already downloaded text remains readable when lookup is disabled. Consent and lookup cooldowns stay on this installation. See [the lookup design](android/online-transcripts.md).
+
 Whisper transcription runs locally on the phone. Requested AI operations send selected transcript context to the connected provider, using the connected account's access and allowance. Episode audio is not uploaded for cloud transcription. Interest-based suggestions send followed-show titles only when that option is selected; suggestions are initiated explicitly.
 
 ## Backups and exports
