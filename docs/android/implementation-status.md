@@ -7,14 +7,14 @@ Reviewed against `main` on November 5, 2026. This page distinguishes implemented
 | Item | State at this review |
 | --- | --- |
 | Main source | `0.10.1-alpha.1`, version code `19`, from [gradle.properties](../../gradle.properties) |
-| Latest published APK | [0.7.1-alpha.1](https://github.com/andrepaim/distillpod/releases/tag/v0.7.1-alpha.1), published November 4 |
-| Latest recorded phone update | S25 in-place installation of 0.10.1-alpha.1, code 19, November 5; not a published release |
+| Latest published APK | [0.10.1-alpha.1](https://github.com/andrepaim/distillpod/releases/tag/v0.10.1-alpha.1), published November 5; APK, checksums and build metadata attached |
+| Latest recorded phone update | S25 in-place installation of 0.10.1-alpha.1, code 19, November 5, before GitHub publication |
 | Database | Room schema 8 with migrations from schemas 1–7; no destructive fallback |
 | Supported Android/package | Android 10+ (`minSdk 29`), ARM64 and x86_64; `dev.distillpod.android` |
 | Default source/debug build | No production Firebase configuration; library sync shows unavailable |
 | Release workflow | Requires Firebase client configuration, validates an unsigned candidate and retains the personal-alpha signing identity |
 
-The phone update retained its certificate, Firebase client configuration and existing library data; the online-transcript setting was visible and off. This is update/data-preservation evidence, not a live phone sync test or a store release. See the [online-transcript installation report](online-transcripts.md#s25-installation--november-5). Release notes in [current.md](../releases/current.md) describe the candidate for its matching tag.
+The phone update retained its certificate, Firebase client configuration and existing library data; the online-transcript setting was visible and off. This is update/data-preservation evidence, not a live phone sync test or a store release. See the [online-transcript installation report](online-transcripts.md#s25-installation--november-5). Release notes in [current.md](../releases/current.md) describe the published 0.10.1-alpha.1 release.
 
 ## Implemented on main
 
