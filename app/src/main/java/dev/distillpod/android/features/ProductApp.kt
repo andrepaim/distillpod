@@ -587,7 +587,10 @@ private fun captureState(state: String) = when (state) { "waiting_transcript" ->
         OutlinedButton(onClick = vm::clearUnusedAudio) { Text("Clear unused audio") }
         Text("Removes leftover cache files after feed changes. Downloads, resumable partials, queued audio and processing files are kept.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        if(section=="library") DataControls(vm)
+        if(section=="library") {
+            SettingSwitch("Distill confirmation sound", "Play a short marker sound when a moment is saved. Uses media volume.", prefs.distillSound) {vm.flag("distillSound",it)}
+            DataControls(vm)
+        }
         if(section=="about") {
         Text("DistillPod · $version", style = MaterialTheme.typography.labelLarge)
         TextButton(onClick = { context.startActivity(Intent(context, DiagnosticsActivity::class.java)) }) { Text("Developer checks") }

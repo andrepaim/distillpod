@@ -28,6 +28,32 @@ class CaptureRepositoryTest {
             assertEquals(0,preparations)
         } finally {db.close()}
     }
+    @Test fun `confirmation occurs after commit once for a new save and never on recovery`() = runBlocking {
+        val db=database()
+        try {
+            seed(db);var confirmations=0
+            val repo=CaptureRepository(db,ai("unused"),{false},{},{},onSaved={id->
+                assertNotNull(runBlocking {db.library().distillation(id)})
+                confirmations++
+            })
+            repo.save("ep",10000,true)
+            repo.save("ep",10000,true)
+            assertEquals(1,confirmations)
+            repo.resumeSaved()
+            assertEquals(1,confirmations)
+            try {repo.save("missing",12000,true);fail("Missing episode accepted")} catch(_:IllegalStateException) {}
+            assertEquals(1,confirmations)
+        } finally {db.close()}
+    }
+    @Test fun `feedback failure cannot turn a committed save into an error`()=runBlocking {
+        val db=database()
+        try {
+            seed(db)
+            val repo=CaptureRepository(db,ai("unused"),{false},{},{},onSaved={throw IllegalStateException("Audio unavailable")})
+            val id=repo.save("ep",10000,true)
+            assertNotNull(db.library().distillation(id))
+        } finally {db.close()}
+    }
     private fun database() = Room.inMemoryDatabaseBuilder(ApplicationProvider.getApplicationContext<Context>(), AppDatabase::class.java).build()
     private suspend fun seed(db: AppDatabase) {
         val dao = db.library()

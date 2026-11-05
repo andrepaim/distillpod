@@ -48,3 +48,6 @@ sync.log
 DistillPod-backups*.zip
 distillpod-backups*.zip
 distillpod-20??-??-??*.json
+
+# Bundled public-domain UI feedback asset.
+!app/src/main/res/raw/distill_marker.wav
