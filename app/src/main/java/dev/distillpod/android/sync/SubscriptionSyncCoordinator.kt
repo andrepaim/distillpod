@@ -37,8 +37,10 @@ class SubscriptionSyncCoordinator(private val db:AppDatabase,private val cloud:S
         val b=dao.binding()?.takeIf { it.enabled && it.uid==cloud.uid } ?: return@withLock false
         try {
             val head=cloud.head()
+            check(head.protocol in 1..3) { "Update the app to read this sync account." }
             check(head.owner==SyncOwner(b.uid,b.generation)) { "Sync account changed; reconnect to review the library." }
             if(!valid(b)) return@withLock false
+            if(head.protocol>=3) { dao.putView(SyncViewEntity("__contextual_moments",version=1));dao.resumeContextualOperations(b.uid,b.generation) }
             if(!update(b){it.copy(status="syncing")})return@withLock false
             if(!dao.binding()!!.bootstrapped) {
                 if(b.bootstrapAfter.isEmpty())update(b){it.copy(bootstrapHead=head.sequence)}
@@ -63,6 +65,12 @@ class SubscriptionSyncCoordinator(private val db:AppDatabase,private val cloud:S
             repeat(20) {
                 if(!valid(b))return@withLock false
                 val op=dao.nextOperation(b.uid,b.generation) ?: return@repeat
+                val payload=SubscriptionSyncStore.decode(op.payload)
+                if(op.entityKey.startsWith("moment_") && !op.deleted) {
+                    if("momentSchema" in payload && head.protocol<3) {
+                        dao.state(op.operationId,"upgrade_required");return@repeat
+                    }
+                }
                 db.withTransaction { if(valid(b))dao.state(op.operationId,"uploading") }
                 if(!valid(b))return@withLock false
                 try {
@@ -94,7 +102,12 @@ class SubscriptionSyncCoordinator(private val db:AppDatabase,private val cloud:S
             }
             val contentPending=dao.artifacts(b.uid,b.generation).any {it.state in setOf("prepared","downloaded","waiting")}
             val remaining=dao.operations(b.uid,b.generation)
-            val status=when {remaining.any { it.state=="conflict" }->"conflict";remaining.isNotEmpty() || contentPending->"pending";else->"synced"}
+            val status=when {
+                dao.nextOperation(b.uid,b.generation)!=null || contentPending -> "pending"
+                remaining.any {it.state=="upgrade_required"} -> "upgrade_required"
+                remaining.any {it.state=="conflict"} -> "conflict"
+                else -> "synced"
+            }
             update(b){it.copy(status=status,lastSyncedAt=if(status=="synced")System.currentTimeMillis() else it.lastSyncedAt)}
             status=="synced"
         } catch(cancelled:CancellationException){
@@ -135,6 +148,7 @@ class SubscriptionSyncCoordinator(private val db:AppDatabase,private val cloud:S
     private fun validate(b:SyncBindingEntity,r:CloudSubscription) {
         check((r.key.startsWith("subscription_") || PortableRecord.isPortable(r.key) || CollectionRecord.supports(r.key) || r.key.startsWith("artifact_")) && r.version>0 && r.sequence>0)
         SyncProtocol.validate(SyncMutation("remote",SyncOwner(b.uid,b.generation),r.key,r.version-1,r.payload,r.deleted))
+        if(!r.deleted && r.key.startsWith("moment_"))dev.distillpod.android.data.MomentGeneration.validateSource(r.payload["sourceJson"].orEmpty(),r.payload.getValue("startMs").toLong(),r.payload.getValue("endMs").toLong())
         if(!r.deleted && r.key.startsWith("subscription_")) { require(r.payload["podcastId"]?.matches(Regex("[A-Za-z0-9_-]{1,128}"))==true);require(r.payload["feedUrl"]!=null) }
     }
     private suspend fun remember(b:SyncBindingEntity,r:CloudSubscription) {

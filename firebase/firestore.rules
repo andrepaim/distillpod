@@ -40,13 +40,14 @@ service cloud.firestore {
     && id(p.sessionId) && p.sessionId.size() <= 100;
   }
   function momentPayload(key,p) {
-   return p.keys().hasOnly(identityFields().concat(['momentId','startMs','endMs','excerpt','quote','insight','revision','createdAt','model']))
+   return p.keys().hasOnly(identityFields().concat(['momentId','startMs','endMs','excerpt','quote','insight','revision','createdAt','model','momentSchema','sourceJson']))
     && p.keys().hasAll(['momentId','startMs','endMs','excerpt','quote','insight','revision','createdAt','model']) && episodeIdentity(p)
     && id(p.momentId) && p.momentId.size() <= 100 && key == 'moment_' + p.momentId
     && number(p.startMs) && number(p.endMs) && int(p.endMs) >= int(p.startMs) && number(p.createdAt)
     && text(p.excerpt,98304) && text(p.quote,98304) && text(p.insight,98304)
     && p.excerpt.toUtf8().size()+p.quote.toUtf8().size()+p.insight.toUtf8().size() <= 98304
-    && text(p.revision,1000) && text(p.model,1000);
+    && text(p.revision,1000) && text(p.model,1000)
+    && ((!p.keys().hasAny(['momentSchema','sourceJson'])) || (p.keys().hasAll(['momentSchema','sourceJson']) && p.momentSchema == '2' && text(p.sourceJson,32768)));
   }
   function collectionPayload(key,p) {
    return (key == 'queue_library' && p.keys().hasOnly(['items']) && p.keys().hasAll(['items']) && p.items is string
@@ -71,7 +72,11 @@ service cloud.firestore {
   function validRecord(uid,key,d) {
    return d.keys().hasOnly(['version','payload','deleted','generation','sequence','operationId'])
     && d.sequence is int && d.version is int && d.version > 0 && d.version < 9000000000000000 && d.deleted is bool && id(d.operationId)
-    && (key.matches('(subscription|progress|completion|moment)_.*') || head(uid).protocol == 2)
+    && (key.matches('(subscription|progress|completion|moment)_.*') || head(uid).protocol >= 2)
+    && (d.deleted || !key.matches('moment_.*') ||
+      (d.payload.keys().hasAny(['momentSchema','sourceJson']) ? head(uid).protocol >= 3 :
+       (!exists(/databases/$(database)/documents/users/$(uid)/entities/$(key)) ||
+        !get(/databases/$(database)/documents/users/$(uid)/entities/$(key)).data.payload.keys().hasAny(['momentSchema']))))
     && d.generation == head(uid).generation && head(uid).active == true
     && d.sequence == head(uid).sequence + 1 && d.sequence == nextHead(uid).sequence
     && ((d.deleted && key.matches('(subscription|moment)_.*') && d.payload is map && d.payload.size() == 0) || (!d.deleted && validPayload(key,d.payload)));
@@ -86,7 +91,7 @@ service cloud.firestore {
       && request.resource.data.sequence == resource.data.sequence + 1
       && change(uid,request.resource.data.sequence).sequence == request.resource.data.sequence)
      || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['protocol'])
-      && resource.data.protocol == 1 && request.resource.data.protocol == 2));
+      && resource.data.protocol in [1,2] && request.resource.data.protocol in [2,3] && request.resource.data.protocol > resource.data.protocol));
    match /entities/{key} {
     allow read: if owner(uid);
     function companions() {

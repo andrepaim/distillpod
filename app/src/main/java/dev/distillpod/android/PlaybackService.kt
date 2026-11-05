@@ -9,7 +9,9 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaSession
-import androidx.media3.session.MediaSessionService
+import androidx.media3.session.MediaLibraryService
+import androidx.media3.session.MediaLibraryService.MediaLibrarySession
+import dev.distillpod.android.auto.AutoLibraryCallback
 import androidx.room.withTransaction
 import dev.distillpod.android.data.*
 import dev.distillpod.android.playback.mediaItem
@@ -17,6 +19,8 @@ import java.io.File
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import org.json.JSONArray
@@ -27,8 +31,8 @@ import dev.distillpod.android.playback.SkippedMoment
 
 /** Owns audio, progress and the queue even when there is no Activity. */
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
-class PlaybackService : MediaSessionService() {
-    private var session: MediaSession? = null
+class PlaybackService : MediaLibraryService() {
+    private var session: MediaLibrarySession? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private data class Snapshot(val ids: List<String>, val id: String?, val position: Long, val duration: Long, val complete: Boolean, val speed: Float, val at: Long = System.currentTimeMillis(), val boundary: Boolean = false, val playing: Boolean = false, val queueBoundary:Boolean=false, val elapsed: Long = android.os.SystemClock.elapsedRealtime())
     private val writes = Channel<Snapshot>(Channel.UNLIMITED)
@@ -37,6 +41,8 @@ class PlaybackService : MediaSessionService() {
     private var previousDuration = 0L
     private var previousPosition = 0L
     private var restoring = true
+    private val playbackReady=CompletableDeferred<Unit>()
+    private val browseCurrent=kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
     private data class AdConfig(val file: String, val ranges: List<TimeRange>)
     private var adConfigs = emptyMap<String, AdConfig>()
     private val adSkipping = ReviewedAdSkipping()
@@ -45,6 +51,7 @@ class PlaybackService : MediaSessionService() {
         val graph = applicationContext.appGraph
         val dao = graph.db.library()
         val player = ExoPlayer.Builder(this)
+            .setSeekBackIncrementMs(10000).setSeekForwardIncrementMs(30000)
             .setWakeMode(C.WAKE_MODE_LOCAL)
             .setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_SPEECH).build(), true)
             .setHandleAudioBecomingNoisy(true).build()
@@ -62,10 +69,24 @@ class PlaybackService : MediaSessionService() {
         player.addAnalyticsListener(health)
         scope.launch { while (isActive) { health.sample(); delay(5000) } }
         val activity = PendingIntent.getActivity(this, 1, Intent(this, MainActivity::class.java).putExtra("openPlayer", true), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-        session = MediaSession.Builder(this, player).setSessionActivity(activity).setCallback(object : MediaSession.Callback {
-            override fun onConnect(session: MediaSession, controller: MediaSession.ControllerInfo): MediaSession.ConnectionResult =
-                if (controller.packageName == packageName || controller.isTrusted) super.onConnect(session, controller) else MediaSession.ConnectionResult.reject()
-        }).build()
+        lateinit var libraryCallback:AutoLibraryCallback
+        val artwork=dev.distillpod.android.auto.AutoArtwork(this,graph.http,scope) {
+            scope.launch {session?.let {libraryCallback.libraryChanged(it)}}
+        }
+        libraryCallback=AutoLibraryCallback(packageName,graph.db,graph.ready,scope,playbackReady,
+            saveMoment={id,position,file->
+                val ep=dao.episode(id)?:error("Episode is unavailable")
+                graph.captures.save(id,position,file!=null && file==ep.localFile)
+            },prepareMoment={id->graph.scope.launch(Dispatchers.IO){runCatching {graph.captures.prepareSaved(id)}};Unit},artwork=artwork::uri)
+        session = MediaLibrarySession.Builder(this, player, libraryCallback).setSessionActivity(activity)
+            .setCustomLayout(dev.distillpod.android.playback.PlaybackControls.buttons)
+            .setMediaButtonPreferences(dev.distillpod.android.playback.PlaybackControls.buttons).build()
+        scope.launch {
+            graph.ready.await()
+            combine(dao.observePodcasts(),dao.observeEpisodes(),dao.observeQueue(),browseCurrent) {pods,episodes,queue,current->
+                listOf(pods,episodes.map {listOf(it.id,it.title,it.completed,it.localFile,it.downloadState,it.lastPlayedAt/60000)},queue,current)
+            }.distinctUntilChanged().collectLatest {delay(500);session?.let {libraryCallback.libraryChanged(it)}}
+        }
         fun snapshot(complete: Boolean = false, boundary: Boolean = false, queueBoundary:Boolean=false) {
             if (restoring) return
             val id = player.currentMediaItem?.mediaId
@@ -81,6 +102,7 @@ class PlaybackService : MediaSessionService() {
                 if(reason==Player.TIMELINE_CHANGE_REASON_PLAYLIST_CHANGED)snapshot(queueBoundary=true)
             }
             override fun onMediaItemTransition(item: MediaItem?, reason: Int) {
+                browseCurrent.value=item?.mediaId
                 if (!restoring && reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO && previousId != null) {
                     writes.trySend(Snapshot(emptyList(), previousId, if (previousDuration > 0) previousDuration else previousPosition, previousDuration, true, player.playbackParameters.speed, boundary=true))
                 }
@@ -123,6 +145,7 @@ class PlaybackService : MediaSessionService() {
             }
         }
         scope.launch {
+            graph.ready.await()
             val restore = withContext(Dispatchers.IO) {
                 val queue = dao.queue().mapNotNull { dao.episode(it.episodeId) }
                 val podcasts = dao.podcasts().associateBy { it.id }
@@ -134,7 +157,7 @@ class PlaybackService : MediaSessionService() {
                 player.setPlaybackSpeed(restore.third?.speed?.coerceIn(0.5f, 3f) ?: 1f)
                 player.prepare()
             }
-            restoring = false; snapshot()
+            restoring = false; playbackReady.complete(Unit); snapshot()
             while (isActive) { snapshot(player.playbackState == Player.STATE_ENDED); delay(1000) }
         }
         scope.launch {
@@ -198,7 +221,7 @@ class PlaybackService : MediaSessionService() {
             }
         }
     }
-    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = session
+    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? = session
     override fun onDestroy() {
         applicationContext.appGraph.activeFiles.playback = null
         applicationContext.appGraph.activeFiles.queued = emptySet()

@@ -1,12 +1,13 @@
-DistillPod 0.11.0-alpha.1 turns saved moments into ready-to-share discussions and researched infographics.
+DistillPod 0.13.0-alpha.1 adds contextual saved moments while retaining Android Auto and autonomous social sharing from recent releases.
 
-- Open a prepared saved moment, tap **Create post**, and choose **Quote & discussion** or **Infographic**. Generation begins immediately; the result screen centers on **Share**, with an optional natural-language **Change** instruction.
-- Quote discussions use a verified quotation from the saved excerpt, thoughtful paragraphs and podcast attribution. Infographics combine web research, claim-level references and original AI-designed vector illustrations in a 1080 × 1350 PNG.
-- The existing ChatGPT connection supports web research but does not support the hosted image-generation tool. Illustrations are designed by the text model and rendered locally; no separate API key or paid-provider fallback is used.
-- Generation continues in the background. Canceled, interrupted or failed changes preserve the last completed version. Undo and direct discussion editing are available through the result menu. Existing drafts and source snapshots remain accessible.
-- Image results and their previous versions are included in bounded library backups with integrity checks. Posts remain local and are not uploaded by library sync. Native sharing opens the receiving app; finish publication there and copy the description separately if needed.
-- Retains optional online transcript lookup, library sync, playback and the existing saved-moment workflow.
+- Distill keeps the original capture and examines bounded surrounding transcript context to select one complete thought. A second AI request reviews the takeaway against the selected source.
+- Supporting quotes are optional. A supported takeaway can be saved without a quote when the quotation would lose context; unsupported or incomplete results remain unpublished.
+- Improve a saved distill, expand its context explicitly, inspect the source, and restore an earlier version. Replay and new share drafts use the selected passage; existing share drafts and explanations retain their original source snapshots.
+- Captures near the end of a complete publisher transcript now work when the feed omits episode duration. Android Auto still saves immediately and recovers pending preparation after restart.
+- Local database and backup upgrades preserve captures, generation attempts and version history. Synced snapshots use account protocol 3; Settings offers an explicit upgrade after all installations are updated. Until that upgrade, new-format moment uploads remain pending while unrelated library sync continues. Transcripts, attempts and version history stay local and are included in backups.
 
-This personal-alpha release retains the existing signing certificate and Firebase client configuration. Paid content sync remains disabled. Install over the compatible alpha app; do not uninstall. Android 10+; ARM64 and x86_64. Version code: 20.
+Automated checks cover source bounds, review decisions, cancellation, retry, history, backups, migrations, Android Auto and sync compatibility. Live-model comparison and blind human assessment have not been completed; this alpha does not claim a measured improvement in excerpt quality. A normal successful generation now uses two AI requests and may use more time and account allowance.
 
-Validation before publishing: 276 JVM tests, release lint/builds, large-text emulator acceptance and three live public English/Portuguese output samples. The release workflow additionally gates publication on native, Firebase and isolated Android acceptance checks. See the [design](https://github.com/andrepaim/distillpod/blob/main/docs/android/social-sharing-redesign.md) and [validation record](https://github.com/andrepaim/distillpod/blob/main/docs/android/evidence/social-redesign/validation.md). Actual publication to LinkedIn/Instagram is user-driven and was not performed by the tests.
+This personal-alpha release retains the existing signing certificate and Firebase client configuration. Paid content sync remains disabled and transcripts stay local. Install as an update over the compatible alpha app; do not uninstall. Android 10+; ARM64 and x86_64. Version code: 22.
+
+See [contextual distills](https://github.com/andrepaim/distillpod/blob/main/docs/android/contextual-distills.md) and the [Android Auto guide](https://github.com/andrepaim/distillpod/blob/main/docs/android/android-auto.md).

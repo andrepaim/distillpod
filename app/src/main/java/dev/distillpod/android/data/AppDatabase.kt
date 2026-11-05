@@ -67,6 +67,7 @@ data class DistillationEntity(
     val revision: String = "", val fingerprint: String = "", val state: String = "waiting_transcript",
     val createdAt: Long = System.currentTimeMillis(), val error: String? = null, val model: String? = null,
     @ColumnInfo(defaultValue = "''") val attempt: String = "",
+    @ColumnInfo(defaultValue = "''") val sourceJson: String = "",
 )
 
 @Entity(tableName = "models")
@@ -114,6 +115,23 @@ interface LibraryDao {
     @Query("SELECT * FROM episodes ORDER BY publishedAt DESC, title") fun observeEpisodes(): Flow<List<EpisodeEntity>>
     @Query("SELECT * FROM episodes ORDER BY publishedAt DESC, title") suspend fun episodes(): List<EpisodeEntity>
     @Query("SELECT * FROM episodes WHERE podcastId=:id ORDER BY publishedAt DESC") suspend fun episodesForPodcast(id: String): List<EpisodeEntity>
+    @Query("SELECT e.* FROM episodes e INNER JOIN podcasts p ON p.id=e.podcastId WHERE p.subscribed=1 AND e.completed=0 ORDER BY e.publishedAt DESC, e.id LIMIT 1")
+    suspend fun autoNewestUnfinished(): EpisodeEntity?
+    @Query("SELECT e.* FROM episodes e INNER JOIN podcasts p ON p.id=e.podcastId WHERE p.subscribed=1 ORDER BY e.publishedAt DESC, e.id LIMIT :limit OFFSET :offset")
+    suspend fun autoSearchCandidates(limit: Int, offset: Long): List<EpisodeEntity>
+    @Query("SELECT * FROM podcasts WHERE subscribed=1 ORDER BY title COLLATE NOCASE, id LIMIT :limit OFFSET :offset")
+    suspend fun autoPodcasts(limit: Int, offset: Long): List<PodcastEntity>
+    @Query("""SELECT e.* FROM episodes e LEFT JOIN queue q ON q.episodeId=e.id
+        WHERE (:section='continue' AND e.completed=0 AND e.positionMs>0)
+           OR (:section='queue' AND q.episodeId IS NOT NULL)
+           OR (:section='downloads' AND e.localFile IS NOT NULL AND e.downloadState='downloaded')
+           OR (:section='show' AND e.podcastId=:show)
+        ORDER BY CASE WHEN :section='continue' AND e.id=:current THEN 0 ELSE 1 END,
+          CASE WHEN :section='queue' THEN q.sortOrder END,
+          CASE WHEN :section='continue' THEN e.lastPlayedAt END DESC,
+          e.publishedAt DESC, e.id
+        LIMIT :limit OFFSET :offset""")
+    suspend fun autoEpisodes(section: String, show: String, current: String?, limit: Int, offset: Long): List<EpisodeEntity>
     @Query("SELECT * FROM episodes WHERE id=:id") suspend fun episode(id: String): EpisodeEntity?
     @Upsert suspend fun putEpisode(value: EpisodeEntity)
     @Upsert suspend fun putEpisodes(values: List<EpisodeEntity>)
@@ -148,6 +166,13 @@ interface LibraryDao {
     @Query("SELECT * FROM distillations WHERE id=:id") suspend fun distillation(id: String): DistillationEntity?
     @Query("SELECT * FROM distillations WHERE episodeId=:id AND createdAt>:after AND ABS(endMs-:position)<1000 ORDER BY createdAt DESC LIMIT 1") suspend fun recentCapture(id: String, position: Long, after: Long): DistillationEntity?
     @Upsert suspend fun putDistillation(value: DistillationEntity)
+    @Upsert suspend fun putMomentAttempt(value: MomentAttemptEntity)
+    @Query("SELECT * FROM moment_attempts WHERE id=:id") suspend fun momentAttempt(id: String): MomentAttemptEntity?
+    @Query("SELECT * FROM moment_attempts WHERE id=:id") fun observeMomentAttempt(id: String): Flow<MomentAttemptEntity?>
+    @Query("SELECT * FROM moment_attempts WHERE momentId=:id ORDER BY createdAt DESC") suspend fun momentAttempts(id: String): List<MomentAttemptEntity>
+    @Upsert suspend fun putMomentVersion(value: MomentVersionEntity)
+    @Query("SELECT * FROM moment_versions WHERE momentId=:id ORDER BY createdAt DESC") suspend fun momentVersions(id: String): List<MomentVersionEntity>
+    @Query("SELECT * FROM moment_versions WHERE momentId=:id ORDER BY createdAt DESC") fun observeMomentVersions(id: String): Flow<List<MomentVersionEntity>>
     @Query("DELETE FROM distillations WHERE id=:id") suspend fun deleteDistillation(id: String)
     @Query("SELECT * FROM models") fun observeModels(): Flow<List<ModelEntity>>
     @Query("SELECT * FROM models WHERE id=:id") suspend fun model(id: String): ModelEntity?
@@ -173,9 +198,9 @@ interface LibraryDao {
     @Query("UPDATE suggestions SET dismissed=1 WHERE feedUrl=:url") suspend fun dismissSuggestion(url: String)
 }
 
-@Database(entities = [OnlineTranscriptEntity::class, TranscriptLookupEntity::class, PostDraftEntity::class, PodcastEntity::class, EpisodeEntity::class, QueueEntryEntity::class, PlayerSessionEntity::class,
+@Database(entities = [MomentAttemptEntity::class, MomentVersionEntity::class, OnlineTranscriptEntity::class, TranscriptLookupEntity::class, PostDraftEntity::class, PodcastEntity::class, EpisodeEntity::class, QueueEntryEntity::class, PlayerSessionEntity::class,
     TranscriptEntity::class, SegmentEntity::class, CoverageEntity::class, DistillationEntity::class, ModelEntity::class,
-    AnalysisEntity::class, AnalysisPartEntity::class, MessageEntity::class, ResearchEntity::class, SuggestionEntity::class, SyncOutboxEntity::class, SyncBindingEntity::class, SyncRemoteEntity::class, SyncPublicFeedEntity::class, SyncViewEntity::class, SyncPreferenceEntity::class, SyncArtifactEntity::class], version = 8, exportSchema = true)
+    AnalysisEntity::class, AnalysisPartEntity::class, MessageEntity::class, ResearchEntity::class, SuggestionEntity::class, SyncOutboxEntity::class, SyncBindingEntity::class, SyncRemoteEntity::class, SyncPublicFeedEntity::class, SyncViewEntity::class, SyncPreferenceEntity::class, SyncArtifactEntity::class], version = 9, exportSchema = true)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun library(): LibraryDao
     abstract fun sync(): SyncDao
@@ -236,6 +261,15 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("CREATE TABLE IF NOT EXISTS transcript_lookup (episodeId TEXT NOT NULL, identity TEXT NOT NULL, retryAt INTEGER NOT NULL, PRIMARY KEY(episodeId), FOREIGN KEY(episodeId) REFERENCES episodes(id) ON UPDATE NO ACTION ON DELETE CASCADE)")
             }
         }
-        fun open(context: Context): AppDatabase = Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "library.db").addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8).build()
+        val MIGRATION_8_9 = object : androidx.room.migration.Migration(8, 9) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE distillations ADD COLUMN sourceJson TEXT NOT NULL DEFAULT ''")
+                db.execSQL("CREATE TABLE IF NOT EXISTS moment_attempts (id TEXT NOT NULL, momentId TEXT NOT NULL, contextJson TEXT NOT NULL, candidateJson TEXT NOT NULL, reviewJson TEXT NOT NULL, model TEXT NOT NULL, reviewModel TEXT NOT NULL, state TEXT NOT NULL, createdAt INTEGER NOT NULL, generationMs INTEGER NOT NULL, reviewMs INTEGER NOT NULL, generationCalls INTEGER NOT NULL, reviewCalls INTEGER NOT NULL, run TEXT NOT NULL, PRIMARY KEY(id), FOREIGN KEY(momentId) REFERENCES distillations(id) ON UPDATE NO ACTION ON DELETE CASCADE)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_moment_attempts_momentId ON moment_attempts(momentId)")
+                db.execSQL("CREATE TABLE IF NOT EXISTS moment_versions (id TEXT NOT NULL, momentId TEXT NOT NULL, snapshot TEXT NOT NULL, createdAt INTEGER NOT NULL, PRIMARY KEY(id), FOREIGN KEY(momentId) REFERENCES distillations(id) ON UPDATE NO ACTION ON DELETE CASCADE)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_moment_versions_momentId ON moment_versions(momentId)")
+            }
+        }
+        fun open(context: Context): AppDatabase = Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "library.db").addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9).build()
     }
 }

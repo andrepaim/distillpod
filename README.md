@@ -17,7 +17,7 @@ Connect your ChatGPT account for episode understanding and saved insights. Episo
 
 ## Turn listening into understanding
 
-An idea catches your attention. Tap **Distill last 60 seconds** and keep listening. DistillPod saves the source window immediately, then uses its transcript to extract a quote and explain the central idea. Open Saved to revisit it, explore it further or replay the original moment. Your capture stays saved if transcription or an AI request needs a retry.
+An idea catches your attention. Tap **Distill last 60 seconds** and keep listening. DistillPod saves the source window immediately, then uses bounded surrounding transcript context to select a complete thought. A second AI request checks the takeaway against the source; a supporting quote appears when it can stand alone faithfully. Open Saved to revisit it, explore it further or replay the original moment. Your capture stays saved if transcription or an AI request needs a retry. Improve a saved distill without losing its previous version. See [contextual distills](docs/android/contextual-distills.md) for behavior, sync compatibility and evaluation limits.
 
 | What you want to do | How DistillPod helps |
 | --- | --- |
@@ -27,7 +27,7 @@ An idea catches your attention. Tap **Distill last 60 seconds** and keep listeni
 | Explore a saved idea | Request an explanation, a practical reflection and questions to investigate further |
 | Find more to listen to | Request podcast suggestions based on your interests, with real feeds checked before results appear |
 
-The listening tools support that workflow: podcast search, public RSS subscriptions, OPML import, background playback, a persistent queue and offline downloads. Connect a Drive backup file once for one-tap saves and a dated restore history. Backups preserve your library, listening progress, transcripts and saved insights.
+The listening tools support that workflow: podcast search, public RSS subscriptions, OPML import, background playback, a persistent queue and offline downloads. [Android Auto](docs/android/android-auto.md) brings the library, playback controls and Distill to a compatible car display. Connect a Drive backup file once for one-tap saves and a dated restore history. Backups preserve your library, listening progress, transcripts and saved insights.
 
 ## ChatGPT and transcription
 

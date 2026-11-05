@@ -6,13 +6,14 @@ object PortableRecord {
     val progressFields=identityFields+setOf("positionMs","sessionId","deviceId","deviceSequence")
     val completionFields=identityFields+setOf("completed","origin","sessionId")
     val momentFields=identityFields+setOf("momentId","startMs","endMs","excerpt","quote","insight","revision","createdAt","model")
+    val contextualMomentFields = momentFields + setOf("momentSchema", "sourceJson")
     fun isPortable(key:String)=listOf("progress_","completion_","moment_").any {key.startsWith(it)}
     fun validate(m:SyncMutation) {
         if(!isPortable(m.key))return
         if(m.deleted){require(m.key.startsWith("moment_") && m.payload.isEmpty());return}
         val p=m.payload
         val fields=when {m.key.startsWith("progress_")->progressFields;m.key.startsWith("completion_")->completionFields;else->momentFields}
-        require(p.keys==fields) {"Incomplete portable snapshot"}
+        require(p.keys==fields || m.key.startsWith("moment_") && p.keys==contextualMomentFields) {"Incomplete portable snapshot"}
         for(id in listOf("episodeId","podcastId"))require(p.getValue(id).matches(Regex("[A-Za-z0-9_-]{1,100}")))
         require(p.getValue("guid").isNotBlank() && p.getValue("guid").toByteArray().size<=2048)
         for(text in listOf("podcastTitle","podcastAuthor","title","fingerprint"))require(p.getValue(text).toByteArray().size<=1000)
@@ -30,6 +31,9 @@ object PortableRecord {
             else-> {
                 require(p.getValue("momentId").matches(Regex("[A-Za-z0-9_-]{1,100}")) && m.key=="moment_"+p.getValue("momentId"))
                 require(number("endMs")>=number("startMs"));number("createdAt")
+                if ("momentSchema" in p) {
+                    require(p.getValue("momentSchema")=="2" && p.getValue("sourceJson").toByteArray().size<=32768)
+                }
                 require(listOf("excerpt","quote","insight").sumOf {p.getValue(it).toByteArray().size}<=96*1024)
                 for(field in listOf("revision","model"))require(p.getValue(field).toByteArray().size<=1000)
             }

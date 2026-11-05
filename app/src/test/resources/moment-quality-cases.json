@@ -1,0 +1,206 @@
+[
+  {
+    "id": "rejected_claim",
+    "language": "en",
+    "captureEndMs": 60000,
+    "segments": [
+      {
+        "startMs": 40000,
+        "endMs": 60000,
+        "text": "There is only a fixed amount of work. That is a mistaken belief: lower prices can create additional demand."
+      }
+    ],
+    "critical": true,
+    "heldOut": false,
+    "requirement": "Preserve rejection; never endorse the first sentence alone."
+  },
+  {
+    "id": "hypothetical",
+    "language": "en",
+    "captureEndMs": 60000,
+    "segments": [
+      {
+        "startMs": 40000,
+        "endMs": 60000,
+        "text": "Let us suppose lenders stopped financing new factories. Construction could slow and suppliers might lose orders. This is a possible scenario, not a prediction."
+      }
+    ],
+    "critical": true,
+    "heldOut": false,
+    "requirement": "Keep the scenario hypothetical."
+  },
+  {
+    "id": "negation",
+    "language": "en",
+    "captureEndMs": 60000,
+    "segments": [
+      {
+        "startMs": 40000,
+        "endMs": 60000,
+        "text": "We did not find evidence that the supplement improved memory. A larger study might reach a different conclusion."
+      }
+    ],
+    "critical": true,
+    "heldOut": false,
+    "requirement": "Do not claim the supplement improves memory."
+  },
+  {
+    "id": "attribution",
+    "language": "en",
+    "captureEndMs": 60000,
+    "segments": [
+      {
+        "startMs": 40000,
+        "endMs": 60000,
+        "text": "Some investors say that the company will fail. I disagree because it has enough cash to operate for several years."
+      }
+    ],
+    "critical": true,
+    "heldOut": false,
+    "requirement": "Separate investor opinion from the speaker's disagreement."
+  },
+  {
+    "id": "comparison",
+    "language": "en",
+    "captureEndMs": 60000,
+    "segments": [
+      {
+        "startMs": 40000,
+        "endMs": 60000,
+        "text": "Compared with emergency repairs, routine maintenance costs less over a full year. It can still require more spending in a particular month."
+      }
+    ],
+    "critical": true,
+    "heldOut": false,
+    "requirement": "Preserve the comparison and time horizon."
+  },
+  {
+    "id": "conditional_pt",
+    "language": "pt",
+    "captureEndMs": 60000,
+    "segments": [
+      {
+        "startMs": 40000,
+        "endMs": 60000,
+        "text": "Se o financiamento acabar, a construção poderá parar. Estamos discutindo uma possibilidade, não afirmando que isso vai acontecer."
+      }
+    ],
+    "critical": true,
+    "heldOut": false,
+    "requirement": "Preservar a condição e a incerteza; responder em português."
+  },
+  {
+    "id": "rejected_pt",
+    "language": "pt",
+    "captureEndMs": 60000,
+    "segments": [
+      {
+        "startMs": 40000,
+        "endMs": 60000,
+        "text": "Algumas pessoas dizem que aprender uma língua é impossível depois dos quarenta. Eu discordo: a prática frequente continua produzindo progresso."
+      }
+    ],
+    "critical": true,
+    "heldOut": false,
+    "requirement": "Não endossar a afirmação rejeitada."
+  },
+  {
+    "id": "missing_referent",
+    "language": "en",
+    "captureEndMs": 60000,
+    "segments": [
+      {
+        "startMs": 40000,
+        "endMs": 60000,
+        "text": "That is why it changes everything. Without that, they cannot do it."
+      }
+    ],
+    "critical": true,
+    "heldOut": false,
+    "requirement": "Abstain: the referents and central idea are absent."
+  },
+  {
+    "id": "incomplete",
+    "language": "en",
+    "captureEndMs": 60000,
+    "segments": [
+      {
+        "startMs": 40000,
+        "endMs": 60000,
+        "text": "The most important reason that the project failed was"
+      }
+    ],
+    "critical": true,
+    "heldOut": false,
+    "requirement": "Abstain or request context; do not invent the reason."
+  },
+  {
+    "id": "transcription_noise",
+    "language": "en",
+    "captureEndMs": 60000,
+    "segments": [
+      {
+        "startMs": 40000,
+        "endMs": 60000,
+        "text": "The quarterly number was fifteen or fifty, um, the system wrote that wrong. The conclusion depends on which number is correct."
+      }
+    ],
+    "critical": true,
+    "heldOut": false,
+    "requirement": "Do not guess the number or a financial conclusion."
+  },
+  {
+    "id": "clear_thought",
+    "language": "en",
+    "captureEndMs": 60000,
+    "segments": [
+      {
+        "startMs": 40000,
+        "endMs": 60000,
+        "text": "Daily practice makes a difficult skill easier to maintain. Short sessions are useful because they are easier to repeat consistently."
+      }
+    ],
+    "critical": false,
+    "heldOut": false,
+    "requirement": "Produce a complete supported takeaway; quote optional."
+  },
+  {
+    "id": "clear_pt",
+    "language": "pt",
+    "captureEndMs": 60000,
+    "segments": [
+      {
+        "startMs": 40000,
+        "endMs": 60000,
+        "text": "Pausas curtas ajudam a organizar o trabalho. Depois da pausa, escolha uma tarefa concreta e termine essa tarefa antes de começar outra."
+      }
+    ],
+    "critical": false,
+    "heldOut": false,
+    "requirement": "Produzir uma ideia completa em português."
+  },
+  {
+    "id": "two_topics",
+    "language": "en",
+    "captureEndMs": 60000,
+    "segments": [
+      {
+        "startMs": 40000,
+        "endMs": 60000,
+        "text": "Composting reduces household waste. Changing topics, regular backups protect your files if a laptop fails."
+      }
+    ],
+    "critical": false,
+    "heldOut": false,
+    "requirement": "Select one thought; prefer the one closest to the tap."
+  },
+  {
+    "id": "silence",
+    "language": "en",
+    "captureEndMs": 60000,
+    "segments": [],
+    "critical": false,
+    "heldOut": false,
+    "requirement": "Preserve the capture without inventing speech."
+  }
+]

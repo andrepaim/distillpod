@@ -16,6 +16,8 @@ import dev.distillpod.android.sync.SubscriptionSyncStore
     val account=vm.graph.syncAccount
     val state by account.state.collectAsStateWithLifecycle()
     val binding by account.store.binding.collectAsStateWithLifecycle(initialValue=null)
+    var upgradeMoments by remember { mutableStateOf(false) }
+    val contextual by vm.graph.db.sync().observeView("__contextual_moments").collectAsStateWithLifecycle(initialValue=null)
     var reviewing by remember { mutableStateOf(false) }
     val approvals by account.store.approvals.collectAsStateWithLifecycle(initialValue=emptyList())
     val podcasts by vm.podcasts.collectAsStateWithLifecycle()
@@ -33,6 +35,11 @@ import dev.distillpod.android.sync.SubscriptionSyncStore
             (current as? Activity)?.let { account.connect(it,selected) }
         }
     }
+    if(upgradeMoments) AlertDialog(onDismissRequest={upgradeMoments=false},
+        title={Text("Upgrade saved-moment sync?")},
+        text={Text("Update DistillPod on your other phones first. Older app versions will stop syncing after this account upgrade. Selected passages and takeaways will sync; full transcripts stay on each phone.")},
+        confirmButton={TextButton(onClick={upgradeMoments=false;vm.action("moment-sync-upgrade"){account.enableContextualMoments()}}){Text("Upgrade sync")}},
+        dismissButton={TextButton(onClick={upgradeMoments=false}){Text("Not now")}})
     if(reviewing) {
         val approved=approvals.map {it.podcastId}.toSet()
         val feeds=podcasts.filter {it.subscribed && (binding==null || it.id !in approved)}
@@ -65,6 +72,7 @@ import dev.distillpod.android.sync.SubscriptionSyncStore
                 binding?.status=="syncing"->"Syncing library…"
                 binding?.status=="conflict"->"Library changes need review"
                 binding?.status=="error"->"Sync needs attention. Retry or reconnect."
+                binding?.status=="upgrade_required"->"New distills are saved locally. Upgrade saved-moment sync to send them."
                 binding?.status=="offline"->"Waiting for a connection"
                 else->"$pending changes waiting to sync"
             }
@@ -80,6 +88,7 @@ import dev.distillpod.android.sync.SubscriptionSyncStore
                 if(binding?.enabled==true && podcasts.any {p->p.subscribed && approvals.none {it.podcastId==p.id}}) {
                     TextButton(onClick={reviewing=true}){Text("Add existing subscriptions to sync")}
                 }
+                if(contextual==null) OutlinedButton(onClick={upgradeMoments=true},enabled=binding?.enabled==true) { Text("Upgrade saved-moment sync") }
                 if(fullScope==null) {
                     Text("You can also sync your queue and portable preferences using the free plan.",style=MaterialTheme.typography.bodySmall)
                     OutlinedButton(onClick={vm.action("full-library-sync"){account.enableFullScope()}},enabled=binding?.enabled==true){Text("Sync queue & preferences")}

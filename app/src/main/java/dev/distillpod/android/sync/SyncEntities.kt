@@ -36,7 +36,8 @@ interface SyncDao {
     @Upsert suspend fun putBinding(value: SyncBindingEntity)
     @Query("SELECT * FROM sync_outbox WHERE uid=:uid AND generation=:generation ORDER BY rowid LIMIT 100") suspend fun operations(uid: String, generation: String): List<SyncOutboxEntity>
     @Query("SELECT * FROM sync_outbox WHERE uid=:uid AND generation=:generation AND entityKey=:key ORDER BY rowid") suspend fun forKey(uid:String,generation:String,key:String): List<SyncOutboxEntity>
-    @Query("SELECT * FROM sync_outbox WHERE uid=:uid AND generation=:generation AND state!='conflict' ORDER BY rowid LIMIT 1") suspend fun nextOperation(uid:String,generation:String): SyncOutboxEntity?
+    @Query("SELECT * FROM sync_outbox WHERE uid=:uid AND generation=:generation AND state NOT IN ('conflict','upgrade_required') ORDER BY rowid LIMIT 1") suspend fun nextOperation(uid:String,generation:String): SyncOutboxEntity?
+    @Query("UPDATE sync_outbox SET state='queued' WHERE uid=:uid AND generation=:generation AND state='upgrade_required'") suspend fun resumeContextualOperations(uid: String, generation: String)
     @Query("SELECT * FROM sync_outbox WHERE state='conflict' ORDER BY rowid LIMIT 20") fun observeConflicts(): kotlinx.coroutines.flow.Flow<List<SyncOutboxEntity>>
     @Query("SELECT COUNT(*) FROM sync_outbox") fun observeCount(): kotlinx.coroutines.flow.Flow<Int>
     @Query("SELECT COUNT(*) FROM sync_outbox") suspend fun count(): Int
