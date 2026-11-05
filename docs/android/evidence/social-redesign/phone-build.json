@@ -1,0 +1,15 @@
+{
+  "version": "0.10.1-alpha.2-social-preview",
+  "versionCode": 19,
+  "sha256": "b8189de7f50c60e5c24b8967f8526c97e7a9708eeec2f3978253202291e95e62",
+  "sameFirebaseConfiguration": {
+    "sync_project_id": true,
+    "sync_app_id": true,
+    "sync_api_key": true,
+    "sync_storage_bucket": true,
+    "sync_web_client_id": true,
+    "sync_content_enabled": true
+  },
+  "signerSha256": "5f384697c782acfaba9db54bca0149b1a7f59bfb9b21fcef70360b3c392fc5c7",
+  "inPlaceInstall": true
+}

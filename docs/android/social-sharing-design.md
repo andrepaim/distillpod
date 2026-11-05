@@ -1,5 +1,7 @@
 # Design: saved moment to social post
 
+> Superseded after owner testing by the [two-format redesign](social-sharing-redesign.md). This document records the first implementation and its technical validation, not the accepted product direction.
+
 Status: V1 implemented on `feat/social-sharing`; automated and emulator validation recorded below. Updated November 5, 2026. Working feature name: **Create post**. Product name: **DistillPod**.
 
 ## Outcome and scope

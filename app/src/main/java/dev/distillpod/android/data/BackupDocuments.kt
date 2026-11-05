@@ -76,7 +76,8 @@ class BackupDocuments(
             val version = context.packageManager.getPackageInfo(context.packageName, 0).versionName.orEmpty()
             val bytes = library.export(prefs, version)
             val preview = library.preview(bytes.inputStream())
-            val name = "distillpod-${LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd-HHmmss"))}-${UUID.randomUUID().toString().take(8)}.json"
+            val extension = if (bytes.size > 1 && bytes[0] == 80.toByte() && bytes[1] == 75.toByte()) "distillpod" else "json"
+            val name = "distillpod-${LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd-HHmmss"))}-${UUID.randomUUID().toString().take(8)}.$extension"
             withContext(Dispatchers.IO) {
                 val file = File.createTempFile("prepared-", ".json", directory)
                 prepared = Prepared(file, name, preview)

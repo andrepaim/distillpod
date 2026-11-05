@@ -15,54 +15,44 @@ import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
 
-/** Disposable-emulator acceptance; no social publication or AI requests. */
+/** Disposable-emulator UI acceptance; completed content is explicitly a fixture. */
 class SocialPostDeviceTest {
-    @get:Rule val compose = createAndroidComposeRule<MainActivity>()
-
-    @Test fun createEditPreviewAndRecoverDetachedDraftWithLargeText() = runBlocking<Unit> {
-        val graph = compose.activity.applicationContext.appGraph
-        graph.ready.await()
-        val dao = graph.db.library()
-        val id = "social-device-${java.util.UUID.randomUUID()}"
-        var postId: String? = null
+    @get:Rule val compose=createAndroidComposeRule<MainActivity>()
+    @Test fun twoFormatsAndReadableResultWithLargeText()=runBlocking<Unit> {
+        check(android.os.Build.MODEL.contains("sdk") || android.os.Build.FINGERPRINT.contains("generic")) { "Fixture test is emulator-only" }
+        val graph=compose.activity.applicationContext.appGraph;graph.ready.await();val dao=graph.db.library()
+        val id="social-device-${java.util.UUID.randomUUID()}";var postId:String?=null
         try {
-            dao.putPodcast(PodcastEntity(id, "https://example.test/$id", "Ideias do podcast"))
-            dao.putEpisode(EpisodeEntity(id, id, id, "Prática e atenção", "https://example.test/audio.mp3"))
-            dao.putDistillation(DistillationEntity(id, id, 1000, 60000, "Pequenos hábitos ajudam a aprender.", "Pequenos hábitos", "A prática consistente ajuda a aprender.", state = "succeeded"))
-            withContext(Dispatchers.Main) {
-                val vm = ViewModelProvider(compose.activity, AppViewModel.factory(graph))[AppViewModel::class.java]
-                vm.root("saved"); vm.open("capture:$id")
-                compose.activity.setContent {
-                    CompositionLocalProvider(LocalDensity provides Density(graph.context.resources.displayMetrics.density, 1.6f)) { ProductApp(vm) }
-                }
-            }
+            dao.putPodcast(PodcastEntity(id,"https://example.org/$id","Ideias do podcast"))
+            dao.putEpisode(EpisodeEntity(id,id,id,"Prática e atenção","https://example.org/audio.mp3"))
+            dao.putDistillation(DistillationEntity(id,id,1000,60000,"Pequenos hábitos ajudam a aprender.","Pequenos hábitos","A prática consistente ajuda a aprender.",state="succeeded"))
+            val vm=withContext(Dispatchers.Main) {ViewModelProvider(compose.activity,AppViewModel.factory(graph))[AppViewModel::class.java].also {
+                it.root("saved");it.open("capture:$id");compose.activity.setContent {CompositionLocalProvider(LocalDensity provides Density(graph.context.resources.displayMetrics.density,1.6f)) {ProductApp(it)}}
+            }}
             compose.onNodeWithText("Create post").performScrollTo().performClick()
-            compose.waitUntil(10000) { compose.onAllNodesWithText("Headline").fetchSemanticsNodes().isNotEmpty() }
-            compose.onNodeWithText("Headline").performScrollTo().performTextInput("Uma ideia para hoje")
-            androidx.test.espresso.Espresso.closeSoftKeyboard()
-            compose.onNodeWithText("Design & preview").performScrollTo().performClick()
-            compose.onNodeWithText("Mint").performScrollTo().performClick()
-            compose.onNodeWithText("Square").performScrollTo().performClick()
-            compose.waitUntil(10000) { compose.onAllNodesWithContentDescription("Uma ideia para hoje. “Pequenos hábitos”. Ideias do podcast · Prática e atenção · 0:01–1:00").fetchSemanticsNodes().isNotEmpty() }
-            compose.onNodeWithContentDescription("Uma ideia para hoje. “Pequenos hábitos”. Ideias do podcast · Prática e atenção · 0:01–1:00").performScrollTo()
-            androidx.test.uiautomator.UiDevice.getInstance(androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()).takeScreenshot(java.io.File(graph.context.getExternalFilesDir(null), "social-card-preview.png"))
-            compose.onNodeWithText("Copy image description").performScrollTo().performClick()
-            compose.waitUntil(10000) { compose.onAllNodesWithText("Saved on this device").fetchSemanticsNodes().isNotEmpty() }
-            val rows = dao.observePosts().first()
-            val draft = rows.single { it.sourceMomentId == id }; postId = draft.id
-            val saved = PostContent.parse(draft.content)
-            assertEquals("Uma ideia para hoje", saved.headline); assertEquals("Mint", saved.theme); assertTrue(saved.square)
-            dao.deleteDistillation(id)
-            assertNull(dao.post(draft.id)!!.sourceMomentId)
-            withContext(Dispatchers.Main) {
-                val vm = ViewModelProvider(compose.activity, AppViewModel.factory(graph))[AppViewModel::class.java]
-                vm.root("saved")
-            }
-            compose.onNodeWithText("Post drafts").performClick()
-            compose.onNodeWithText("Uma ideia para hoje").assertExists()
-        } finally {
-            dao.observePosts().first().filter { it.sourceMomentId == id || it.id == postId }.forEach { dao.deletePost(it.id) }
-            dao.deletePodcast(id)
-        }
+            compose.onNodeWithText("Quote & discussion").assertExists()
+            compose.onNodeWithText("Infographic").assertExists()
+            compose.onNodeWithText("Quote & discussion").performClick()
+            var created:PostDraftEntity?=null
+            withTimeout(10000) {while(created==null) {created=dao.observePosts().first().firstOrNull {it.sourceMomentId==id};delay(50)}}
+            postId=created!!.id
+            graph.socialResults.cancel(postId)
+            dev.distillpod.android.work.SocialPostJobs.cancel(graph.context,postId)
+            val result=graph.socialResults.get(postId)!!
+            dao.putPost(dao.post(postId)!!.copy(content=result.copy(stage="ready",artifact=SocialArtifact(quote="Pequenos hábitos",text="Uma prática pequena pode tornar o aprendizado mais acessível.\n\nA ideia convida a observar o que conseguimos repetir com atenção.",title="Prática e atenção")).json()))
+            compose.waitUntil(10000) {compose.onAllNodesWithText("Share").fetchSemanticsNodes().isNotEmpty()}
+            compose.onNodeWithText("Share").assertIsDisplayed();compose.onNodeWithText("Change").assertIsDisplayed()
+            compose.onNodeWithText("Headline").assertDoesNotExist();compose.onNodeWithText("Design & preview").assertDoesNotExist()
+            compose.onNodeWithText("Change").performClick()
+            compose.onNodeWithText("What should change?").assertExists()
+            compose.onNodeWithText("Cancel").performClick()
+            compose.waitUntil(5000) {compose.onAllNodesWithText("What should change?").fetchSemanticsNodes().isEmpty()}
+            compose.waitForIdle()
+            androidx.test.uiautomator.UiDevice.getInstance(androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()).takeScreenshot(java.io.File(graph.context.getExternalFilesDir(null),"social-result-preview.png"))
+            compose.activityRule.scenario.recreate()
+            compose.waitUntil(10000) {compose.onAllNodesWithText("Share").fetchSemanticsNodes().isNotEmpty()}
+            assertEquals("ready",graph.socialResults.get(postId)!!.stage)
+            dao.deleteDistillation(id);assertNull(dao.post(postId)!!.sourceMomentId)
+        } finally {dao.observePosts().first().filter {it.sourceMomentId==id || it.id==postId}.forEach {dao.deletePost(it.id)};dao.deletePodcast(id)}
     }
 }
