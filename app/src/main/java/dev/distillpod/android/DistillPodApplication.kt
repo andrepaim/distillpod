@@ -62,6 +62,7 @@ class AppGraph(val context: Context) {
             db.library().episodes().filter { it.downloadState in listOf("queued", "downloading") }.forEach { jobs.download(it.id) }
             db.library().observeModels().first().filter { it.state in listOf("queued", "downloading") }.forEach { jobs.model(it.id) }
             jobs.configureRefresh(); transcription.recover(); ready.complete(Unit)
+            captures.resumeSaved()
         }
         catch (error: Exception) { ready.completeExceptionally(error) }
     } }

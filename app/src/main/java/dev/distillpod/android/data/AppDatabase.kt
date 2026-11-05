@@ -114,6 +114,23 @@ interface LibraryDao {
     @Query("SELECT * FROM episodes ORDER BY publishedAt DESC, title") fun observeEpisodes(): Flow<List<EpisodeEntity>>
     @Query("SELECT * FROM episodes ORDER BY publishedAt DESC, title") suspend fun episodes(): List<EpisodeEntity>
     @Query("SELECT * FROM episodes WHERE podcastId=:id ORDER BY publishedAt DESC") suspend fun episodesForPodcast(id: String): List<EpisodeEntity>
+    @Query("SELECT e.* FROM episodes e INNER JOIN podcasts p ON p.id=e.podcastId WHERE p.subscribed=1 AND e.completed=0 ORDER BY e.publishedAt DESC, e.id LIMIT 1")
+    suspend fun autoNewestUnfinished(): EpisodeEntity?
+    @Query("SELECT e.* FROM episodes e INNER JOIN podcasts p ON p.id=e.podcastId WHERE p.subscribed=1 ORDER BY e.publishedAt DESC, e.id LIMIT :limit OFFSET :offset")
+    suspend fun autoSearchCandidates(limit: Int, offset: Long): List<EpisodeEntity>
+    @Query("SELECT * FROM podcasts WHERE subscribed=1 ORDER BY title COLLATE NOCASE, id LIMIT :limit OFFSET :offset")
+    suspend fun autoPodcasts(limit: Int, offset: Long): List<PodcastEntity>
+    @Query("""SELECT e.* FROM episodes e LEFT JOIN queue q ON q.episodeId=e.id
+        WHERE (:section='continue' AND e.completed=0 AND e.positionMs>0)
+           OR (:section='queue' AND q.episodeId IS NOT NULL)
+           OR (:section='downloads' AND e.localFile IS NOT NULL AND e.downloadState='downloaded')
+           OR (:section='show' AND e.podcastId=:show)
+        ORDER BY CASE WHEN :section='continue' AND e.id=:current THEN 0 ELSE 1 END,
+          CASE WHEN :section='queue' THEN q.sortOrder END,
+          CASE WHEN :section='continue' THEN e.lastPlayedAt END DESC,
+          e.publishedAt DESC, e.id
+        LIMIT :limit OFFSET :offset""")
+    suspend fun autoEpisodes(section: String, show: String, current: String?, limit: Int, offset: Long): List<EpisodeEntity>
     @Query("SELECT * FROM episodes WHERE id=:id") suspend fun episode(id: String): EpisodeEntity?
     @Upsert suspend fun putEpisode(value: EpisodeEntity)
     @Upsert suspend fun putEpisodes(values: List<EpisodeEntity>)

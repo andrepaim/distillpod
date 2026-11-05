@@ -15,6 +15,19 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
 class CaptureRepositoryTest {
+    @Test fun `car save commits before slow preparation and pending work survives restart`() = runBlocking {
+        val db=database()
+        try {
+            seed(db);var preparations=0
+            val repo=CaptureRepository(db,ai("unused"),{false},{preparations++},{})
+            val id=repo.save("ep",10000,true)
+            assertEquals(0,preparations);assertNotNull(db.library().distillation(id))
+            assertEquals(id,repo.save("ep",10000,true))
+            repo.resumeSaved()
+            assertTrue(db.library().distillation(id)!!.state!="waiting_transcript")
+            assertEquals(0,preparations)
+        } finally {db.close()}
+    }
     private fun database() = Room.inMemoryDatabaseBuilder(ApplicationProvider.getApplicationContext<Context>(), AppDatabase::class.java).build()
     private suspend fun seed(db: AppDatabase) {
         val dao = db.library()
