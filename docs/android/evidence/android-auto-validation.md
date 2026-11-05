@@ -43,3 +43,7 @@ Private evidence is recorded in `/tmp/distillpod-auto-s25-dir`. This completes t
 - Public Play car-quality review and broader device/host coverage.
 
 Desktop Head Unit validation is not actual vehicle validation. These pending checks do not invalidate the completed local/service tests, and are not marked as passed.
+
+## Owner acceptance and release integration
+
+After testing the S25 in their car, the owner reported the feature working and requested merging and publication. This records owner acceptance; broader vehicles, wireless modes and independent long-duration measurements remain separate coverage. Release preparation integrates the latest main and preserves its newer social-sharing implementation.
