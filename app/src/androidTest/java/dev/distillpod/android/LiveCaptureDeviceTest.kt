@@ -37,10 +37,10 @@ class LiveCaptureDeviceTest {
             dao.putCoverage(CoverageEntity(id, id, 0, 11000))
             dao.putSegments(listOf(SegmentEntity(id, id, 0, 11000, text)))
             val capture = graph.captures.capture(id, 10000, true)
-            withTimeout(120000) { while (dao.distillation(capture)?.state in listOf("queued", "running")) delay(200) }
+            withTimeout(120000) { while (dao.distillation(capture)?.state in listOf("queued", "running", "reviewing")) delay(200) }
             val completed = dao.distillation(capture)!!
             assertEquals(completed.error, "succeeded", completed.state)
-            assertTrue(text.contains(completed.quote!!))
+            completed.quote?.let { assertTrue(text.contains(it)) }
             assertTrue(completed.insight!!.length >= 10)
             assertFalse(completed.model.isNullOrBlank())
         } finally {

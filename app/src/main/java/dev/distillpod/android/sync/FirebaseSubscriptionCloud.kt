@@ -27,7 +27,7 @@ class FirebaseSubscriptionCloud(private val auth:FirebaseAuth,private val firest
                 tx.set(root,mapOf("generation" to generation,"sequence" to 0L,"active" to true,"protocol" to 1L))
                 CloudHead(SyncOwner(user,generation),0)
             } else {
-                check(snapshot.getBoolean("active")==true && snapshot.getLong("protocol") in setOf(1L,2L)) { "Cloud account is unavailable or needs an app update." }
+                check(snapshot.getBoolean("active")==true && snapshot.getLong("protocol") in setOf(1L,2L,3L)) { "Cloud account is unavailable or needs an app update." }
                 CloudHead(SyncOwner(user,snapshot.getString("generation")?:error("Invalid cloud account")),snapshot.getLong("sequence")?:error("Invalid cloud sequence"),(snapshot.getLong("protocol")?:1).toInt())
             }
         }.await()
@@ -37,8 +37,16 @@ class FirebaseSubscriptionCloud(private val auth:FirebaseAuth,private val firest
         firestore.runTransaction {tx->
             val current=tx.get(root)
             check(current.getBoolean("active")==true)
-            check(current.getLong("protocol") in setOf(1L,2L))
+            check(current.getLong("protocol") in setOf(1L,2L,3L))
             if(current.getLong("protocol")==1L)tx.update(root,"protocol",2L)
+        }.await()
+    }
+    suspend fun enableContextualMoments() {
+        val root=account()
+        firestore.runTransaction { tx ->
+            val current=tx.get(root)
+            check(current.getBoolean("active")==true && current.getLong("protocol") in setOf(1L,2L,3L))
+            if(current.getLong("protocol")!=3L)tx.update(root,"protocol",3L)
         }.await()
     }
     override suspend fun entities(after:String):List<CloudSubscription> {

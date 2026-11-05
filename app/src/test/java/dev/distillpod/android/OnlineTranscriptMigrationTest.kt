@@ -20,7 +20,7 @@ import java.util.UUID
 class OnlineTranscriptMigrationTest {
     @Test fun `all published schemas upgrade with data and safe lookup defaults`() = runBlocking {
         val context = ApplicationProvider.getApplicationContext<Context>()
-        for (version in 1..7) {
+        for (version in 1..8) {
             val name = "lookup-upgrade-${UUID.randomUUID()}.db"
             val file = context.getDatabasePath(name).apply { parentFile!!.mkdirs() }
             try {
@@ -58,10 +58,12 @@ class OnlineTranscriptMigrationTest {
                 }
                 val db = Room.databaseBuilder(context, AppDatabase::class.java, name).addMigrations(AppDatabase.MIGRATION_1_2,
                     AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4, AppDatabase.MIGRATION_4_5,
-                    AppDatabase.MIGRATION_5_6, AppDatabase.MIGRATION_6_7, AppDatabase.MIGRATION_7_8).build()
+                    AppDatabase.MIGRATION_5_6, AppDatabase.MIGRATION_6_7, AppDatabase.MIGRATION_7_8, AppDatabase.MIGRATION_8_9).build()
                 try {
                     assertEquals(23000L, db.library().episode("e")!!.positionMs)
                     assertEquals("Saved quote", db.library().distillation("d")!!.excerpt)
+                    assertEquals("", db.library().distillation("d")!!.sourceJson)
+                    assertTrue(db.library().momentVersions("d").isEmpty())
                     assertFalse(db.library().transcript("e")!!.lookupOnline)
                     assertFalse(db.library().transcript("e")!!.replaceOnline)
                     assertNull(db.library().onlineTranscript("e"))
