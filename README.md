@@ -8,14 +8,12 @@
     <img src="https://img.shields.io/badge/Android-10%2B-91DCC8" alt="Android 10 or later">
     <img src="https://img.shields.io/badge/status-personal%20alpha-B7B9FF" alt="Personal alpha">
   </p>
-  <p><a href="https://github.com/andrepaim/distillpod/releases/tag/v0.10.1-alpha.1"><strong>Download the APK</strong></a> · <a href="docs/getting-started.md">Getting started</a> · <a href="docs/development.md">Build from source</a></p>
+  <p><a href="https://github.com/andrepaim/distillpod/releases"><strong>Download the APK</strong></a> · <a href="docs/getting-started.md">Getting started</a> · <a href="docs/development.md">Build from source</a></p>
 </div>
 
 DistillPod is for people who listen to podcasts to learn. Use AI to summarize an episode, ask questions about what was said, and turn a moment worth remembering into a quote and insight you can revisit. Each saved moment keeps its place in the original audio, so you can return to the source.
 
 Connect your ChatGPT account for episode understanding and saved insights. Episode understanding uses publisher transcripts, optional existing online transcripts, or Whisper running locally on your phone. Optional Google sign-in synchronizes supported library data between installations; ChatGPT and Google are separate connections.
-
-The latest published alpha is [**0.10.1-alpha.1**](https://github.com/andrepaim/distillpod/releases/tag/v0.10.1-alpha.1) (code 19), released November 5, 2026, matching the current source version. It includes optional existing online transcript lookup, the searchable show gallery, Saved/transcript search, grouped Settings and optional Google library sync. See [implementation status](docs/android/implementation-status.md) for delivered features and validation evidence.
 
 ## Turn listening into understanding
 
@@ -41,7 +39,7 @@ Playback, local transcription and source-moment capture also work without ChatGP
 
 ## Install
 
-1. Open the [0.10.1-alpha.1 release](https://github.com/andrepaim/distillpod/releases/tag/v0.10.1-alpha.1) and download the attached `distillpod-0.10.1-alpha.1.apk`.
+1. Open [Releases](https://github.com/andrepaim/distillpod/releases) and download the attached `distillpod-<version>.apk` from the newest alpha release.
 2. On your Android phone, open the APK and allow installation from your browser or file manager when Android asks.
 3. Open **Settings → ChatGPT**, choose **Continue with ChatGPT**, and complete sign-in to connect your account.
 4. Search for a podcast, follow it and open an episode. Choose **Prepare transcript**; if a local model is needed, download Tiny or Base in Settings.
