@@ -18,4 +18,4 @@ Use the archived README for its historical setup. A source archive is not a serv
 
 The Android app has a phone-owned library. It does not read or migrate the old server database automatically. OPML moves subscriptions; Android's library backup/restore moves Android library data.
 
-The migration uses ordinary commits and preserves ancestry; existing published history is not rewritten. The default branch becomes main only after the Android source has been pushed and checked. The legacy branch and final tag provide independent named recovery points for the old application.
+The migration uses ordinary commits and preserves ancestry; existing published history is not rewritten. The default branch is now `main`, containing the Android source. The legacy branch and final tag provide independent named recovery points for the old application.

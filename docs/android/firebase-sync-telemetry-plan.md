@@ -2,7 +2,9 @@
 
 Date: November 4, 2026
 
-Status: Implementation in progress on `feat/firebase-sync-telemetry`; owner-selected deployment is Spark with local-only transcripts. Queue/preferences sync is available; paid content deployment is cancelled. Operational recovery/account lifecycle/telemetry gates remain open.
+Status: Incremental sync implementation merged to `main`; owner-selected deployment is Spark with local-only transcripts. Queue/preferences sync is available; paid content deployment is cancelled. Operational recovery/account lifecycle/telemetry gates remain open.
+
+Current usage/configuration is documented in the [library sync guide](subscription-sync.md), with source/release/device boundaries in [implementation status](implementation-status.md). The dated checkpoints below preserve their original evidence. Release configuration injection is now implemented; broader release/operations acceptance and live telemetry remain open.
 
 Scope: Optional account-based, offline-first library synchronization and privacy-controlled diagnostics/usage analytics for the native Android app.
 
@@ -12,7 +14,7 @@ Method: Test-driven development (TDD), with separate evidence for local tests, F
 
 The owner explicitly declined Blaze and chose local-only transcripts. Billing was unlinked and verified disabled with no billing account linked. Do not enable billing again without explicit authorization. Production builds disable the paid content extension regardless of client bucket configuration. Queue and portable preferences can use protocol 2 with Firestore on Spark; transcript/analysis/conversation/explanation text remains local and transferable through the existing manual backup. The Storage implementation and emulator tests are retained as inactive development work, not an enabled product feature.
 
-## Extended portable-library increment — November 4
+## Extended portable-library increment — November 4 (historical checkpoint)
 
 Implementation now includes versioned queue order and per-key portable preferences, immutable compressed finished-content artifacts, account/generation-scoped Storage rules, source/hash/size validation, atomic restore, and protocol-2 compatibility gating. Finished transcripts, completed analyses, conversation branches and explanations restore without regenerating AI/transcription. Existing source alternatives and active processing are preserved. Room schema 7 adds portable preference values and artifact staging state.
 
@@ -20,7 +22,7 @@ Local core/Room/security tests and two-client Android Auth/Firestore/Storage acc
 
 This increment does not complete the entire plan: account profile switching, broad alias/conflict/performance coverage, independent cloud recovery/retention/erasure, telemetry delivery, App Check and public release automation remain separate gates. Immutable objects/history are retained; do not enable pruning until recovery and old-device tests pass.
 
-## Core-library increment — November 4
+## Core-library increment — November 4 (historical checkpoint)
 
 The branch now extends subscription sync to significant listening progress, separate completion actions, minimal episode restoration and saved moments. New TDD cycles cover periodic coalescing, rewinds, in-flight checkpoints, visible revision versus remote conflict candidate, paused/stopped handoff, restoration without jobs/downloads, moment deletion and source privacy. Validation: 205 JVM tests, 20 rules tests, 40 ordinary Android tests, 11 targeted Android tests and two individual process-restart invocations passed. Room schema 6 retains visible revisions and active session/checkpoint metadata. Detailed validation and outstanding limits are recorded in [TDD evidence](evidence/firebase-sync-tdd.md).
 

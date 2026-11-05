@@ -40,7 +40,7 @@ Excluded: downloaded audio, private audio paths, model binaries, account tokens,
 
 Managed histories are ZIP files containing a small manifest and ordinary versioned DistillPod JSON snapshots. ZIP compression is **not encryption**. The contents include personal text and feed URLs, which may include private access links. Keep the file private. Checksums detect corruption, not authorship. Passphrase encryption and scheduled backups remain future work.
 
-History format 1 contains bounded entries with independent SHA-256 checksums. Import checks entry names, duplicates, expanded sizes, record metadata and hashes, and never extracts user-supplied paths. Every selected snapshot still passes the existing library validation and atomic-merge rules. Standalone format 1/schema 1–2 and format 2 backups remain supported.
+History format 1 contains bounded entries with independent SHA-256 checksums. Import checks entry names, duplicates, expanded sizes, record metadata and hashes, and never extracts user-supplied paths. Every selected snapshot still passes the existing library validation and atomic-merge rules. Standalone library formats 1 and 2 with backup schema markers 1–4 are supported. The backup schema marker is separate from the Room database schema (currently 8). Older backups receive defaults for fields introduced later, including online transcripts; lookup consent and retry cooldowns are not restored.
 
 ## Architecture and validation
 

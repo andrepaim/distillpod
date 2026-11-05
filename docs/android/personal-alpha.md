@@ -1,5 +1,7 @@
 # DistillPod Android 0.4.0 personal alpha
 
+Historical build guide. For current usage and source/release availability, see [getting started](../getting-started.md) and [implementation status](implementation-status.md). Paths, installed models and validation below refer to this build.
+
 Updated November 3, 2026 for the Samsung S22 Ultra SM-S908E, Android 16. The owner chose a fresh Android library. The existing web app remains unchanged, and the phone's verified ChatGPT connection is preserved.
 
 The refreshed interface adds Continue listening, an artwork mini-player with direct queue access, clearer episode/queue states, a focused player and quote-focused saved moments. [Research, proposal and implementation](ui-improvement-proposal.md) describe the design decisions. The Library, Search, Saved and Queue destinations remain familiar; the full player has explicit Back and Queue controls.

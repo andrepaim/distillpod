@@ -31,7 +31,11 @@ cmake --build /tmp/distillpod-native --parallel 2
 ctest --test-dir /tmp/distillpod-native --output-on-failure
 ```
 
-These validate native inputs and lifecycle. Public-speech inference is covered by the emulator suite, using verified model fixtures.
+These validate native inputs and lifecycle. Public-speech inference is covered by the emulator suite, using verified model fixtures. For deliberate host inference after preparing the fixtures below:
+
+```sh
+/tmp/distillpod-native/transcriber_test /tmp/distillpod-fixtures/ggml-tiny.en.bin /tmp/distillpod-fixtures/jfk.wav
+```
 
 ## Isolated emulator acceptance
 
@@ -52,12 +56,33 @@ CI also waits up to 30 seconds for user storage to become RUNNING_UNLOCKED after
 
 The browser integration check validates receipt of a real browser's callback and its state/client identity. A separate Android TCP check reads the complete HTTP response while the listener scope remains open. This tests callback delivery and response completion independently of Chrome's accessibility representation of a plain-text page.
 
+## Firebase acceptance
+
+The optional sync implementation on `main` has isolated Firebase protocol/security and Storage suites. Use Node 22 and Java 21 for these suites (keep Java 17 for Android):
+
+```sh
+npm ci --prefix firebase --ignore-scripts --no-audit --no-fund
+npm --prefix firebase run test:emulator
+npm --prefix firebase run test:storage
+```
+
+They use `demo-distillpod-sync`, with Firestore on localhost:8085 and Storage on localhost:9199, and need no cloud credentials. See [Firebase test setup](../firebase/README.md) and the [implementation plan](android/firebase-sync-telemetry-plan.md). Do not run concurrent Gradle builds against the same checkout.
+
+The [library sync guide](android/subscription-sync.md) documents optional client configuration, Auth/Firestore/Storage Android acceptance, and the two-phase force-stop test. `scripts/sync-device-tests.sh` requires running cloud emulators and a verified Android emulator; it refuses physical-phone targets. The default build intentionally contains no production Firebase configuration. The sync runner uses ADB reverse for localhost Auth/Firestore/Storage endpoints, so acceptance does not depend on the emulator’s Wi-Fi route; it removes those forwards on exit. CI runs the ordinary device suite first and the explicit cloud acceptance afterward. `IsolatedTestRunner` disables automatic production cloud activity and deferred fixture intents; SDK cases inject demo clients explicitly.
+
 ## Workflows
-
-The optional sync feature has an isolated Firebase protocol/security suite. Use Node 22 and Java 21 for that suite (keep Java 17 for Android), then run `npm ci --prefix firebase --ignore-scripts --no-audit --no-fund` and `npm --prefix firebase run test:emulator`. It uses a demo project and localhost:8085; it needs no cloud credentials. See [Firebase test setup](../firebase/README.md) and the [implementation plan](android/firebase-sync-telemetry-plan.md). Do not run concurrent Gradle builds against the same checkout.
-
-The [library sync guide](android/subscription-sync.md) documents optional client configuration, Auth/Firestore Android acceptance, and the two-phase force-stop test. `scripts/sync-device-tests.sh` requires running cloud emulators and a verified Android emulator; it refuses physical-phone targets. The default build intentionally contains no production Firebase configuration. The sync runner uses ADB reverse for localhost Auth/Firestore/Storage endpoints, so acceptance does not depend on the emulator’s Wi-Fi route; it removes those forwards on exit. CI runs the ordinary device suite first and the explicit cloud acceptance afterward. `IsolatedTestRunner` disables automatic production cloud activity and deferred fixture intents; SDK cases inject demo clients explicitly.
 
 `ci.yml` runs Kotlin tests, lint/APK assembly, release-tool guards, host native validation and emulator acceptance on main pushes and pull requests. Its reusable form also gates the release workflow. Actions are pinned to reviewed commit SHAs; Dependabot checks those pins and Gradle dependencies weekly.
 
 `release.yml` accepts version tags from main history, requests the additional unsigned release build/lint, and signs only after all validation jobs pass. Signing secrets are available only in the protected alpha-release environment. The publishing job has repository-content write permission; test jobs have read permission. See [releases](releases.md).
+
+## Deliberate device checks
+
+Ordinary emulator acceptance uses synthetic data and public speech fixtures. Live account and long-running public-network checks require deliberate opt-in and should run only when authorized for that task:
+
+- `LiveCaptureDeviceTest`, `LiveUnderstandingDeviceTest` and `LiveExploreDeviceTest`: instrumentation argument `allowLiveAccount=true`; `refreshLiveAccount=true` also exercises real token renewal.
+- `PodcastBenchmarkDeviceTest`: `allowBenchmarks=true` for public podcast/model benchmarking.
+- `FullEpisodeDeviceTest`: `allowPublicEpisode=true` for a complete public enclosure.
+- `PlaybackReliabilityDeviceTest`: follow the [locked-playback protocol](android/background-playback.md), including owner-state restoration.
+
+Select the class explicitly with Android instrumentation; do not add these opt-ins to ordinary PR runs. Preserve the owner's account, models, queue, downloads and listening state. Device and historical evidence lives in [implementation status](android/implementation-status.md); an earlier phone result does not validate every later code revision.
