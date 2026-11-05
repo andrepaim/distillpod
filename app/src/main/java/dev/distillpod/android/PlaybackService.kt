@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import org.json.JSONArray
 import dev.distillpod.core.ReviewedAdSkipping
 import dev.distillpod.core.TimeRange
@@ -55,6 +56,16 @@ class PlaybackService : MediaLibraryService() {
             .setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_SPEECH).build(), true)
             .setHandleAudioBecomingNoisy(true).build()
         val health = dev.distillpod.android.playback.PlaybackHealthRecorder(this, player)
+        val transcription = dev.distillpod.android.playback.PlaybackTranscription(
+            scope, graph.settings.flow.map { it.transcribeOnPlayback },
+            prepare = { id ->
+                withContext(Dispatchers.IO) {
+                    graph.ready.await()
+                    graph.transcription.prepareAutomatically(id)
+                }
+            },
+            onFailure = { android.util.Log.w("PlaybackService", "Automatic transcript preparation failed", it) },
+        )
         player.addAnalyticsListener(health)
         scope.launch { while (isActive) { health.sample(); delay(5000) } }
         val activity = PendingIntent.getActivity(this, 1, Intent(this, MainActivity::class.java).putExtra("openPlayer", true), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
@@ -79,6 +90,7 @@ class PlaybackService : MediaLibraryService() {
         fun snapshot(complete: Boolean = false, boundary: Boolean = false, queueBoundary:Boolean=false) {
             if (restoring) return
             val id = player.currentMediaItem?.mediaId
+            transcription.update(id, player.isPlaying)
             graph.activeFiles.playback = player.currentMediaItem?.localConfiguration?.uri?.takeIf { it.scheme == "file" }?.path
             graph.activeFiles.queued = (0 until player.mediaItemCount).mapNotNull { player.getMediaItemAt(it).localConfiguration?.uri?.takeIf { uri -> uri.scheme == "file" }?.path }.toSet()
             writes.trySend(Snapshot((0 until player.mediaItemCount).map { player.getMediaItemAt(it).mediaId }, id,
