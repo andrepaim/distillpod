@@ -144,4 +144,47 @@ class PortableLibrarySyncTest {
             assertEquals(0,db.sync().count());assertNotNull(db.library().distillation("m"))
         } finally {SubscriptionCloudAccess.instrumentation=false}
     }
+    @Test fun `contextual takeaway waits for protocol upgrade then restores without a quote`()=fixture { db,sync,cloud ->
+        val source=org.json.JSONObject().put("version",2).put("generationId","attempt1").put("originalExcerpt","Source words")
+            .put("selectedStartMs",2000).put("selectedEndMs",9000).put("passageStart",0).put("passageEnd",0)
+            .put("reviewModel","review").put("generationMs",1).put("reviewMs",2).put("quoteOmitted",true).toString()
+        val moment=DistillationEntity("m","e",0,10000,"Source words",insight="A supported takeaway",fingerprint="sha",state="succeeded",sourceJson=source)
+        sync.putMoment(moment)
+        assertFalse(SubscriptionSyncCoordinator(db,cloud).run())
+        assertEquals("upgrade_required",db.sync().binding()!!.status);assertTrue(cloud.rows.isEmpty())
+        sync.checkpoint("e",12000,100000,false,1,"session",1000)
+        assertFalse(SubscriptionSyncCoordinator(db,cloud).run())
+        assertTrue(cloud.rows.containsKey("progress_e"));assertFalse(cloud.rows.containsKey("moment_m"))
+        cloud.protocol=3;assertTrue(SubscriptionSyncCoordinator(db,cloud).run())
+        assertEquals("2",cloud.rows.getValue("moment_m").payload["momentSchema"])
+        val other=Room.inMemoryDatabaseBuilder(ApplicationProvider.getApplicationContext<android.content.Context>(),AppDatabase::class.java).build()
+        try {
+            SubscriptionSyncStore(other).bind(SyncOwner("alice","g1"))
+            assertTrue(SubscriptionSyncCoordinator(other,cloud).run())
+            val restored=other.library().distillation("m")!!
+            assertEquals("succeeded",restored.state);assertNull(restored.quote);assertEquals(2000L,restored.sourceStartMs)
+            assertEquals(source,restored.sourceJson)
+        } finally {other.close()}
+    }
+    @Test fun `own snapshot acknowledgement preserves in flight generation`()=fixture {db,sync,cloud ->
+        val moment=DistillationEntity("m","e",0,10000,"Source words",state="reviewing",attempt="in-flight")
+        sync.putMoment(moment);assertTrue(SubscriptionSyncCoordinator(db,cloud).run())
+        assertEquals("reviewing",db.library().distillation("m")!!.state)
+        assertEquals("in-flight",db.library().distillation("m")!!.attempt)
+    }
+    @Test fun `unknown protocol stops before reading or writing cloud records`()=fixture {db,sync,cloud ->
+        sync.putMoment(DistillationEntity("m","e",0,10000))
+        cloud.protocol=99
+        try { SubscriptionSyncCoordinator(db,cloud).run();fail("Expected upgrade failure") } catch(_:IllegalStateException) {}
+        assertTrue(cloud.rows.isEmpty());assertEquals(1,db.sync().count())
+    }
+    @Test fun `lost legacy acknowledgement remains retryable after account upgrade`()=fixture {db,sync,cloud ->
+        sync.putMoment(DistillationEntity("m","e",0,10000,"Original"))
+        cloud.loseAck=true
+        try {SubscriptionSyncCoordinator(db,cloud).run()}catch(_:java.io.IOException){}
+        val operation=db.sync().operations("alice","g1").single()
+        cloud.protocol=3;assertTrue(SubscriptionSyncCoordinator(db,cloud).run())
+        assertEquals(1,cloud.log.size);assertEquals(operation.operationId,cloud.receipts.keys.single())
+    }
+
 }

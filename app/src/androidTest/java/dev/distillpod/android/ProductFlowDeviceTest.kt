@@ -55,7 +55,8 @@ class ProductFlowDeviceTest {
             await { dao.transcript(episode)?.state == "ready" }
             val gateway = object : AiGateway {
                 override suspend fun complete(instructions: String, input: String, onDelta: (String) -> Unit) =
-                    AiText("""{"quote":"Ask not what your country can do for you","insight":"The speaker urges people to contribute to their community."}""", "device-test")
+                    AiText(if(instructions==MomentGeneration.reviewPrompt) """{"passageComplete":true,"takeawaySupported":true,"relevant":true,"quoteFaithful":true,"needsContext":false,"issues":[]}""" else
+                        """{"outcome":"ready","passageStart":0,"passageEnd":0,"takeaway":"The speaker urges people to contribute to their community.","quoteStart":null,"quoteEnd":null}""", "device-test")
             }
             val requests = mutableListOf<String>()
             val captures = CaptureRepository(graph.db, gateway, { true }, { error("Coverage should already exist") }, requests::add)
@@ -72,10 +73,10 @@ class ProductFlowDeviceTest {
                 assertNull(restored.library().episode(episode)!!.localFile)
             } finally { restored.close() }
             compose.onNodeWithText("Saved", useUnmergedTree = true).performClick()
-            compose.waitUntil(10000) { compose.onAllNodesWithText("Ask not what your country can do for you", substring = true).fetchSemanticsNodes().isNotEmpty() }
+            compose.waitUntil(10000) { compose.onAllNodesWithText("The speaker urges people to contribute to their community.", substring = true).fetchSemanticsNodes().isNotEmpty() }
             compose.activityRule.scenario.recreate()
-            compose.onNodeWithText("Ask not what your country can do for you", substring = true).assertIsDisplayed().performClick()
-            compose.onNodeWithText("Replay source · 0:00").performScrollTo().performClick()
+            compose.onNodeWithText("The speaker urges people to contribute to their community.", substring = true).assertIsDisplayed().performClick()
+            compose.onNodeWithText("Replay source · ${dev.distillpod.android.features.timestamp(dao.distillation(capture)!!.sourceStartMs)}").performScrollTo().performClick()
             await { graph.playback.state.value.episodeId == episode && graph.playback.state.value.playing }
             assertEquals(dao.episode(episode)!!.localFile, graph.playback.captureSource().third)
             assertEquals(10000L, dao.distillation(capture)!!.endMs)

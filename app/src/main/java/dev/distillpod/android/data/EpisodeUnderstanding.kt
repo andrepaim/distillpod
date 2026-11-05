@@ -210,7 +210,7 @@ class EpisodeUnderstanding(private val db: AppDatabase, private val ai: AiGatewa
     suspend fun recoverInterrupted() {
         dao.analyses().filter { it.state == "running" }.forEach { dao.putAnalysis(it.copy(state = "failed", error = "Analysis was interrupted. Retry to use saved parts.")) }
         dao.messages().filter { it.role == "assistant" && it.state == "running" }.forEach { dao.putMessage(it.copy(state = "failed", error = "This reply is incomplete. Retry when ready.")) }
-        dao.distillations().filter { it.state == "running" }.forEach { dao.putDistillation(it.copy(state = "failed", error = "Generation was interrupted. Your source is saved; retry when ready.")) }
+        dao.distillations().filter { it.state in setOf("running", "reviewing") }.forEach { dao.putDistillation(it.copy(state = "failed", error = "Generation was interrupted. Your source is saved; retry when ready.")) }
         dao.analyses().filter { it.state == "queued" }.forEach { enqueueAnalysis(it.episodeId) }
         dao.messages().filter { it.role == "assistant" && it.state == "queued" }.forEach { enqueueReply(it.id) }
     }

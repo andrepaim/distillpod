@@ -88,6 +88,13 @@ class SubscriptionSyncAccount(private val graph:AppGraph) {
         catch(_:Exception) { mutable.update { it.copy(message="Sync could not connect. Check your connection and use this library's original Google account.") } }
         finally { mutable.update { it.copy(busy=false) };connecting.unlock() }
     }
+    suspend fun enableContextualMoments() {
+        val binding=graph.db.sync().binding() ?: error("Connect Google first")
+        check(binding.enabled && auth.currentUser?.uid==binding.uid)
+        cloud.enableContextualMoments()
+        graph.db.sync().putView(SyncViewEntity("__contextual_moments",version=1))
+        kick()
+    }
     suspend fun enableFullScope() {
         check(mutable.value.configured) {"Connect Google first"}
         val binding=graph.db.sync().binding()?:error("Connect Google first")

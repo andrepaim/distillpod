@@ -11,7 +11,7 @@ import kotlinx.coroutines.withContext
 
 private const val BACKUP_LIMIT = 32 * 1024 * 1024
 private val backupTables = listOf("podcasts", "episodes", "transcripts", "online_transcripts", "segments", "transcript_coverage", "distillations",
-    "analyses", "analysis_parts", "messages", "research", "suggestions", "queue", "player_session", "post_drafts")
+    "analyses", "analysis_parts", "messages", "research", "suggestions", "queue", "player_session", "post_drafts", "moment_attempts", "moment_versions")
 data class BackupPreview internal constructor(internal val payload: String, val counts: Map<String, Int>, val conflicts: Int,
     val createdAt: Long = 0, val appVersion: String = "Unknown (older backup)", val preferences: PortablePreferences? = null, internal val assets: Map<String, ByteArray> = emptyMap()) {
     val episodes get() = counts["episodes"] ?: 0
@@ -51,7 +51,7 @@ class LibraryBackup(private val db: AppDatabase, private val assets: dev.distill
         val createdAt = System.currentTimeMillis()
         val payload = if (preferences == null) tables.toString() else JSONObject().put("library", tables)
             .put("preferences", PortablePreferences.parse(preferences.json()).json()).put("createdAt", createdAt).put("appVersion", appVersion.take(100)).toString()
-        val bytes = JSONObject().put("format", "distillpod-library").put("version", if (preferences == null) 1 else 2).put("databaseSchema", 5)
+        val bytes = JSONObject().put("format", "distillpod-library").put("version", if (preferences == null) 1 else 2).put("databaseSchema", 6)
             .put("createdAt", createdAt).put("payload", payload).put("sha256", sha(payload)).toString().toByteArray(Charsets.UTF_8)
         require(bytes.size <= BACKUP_LIMIT) { "This library exceeds the 32 MB backup limit" }
         PostBackupBundle.pack(bytes, PostBackupBundle.references(tables), assets)
@@ -60,7 +60,7 @@ class LibraryBackup(private val db: AppDatabase, private val assets: dev.distill
     suspend fun preview(input: InputStream): BackupPreview = withContext(Dispatchers.IO) {
         val (bytes, images) = PostBackupBundle.unpack(input.readBytesBounded())
         val root = JSONObject(bytes.toString(Charsets.UTF_8))
-        require(root.optString("format") == "distillpod-library" && root.optInt("version") in 1..2 && root.optInt("databaseSchema") in 1..5) { "This backup format is not supported" }
+        require(root.optString("format") == "distillpod-library" && root.optInt("version") in 1..2 && root.optInt("databaseSchema") in 1..6) { "This backup format is not supported" }
         val original = root.getString("payload")
         require(sha(original) == root.getString("sha256")) { "The backup integrity check failed" }
         val content = if (root.getInt("version") == 2) JSONObject(original) else null
@@ -92,6 +92,11 @@ class LibraryBackup(private val db: AppDatabase, private val assets: dev.distill
             normalized.put("online_transcripts", JSONArray())
             val rows = normalized.getJSONArray("transcripts")
             repeat(rows.length()) { rows.getJSONObject(it).put("lookupOnline", 0).put("replaceOnline", 0) }
+        }
+        if (root.getInt("databaseSchema") < 6) {
+            normalized.put("moment_attempts", JSONArray()).put("moment_versions", JSONArray())
+            val rows = normalized.getJSONArray("distillations")
+            repeat(rows.length()) { rows.getJSONObject(it).put("sourceJson", "") }
         }
         db.withTransaction {
             val tables = validated(normalized.toString())
@@ -128,6 +133,15 @@ class LibraryBackup(private val db: AppDatabase, private val assets: dev.distill
                 val row = rows.getJSONObject(i)
                 if (!exists(table, cols.filter { it.primary }, row)) {
                     portable(table, row)
+                    if(table=="moment_versions") {
+                        val parent=db.library().distillation(row.getString("momentId")) ?: error("Missing saved moment")
+                        restoreMomentSnapshot(parent,row.getString("snapshot"))
+                    }
+                    if(table=="moment_attempts") {
+                        val parent=db.library().distillation(row.getString("momentId")) ?: error("Missing saved moment")
+                        val context=JSONObject(row.getString("contextJson"))
+                        if(context.has("spans"))require(context.getLong("captureStartMs")==parent.startMs && context.getLong("captureEndMs")==parent.endMs) { "Attempt belongs to a different capture" }
+                    }
                     if (table == "queue") row.put("sortOrder", ++queueOrder)
                     val values = cols.map { column -> if (row.isNull(column.name)) null else row.get(column.name) }.toTypedArray()
                     db.openHelper.writableDatabase.execSQL("INSERT INTO `$table` (${cols.joinToString { "`${it.name}`" }}) VALUES (${cols.joinToString { "?" }})", values)
@@ -214,6 +228,7 @@ class LibraryBackup(private val db: AppDatabase, private val assets: dev.distill
                 if (row.has("startMs") && row.has("endMs")) require(row.getLong("endMs") >= row.getLong("startMs")) { "Invalid backup time range" }
                 if (table == "player_session") require(row.getDouble("speed") in 0.5..3.0 && row.getInt("id") == 0) { "Invalid player settings" }
                 if (table == "post_drafts") SocialResult.parse(row.getString("content"))
+                if (table == "distillations") MomentGeneration.validateSource(row.getString("sourceJson"), row.getLong("startMs"), row.getLong("endMs"))
                 if (table == "online_transcripts") {
                     val segments = row.getString("segmentsJson")
                     require(row.getString("contentHash") == dev.distillpod.core.episodeId("online-transcript", segments)) { "Online transcript integrity check failed" }
@@ -222,6 +237,25 @@ class LibraryBackup(private val db: AppDatabase, private val assets: dev.distill
                 }
                 portable(table, row)
             }
+        }
+        val moments=tables.getJSONArray("distillations")
+        val byId=(0 until moments.length()).map { moments.getJSONObject(it) }.associateBy { it.getString("id") }
+        val versions=tables.getJSONArray("moment_versions")
+        repeat(versions.length()) { i ->
+            val row=versions.getJSONObject(i)
+            val moment=byId[row.getString("momentId")] ?: error("Missing moment for saved version")
+            restoreMomentSnapshot(DistillationEntity(moment.getString("id"),moment.getString("episodeId"),moment.getLong("startMs"),moment.getLong("endMs")),row.getString("snapshot"))
+        }
+        val attempts=tables.getJSONArray("moment_attempts")
+        repeat(attempts.length()) { i ->
+            val row=attempts.getJSONObject(i)
+            require(byId.containsKey(row.getString("momentId")))
+            val context=JSONObject(row.getString("contextJson"))
+            if(context.has("spans")) {
+                val parsed=MomentGeneration.context(context.toString())
+                require(parsed.spans.sumOf { it.text.length+1 }<=dev.distillpod.core.MomentContexts.MAX_TEXT)
+            }
+            require(row.getLong("generationCalls")>=0 && row.getLong("reviewCalls")>=0)
         }
         return tables
     }
@@ -240,7 +274,7 @@ class LibraryBackup(private val db: AppDatabase, private val assets: dev.distill
             if (state in listOf("processing", "queued")) row.put("state", "paused")
             row.put("lookupOnline", 0).put("replaceOnline", 0)
         }
-        if (table in listOf("distillations", "analyses", "messages", "research") && state in listOf("running", "queued", "processing", "waiting_transcript")) {
+        if (table in listOf("distillations", "analyses", "messages", "research") && state in listOf("running", "reviewing", "queued", "processing", "waiting_transcript")) {
             row.put("state", "failed").put("error", "Restored from backup. Review the source and retry when ready.")
         }
     }

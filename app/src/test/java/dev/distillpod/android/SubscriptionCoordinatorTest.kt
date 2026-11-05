@@ -21,7 +21,8 @@ class SubscriptionCoordinatorTest {
         val owner=SyncOwner("alice","g1")
         val rows=linkedMapOf<String,CloudSubscription>();val log=mutableListOf<CloudSubscription>();val receipts=mutableMapOf<String,CloudSubscription>()
         var cancelOnCommit=false;var loseAck=false;var afterCommit:(suspend ()->Unit)?=null;var commits=0
-        override suspend fun head()=CloudHead(owner,log.size.toLong())
+        var protocol=1
+        override suspend fun head()=CloudHead(owner,log.size.toLong(),protocol)
         override suspend fun entities(after:String)=rows.values.filter { it.key>after }.sortedBy { it.key }.take(100)
         override suspend fun changes(after:Long,through:Long)=log.filter { it.sequence>after&&it.sequence<=through }.take(100)
         override suspend fun commit(operation:SyncOutboxEntity):CloudSubscription {
