@@ -32,6 +32,9 @@ android {
     defaultConfig {
         // Owner-selected Spark deployment: paid content storage must remain disabled.
         resValue("bool", "sync_content_enabled", "false")
+        val sentryDsn = providers.environmentVariable("SENTRY_DSN").getOrElse("")
+        require(sentryDsn.matches(Regex("[A-Za-z0-9_.:/@-]*"))) { "Invalid Sentry DSN" }
+        resValue("string", "diagnostics_dsn", sentryDsn)
         for ((resource, key) in listOf("sync_storage_bucket" to "bucket", "sync_project_id" to "project", "sync_app_id" to "app", "sync_api_key" to "api", "sync_web_client_id" to "web")) {
             val value = clientString(key)
             require(value.matches(Regex("[A-Za-z0-9_.:/-]*"))) { "Invalid Firebase client configuration" }
@@ -62,6 +65,7 @@ android {
 }
 dependencies {
     implementation(project(":core"))
+    implementation("io.sentry:sentry-android-core:8.40.0")
     implementation("androidx.car.app:app:1.7.0")
     implementation("androidx.car.app:app-projected:1.7.0")
     implementation("androidx.media:media:1.7.0")

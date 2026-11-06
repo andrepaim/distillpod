@@ -73,6 +73,7 @@ import dev.distillpod.android.data.PodcastEntity
         SettingsDestination("ChatGPT",if(connected)"Connected · account and AI model" else "Connect for insights and questions",Icons.Default.AutoAwesome){vm.open("settings:ai")}
         SettingsDestination("Downloads & storage","Network, charging and audio storage",Icons.Default.Download){vm.open("settings:storage")}
         SettingsDestination("Import & notifications","OPML subscriptions and background progress",Icons.Default.ImportExport){vm.open("settings:library")}
+        SettingsDestination("Diagnostics","Share technical reports and report a problem",Icons.Default.BugReport){vm.open("settings:diagnostics")}
         TextButton(onClick={vm.open("settings:about")}){Text("About DistillPod")}
     }
 }

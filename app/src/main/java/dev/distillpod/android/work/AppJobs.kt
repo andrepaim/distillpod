@@ -100,7 +100,7 @@ class LibraryWorker(context: Context, params: WorkerParameters) : CoroutineWorke
             }
             throw cancelled
         }
-        catch (_: Exception) { Result.failure() }
+        catch (error: Exception) { applicationContext.appGraph.diagnostics.failure("worker",error);Result.failure() }
     }
 }
 

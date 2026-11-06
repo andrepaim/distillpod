@@ -14,6 +14,8 @@ on:
     secrets:
       FIREBASE_CONFIG_JSON:
         required: false
+      SENTRY_DSN:
+        required: false
 
 permissions:
   contents: read
@@ -78,10 +80,12 @@ jobs:
         if: inputs.build_release == true
         env:
           FIREBASE_CONFIG_JSON: ${{ secrets.FIREBASE_CONFIG_JSON }}
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
         shell: bash
         run: |
           set -euo pipefail
           : "${FIREBASE_CONFIG_JSON:?Missing Firebase client configuration for distribution}"
+          : "${SENTRY_DSN:?Missing Sentry DSN for cloud diagnostics distribution}"
           config_file="$RUNNER_TEMP/distillpod-google-services.json"
           trap 'rm -f "$config_file"' EXIT
           umask 077

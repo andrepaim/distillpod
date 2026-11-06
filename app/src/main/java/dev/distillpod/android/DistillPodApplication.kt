@@ -18,6 +18,7 @@ val Context.appGraph: AppGraph get() = (applicationContext as DistillPodApplicat
 
 class AppGraph(val context: Context) {
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    val diagnostics = dev.distillpod.android.diagnostics.Diagnostics(context)
     val db = AppDatabase.open(context)
     val settings = AppSettings(context,db=db,portableChanged={syncAccount.kick()})
     val preferences = settings.flow.stateIn(scope, SharingStarted.Eagerly, Preferences())
@@ -57,7 +58,9 @@ class AppGraph(val context: Context) {
                 }, ready = { dev.distillpod.android.voice.voiceReadyTone(if (voice.state.value.origin == dev.distillpod.android.voice.VoiceOrigin.HEADPHONES && android.os.Build.VERSION.SDK_INT >= 31)
                     android.media.AudioManager.STREAM_VOICE_CALL else android.media.AudioManager.STREAM_MUSIC) }) },
             { dev.distillpod.android.voice.AndroidVoiceOutput(context,
-                communication = voice.state.value.origin == dev.distillpod.android.voice.VoiceOrigin.HEADPHONES && android.os.Build.VERSION.SDK_INT >= 31) { voice.cancel(false) } })
+                communication = voice.state.value.origin == dev.distillpod.android.voice.VoiceOrigin.HEADPHONES && android.os.Build.VERSION.SDK_INT >= 31) { voice.cancel(false) } },
+            diagnosticEvent={name,reason -> diagnostics.event(name,reason=reason)},
+            diagnosticFailure={diagnostics.failure("voice",it)})
     }
     val ai by lazy { dev.distillpod.android.ai.ChatGptGateway(account.session, settings) }
     val onlineTranscripts by lazy { OnlineTranscriptRepository(this) }
@@ -66,7 +69,7 @@ class AppGraph(val context: Context) {
         dev.distillpod.android.playback.DistillConfirmationSound(scope,settings.flow.map {it.distillSound},
             dev.distillpod.android.playback.SoundPoolConfirmationAudio(context))
     }
-    val captures by lazy { CaptureRepository(db, ai, { account.state.value.connected }, { transcription.prepare(it, allowOnline = false) }, jobs::capture,{syncAccount.kick()},onSaved={confirmationSound.saved()}) }
+    val captures by lazy { CaptureRepository(db, ai, { account.state.value.connected }, { transcription.prepare(it, allowOnline = false) }, jobs::capture,{syncAccount.kick()},onSaved={confirmationSound.saved()}, diagnostics=diagnostics) }
     val understanding by lazy { EpisodeUnderstanding(db, ai, jobs::analyze, jobs::reply) }
     val explanations by lazy { MomentExplanation(db, ai, jobs::explain) }
     val recommendations by lazy { Recommendations(db, settings, podcasts, http, ai, jobs::recommend, jobs::recommendationPending) }

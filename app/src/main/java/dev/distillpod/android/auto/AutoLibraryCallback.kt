@@ -36,6 +36,7 @@ class AutoLibraryCallback(
     private val isTrustedMediaButtonCaller: (MediaSession.ControllerInfo) -> Boolean = { false },
     private val headphoneVoiceEnabled: () -> Boolean = { false },
     private val onHeadphoneVoice: () -> Unit = {},
+    private val diagnostics: dev.distillpod.android.diagnostics.Diagnostics? = null,
 ): MediaLibrarySession.Callback {
     override fun onPlayerCommandRequest(session: MediaSession, controller: MediaSession.ControllerInfo, playerCommand: Int): Int {
         if (controller.packageName != packageName && playerCommand in setOf(Player.COMMAND_PLAY_PAUSE,
@@ -48,8 +49,8 @@ class AutoLibraryCallback(
     private val playback=AutoPlayback(db)
     private val subscriptions=mutableSetOf<String>()
     private var captureBusy=false
-    private val headphoneButton = HeadphoneDistillButton()
-    private val headphoneNext = HeadphoneDistillButton(android.view.KeyEvent.KEYCODE_MEDIA_NEXT)
+    private val headphoneButton = HeadphoneDistillButton(report={ reason -> diagnostics?.event("headphone.previous",reason=reason,source="headphones") })
+    private val headphoneNext = HeadphoneDistillButton(android.view.KeyEvent.KEYCODE_MEDIA_NEXT,report={reason -> diagnostics?.event("headphone.next",reason=reason,source="headphones")})
     private fun layout(label:String="Distill last 60 seconds",enabled:Boolean=true,includeVoice:Boolean=voiceEnabled())=listOf(
         PlaybackControls.buttons[0],
         CommandButton.Builder(CommandButton.ICON_UNDEFINED).setCustomIconResId(dev.distillpod.android.R.drawable.ic_media_distill)
@@ -160,12 +161,13 @@ class AutoLibraryCallback(
         MediaSession.MediaItemsWithStartPosition(selected.items,selected.index,selected.position)
     }
     override fun onMediaButtonEvent(session: MediaSession, controllerInfo: MediaSession.ControllerInfo, intent: Intent): Boolean {
+        diagnostics?.event("headphone.received",source="headphones")
         // Media3 1.5.1 marks legacy key-event callers untrusted without consulting Android.
         if (controllerInfo.packageName != packageName && !controllerInfo.isTrusted &&
-            !isTrustedMediaButtonCaller(controllerInfo)) return false
+            !isTrustedMediaButtonCaller(controllerInfo)) {diagnostics?.event("headphone.rejected",reason="untrusted",source="headphones");return false}
         if (headphoneNext.handle(intent, voiceEnabled() && headphoneVoiceEnabled(), onHeadphoneVoice)) return true
         return headphoneButton.handle(intent, headphoneDistillEnabled()) {
-            val result = captureMoment(session)
+            val result = captureMoment(session,"headphones")
             result.addListener({
                 if (!result.isCancelled && runCatching { result.get().resultCode }.getOrNull() !in
                     listOf(SessionResult.RESULT_SUCCESS, SessionError.INFO_CANCELLED)) {
@@ -195,7 +197,8 @@ class AutoLibraryCallback(
         if(customCommand.customAction!=DISTILL)return super.onCustomCommand(session,controller,customCommand,args)
         return captureMoment(session)
     }
-    private fun captureMoment(session: MediaSession): ListenableFuture<SessionResult> {
+    private fun captureMoment(session: MediaSession,source:String="car"): ListenableFuture<SessionResult> {
+        diagnostics?.event("capture.requested",source=source)
         val player=session.player
         val item=player.currentMediaItem?:return com.google.common.util.concurrent.Futures.immediateFuture(SessionResult(SessionError.ERROR_INVALID_STATE))
         if(captureBusy)return com.google.common.util.concurrent.Futures.immediateFuture(SessionResult(SessionError.INFO_CANCELLED))
@@ -206,12 +209,13 @@ class AutoLibraryCallback(
         return request {
             try {
                 val saved=saveMoment(id,position,file)
+                diagnostics?.event("capture.accepted",saved,source=source)
                 // Durable acceptance survives cancellation or process death before dispatch.
                 runCatching { prepareMoment(saved) }
                 withContext(Dispatchers.Main.immediate){publishCarLayout(session,"Saved",true)}
                 SessionResult(SessionResult.RESULT_SUCCESS,Bundle().apply {putString("momentId",saved)})
             } catch(cancelled:CancellationException){throw cancelled}
-            catch(_:Exception){SessionResult(SessionError.ERROR_IO)}
+            catch(error:Exception){diagnostics?.failure("capture",error);SessionResult(SessionError.ERROR_IO)}
             finally {scope.launch(Dispatchers.Main.immediate){captureBusy=false;delay(1500);publishCarLayout(session,"Distill",true)}}
         }
     }
