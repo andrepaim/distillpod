@@ -22,6 +22,7 @@ data class Preferences(
     val recommendations: Boolean = false, val onlineTranscripts: Boolean = false,
     val transcribeOnPlayback: Boolean = true, val distillSound: Boolean = true,
     val headphoneDistill: Boolean = false,
+    val headphoneVoice: Boolean = false,
 )
 
 class AppSettings(context: Context, private val store: androidx.datastore.core.DataStore<androidx.datastore.preferences.core.Preferences> = context.applicationContext.settingsDataStore, private val db:AppDatabase?=null, private val portableChanged:()->Unit={}) {
@@ -34,6 +35,7 @@ class AppSettings(context: Context, private val store: androidx.datastore.core.D
         p[booleanPreferencesKey("transcribeOnPlayback")] ?: true,
         p[booleanPreferencesKey("distillSound")] ?: true,
         p[booleanPreferencesKey("headphoneDistill")] ?: false,
+        p[booleanPreferencesKey("headphoneVoice")] ?: false,
     ) }
     val flow = if(db==null)localFlow else combine(localFlow,db.sync().observePreferences()) {local,rows->
         val p=rows.associate {it.name to it.value}

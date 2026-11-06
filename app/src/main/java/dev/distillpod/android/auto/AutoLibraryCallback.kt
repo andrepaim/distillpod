@@ -28,21 +28,37 @@ class AutoLibraryCallback(
     private val saveMoment: suspend (String,Long,String?) -> String = {_,_,_->throw IllegalStateException("Capture is unavailable")},
     private val prepareMoment: (String)->Unit = {},
     artwork: ((String?)->android.net.Uri)?=null,
+    private val voiceEnabled: () -> Boolean = { false },
+    private val openCarVoice: () -> Boolean = { false },
+    private val onExternalPlaybackCommand: () -> Unit = {},
     private val headphoneDistillEnabled: () -> Boolean = { false },
     private val onHeadphoneCaptureFailure: () -> Unit = {},
     private val isTrustedMediaButtonCaller: (MediaSession.ControllerInfo) -> Boolean = { false },
+    private val headphoneVoiceEnabled: () -> Boolean = { false },
+    private val onHeadphoneVoice: () -> Unit = {},
 ): MediaLibrarySession.Callback {
+    override fun onPlayerCommandRequest(session: MediaSession, controller: MediaSession.ControllerInfo, playerCommand: Int): Int {
+        if (controller.packageName != packageName && playerCommand in setOf(Player.COMMAND_PLAY_PAUSE,
+                Player.COMMAND_STOP, Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM, Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM,
+                Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)) onExternalPlaybackCommand()
+        return super.onPlayerCommandRequest(session, controller, playerCommand)
+    }
     companion object { const val DISTILL="dev.distillpod.android.DISTILL_MOMENT" }
     private val catalog=AutoCatalog(db,artwork)
     private val playback=AutoPlayback(db)
     private val subscriptions=mutableSetOf<String>()
     private var captureBusy=false
     private val headphoneButton = HeadphoneDistillButton()
-    private fun layout(label:String="Distill last 60 seconds",enabled:Boolean=true)=listOf(
+    private val headphoneNext = HeadphoneDistillButton(android.view.KeyEvent.KEYCODE_MEDIA_NEXT)
+    private fun layout(label:String="Distill last 60 seconds",enabled:Boolean=true,includeVoice:Boolean=voiceEnabled())=listOf(
         PlaybackControls.buttons[0],
         CommandButton.Builder(CommandButton.ICON_UNDEFINED).setCustomIconResId(dev.distillpod.android.R.drawable.ic_media_distill)
             .setDisplayName(label).setEnabled(enabled).setSessionCommand(PlaybackControls.distill).setSlots(CommandButton.SLOT_FORWARD).build(),
-        PlaybackControls.buttons[2])
+        PlaybackControls.buttons[2]) + if (includeVoice) listOf(
+            CommandButton.Builder(CommandButton.ICON_UNDEFINED).setCustomIconResId(dev.distillpod.android.R.drawable.ic_media_ask)
+                .setDisplayName("Ask about this").setSessionCommand(dev.distillpod.android.voice.CarVoiceEntry.ASK)
+                .setSlots(CommandButton.SLOT_OVERFLOW).build()) else emptyList()
+    fun playbackLayout() = layout()
     private fun publishCarLayout(session:MediaSession,label:String,enabled:Boolean) {
         for(controller in session.connectedControllers)if(!session.isMediaNotificationController(controller)) {
             session.setCustomLayout(controller,layout(label,enabled))
@@ -66,11 +82,13 @@ class AutoLibraryCallback(
         val notification=session.isMediaNotificationController(controller)
         val commands=base.availableSessionCommands.buildUpon().add(SessionCommand(DISTILL,Bundle.EMPTY))
         commands.add(PlaybackControls.back).add(PlaybackControls.forward)
+        if (!notification && voiceEnabled()) commands.add(dev.distillpod.android.voice.CarVoiceEntry.ASK)
+        if (controller.packageName == packageName) commands.add(dev.distillpod.android.voice.CarVoiceEntry.TOKEN)
         return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
             .setAvailableSessionCommands(commands.build())
             .setAvailablePlayerCommands(if(notification)PlaybackControls.notificationCommands else base.availablePlayerCommands)
-            .setCustomLayout(layout())
-            .setMediaButtonPreferences(layout()).build()
+            .setCustomLayout(layout(includeVoice=!notification && voiceEnabled()))
+            .setMediaButtonPreferences(layout(includeVoice=!notification && voiceEnabled())).build()
     }
     override fun onGetLibraryRoot(session: MediaLibrarySession,browser: MediaSession.ControllerInfo,params: LibraryParams?) = request {
         LibraryResult.ofItem(catalog.item(AutoCatalog.ROOT)!!,params)
@@ -145,6 +163,7 @@ class AutoLibraryCallback(
         // Media3 1.5.1 marks legacy key-event callers untrusted without consulting Android.
         if (controllerInfo.packageName != packageName && !controllerInfo.isTrusted &&
             !isTrustedMediaButtonCaller(controllerInfo)) return false
+        if (headphoneNext.handle(intent, voiceEnabled() && headphoneVoiceEnabled(), onHeadphoneVoice)) return true
         return headphoneButton.handle(intent, headphoneDistillEnabled()) {
             val result = captureMoment(session)
             result.addListener({
@@ -156,6 +175,18 @@ class AutoLibraryCallback(
         }
     }
     override fun onCustomCommand(session:MediaSession,controller:MediaSession.ControllerInfo,customCommand:SessionCommand,args:Bundle):ListenableFuture<SessionResult> {
+        if (customCommand == dev.distillpod.android.voice.CarVoiceEntry.TOKEN) {
+            val result = if (controller.packageName == packageName) SessionResult(SessionResult.RESULT_SUCCESS,
+                Bundle().apply { putParcelable(dev.distillpod.android.voice.CarVoiceEntry.TOKEN_EXTRA, session.platformToken) })
+                else SessionResult(SessionError.ERROR_PERMISSION_DENIED)
+            return com.google.common.util.concurrent.Futures.immediateFuture(result)
+        }
+        if (customCommand == dev.distillpod.android.voice.CarVoiceEntry.ASK) {
+            val result = if (voiceEnabled() && openCarVoice()) SessionResult(SessionResult.RESULT_SUCCESS)
+                else SessionResult(SessionError(SessionError.ERROR_NOT_SUPPORTED,
+                    "Open DistillPod from the car launcher. Voice needs a host that supports templated media apps."))
+            return com.google.common.util.concurrent.Futures.immediateFuture(result)
+        }
         if(customCommand==PlaybackControls.back || customCommand==PlaybackControls.forward) {
             if(!session.player.isCurrentMediaItemSeekable)return com.google.common.util.concurrent.Futures.immediateFuture(SessionResult(SessionError.ERROR_NOT_SUPPORTED))
             if(customCommand==PlaybackControls.back)session.player.seekBack() else session.player.seekForward()

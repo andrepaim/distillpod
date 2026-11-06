@@ -38,6 +38,9 @@ class HeadphoneDistillSessionTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
         val ready = CompletableDeferred<Unit>()
         var enabled = true
+        var voiceBuild = true
+        var voiceEnabled = false
+        var questions = 0
         var failSave = false
         var failPrepare = false
         var platformTrusted = false
@@ -58,7 +61,8 @@ class HeadphoneDistillSessionTest {
                 preparations.incrementAndGet()
                 if (failPrepare) error("Preparation unavailable")
             }, headphoneDistillEnabled = { enabled }, onHeadphoneCaptureFailure = { failures++ },
-            isTrustedMediaButtonCaller = { platformTrusted && it.uid == 1000 })
+            isTrustedMediaButtonCaller = { platformTrusted && it.uid == 1000 },
+            voiceEnabled = { voiceBuild }, headphoneVoiceEnabled = { voiceEnabled }, onHeadphoneVoice = { questions++ })
         val player = ExoPlayer.Builder(context).build()
         val session = MediaLibrarySession.Builder(context, player, callback).build()
         val controller = MediaSession.ControllerInfo.createTestOnlyControllerInfo("android", 1, 1000, 1, 1, true, Bundle.EMPTY)
@@ -71,9 +75,9 @@ class HeadphoneDistillSessionTest {
             player.setMediaItem(MediaItem.Builder().setMediaId("e").setUri("file:///episode.wav").build(), 75000)
         }
         fun key(action: Int = KeyEvent.ACTION_DOWN, downTime: Long = 10, repeat: Int = 0,
-                caller: MediaSession.ControllerInfo = controller): Boolean = callback.onMediaButtonEvent(session, caller,
+                caller: MediaSession.ControllerInfo = controller, code: Int = KeyEvent.KEYCODE_MEDIA_PREVIOUS): Boolean = callback.onMediaButtonEvent(session, caller,
             Intent(Intent.ACTION_MEDIA_BUTTON).putExtra(Intent.EXTRA_KEY_EVENT,
-                KeyEvent(downTime, downTime, action, KeyEvent.KEYCODE_MEDIA_PREVIOUS, repeat)))
+                KeyEvent(downTime, downTime, action, code, repeat)))
         fun rows() = runBlocking { db.library().distillations() }
         fun close() {
             session.release(); player.release()
@@ -175,5 +179,32 @@ class HeadphoneDistillSessionTest {
         assertTrue(f.key(caller = system))
         await { f.preparations.get() == 1 }
         assertEquals(1, f.rows().size)
+    }
+    @Test fun `next asks once without skipping or distilling and previous still saves`() = fixture { f ->
+        f.ready.complete(Unit); f.voiceEnabled = true
+        assertTrue(f.key(code = KeyEvent.KEYCODE_MEDIA_NEXT))
+        assertTrue(f.key(code = KeyEvent.KEYCODE_MEDIA_NEXT))
+        assertTrue(f.key(repeat = 1, code = KeyEvent.KEYCODE_MEDIA_NEXT))
+        assertTrue(f.key(KeyEvent.ACTION_UP, code = KeyEvent.KEYCODE_MEDIA_NEXT))
+        assertEquals(1, f.questions); assertEquals(0, f.saves.get())
+        assertEquals("e", f.player.currentMediaItem!!.mediaId); assertEquals(75000L, f.player.currentPosition)
+        assertTrue(f.key())
+        await { f.saves.get() == 1 }
+        assertEquals(1, f.questions)
+    }
+    @Test fun `next delegates when preference or build flag is off`() = fixture { f ->
+        assertFalse(f.key(code = KeyEvent.KEYCODE_MEDIA_NEXT))
+        f.voiceEnabled = true; f.voiceBuild = false
+        assertFalse(f.key(code = KeyEvent.KEYCODE_MEDIA_NEXT))
+        assertEquals(0, f.questions)
+    }
+    @Test fun `next rejects untrusted callers and allows verified legacy keys`() = fixture { f ->
+        f.voiceEnabled = true
+        val untrusted = MediaSession.ControllerInfo.createTestOnlyControllerInfo("untrusted", 1, 1001, 0, 0, false, Bundle.EMPTY)
+        assertFalse(f.key(caller = untrusted, code = KeyEvent.KEYCODE_MEDIA_NEXT))
+        val system = MediaSession.ControllerInfo.createTestOnlyControllerInfo("android", 1, 1000, 0, 0, false, Bundle.EMPTY)
+        assertFalse(f.key(caller = system, code = KeyEvent.KEYCODE_MEDIA_NEXT))
+        f.platformTrusted = true
+        assertTrue(f.key(caller = system, code = KeyEvent.KEYCODE_MEDIA_NEXT)); assertEquals(1, f.questions)
     }
 }
