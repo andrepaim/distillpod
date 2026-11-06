@@ -92,8 +92,7 @@ DistillPod validates the actual contents.
 
 Restore is a merge: it inserts missing records and keeps existing local records
 and listening positions. It is not a rewind to an older library snapshot.
-Reconnect the selected backup document on a new installation. Credentials,
-audio downloads and model binaries must be restored separately. A readable
+Reconnect the selected backup document on a new installation. Reconnect accounts and re-download audio and model binaries separately. A readable
 provider file does not prove another device has downloaded its latest bytes.
 [Backup, recovery and retention](android/drive-backup.md).
 

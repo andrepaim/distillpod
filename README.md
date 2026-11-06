@@ -19,14 +19,17 @@ Connect your ChatGPT account for episode understanding and saved insights. Episo
 
 Save an idea without interrupting your listening, then return to its source.
 
-| Hands-free headphone capture | Distill from the player |
-| --- | --- |
-| <a href="docs/demos/headphone-capture.mp4"><img src="docs/demos/headphone-settings.png" width="240" alt="Watch the headphone-capture demo"></a> | <a href="docs/demos/distillation.mp4"><img src="docs/demos/player.png" width="240" alt="Watch the distillation demo"></a> |
-| Enable the previous-track gesture, keep listening, and find the saved moment. | Tap **Distill last 60 seconds**, then open the takeaway and its source. |
+**Hands-free headphone capture** — enable the previous-track gesture, keep listening, and find the saved moment.
 
-Select a preview to watch its short, captioned video. These are recordings of the
-app with synthetic demo content and example AI output; the headphone command is
-simulated on an emulator. [Video transcripts and capture details](docs/demos/README.md).
+https://github.com/user-attachments/assets/ea08ef16-e98d-4d18-820e-44c578a9574f
+
+**Distill from the player** — tap **Distill last 60 seconds**, then open the takeaway and its source.
+
+https://github.com/user-attachments/assets/7ee170df-6b29-4d74-93a3-87264acceadc
+
+These short, captioned recordings use synthetic demo content and example AI
+output; the headphone command is simulated on an emulator.
+[Video transcripts, downloadable copies and capture details](docs/demos/README.md).
 
 ## Turn listening into understanding
 
