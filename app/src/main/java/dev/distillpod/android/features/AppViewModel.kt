@@ -86,10 +86,10 @@ class AppViewModel(val graph: AppGraph, private val saved: SavedStateHandle) : V
         if (id == null) graph.podcasts.refreshAll() else graph.podcasts.refresh(id)
         messages.send("Feed refresh finished")
     }
-    fun play(id: String, position: Long? = null) = action("play") { graph.playback.play(id, position) }
-    fun toggle() = action("toggle") { graph.playback.toggle() }
-    fun seek(position: Long) = action("seek") { graph.playback.seek(position) }
-    fun skip(delta: Long) = action("seek") { graph.playback.skip(delta) }
+    fun play(id: String, position: Long? = null) = action("play") { graph.voice.cancel(false); graph.playback.play(id, position) }
+    fun toggle() = action("toggle") { graph.voice.cancel(false); graph.playback.toggle() }
+    fun seek(position: Long) = action("seek") { graph.voice.cancel(false); graph.playback.seek(position) }
+    fun skip(delta: Long) = action("seek") { graph.voice.cancel(false); graph.playback.skip(delta) }
     fun speed(value: Float) = action("speed") { graph.playback.speed(value) }
     fun enqueue(id: String, next: Boolean = false) = action("queue") { graph.playback.enqueue(id, next); messages.send(if (next) "Added to play next" else "Added to queue") }
     fun removeQueue(id: String) = action("queue") { graph.playback.remove(id) }

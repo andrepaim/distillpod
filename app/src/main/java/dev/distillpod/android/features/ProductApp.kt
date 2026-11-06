@@ -322,6 +322,7 @@ private fun date(ms: Long) = if (ms <= 0) "" else DateTimeFormatter.ofPattern("d
             Text(ep.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold, maxLines = 3, overflow = TextOverflow.Ellipsis)
             Text(podcast?.title ?: "Podcast", color = MaterialTheme.colorScheme.secondary, style = MaterialTheme.typography.bodyMedium)
         }
+        VoiceControls(vm)
         val skipped by vm.graph.playbackEvents.lastSkipped.collectAsStateWithLifecycle()
         if (skipped?.episodeId == ep.id) TextButton(onClick = vm::undoAdSkip) { Text("Ad skipped · Undo and replay") }
         player.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }

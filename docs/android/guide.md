@@ -20,3 +20,5 @@ Use these guides for current instructions:
 Fixture suites belong on a development emulator. Live account, public-network and long playback tests require deliberate opt-in; their commands and limits are in the [development guide](../development.md#deliberate-device-checks). Preserve the owner's account, models, downloads, queue and listening state during physical-device work.
 
 The [0.4.0 personal-alpha guide](personal-alpha.md), [personal build progress](personal-build-progress.md), design proposals and individual validation reports describe dated builds. Use their evidence for the stated build and device, rather than treating them as current installation instructions.
+
+The disabled-by-default [Realtime voice preview](voice-mode.md) documents setup, implementation scope and the remaining car/live-provider validation gates.

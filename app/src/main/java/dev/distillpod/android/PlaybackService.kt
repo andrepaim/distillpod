@@ -82,6 +82,7 @@ class PlaybackService : MediaLibraryService() {
                 val ep=dao.episode(id)?:error("Episode is unavailable")
                 graph.captures.save(id,position,file!=null && file==ep.localFile)
             },prepareMoment={id->graph.scope.launch(Dispatchers.IO){runCatching {graph.captures.prepareSaved(id)}};Unit},artwork=artwork::uri,
+            onExternalPlaybackCommand = { graph.voice.cancel(false) },
             headphoneDistillEnabled = { headphoneDistill },
             onHeadphoneCaptureFailure = {
                 android.widget.Toast.makeText(this, "Couldn't save moment. Play an episode and try again.", android.widget.Toast.LENGTH_SHORT).show()

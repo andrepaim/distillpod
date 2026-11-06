@@ -28,10 +28,17 @@ class AutoLibraryCallback(
     private val saveMoment: suspend (String,Long,String?) -> String = {_,_,_->throw IllegalStateException("Capture is unavailable")},
     private val prepareMoment: (String)->Unit = {},
     artwork: ((String?)->android.net.Uri)?=null,
+    private val onExternalPlaybackCommand: () -> Unit = {},
     private val headphoneDistillEnabled: () -> Boolean = { false },
     private val onHeadphoneCaptureFailure: () -> Unit = {},
     private val isTrustedMediaButtonCaller: (MediaSession.ControllerInfo) -> Boolean = { false },
 ): MediaLibrarySession.Callback {
+    override fun onPlayerCommandRequest(session: MediaSession, controller: MediaSession.ControllerInfo, playerCommand: Int): Int {
+        if (controller.packageName != packageName && playerCommand in setOf(Player.COMMAND_PLAY_PAUSE,
+                Player.COMMAND_STOP, Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM, Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM,
+                Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)) onExternalPlaybackCommand()
+        return super.onPlayerCommandRequest(session, controller, playerCommand)
+    }
     companion object { const val DISTILL="dev.distillpod.android.DISTILL_MOMENT" }
     private val catalog=AutoCatalog(db,artwork)
     private val playback=AutoPlayback(db)
