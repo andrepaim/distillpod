@@ -36,10 +36,10 @@ class HeadphoneVoiceDeviceTest {
         instrumentation.runOnMainSync { try { result.complete(block()) } catch (error: Throwable) { result.completeExceptionally(error) } }
         return result.get(15, TimeUnit.SECONDS)
     }
-    private fun await(check: () -> Boolean) {
+    private fun await(diagnostic: () -> String = { "" }, check: () -> Boolean) {
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(20)
         while (System.nanoTime() < deadline) { if (check()) return; Thread.sleep(50) }
-        fail("Expected headphone voice or playback state was not reached")
+        fail("Expected headphone voice or playback state was not reached. ${diagnostic()}")
     }
     @Test fun armedServiceSurvivesScreenOffAndNextAsksWithoutSkipping() {
         check(Build.HARDWARE.contains("ranchu") || Build.FINGERPRINT.contains("generic")) { "Use a test emulator" }
@@ -89,7 +89,10 @@ class HeadphoneVoiceDeviceTest {
             instrumentation.uiAutomation.executeShellCommand("input keyevent 87").use { descriptor ->
                 FileInputStream(descriptor.fileDescriptor).use { it.readBytes() }
             }
-            await { graph.voice.state.value.error != null && !graph.voice.state.value.active && main { player.isPlaying } }
+            await(diagnostic = { "voice=${graph.voice.state.value}, ready=${graph.headphoneVoice.ready.value}, " +
+                "car=${graph.carConnection.value}, playback=${main { "${player.currentMediaItem?.mediaId}, ${player.currentPosition}, playing=${player.isPlaying}, ready=${player.playWhenReady}, state=${player.playbackState}" }}" }) {
+                graph.voice.state.value.error != null && !graph.voice.state.value.active && main { player.isPlaying }
+            }
             assertEquals("$id-a", main { player.currentMediaItem!!.mediaId })
             assertTrue(main { player.currentPosition in 75000..100000 })
             assertTrue(graph.headphoneVoice.ready.value)
