@@ -1,23 +1,24 @@
 # Android implementation status
 
-Reviewed against `main` on November 5, 2026. This page distinguishes implemented code, downloadable releases and dated device evidence.
+Reviewed against `main` on November 6, 2026. This page distinguishes implemented code, downloadable releases and dated device evidence.
 
 ## Source and distribution
 
 | Item | State at this review |
 | --- | --- |
-| Main source | `0.14.0-alpha.1` release candidate, version code `23`, from [gradle.properties](../../gradle.properties) |
-| Latest published APK | [0.13.0-alpha.1](https://github.com/andrepaim/distillpod/releases/tag/v0.13.0-alpha.1), published November 5; APK, checksums and build metadata attached |
+| Main source | `0.15.0-alpha.1` release candidate, version code `24`, from [gradle.properties](../../gradle.properties) |
+| Latest published APK at review | [0.14.0-alpha.1](https://github.com/andrepaim/distillpod/releases/tag/v0.14.0-alpha.1), published November 5; APK, checksums and build metadata attached |
 | Latest recorded phone update | S25 in-place installation of 0.10.1-alpha.1, code 19, November 5, before GitHub publication |
 | Database | Room schema 9 with migrations from schemas 1–8; no destructive fallback |
 | Supported Android/package | Android 10+ (`minSdk 29`), ARM64 and x86_64; `dev.distillpod.android` |
 | Default source/debug build | No production Firebase configuration; library sync shows unavailable |
 | Release workflow | Requires Firebase client configuration, validates an unsigned candidate and retains the personal-alpha signing identity |
 
-The phone update retained its certificate, Firebase client configuration and existing library data; the online-transcript setting was visible and off. This is update/data-preservation evidence, not a live phone sync test or a store release. See the [online-transcript installation report](online-transcripts.md#s25-installation--november-5). Release notes in [current.md](../releases/current.md) describe the 0.14.0-alpha.1 automatic-transcription and confirmation-sound candidate. The latest downloadable build is listed separately above until publication.
+The phone update retained its certificate, Firebase client configuration and existing library data; the online-transcript setting was visible and off. This is update/data-preservation evidence, not a live phone sync test or a store release. See the [online-transcript installation report](online-transcripts.md#s25-installation--november-5). Release notes in [current.md](../releases/current.md) describe the 0.15.0-alpha.1 headphone-capture candidate. The published-build row records the verified baseline at review; check [GitHub Releases](https://github.com/andrepaim/distillpod/releases) for subsequent publication.
 
 ## Implemented on main
 
+- **Headphone capture:** an optional, default-off, device-local setting maps Previous track media-button events to durable distill capture without seeking or pausing. Repeat suppression, platform caller verification and the existing sound preference apply; direct phone/Android Auto controls retain their behavior. [Setup and validation limits](headphone-distill.md).
 - **Library and discovery:** Room storage, public search through Apple's iTunes directory, direct RSS/Atom subscriptions, conditional refresh, cached browsing and OPML transfer. Feed parsing retains the latest 200 entries. The library has a searchable, alphabetically ordered show gallery; Saved and transcripts have text search, and Settings is grouped by task.
 - **Listening:** Media3 background streaming/offline playback, original-timeline position, speed, played controls and a persistent ordered queue. The full player rewinds 10 seconds and advances 30 seconds. Android Auto supports library browsing, queue/resume, seek, search and durable Distill capture. Downloads support bounded storage, range/validator resume, cancellation and protection for active/queued media.
 - **Transcripts:** suitable publisher transcripts, optional read-only PodcastTranscript.ai lookup for approved public shows, then local Tiny/Base Whisper. Online lookup defaults off and never uploads audio or creates a cloud transcription job. Preparation starts automatically during playback by default; the device-local setting can disable new requests. Explicit pauses and existing work are preserved, and model downloads remain manual. Local chunks keep durable coverage, progress and pause/resume. Full-episode AI requires complete text; saved audio windows and automatic ad skipping require publisher/local timing. [Controls and validation](online-transcripts.md).
@@ -33,6 +34,7 @@ These are dated results, not claims that every scenario was rerun for the curren
 
 | Area | Recorded evidence and boundary |
 | --- | --- |
+| Headphone integration, November 6 | Source `95c28aa` passed all four [main CI jobs](https://github.com/andrepaim/distillpod/actions/runs/42185294817). Local integration `1bb4248` has the identical file tree and passed 363 JVM tests, 15 Python tests, lint and debug/app-test builds. Isolated Android acceptance covers headphone/system keys and confirmation playback; actual Liberty 4 NC gestures and Bluetooth routing remain unverified. |
 | Automatic transcripts and confirmation sound, November 5 | Combined source `8fabf40` passed [Android CI](https://github.com/andrepaim/distillpod/actions/runs/42104947484), including isolated playback/Whisper and sound acceptance. This is not physical-device validation of the release candidate. |
 | Online transcripts and upgrades, November 5 | [Validation receipt](evidence/online-transcripts-validation.json): 248 JVM tests (82 core, 166 app), debug lint and app/instrumentation builds. JVM upgrade regression covers schemas 1–7. Device tests were compiled at that checkpoint; the later S25 update separately verifies preservation. |
 | Library sync, November 4 | [TDD receipt](evidence/firebase-sync-tdd.md): protocol/rules, Room and independently authenticated demo clients, queue/preferences, finished-content experiment and force-stop recovery. Live Google sign-in/empty-library sync was checked on a visible emulator; synthetic fixtures used a separate demo environment. |
