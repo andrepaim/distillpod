@@ -1,0 +1,248 @@
+{
+  "app/src/main/res/raw/distill_scribble.wav": {
+    "reason": "Bundled public-domain UI feedback sound; approved exception documented in .gitignore.",
+    "sha256": [
+      "9b893a026956ebfd55bff107943b9ba85781854f8c62621b4c2400f118ddf37e"
+    ]
+  },
+  "branding/icon-512.png": {
+    "reason": "Public DistillPod branding/design asset; archive contents reviewed in the November 2026 repository audit.",
+    "sha256": [
+      "f59ae80884bccb1393d48e6445dfd650c970f1aed7c042cd408d8460eca86a4d"
+    ]
+  },
+  "design/icon-proposal/assets/distillpod-chalk-1024.png": {
+    "reason": "Public DistillPod branding/design asset; archive contents reviewed in the November 2026 repository audit.",
+    "sha256": [
+      "adc55e67476aa315d11fa85ab94a96057b595b8738a47007f6781d4b480e6206"
+    ]
+  },
+  "design/icon-proposal/assets/distillpod-chalk-16.png": {
+    "reason": "Public DistillPod branding/design asset; archive contents reviewed in the November 2026 repository audit.",
+    "sha256": [
+      "72daa2725cd4d80f407f3fb7fed83db8008109563975d6ce0bd601426b69155f"
+    ]
+  },
+  "design/icon-proposal/assets/distillpod-chalk-192.png": {
+    "reason": "Public DistillPod branding/design asset; archive contents reviewed in the November 2026 repository audit.",
+    "sha256": [
+      "a0595ba373eaf0bf3a69b26cdd36a40128a8a572a222561e4835dee7eb492f55"
+    ]
+  },
+  "design/icon-proposal/assets/distillpod-chalk-24.png": {
+    "reason": "Public DistillPod branding/design asset; archive contents reviewed in the November 2026 repository audit.",
+    "sha256": [
+      "b27c17ae4a827155e1fccb51486e0ec8e53463edba3432c3e1f4dc272d3f1585"
+    ]
+  },
+  "design/icon-proposal/assets/distillpod-chalk-32.png": {
+    "reason": "Public DistillPod branding/design asset; archive contents reviewed in the November 2026 repository audit.",
+    "sha256": [
+      "bc006803d3ea8eb930fc0196597d5cde73af90a8df11679d5d4b8249340af1d9"
+    ]
+  },
+  "design/icon-proposal/assets/distillpod-chalk-48.png": {
+    "reason": "Public DistillPod branding/design asset; archive contents reviewed in the November 2026 repository audit.",
+    "sha256": [
+      "4eca6d6437197bc8e85191e13c365079bf84eb8ff6ffc976e7f08b166e0f7cec"
+    ]
+  },
+  "design/icon-proposal/assets/distillpod-chalk-512.png": {
+    "reason": "Public DistillPod branding/design asset; archive contents reviewed in the November 2026 repository audit.",
+    "sha256": [
+      "56cc3cc4573c7a3fa013f1daa468598b277796163c99ddb800462112a13885d1"
+    ]
+  },
+  "design/icon-proposal/assets/distillpod-chalk-64.png": {
+    "reason": "Public DistillPod branding/design asset; archive contents reviewed in the November 2026 repository audit.",
+    "sha256": [
+      "666a5a277c68651a8ec8dafefc9311ac7bf6c751cac25bdb887c20fe7ad3d91d"
+    ]
+  },
+  "design/icon-proposal/assets/distillpod-chalk-96.png": {
+    "reason": "Public DistillPod branding/design asset; archive contents reviewed in the November 2026 repository audit.",
+    "sha256": [
+      "97ca1c7a8345634509ce92a2bd37d55151a4dc6c2490c52ea9c9ed11e69729b4"
+    ]
+  },
+  "design/icon-proposal/assets/distillpod-icon-proposal.zip": {
+    "reason": "Public DistillPod branding/design asset; archive contents reviewed in the November 2026 repository audit.",
+    "sha256": [
+      "14d24d3096de06507133002c18fe6f96504118f8356b8de59bab3ad39dbf1bc9"
+    ]
+  },
+  "design/icon-proposal/assets/distillpod-lavender-1024.png": {
+    "reason": "Public DistillPod branding/design asset; archive contents reviewed in the November 2026 repository audit.",
+    "sha256": [
+      "9daa808cd8b0c5726553e540e76b6327971e2af47eb4d077db7623068a8bc7a2"
+    ]
+  },
+  "design/icon-proposal/assets/distillpod-lavender-16.png": {
+    "reason": "Public DistillPod branding/design asset; archive contents reviewed in the November 2026 repository audit.",
+    "sha256": [
+      "6a23aa893b156609e52c01c7dfc05cb00bbdabff316c2b16e34397e229d3942a"
+    ]
+  },
+  "design/icon-proposal/assets/distillpod-lavender-192.png": {
+    "reason": "Public DistillPod branding/design asset; archive contents reviewed in the November 2026 repository audit.",
+    "sha256": [
+      "1e64eacd6d9298b128a08ff46f1268600e5bd60b72f2097b9871cf07374098c3"
+    ]
+  },
+  "design/icon-proposal/assets/distillpod-lavender-24.png": {
+    "reason": "Public DistillPod branding/design asset; archive contents reviewed in the November 2026 repository audit.",
+    "sha256": [
+      "aec1e07cf5957bc8f75724aded14d98ce26dfd024d85750df2e2b2acac292116"
+    ]
+  },
+  "design/icon-proposal/assets/distillpod-lavender-32.png": {
+    "reason": "Public DistillPod branding/design asset; archive contents reviewed in the November 2026 repository audit.",
+    "sha256": [
+      "99b00118dd8b3ced1052cc7465223ac20ec8eef8dfb46f0926381c8db5a0f02d"
+    ]
+  },
+  "design/icon-proposal/assets/distillpod-lavender-48.png": {
+    "reason": "Public DistillPod branding/design asset; archive contents reviewed in the November 2026 repository audit.",
+    "sha256": [
+      "1b6c3a2c75ff9978b667b3add261cd33d45af6e32a5cedc5728e7cbb5b4cb6df"
+    ]
+  },
+  "design/icon-proposal/assets/distillpod-lavender-512.png": {
+    "reason": "Public DistillPod branding/design asset; archive contents reviewed in the November 2026 repository audit.",
+    "sha256": [
+      "f59ae80884bccb1393d48e6445dfd650c970f1aed7c042cd408d8460eca86a4d"
+    ]
+  },
+  "design/icon-proposal/assets/distillpod-lavender-64.png": {
+    "reason": "Public DistillPod branding/design asset; archive contents reviewed in the November 2026 repository audit.",
+    "sha256": [
+      "4f5c53813e8a527a418b2c98639373b28d3d85a0782bf888e17b15d637307cf5"
+    ]
+  },
+  "design/icon-proposal/assets/distillpod-lavender-96.png": {
+    "reason": "Public DistillPod branding/design asset; archive contents reviewed in the November 2026 repository audit.",
+    "sha256": [
+      "9d3c5d4f79e6bb9925f0a89235e82bfaab543a431bde674d4f8954a96289b423"
+    ]
+  },
+  "design/icon-proposal/assets/distillpod-mint-1024.png": {
+    "reason": "Public DistillPod branding/design asset; archive contents reviewed in the November 2026 repository audit.",
+    "sha256": [
+      "272617b8f70f2ceb8be86e7573392d8cd3136f0699ecc26e9e19c0f7d01e7c60"
+    ]
+  },
+  "design/icon-proposal/assets/distillpod-mint-16.png": {
+    "reason": "Public DistillPod branding/design asset; archive contents reviewed in the November 2026 repository audit.",
+    "sha256": [
+      "79fc10da18a6726a4a021e8a05a1933f0705314f1660e63f9ebcea24293474f1"
+    ]
+  },
+  "design/icon-proposal/assets/distillpod-mint-192.png": {
+    "reason": "Public DistillPod branding/design asset; archive contents reviewed in the November 2026 repository audit.",
+    "sha256": [
+      "aa0ce8f6462d40706c47aa72f686a8aaaab9922464e25d97671a63592f4cab2c"
+    ]
+  },
+  "design/icon-proposal/assets/distillpod-mint-24.png": {
+    "reason": "Public DistillPod branding/design asset; archive contents reviewed in the November 2026 repository audit.",
+    "sha256": [
+      "6559a8effd24ffa954177272bed3d52dcd9a43375a5ec8a7fc6ccd7466432d8f"
+    ]
+  },
+  "design/icon-proposal/assets/distillpod-mint-32.png": {
+    "reason": "Public DistillPod branding/design asset; archive contents reviewed in the November 2026 repository audit.",
+    "sha256": [
+      "ce0552cc2e961aae83ab591cabbe784188e055c41e8e8469ac4be5525a9ac74f"
+    ]
+  },
+  "design/icon-proposal/assets/distillpod-mint-48.png": {
+    "reason": "Public DistillPod branding/design asset; archive contents reviewed in the November 2026 repository audit.",
+    "sha256": [
+      "430e28105015d25466c38f957b99d40317d733fbb6576bdbef67743a02628310"
+    ]
+  },
+  "design/icon-proposal/assets/distillpod-mint-512.png": {
+    "reason": "Public DistillPod branding/design asset; archive contents reviewed in the November 2026 repository audit.",
+    "sha256": [
+      "5cca50b3cd54f2cb91c9486be1684ada6a0e3b75ef4a19666e58febb2a1e4f58"
+    ]
+  },
+  "design/icon-proposal/assets/distillpod-mint-64.png": {
+    "reason": "Public DistillPod branding/design asset; archive contents reviewed in the November 2026 repository audit.",
+    "sha256": [
+      "38b0da5ec6c62f9158f3165317fb34855ac6fe71495164a1113731d24cdba984"
+    ]
+  },
+  "design/icon-proposal/assets/distillpod-mint-96.png": {
+    "reason": "Public DistillPod branding/design asset; archive contents reviewed in the November 2026 repository audit.",
+    "sha256": [
+      "9d58e4650b1fb91083eb2bf41601de098f5cf9eba2a3188cfc3c995648f9abb8"
+    ]
+  },
+  "docs/android/evidence/design-review/saved.png": {
+    "reason": "Synthetic UI fixture or explicitly public validation sample; visually reviewed in the November 2026 audit.",
+    "sha256": [
+      "d299ecbee745f2b4a84ed26614eaa7b8117651b427418f76e32d6dc38425c1c1"
+    ]
+  },
+  "docs/android/evidence/design-review/settings-large-text.png": {
+    "reason": "Synthetic UI fixture or explicitly public validation sample; visually reviewed in the November 2026 audit.",
+    "sha256": [
+      "4567f6b5c24fefb8fb71c7c1eae18733f4a30e60ac59dacf80f57526d1cc0227"
+    ]
+  },
+  "docs/android/evidence/design-review/settings.png": {
+    "reason": "Synthetic UI fixture or explicitly public validation sample; visually reviewed in the November 2026 audit.",
+    "sha256": [
+      "1a81252b2d01da4ca43dbe3717f1b7c76ec57d7f8f08541fd4891254987ec80d"
+    ]
+  },
+  "docs/android/evidence/design-review/shows.png": {
+    "reason": "Synthetic UI fixture or explicitly public validation sample; visually reviewed in the November 2026 audit.",
+    "sha256": [
+      "b57c3e79622b1a08ef7309a20522b877a064427bd4eee7192a14120213c4994c"
+    ]
+  },
+  "docs/android/evidence/design-review/transcript.png": {
+    "reason": "Synthetic UI fixture or explicitly public validation sample; visually reviewed in the November 2026 audit.",
+    "sha256": [
+      "28f7205a1e2d7afd4270755090c6d23e2f20ad72d630c8ba9fc21d753f45f1d0"
+    ]
+  },
+  "docs/android/evidence/social-redesign/attention-infographic.png": {
+    "reason": "Synthetic UI fixture or explicitly public validation sample; visually reviewed in the November 2026 audit.",
+    "sha256": [
+      "c80b4ae46904cc88f9bc50fe95e3076b60667e4d11b92b4fa050259a078205b0"
+    ]
+  },
+  "docs/android/evidence/social-redesign/feedback-infographic.png": {
+    "reason": "Synthetic UI fixture or explicitly public validation sample; visually reviewed in the November 2026 audit.",
+    "sha256": [
+      "66f915891b18a5f5bc6d385a9836d76ab0018f405eda177e08098c1905b325f4"
+    ]
+  },
+  "docs/android/evidence/social-redesign/learning-infographic.png": {
+    "reason": "Synthetic UI fixture or explicitly public validation sample; visually reviewed in the November 2026 audit.",
+    "sha256": [
+      "8f2e79158c48b5974d86f394be01fbdbe311f347c7f458dcaad64d733b762da1"
+    ]
+  },
+  "docs/android/evidence/social-redesign/result-large-text.png": {
+    "reason": "Synthetic UI fixture or explicitly public validation sample; visually reviewed in the November 2026 audit.",
+    "sha256": [
+      "e337af2765d30556f01633f12e48ccbed3736064d5cb730966730394f3931e9c"
+    ]
+  },
+  "docs/android/evidence/social-sharing-preview.png": {
+    "reason": "Synthetic UI fixture or explicitly public validation sample; visually reviewed in the November 2026 audit.",
+    "sha256": [
+      "6ced8eb5d0127565649fb0ea3d171aca6698d38270b7df7507bc818d279c6f44"
+    ]
+  },
+  "gradle/wrapper/gradle-wrapper.jar": {
+    "reason": "Gradle wrapper bootstrap binary.",
+    "sha256": [
+      "81a82aaea5abcc8ff68b3dfcb58b3c3c429378efd98e7433460610fecd7ae45f"
+    ]
+  }
+}
