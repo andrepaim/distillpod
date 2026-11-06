@@ -5,9 +5,11 @@ Voice-enabled builds support an optional **Next track** media-key shortcut. This
 ## Set up
 
 1. Save your OpenAI API key in **Settings → Voice**.
-2. Enable **Ask with next-track button** and grant microphone and notification access.
+2. Open **Settings → Playback & headphones** and enable **Next track → Ask about the podcast**. Grant microphone and notification access when requested. Both headphone shortcuts are configured here; Voice settings manages the API key and answer preferences.
 3. In the headphone app, assign the desired gesture to **Next track**. For Liberty 4 NC, configure it under Controls. The headphones determine the gesture; DistillPod receives the resulting media key.
 4. Start an episode with DistillPod open. Wait for the **Headphone voice ready** notification before locking the phone.
+
+The Next card shows Off, Setup required, Ready or Open app to prepare, with a setup/permission action when needed. **Headphone setup** expands the gesture, single-earbud and locked-phone instructions. **Feedback → Moment saved sound** controls confirmation sound for headphone, phone and car captures. Existing choices are retained when upgrading; the preference keys and defaults are unchanged.
 
 Next pauses the episode and starts a question. Wait for the tone, then speak. End-of-speech detection finishes the question automatically; another Next press finishes it explicitly. During preparation or the answer, Next cancels/stops voice and resumes the unchanged podcast when its playback lease remains valid. Presses during cleanup are consumed. Duplicate, repeated and rapidly repeated events cannot start duplicate questions.
 

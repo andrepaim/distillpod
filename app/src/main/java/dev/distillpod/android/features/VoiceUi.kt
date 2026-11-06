@@ -168,16 +168,18 @@ internal fun VoiceAnswerTranscript(answer: String) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun VoiceSettings(vm: AppViewModel) {
     val store = vm.graph.voiceApiKey
     var hasKey by remember { mutableStateOf(store.hasKey()) }
     var editKey by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
+    var showCarSetup by remember { mutableStateOf(false) }
     val preferences = remember { vm.graph.context.getSharedPreferences("voice", Context.MODE_PRIVATE) }
     var rewind by remember { mutableStateOf(preferences.getBoolean("rewind", false)) }
-    Text("Voice", style = MaterialTheme.typography.titleLarge)
-    Text("Ask a question about the podcast, hear a short answer, then return to listening.")
+    Text("Spoken answers", style = MaterialTheme.typography.titleLarge)
+    Text("Ask about the podcast, hear an answer in an AI-generated voice, then return to listening.")
     Text("OpenAI API key", style = MaterialTheme.typography.titleMedium)
     Text(if (hasKey) "API key saved on this phone" else "Add a project API key to enable spoken answers", color = MaterialTheme.colorScheme.onSurfaceVariant)
     Button(onClick = { editKey = true }) { Text(if (hasKey) "Replace API key" else "Add API key") }
@@ -187,8 +189,9 @@ internal fun VoiceSettings(vm: AppViewModel) {
         try { store.clear(); hasKey = false; message = "API key removed" }
         catch (_: Exception) { message = "Could not remove the API key. Try again." }
     }) { Text("Remove API key") }
-    Text("Questions and selected transcript text go directly to OpenAI. The voice is AI generated. Usage draws on your API project's credits or balance. Your key is encrypted on this phone and excluded from backups and sync.", style = MaterialTheme.typography.bodySmall)
+    Text("Questions and transcript excerpts go to OpenAI and use your API credits. Your key stays encrypted on this phone and is excluded from backups and sync.", style = MaterialTheme.typography.bodySmall)
     HorizontalDivider()
+    Text("Answers", style = MaterialTheme.typography.titleMedium)
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Text("Rewind after an answer")
@@ -197,16 +200,31 @@ internal fun VoiceSettings(vm: AppViewModel) {
         Switch(checked = rewind, onCheckedChange = { rewind = it; preferences.edit().putBoolean("rewind", it).apply() })
     }
     HorizontalDivider()
-    HeadphoneVoiceSettings(vm, hasKey)
-    HorizontalDivider()
-    val carConnected by vm.graph.carVoiceEntry.connected.collectAsStateWithLifecycle()
-    Text("Android Auto", style = MaterialTheme.typography.titleMedium)
-    Text(if (carConnected) "Car voice screen connected" else "Car voice screen not connected")
-    Text("While parked, open DistillPod from the car launcher and look for Ask at the top of the player. There may be only one DistillPod icon. Reconnect Android Auto after updating. Voice requires a host that supports templated media apps.", style = MaterialTheme.typography.bodySmall)
+    Text("Ways to ask", style = MaterialTheme.typography.titleMedium)
+    Text("On your phone, use Ask about this in the player.", style = MaterialTheme.typography.bodySmall)
+    OutlinedButton(onClick = { vm.open("settings:playback") }, modifier = Modifier.fillMaxWidth()) {
+        Icon(Icons.Default.Headphones, null); Spacer(Modifier.width(8.dp)); Text("Headphone controls")
+    }
+    OutlinedButton(onClick = { showCarSetup = true }, modifier = Modifier.fillMaxWidth()) {
+        Icon(Icons.Default.DirectionsCar, null); Spacer(Modifier.width(8.dp)); Text("Android Auto setup")
+    }
     message?.let { Text(it) }
     if (editKey) VoiceApiKeyDialog(onDismiss = { editKey = false }, onSave = {
         vm.graph.voice.cancel(false); store.save(it); hasKey = true; message = "API key saved on this phone"; editKey = false
     })
+    if (showCarSetup) ModalBottomSheet(onDismissRequest = { showCarSetup = false },
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+        val carConnected by vm.graph.carVoiceEntry.connected.collectAsStateWithLifecycle()
+        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Text("Android Auto setup", style = MaterialTheme.typography.headlineSmall)
+            Text(if (carConnected) "Car voice connected" else "Open DistillPod on the car display to connect voice.")
+            Text("While parked, open DistillPod from the car launcher and look for Ask at the top of the player. There may be only one DistillPod icon.")
+            Text("After updating, reconnect Android Auto and open the app from its launcher. Ask is available on compatible hosts.")
+            Text("Voice uses the API key saved here. Key entry and microphone permission setup stay on the phone.", style = MaterialTheme.typography.bodySmall)
+            OutlinedButton(onClick = { showCarSetup = false }, modifier = Modifier.fillMaxWidth()) { Text("Close") }
+        }
+    }
 }
 
 @Composable
