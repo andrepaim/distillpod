@@ -30,11 +30,12 @@ class VoiceCarScreen(context: CarContext) : Screen(context) {
     }
     override fun onGetTemplate(): Template {
         val state = voice.state.value
+        val keyReady = carContext.appGraph.voiceApiKey.hasKey()
         val pane = Pane.Builder().addRow(Row.Builder().setTitle(if (state.active) state.phase else "Ask about this")
-            .addText(state.error ?: "One question, a short spoken answer, then your podcast resumes.").build())
+            .addText(state.error ?: if (keyReady) "One question, a short spoken answer, then your podcast resumes." else "Add your OpenAI API key on the phone player first. You can test the microphone here.").build())
         if (state.active) pane.addAction(Action.Builder().setTitle("Cancel and resume").setOnClickListener { voice.cancel(true) }.build())
         else {
-            pane.addAction(Action.Builder().setTitle("Ask").setOnClickListener { start(false) }.build())
+            if (keyReady) pane.addAction(Action.Builder().setTitle("Ask").setOnClickListener { start(false) }.build())
             pane.addAction(Action.Builder().setTitle("Test microphone").setOnClickListener { start(true) }.build())
         }
         return PaneTemplate.Builder(pane.build()).setTitle("DistillPod voice preview").setHeaderAction(Action.APP_ICON).build()

@@ -38,10 +38,7 @@ android {
             resValue("string", resource, value)
         }
         val voiceEnabled = providers.gradleProperty("distillpodVoiceEnabled").getOrElse("false").toBooleanStrict()
-        val voiceBroker = providers.gradleProperty("distillpodVoiceBroker").getOrElse("")
-        require(voiceBroker.isEmpty() || voiceBroker.matches(Regex("https://[A-Za-z0-9./:_-]+")))
         resValue("bool", "voice_enabled", voiceEnabled.toString())
-        resValue("string", "voice_broker_url", voiceBroker)
         manifestPlaceholders["voiceEnabled"] = voiceEnabled.toString()
         manifestPlaceholders["voiceMinCarApi"] = if (voiceEnabled) "8" else "1"
         manifestPlaceholders["automotiveDescriptor"] = if (voiceEnabled) "@xml/automotive_voice_desc" else "@xml/automotive_app_desc"

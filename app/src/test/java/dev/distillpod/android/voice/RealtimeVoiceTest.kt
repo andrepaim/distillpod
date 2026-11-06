@@ -49,11 +49,11 @@ class RealtimeVoiceTest {
             override fun close() {}
         }
         try {
-            RealtimeVoice("source", "ek_test", ready = {}, endpoint = server.url("/realtime").toString()).use { connection ->
+            RealtimeVoice("source", "sk-test-only-01234567890123456789", ready = {}, endpoint = server.url("/realtime").toString()).use { connection ->
                 withTimeout(5000) { connection.answer(input, output, {}, { answer += it }) }
             }
             assertTrue(drained); assertEquals("Answer", answer)
-            assertEquals("Bearer ek_test", server.takeRequest().getHeader("Authorization"))
+            assertEquals("Bearer sk-test-only-01234567890123456789", server.takeRequest().getHeader("Authorization"))
         } finally { server.shutdown() }
     }
 }

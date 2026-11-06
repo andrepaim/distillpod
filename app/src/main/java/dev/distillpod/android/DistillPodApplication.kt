@@ -39,13 +39,13 @@ class AppGraph(val context: Context) {
     val importedQueue=kotlinx.coroutines.flow.MutableStateFlow<List<String>?>(null)
     val playbackEvents = dev.distillpod.android.playback.PlaybackEvents()
     val playback by lazy { dev.distillpod.android.playback.PlaybackRepository(context, db, scope) }
-    val voiceIdentity by lazy { dev.distillpod.android.voice.VoiceIdentity(context) }
+    val voiceApiKey by lazy { dev.distillpod.android.voice.VoiceApiKeyStore(context) }
     val voice: dev.distillpod.android.voice.VoiceCoordinator by lazy {
         dev.distillpod.android.voice.VoiceCoordinator(scope, { changed -> playback.pauseForVoice(changed,
                 if (context.getSharedPreferences("voice", Context.MODE_PRIVATE).getBoolean("rewind", false)) 3000 else 0) },
             { lease -> withContext(Dispatchers.IO) { dev.distillpod.android.voice.VoiceContext.load(db, lease.episode, lease.position) } },
             { source -> dev.distillpod.android.voice.RealtimeVoice(source,
-                dev.distillpod.android.voice.VoiceBroker(context.getString(R.string.voice_broker_url), voiceIdentity).token(), search = { query ->
+                withContext(Dispatchers.IO) { voiceApiKey.requireKey() }, search = { query ->
                     withContext(Dispatchers.IO) { dev.distillpod.android.voice.VoiceContext.search(db, source, query) }
                 }) },
             { dev.distillpod.android.voice.AndroidVoiceOutput(context) { voice.cancel(false) } })

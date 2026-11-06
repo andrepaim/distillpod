@@ -70,7 +70,7 @@ class VoiceCoordinator(
                 if (cancelled is TimeoutCancellationException) mutable.value = mutable.value.copy(error = "Voice request timed out")
                 else throw cancelled
             } catch (_: Exception) {
-                mutable.value = mutable.value.copy(error = "Voice unavailable. Check transcript, microphone permission, Google sign-in and voice access.")
+                mutable.value = mutable.value.copy(error = "Voice unavailable. Check transcript, microphone permission, your saved OpenAI API key.")
             } finally {
                 try { withContext(NonCancellable) { lease?.finish(resume) } }
                 finally { mutable.value = mutable.value.copy(phase = "Idle"); job = null }

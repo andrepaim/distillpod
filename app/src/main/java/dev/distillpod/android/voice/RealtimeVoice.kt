@@ -3,38 +3,13 @@ package dev.distillpod.android.voice
 import android.util.Base64
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.tasks.await
 import okhttp3.*
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
-import com.google.firebase.FirebaseApp
-import com.google.firebase.auth.FirebaseAuth
 
-class VoiceBroker(private val endpoint: String, private val identity: VoiceIdentity) {
-    private val http = OkHttpClient.Builder().followRedirects(false).callTimeout(10, TimeUnit.SECONDS).build()
-    suspend fun token(): String = withContext(Dispatchers.IO) {
-        check(endpoint.startsWith("https://"))
-        val token = identity.token()
-        val call = http.newCall(Request.Builder().url(endpoint).header("Authorization", "Bearer $token")
-            .post("{}".toRequestBody("application/json".toMediaType())).build())
-        val cancellation = currentCoroutineContext().job.invokeOnCompletion { if (it != null) call.cancel() }
-        try { call.execute().use { response ->
-            check(response.isSuccessful) { "Voice access unavailable" }
-            val body = response.body ?: error("Missing voice credential")
-            check(body.contentLength() <= 16000)
-            val reader = body.charStream()
-            val chars = CharArray(16001); var length = 0
-            while (length < chars.size) { val n = reader.read(chars, length, chars.size - length); if (n < 0) break; length += n }
-            check(length <= 16000)
-            JSONObject(String(chars, 0, length)).getString("value").also { check(it.startsWith("ek_")) }
-        } } finally { cancellation.dispose() }
-    }
-}
 data class VoiceUsage(val elapsedMs: Long, val firstAudioMs: Long?, val inputTokens: Int, val outputTokens: Int)
 
-class RealtimeVoice(private val source: String, token: String, private val search: suspend (String) -> String = { "[]" },
+class RealtimeVoice(private val source: String, apiKey: String, private val search: suspend (String) -> String = { "[]" },
     private val http: OkHttpClient = OkHttpClient.Builder().pingInterval(10, TimeUnit.SECONDS).readTimeout(0, TimeUnit.SECONDS).build(),
     private val ready: suspend () -> Unit = { voiceReadyTone() },
     endpoint: String = "wss://api.openai.com/v1/realtime?model=gpt-realtime-2.1-mini",
@@ -45,7 +20,7 @@ class RealtimeVoice(private val source: String, token: String, private val searc
     }
     private val events = Channel<JSONObject>(64)
     private val socket = http.newWebSocket(Request.Builder().url(endpoint)
-        .header("Authorization", "Bearer $token").build(), object : WebSocketListener() {
+        .header("Authorization", "Bearer $apiKey").build(), object : WebSocketListener() {
         override fun onMessage(webSocket: WebSocket, text: String) {
             if (text.length > 512_000) { events.close(IllegalStateException("Voice event too large")); webSocket.cancel(); return }
             try { if (!events.trySend(JSONObject(text)).isSuccess) { events.close(IllegalStateException("Voice buffer full")); webSocket.cancel() } }
