@@ -542,6 +542,8 @@ private fun captureState(state: String) = when (state) { "waiting_transcript" ->
         if(section=="playback") {
             Text("Playback & headphones", style = MaterialTheme.typography.titleLarge)
             SettingSwitch("Distill with previous-track button", "Save the last 60 seconds when your headphones send Previous track. Other accessories sending the same button command will also save a moment while DistillPod handles playback.", prefs.headphoneDistill) { vm.flag("headphoneDistill", it) }
+            if (vm.graph.context.resources.getBoolean(dev.distillpod.android.R.bool.voice_enabled))
+                TextButton(onClick = { vm.open("settings:voice") }) { Text("Set up voice with next-track button") }
             Text("Liberty 4 NC setup", style = MaterialTheme.typography.titleSmall)
             Text("In the Soundcore app, open Liberty 4 NC → Controls and assign your preferred gesture, such as triple tap, to Previous track. Every gesture assigned to that command will distill. Check the controls separately if you use just one earbud.", color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text("Start an episode in DistillPod, then use the gesture. Playback continues while your moment is saved. Turn this setting off to restore the usual previous-track action.", color = MaterialTheme.colorScheme.onSurfaceVariant)

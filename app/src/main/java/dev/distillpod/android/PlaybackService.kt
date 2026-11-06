@@ -49,6 +49,8 @@ class PlaybackService : MediaLibraryService() {
     override fun onCreate() {
         super.onCreate()
         val graph = applicationContext.appGraph
+        // Observe projection before any Next event, including hosts using the legacy media browser.
+        graph.carConnection
         val dao = graph.db.library()
         val player = ExoPlayer.Builder(this)
             .setSeekBackIncrementMs(10000).setSeekForwardIncrementMs(30000)
@@ -86,6 +88,20 @@ class PlaybackService : MediaLibraryService() {
             openCarVoice = { graph.carVoiceEntry.open() },
             onExternalPlaybackCommand = { graph.voice.cancel(false) },
             headphoneDistillEnabled = { headphoneDistill },
+            headphoneVoiceEnabled = { graph.preferences.value.headphoneVoice },
+            onHeadphoneVoice = {
+                val connected = graph.carConnection.value?.let { it != androidx.car.app.connection.CarConnection.CONNECTION_TYPE_NOT_CONNECTED }
+                when (dev.distillpod.android.voice.headphoneNextAction(graph.voice.state.value, connected,
+                        graph.carVoiceEntry.connected.value, graph.headphoneVoice.ready.value)) {
+                    dev.distillpod.android.voice.HeadphoneNextAction.START_PHONE -> graph.headphoneVoice.ask()
+                    dev.distillpod.android.voice.HeadphoneNextAction.START_CAR -> if (!graph.carVoiceEntry.open())
+                        dev.distillpod.android.voice.HeadphoneVoiceService.unavailable(this)
+                    dev.distillpod.android.voice.HeadphoneNextAction.DONE -> graph.voice.finishQuestion()
+                    dev.distillpod.android.voice.HeadphoneNextAction.CANCEL -> graph.voice.cancel(true)
+                    dev.distillpod.android.voice.HeadphoneNextAction.WAIT -> Unit
+                    dev.distillpod.android.voice.HeadphoneNextAction.UNAVAILABLE -> dev.distillpod.android.voice.HeadphoneVoiceService.unavailable(this)
+                }
+            },
             onHeadphoneCaptureFailure = {
                 android.widget.Toast.makeText(this, "Couldn't save moment. Play an episode and try again.", android.widget.Toast.LENGTH_SHORT).show()
             },

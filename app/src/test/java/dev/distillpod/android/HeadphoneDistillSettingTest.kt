@@ -28,15 +28,18 @@ class HeadphoneDistillSettingTest {
         try {
             session {
                 assertFalse(it.flow.first().headphoneDistill)
+                assertFalse(it.flow.first().headphoneVoice)
+                it.flag("headphoneVoice", true)
                 it.flag("headphoneDistill", true)
                 it.flag("distillSound", false)
             }
             session {
                 assertTrue(it.flow.first().headphoneDistill)
+                assertTrue(it.flow.first().headphoneVoice)
                 assertFalse(it.flow.first().distillSound)
                 it.flag("headphoneDistill", false)
             }
-            session { assertFalse(it.flow.first().headphoneDistill) }
+            session { assertFalse(it.flow.first().headphoneDistill); assertTrue(it.flow.first().headphoneVoice) }
         } finally { folder.deleteRecursively() }
     }
 }

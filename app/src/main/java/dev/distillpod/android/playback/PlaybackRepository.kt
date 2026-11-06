@@ -24,6 +24,10 @@ class PlaybackEvents {
 }
 data class SkippedMoment(val episodeId: String, val positionMs: Long, val endMs: Long)
 
+/** Media3 can deliver an initial no-op AUTO_TRANSITION after connecting a controller. */
+internal fun voicePositionChanged(reason: Int, oldId: String?, newId: String?, oldMs: Long, newMs: Long) =
+    reason != Player.DISCONTINUITY_REASON_AUTO_TRANSITION || oldId != newId || oldMs != newMs
+
 fun mediaItem(ep: EpisodeEntity, podcast: PodcastEntity?): MediaItem {
     val file = ep.localFile?.let(::File)?.takeIf { it.isFile }
     return MediaItem.Builder().setMediaId(ep.id).setUri(file?.let(Uri::fromFile) ?: Uri.parse(ep.audioUrl))
@@ -162,8 +166,11 @@ class PlaybackRepository(context: Context, private val db: AppDatabase, private 
             c.pause()
             var valid = true
             val listener = object : Player.Listener {
-                override fun onMediaItemTransition(item: MediaItem?, reason: Int) { valid = false; changed() }
-                override fun onPositionDiscontinuity(old: Player.PositionInfo, new: Player.PositionInfo, reason: Int) { valid = false; changed() }
+                override fun onMediaItemTransition(item: MediaItem?, reason: Int) { if (item?.mediaId != id) { valid = false; changed() } }
+                @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+                override fun onPositionDiscontinuity(old: Player.PositionInfo, new: Player.PositionInfo, reason: Int) {
+                    if (voicePositionChanged(reason, old.mediaItem?.mediaId, new.mediaItem?.mediaId, old.positionMs, new.positionMs)) { valid = false; changed() }
+                }
                 override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) { valid = false; changed() }
                 override fun onPlayerError(error: androidx.media3.common.PlaybackException) { valid = false; changed() }
             }

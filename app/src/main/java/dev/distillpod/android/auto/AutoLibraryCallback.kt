@@ -34,6 +34,8 @@ class AutoLibraryCallback(
     private val headphoneDistillEnabled: () -> Boolean = { false },
     private val onHeadphoneCaptureFailure: () -> Unit = {},
     private val isTrustedMediaButtonCaller: (MediaSession.ControllerInfo) -> Boolean = { false },
+    private val headphoneVoiceEnabled: () -> Boolean = { false },
+    private val onHeadphoneVoice: () -> Unit = {},
 ): MediaLibrarySession.Callback {
     override fun onPlayerCommandRequest(session: MediaSession, controller: MediaSession.ControllerInfo, playerCommand: Int): Int {
         if (controller.packageName != packageName && playerCommand in setOf(Player.COMMAND_PLAY_PAUSE,
@@ -47,6 +49,7 @@ class AutoLibraryCallback(
     private val subscriptions=mutableSetOf<String>()
     private var captureBusy=false
     private val headphoneButton = HeadphoneDistillButton()
+    private val headphoneNext = HeadphoneDistillButton(android.view.KeyEvent.KEYCODE_MEDIA_NEXT)
     private fun layout(label:String="Distill last 60 seconds",enabled:Boolean=true,includeVoice:Boolean=voiceEnabled())=listOf(
         PlaybackControls.buttons[0],
         CommandButton.Builder(CommandButton.ICON_UNDEFINED).setCustomIconResId(dev.distillpod.android.R.drawable.ic_media_distill)
@@ -160,6 +163,7 @@ class AutoLibraryCallback(
         // Media3 1.5.1 marks legacy key-event callers untrusted without consulting Android.
         if (controllerInfo.packageName != packageName && !controllerInfo.isTrusted &&
             !isTrustedMediaButtonCaller(controllerInfo)) return false
+        if (headphoneNext.handle(intent, voiceEnabled() && headphoneVoiceEnabled(), onHeadphoneVoice)) return true
         return headphoneButton.handle(intent, headphoneDistillEnabled()) {
             val result = captureMoment(session)
             result.addListener({

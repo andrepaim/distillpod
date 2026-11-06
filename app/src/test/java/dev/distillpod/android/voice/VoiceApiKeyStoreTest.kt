@@ -8,10 +8,13 @@ class VoiceApiKeyStoreTest {
     @Test fun `save trims key and clear removes credential`() {
         var stored: String? = null
         val store = VoiceApiKeyStore({ stored }, { stored = it })
+        assertEquals(0L, store.revisions.value)
         assertFalse(store.hasKey())
         store.save("  $fixture\n")
         assertTrue(store.hasKey()); assertEquals(fixture, store.requireKey())
+        assertEquals(1L, store.revisions.value)
         store.clear(); assertNull(stored); assertFalse(store.hasKey())
+        assertEquals(2L, store.revisions.value)
     }
     @Test fun `invalid replacement preserves existing key and never echoes input`() {
         var stored: String? = fixture

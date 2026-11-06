@@ -51,9 +51,9 @@ fun VoiceControls(vm: AppViewModel) {
     }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     DisposableEffect(lifecycle) {
-        val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_STOP) voice.cancel(false) }
+        val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_STOP) voice.cancelFrom(dev.distillpod.android.voice.VoiceOrigin.PHONE, false) }
         lifecycle.addObserver(observer)
-        onDispose { lifecycle.removeObserver(observer); voice.cancel(false) }
+        onDispose { lifecycle.removeObserver(observer); voice.cancelFrom(dev.distillpod.android.voice.VoiceOrigin.PHONE, false) }
     }
     VoicePlayerInteraction(state.copy(error = permissionError ?: state.error), ask, voice::finishQuestion) {
         voice.cancel(true); permissionError = null
@@ -183,6 +183,7 @@ internal fun VoiceSettings(vm: AppViewModel) {
     Button(onClick = { editKey = true }) { Text(if (hasKey) "Replace API key" else "Add API key") }
     if (hasKey) TextButton(onClick = {
         vm.graph.voice.cancel(false)
+        dev.distillpod.android.voice.HeadphoneVoiceService.stop(vm.graph.context)
         try { store.clear(); hasKey = false; message = "API key removed" }
         catch (_: Exception) { message = "Could not remove the API key. Try again." }
     }) { Text("Remove API key") }
@@ -195,6 +196,8 @@ internal fun VoiceSettings(vm: AppViewModel) {
         }
         Switch(checked = rewind, onCheckedChange = { rewind = it; preferences.edit().putBoolean("rewind", it).apply() })
     }
+    HorizontalDivider()
+    HeadphoneVoiceSettings(vm, hasKey)
     HorizontalDivider()
     val carConnected by vm.graph.carVoiceEntry.connected.collectAsStateWithLifecycle()
     Text("Android Auto", style = MaterialTheme.typography.titleMedium)

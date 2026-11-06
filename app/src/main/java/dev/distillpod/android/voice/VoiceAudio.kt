@@ -29,23 +29,29 @@ class PcmResampler {
     }
 }
 @SuppressLint("MissingPermission")
-class PhoneVoiceInput : VoiceInput {
-    private val recorder = AudioRecord.Builder().setAudioSource(MediaRecorder.AudioSource.VOICE_RECOGNITION)
+class PhoneVoiceInput(private val preferredDevice: AudioDeviceInfo? = null,
+    private val requireHeadset: Boolean = false) : VoiceInput {
+    private val recorder = AudioRecord.Builder().setAudioSource(if (requireHeadset) MediaRecorder.AudioSource.VOICE_COMMUNICATION else MediaRecorder.AudioSource.VOICE_RECOGNITION)
         .setAudioFormat(AudioFormat.Builder().setSampleRate(24000).setEncoding(AudioFormat.ENCODING_PCM_16BIT).setChannelMask(AudioFormat.CHANNEL_IN_MONO).build())
         .setBufferSizeInBytes(9600).build()
     private val closed = java.util.concurrent.atomic.AtomicBoolean(false)
-    override fun start() { check(recorder.state == AudioRecord.STATE_INITIALIZED); recorder.startRecording() }
+    override fun start() {
+        check(recorder.state == AudioRecord.STATE_INITIALIZED)
+        preferredDevice?.let { check(recorder.setPreferredDevice(it)) }
+        recorder.startRecording()
+    }
     override fun read(): ByteArray? {
         val bytes = ByteArray(960)
         val count = recorder.read(bytes, 0, bytes.size)
+        if (requireHeadset && (count < 0 || recorder.routedDevice?.type?.let(::headphoneInputType) != true)) throw HeadsetDisconnected()
         check(count >= 0) { "Microphone read failed" }
         return if (count == 0) null else bytes.copyOf(count)
     }
     override fun close() { if (closed.compareAndSet(false, true)) { runCatching { recorder.stop() }; recorder.release() } }
 }
-class AndroidVoiceOutput(context: Context, private val interrupted: () -> Unit) : VoiceOutput {
+class AndroidVoiceOutput(context: Context, communication: Boolean = false, private val interrupted: () -> Unit) : VoiceOutput {
     private val manager = context.getSystemService(AudioManager::class.java)
-    private val attributes = AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build()
+    private val attributes = AudioAttributes.Builder().setUsage(if (communication) AudioAttributes.USAGE_VOICE_COMMUNICATION else AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build()
     private val focus = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE).setAudioAttributes(attributes)
         .setOnAudioFocusChangeListener { if (it != AudioManager.AUDIOFOCUS_GAIN) interrupted() }.build()
     private val track: AudioTrack
@@ -75,8 +81,8 @@ class AndroidVoiceOutput(context: Context, private val interrupted: () -> Unit) 
 }
 
 /** A local cue finishes before microphone capture, so it is not sent to the model. */
-suspend fun voiceReadyTone() {
-    val tone = ToneGenerator(AudioManager.STREAM_MUSIC, 40)
+suspend fun voiceReadyTone(stream: Int = AudioManager.STREAM_MUSIC) {
+    val tone = ToneGenerator(stream, 40)
     try { tone.startTone(ToneGenerator.TONE_PROP_BEEP, 120); delay(160) }
     finally { tone.release() }
 }

@@ -28,7 +28,7 @@ class VoiceCarService : CarAppService() {
                             .setComponent(android.content.ComponentName(carContext, VoiceCarService::class.java)))
                     }
                 }
-                override fun onDestroy(owner: LifecycleOwner) { binding?.close(); carContext.appGraph.voice.cancel(false) }
+                override fun onDestroy(owner: LifecycleOwner) { binding?.close(); carContext.appGraph.voice.cancelFrom(VoiceOrigin.CAR, false) }
             })
         }
         override fun onCreateScreen(intent: Intent): Screen = CarPlaybackScreen(carContext, intent.action == CarVoiceEntry.ASK_ACTION)
@@ -113,7 +113,7 @@ class VoiceCarScreen(context: CarContext, private val autoAsk: Boolean = false) 
             override fun onStart(owner: LifecycleOwner) {
                 if (autoAsk && !asked && carContext.appGraph.voiceApiKey.hasKey()) { asked = true; start(false) }
             }
-            override fun onStop(owner: LifecycleOwner) { voice.cancel(false) }
+            override fun onStop(owner: LifecycleOwner) { voice.cancelFrom(VoiceOrigin.CAR, false) }
         })
     }
     override fun onGetTemplate(): Template {
@@ -134,9 +134,9 @@ class VoiceCarScreen(context: CarContext, private val autoAsk: Boolean = false) 
     private fun start(diagnostic: Boolean) {
         if (carContext.checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             carContext.requestPermissions(listOf(Manifest.permission.RECORD_AUDIO), androidx.core.content.ContextCompat.getMainExecutor(carContext)) { granted, _ ->
-                if (Manifest.permission.RECORD_AUDIO in granted) voice.start({ CarVoiceInput(carContext) }, diagnostic)
+                if (Manifest.permission.RECORD_AUDIO in granted) voice.start({ CarVoiceInput(carContext) }, diagnostic, VoiceOrigin.CAR)
             }
-        } else voice.start({ CarVoiceInput(carContext) }, diagnostic)
+        } else voice.start({ CarVoiceInput(carContext) }, diagnostic, VoiceOrigin.CAR)
     }
 }
 @android.annotation.SuppressLint("MissingPermission")
