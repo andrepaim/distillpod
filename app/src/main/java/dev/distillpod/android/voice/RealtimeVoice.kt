@@ -2,7 +2,6 @@ package dev.distillpod.android.voice
 
 import android.util.Base64
 import kotlinx.coroutines.*
-import kotlinx.coroutines.channels.Channel
 import okhttp3.*
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
@@ -18,19 +17,17 @@ class RealtimeVoice(private val source: String, apiKey: String, private val sear
         private val lastUsage = kotlinx.coroutines.flow.MutableStateFlow<VoiceUsage?>(null)
         val usage: kotlinx.coroutines.flow.StateFlow<VoiceUsage?> = lastUsage
     }
-    private val events = Channel<JSONObject>(64)
+    private val events = RealtimeEventBuffer()
     private val socket = http.newWebSocket(Request.Builder().url(endpoint)
         .header("Authorization", "Bearer $apiKey").build(), object : WebSocketListener() {
         override fun onMessage(webSocket: WebSocket, text: String) {
-            if (text.length > 512_000) { events.close(IllegalStateException("Voice event too large")); webSocket.cancel(); return }
-            try { if (!events.trySend(JSONObject(text)).isSuccess) { events.close(IllegalStateException("Voice buffer full")); webSocket.cancel() } }
-            catch (_: Exception) { events.close(IllegalStateException("Invalid voice event")); webSocket.cancel() }
+            if (!events.offer(text)) webSocket.cancel()
         }
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) { events.close(IllegalStateException("Voice connection failed")) }
         override fun onClosed(webSocket: WebSocket, code: Int, reason: String) { events.close() }
     })
     private fun send(value: JSONObject) { check(socket.queueSize() < 256_000 && socket.send(value.toString())) { "Voice connection congested" } }
-    private suspend fun event() = events.receive().also { check(it.optString("type") != "error") { "Voice request rejected" } }
+    private suspend fun event() = JSONObject(events.receive()).also { check(it.optString("type") != "error") { "Voice request rejected" } }
     override suspend fun answer(input: VoiceInput, output: VoiceOutput, phase: (String) -> Unit, text: (String) -> Unit) = coroutineScope {
         val started = kotlin.time.TimeSource.Monotonic.markNow()
         var firstAudioMs: Long? = null

@@ -11,7 +11,11 @@ import org.robolectric.RobolectricTestRunner
 
 @RunWith(RobolectricTestRunner::class)
 class RealtimeVoiceTest {
-    @Test fun `websocket sends audio once configured and drains final answer`() = runBlocking {
+    @Test fun `websocket sends audio once configured and drains final answer`() = runBlocking { exchange() }
+
+    @Test fun `fast provider bursts survive slower audio playback`() = runBlocking { exchange(chunks = 200, slow = true) }
+
+    private suspend fun exchange(chunks: Int = 1, slow: Boolean = false) {
         val server = MockWebServer()
         var configured = false; var responseRequested = false
         server.enqueue(MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
@@ -30,21 +34,21 @@ class RealtimeVoiceTest {
                     }
                     "response.create" -> {
                         responseRequested = true
-                        socket.send("""{"type":"response.output_audio.delta","delta":"AAA="}""")
+                        repeat(chunks) { socket.send("""{"type":"response.output_audio.delta","delta":"AAA="}""") }
                         socket.send("""{"type":"response.output_audio_transcript.delta","delta":"Answer"}""")
                         socket.send("""{"type":"response.done","response":{"status":"completed","output":[]}}""")
                     }
                 }
             }
         }))
-        var microphoneClosed = false; var drained = false; var answer = ""
+        var microphoneClosed = false; var drained = false; var answer = ""; var played = 0
         val input = object : VoiceInput {
             override fun start() {}
             override fun read(): ByteArray { Thread.sleep(20); return byteArrayOf(0,0) }
             override fun close() { microphoneClosed = true }
         }
         val output = object : VoiceOutput {
-            override suspend fun play(pcm: ByteArray) { assertTrue(microphoneClosed); assertArrayEquals(byteArrayOf(0,0), pcm) }
+            override suspend fun play(pcm: ByteArray) { if (slow) delay(5); played++; assertTrue(microphoneClosed); assertArrayEquals(byteArrayOf(0,0), pcm) }
             override suspend fun drain() { drained = true }
             override fun close() {}
         }
@@ -52,7 +56,7 @@ class RealtimeVoiceTest {
             RealtimeVoice("source", "sk-test-only-01234567890123456789", ready = {}, endpoint = server.url("/realtime").toString()).use { connection ->
                 withTimeout(5000) { connection.answer(input, output, {}, { answer += it }) }
             }
-            assertTrue(drained); assertEquals("Answer", answer)
+            assertTrue(drained); assertEquals(chunks, played); assertEquals("Answer", answer)
             assertEquals("Bearer sk-test-only-01234567890123456789", server.takeRequest().getHeader("Authorization"))
         } finally { server.shutdown() }
     }
