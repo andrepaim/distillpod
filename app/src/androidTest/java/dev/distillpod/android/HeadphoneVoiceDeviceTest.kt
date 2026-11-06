@@ -74,14 +74,23 @@ class HeadphoneVoiceDeviceTest {
             val component = ComponentName(context, PlaybackService::class.java)
             val future = main { MediaController.Builder(context, SessionToken(context, component)).buildAsync() }
             val player = future.get(15, TimeUnit.SECONDS).also { controller = it }
+            val diagnostic = {
+                main {
+                    "voice=${graph.voice.state.value}, shortcutReady=${graph.headphoneVoice.ready.value}, " +
+                        "car=${graph.carConnection.value}, episode=${player.currentMediaItem?.mediaId}, " +
+                        "position=${player.currentPosition}, playing=${player.isPlaying}, " +
+                        "playWhenReady=${player.playWhenReady}, playbackState=${player.playbackState}"
+                }
+            }
+            // Android 15 requires a visible Activity or an existing FGS before requesting audio focus.
+            device.wakeUp()
+            instrumentation.uiAutomation.executeShellCommand("wm dismiss-keyguard").close()
+            scenario = ActivityScenario.launch(MainActivity::class.java)
             main {
                 player.setMediaItems(listOf("a", "b").map { MediaItem.Builder().setMediaId("$id-$it").setUri(android.net.Uri.fromFile(file)).build() }, 0, 75000)
                 player.prepare(); player.play()
             }
-            device.wakeUp()
-            instrumentation.uiAutomation.executeShellCommand("wm dismiss-keyguard").close()
-            scenario = ActivityScenario.launch(MainActivity::class.java)
-            await { graph.headphoneVoice.ready.value && main { player.isPlaying } && main {
+            await(diagnostic) { graph.headphoneVoice.ready.value && main { player.isPlaying } && main {
                 graph.carConnection.value == androidx.car.app.connection.CarConnection.CONNECTION_TYPE_NOT_CONNECTED
             } }
             assertTrue(context.getSystemService(android.media.AudioManager::class.java).activeRecordingConfigurations.isEmpty())
@@ -89,8 +98,7 @@ class HeadphoneVoiceDeviceTest {
             instrumentation.uiAutomation.executeShellCommand("input keyevent 87").use { descriptor ->
                 FileInputStream(descriptor.fileDescriptor).use { it.readBytes() }
             }
-            await(diagnostic = { "voice=${graph.voice.state.value}, ready=${graph.headphoneVoice.ready.value}, " +
-                "car=${graph.carConnection.value}, playback=${main { "${player.currentMediaItem?.mediaId}, ${player.currentPosition}, playing=${player.isPlaying}, ready=${player.playWhenReady}, state=${player.playbackState}" }}" }) {
+            await(diagnostic) {
                 graph.voice.state.value.error != null && !graph.voice.state.value.active && main { player.isPlaying }
             }
             assertEquals("$id-a", main { player.currentMediaItem!!.mediaId })
