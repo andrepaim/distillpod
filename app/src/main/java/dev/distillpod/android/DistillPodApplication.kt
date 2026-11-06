@@ -39,6 +39,7 @@ class AppGraph(val context: Context) {
     val importedQueue=kotlinx.coroutines.flow.MutableStateFlow<List<String>?>(null)
     val playbackEvents = dev.distillpod.android.playback.PlaybackEvents()
     val playback by lazy { dev.distillpod.android.playback.PlaybackRepository(context, db, scope) }
+    val carVoiceEntry = dev.distillpod.android.voice.CarVoiceEntry()
     val voiceApiKey by lazy { dev.distillpod.android.voice.VoiceApiKeyStore(context) }
     val voice: dev.distillpod.android.voice.VoiceCoordinator by lazy {
         dev.distillpod.android.voice.VoiceCoordinator(scope, { changed -> playback.pauseForVoice(changed,

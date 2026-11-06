@@ -62,3 +62,8 @@ Set `DISTILLPOD_ADB` and `DISTILLPOD_ADB_PORT` for Windows ADB from WSL. The run
 For a real phone, use Google's Desktop Head Unit. Configure Android Auto's head-unit server and forward port 5277 with the correct phone serial. Keep DHU and ADB on the same host. Personal library exports, installed APKs and car screenshots belong in private local evidence, not CI artifacts. [DHU instructions](https://developer.android.com/training/cars/testing/dhu)
 
 See the [implementation plan](android-auto-plan.md), [TDD receipt](evidence/android-auto-tdd.md) and [validation record](evidence/android-auto-validation.md) for executed checks and remaining hardware coverage.
+
+
+## Voice preview
+
+Voice-enabled private builds add **Ask about this** to the expanded media player's extra/overflow actions. Supported templated-media hosts also expose **DistillPod Voice** with a native playback screen and Ask header action. Open that car entry first to bind the microphone-capable session. If the host only supports the ordinary media browser, Ask returns an unsupported result and does not use the phone microphone. **Settings → Voice** on the phone reports whether a car voice screen is connected. See [voice preview setup and validation limits](voice-mode.md). These paths still require parked-car validation; phone voice success alone does not establish Android Auto voice support.

@@ -63,6 +63,8 @@ android {
 dependencies {
     implementation(project(":core"))
     implementation("androidx.car.app:app:1.7.0")
+    implementation("androidx.car.app:app-projected:1.7.0")
+    implementation("androidx.media:media:1.7.0")
     implementation(platform("com.google.firebase:firebase-bom:34.8.0"))
     implementation("com.google.firebase:firebase-auth")
     implementation("com.google.firebase:firebase-firestore")

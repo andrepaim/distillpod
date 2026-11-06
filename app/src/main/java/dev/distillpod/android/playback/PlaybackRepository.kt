@@ -141,6 +141,18 @@ class PlaybackRepository(context: Context, private val db: AppDatabase, private 
             c.prepare();c.playWhenReady=playWhenReady
         }
     }
+    suspend fun carPlaybackToken(): android.support.v4.media.session.MediaSessionCompat.Token {
+        val c = controller()
+        val future = withContext(Dispatchers.Main) {
+            c.sendCustomCommand(dev.distillpod.android.voice.CarVoiceEntry.TOKEN, android.os.Bundle.EMPTY)
+        }
+        val result = withContext(Dispatchers.IO) { future.get(10, TimeUnit.SECONDS) }
+        check(result.resultCode == androidx.media3.session.SessionResult.RESULT_SUCCESS)
+        @Suppress("DEPRECATION")
+        val token = result.extras.getParcelable<android.media.session.MediaSession.Token>(dev.distillpod.android.voice.CarVoiceEntry.TOKEN_EXTRA)
+            ?: error("Car playback token unavailable")
+        return android.support.v4.media.session.MediaSessionCompat.Token.fromToken(token)
+    }
     suspend fun pauseForVoice(changed: () -> Unit, rewindMs: Long = 0): dev.distillpod.android.voice.VoiceLease {
         val c = controller()
         return withContext(Dispatchers.Main) {

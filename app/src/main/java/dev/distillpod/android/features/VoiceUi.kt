@@ -195,6 +195,11 @@ internal fun VoiceSettings(vm: AppViewModel) {
         }
         Switch(checked = rewind, onCheckedChange = { rewind = it; preferences.edit().putBoolean("rewind", it).apply() })
     }
+    HorizontalDivider()
+    val carConnected by vm.graph.carVoiceEntry.connected.collectAsStateWithLifecycle()
+    Text("Android Auto", style = MaterialTheme.typography.titleMedium)
+    Text(if (carConnected) "Car voice screen connected" else "Car voice screen not connected")
+    Text("While parked, open DistillPod Voice from the car launcher. Ask may also appear in the player's extra actions. The car must support templated media apps to provide its microphone.", style = MaterialTheme.typography.bodySmall)
     message?.let { Text(it) }
     if (editKey) VoiceApiKeyDialog(onDismiss = { editKey = false }, onSave = {
         vm.graph.voice.cancel(false); store.save(it); hasKey = true; message = "API key saved on this phone"; editKey = false
