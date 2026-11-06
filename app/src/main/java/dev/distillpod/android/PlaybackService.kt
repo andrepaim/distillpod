@@ -69,6 +69,10 @@ class PlaybackService : MediaLibraryService() {
         player.addAnalyticsListener(health)
         scope.launch { while (isActive) { health.sample(); delay(5000) } }
         val activity = PendingIntent.getActivity(this, 1, Intent(this, MainActivity::class.java).putExtra("openPlayer", true), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        var headphoneDistill = false
+        scope.launch {
+            graph.settings.flow.map { it.headphoneDistill }.distinctUntilChanged().collect { headphoneDistill = it }
+        }
         lateinit var libraryCallback:AutoLibraryCallback
         val artwork=dev.distillpod.android.auto.AutoArtwork(this,graph.http,scope) {
             scope.launch {session?.let {libraryCallback.libraryChanged(it)}}
@@ -77,7 +81,18 @@ class PlaybackService : MediaLibraryService() {
             saveMoment={id,position,file->
                 val ep=dao.episode(id)?:error("Episode is unavailable")
                 graph.captures.save(id,position,file!=null && file==ep.localFile)
-            },prepareMoment={id->graph.scope.launch(Dispatchers.IO){runCatching {graph.captures.prepareSaved(id)}};Unit},artwork=artwork::uri)
+            },prepareMoment={id->graph.scope.launch(Dispatchers.IO){runCatching {graph.captures.prepareSaved(id)}};Unit},artwork=artwork::uri,
+            headphoneDistillEnabled = { headphoneDistill },
+            onHeadphoneCaptureFailure = {
+                android.widget.Toast.makeText(this, "Couldn't save moment. Play an episode and try again.", android.widget.Toast.LENGTH_SHORT).show()
+            },
+            isTrustedMediaButtonCaller = { caller ->
+                val manager = getSystemService(android.media.session.MediaSessionManager::class.java)
+                runCatching {
+                    manager.isTrustedForMediaControl(android.media.session.MediaSessionManager.RemoteUserInfo(
+                        caller.packageName, -1, caller.uid))
+                }.getOrDefault(false)
+            })
         session = MediaLibrarySession.Builder(this, player, libraryCallback).setSessionActivity(activity)
             .setCustomLayout(dev.distillpod.android.playback.PlaybackControls.buttons)
             .setMediaButtonPreferences(dev.distillpod.android.playback.PlaybackControls.buttons).build()

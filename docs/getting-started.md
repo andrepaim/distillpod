@@ -44,6 +44,10 @@ While listening, select Distill last 60 seconds. DistillPod records that origina
 
 With ChatGPT connected and the source transcript ready, DistillPod can generate a quote and concise insight for the saved moment. Source review may be required before generation. Choose **Explain this idea** to explore the excerpt further through an explanation, practical reflection and questions to investigate. Explanations use the transcript; they do not search the web.
 
+To capture from headphones, enable **Settings → Playback & headphones → Distill with previous-track button** (off by default). In the Soundcore app, assign your Liberty 4 NC gesture, such as triple tap, to **Previous track**, if available. While DistillPod handles playback, that button command saves the preceding minute without skipping. Other gestures or accessories sending the same button command will also distill. Turning the option off restores the usual previous-track action; single-earbud controls may need separate setup.
+
+A pen-scribble sound confirms a new saved moment, independently of later insight generation. Adjust **Distill confirmation sound** on the same settings page; it uses media volume. See [headphone setup, design and validation limits](android/headphone-distill.md). Actual Liberty 4 NC gesture and Bluetooth routing still require physical-device validation.
+
 ## Sync supported library data
 
 In a configured build, open **Settings → Library sync → Connect Google & sync library**. Review existing feeds, approve only public sources, then choose the Google account for this library. Google sign-in is separate from ChatGPT and from the Drive file picker. An unconfigured source/debug build shows “Cloud sync is unavailable in this build.”
