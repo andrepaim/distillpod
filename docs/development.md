@@ -84,8 +84,9 @@ commits for personal data containers and unreviewed binary media. See
 
 Documentation screenshots and videos have a separate opt-in fixture on an
 empty emulator. Follow [media reproduction](demos/README.md#reproduce-the-captures).
-`DocumentationMediaDeviceTest` is skipped unless
-`allowDocumentationCapture=true`; it must never target a personal installation.
+`DocumentationMediaDeviceTest` is excluded from ordinary acceptance and requires
+`allowDocumentationCapture=true` when invoked directly; it must never target a
+personal installation.
 
 Ordinary emulator acceptance uses synthetic data and public speech fixtures. Live account and long-running public-network checks require deliberate opt-in and should run only when authorized for that task:
 
