@@ -72,6 +72,10 @@ The [library sync guide](android/subscription-sync.md) documents optional client
 
 ## Workflows
 
+`security.yml` scans fetched Git history for secrets and checks current/new
+commits for personal data containers and unreviewed binary media. See
+[repository security](security.md) for local checks and asset-review requirements.
+
 `ci.yml` runs Kotlin tests, lint/APK assembly, release-tool guards, host native validation and emulator acceptance on main pushes and pull requests. Its reusable form also gates the release workflow. Actions are pinned to reviewed commit SHAs; Dependabot checks those pins and Gradle dependencies weekly.
 
 `release.yml` accepts version tags from main history, requests the additional unsigned release build/lint, and signs only after all validation jobs pass. Signing secrets are available only in the protected alpha-release environment. The publishing job has repository-content write permission; test jobs have read permission. See [releases](releases.md).
