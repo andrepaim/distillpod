@@ -1,5 +1,9 @@
 # Search and discovery UI proposal
 
+> Historical design and implementation record. The delivered UI has since evolved;
+> use the [current guide](../getting-started.md) and [current screenshots](../demos/README.md).
+> Original observations and validation results are preserved below.
+
 November 3, 2026. Requested scope: research podcast-player screenshots, propose a professional search experience, implement and validate autonomously. This builds on the [general UI redesign](ui-improvement-proposal.md).
 
 ## References and assessment

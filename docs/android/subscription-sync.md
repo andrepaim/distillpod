@@ -18,6 +18,13 @@ Subscriptions, listening position, explicit completion and saved moments synchro
 
 ## Build configuration
 
+For a project's API key, configure both the appropriate API allowlist and the
+intended package/signing-certificate restriction. Registering a Firebase signing
+fingerprint alone does not restrict that key. The retained production key is
+restricted to the release identity; a differently signed debug APK must use its
+own authorized development configuration or the demo emulators. See
+[client-key restrictions](../security.md#firebase-key-restrictions).
+
 The default source build has no production Firebase client configuration and shows “Cloud sync is unavailable in this build.” Download the Android client JSON from your Firebase project, keep it outside Git, enable Google sign-in, and register the signing certificate fingerprints. Build with Java 17:
 
 ```sh
@@ -67,6 +74,20 @@ The schema 5→6 migration adds locally visible revisions and durable session/ch
 Settings offers **Sync queue & preferences**, which upgrades the account protocol from 1 to 2 and seeds existing queue/preferences without contacting Cloud Storage. Older builds stop cloud work at this protocol gate and preserve their local library; upgrade those installations before using the extended account. A fresh installation connected to an already upgraded account joins that scope automatically.
 
 Queue order is a versioned, deduplicated list (up to 200 public entries) with separate episode identity records. Private entries stay local and are counted in Settings. Active divergent order retains an explicit conflict; accepting cloud order preserves the current audio and applies the remaining playlist without echoing its temporary active item into the shared queue. Preferences have independent revisions and never include account identity, network/storage policies or request/job state.
+
+### Contextual moments and protocol 3
+
+Contextual distills use account protocol 3 and moment payload schema 2. Update
+all installations before accepting the explicit contextual-moment upgrade in
+Settings. Older clients stop cloud work at the upgraded account head; their
+local libraries remain available. Account protocol downgrades are not supported.
+
+Before that upgrade, a new-format moment can remain pending with
+`upgrade_required` while subscription/progress changes continue. Upgrading does
+not enable Cloud Storage or upload full transcripts. Only published moment
+snapshots sync; generation attempts, full source context and version history
+remain local and are included in manual backups. Queue/preferences work at both
+protocols 2 and 3. See [contextual-distill compatibility](contextual-distills.md#sync-rollout).
 
 ### Inactive finished-content experiment
 

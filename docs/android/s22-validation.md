@@ -1,5 +1,9 @@
 # Samsung Galaxy S22 Ultra validation
 
+> Historical validation report. Results and commands below apply to the stated
+> revision and device. For current behavior, use the [usage guide](../getting-started.md),
+> [build instructions](../development.md) and [implementation status](implementation-status.md).
+
 Date: November 1, 2026. Updated November 2, 2026. Branch: `feat/native-android`.
 
 The owner connected the target phone over USB with debugging authorized. The development app and fixture-bearing test APK installed successfully. This extends the emulator evidence to a physical ARM64 device; full feasibility acceptance remains open.

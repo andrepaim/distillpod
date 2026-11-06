@@ -1,20 +1,20 @@
 # Android implementation status
 
-Reviewed against `main` on November 6, 2026. This page distinguishes implemented code, downloadable releases and dated device evidence.
+Reviewed against `main` at `bad8488` on November 6, 2026. This page distinguishes implemented code, downloadable releases and dated device evidence.
 
 ## Source and distribution
 
 | Item | State at this review |
 | --- | --- |
-| Main source | `0.15.0-alpha.1` release candidate, version code `24`, from [gradle.properties](../../gradle.properties) |
-| Latest published APK at review | [0.14.0-alpha.1](https://github.com/andrepaim/distillpod/releases/tag/v0.14.0-alpha.1), published November 5; APK, checksums and build metadata attached |
+| Main source | `0.15.0-alpha.1`, version code `24`, plus repository security guards; see [gradle.properties](../../gradle.properties) |
+| Latest published APK at review | [0.15.0-alpha.1](https://github.com/andrepaim/distillpod/releases/tag/v0.15.0-alpha.1), published November 6; APK, checksums and build metadata attached |
 | Latest recorded phone update | S25 in-place installation of 0.10.1-alpha.1, code 19, November 5, before GitHub publication |
 | Database | Room schema 9 with migrations from schemas 1–8; no destructive fallback |
 | Supported Android/package | Android 10+ (`minSdk 29`), ARM64 and x86_64; `dev.distillpod.android` |
 | Default source/debug build | No production Firebase configuration; library sync shows unavailable |
 | Release workflow | Requires Firebase client configuration, validates an unsigned candidate and retains the personal-alpha signing identity |
 
-The phone update retained its certificate, Firebase client configuration and existing library data; the online-transcript setting was visible and off. This is update/data-preservation evidence, not a live phone sync test or a store release. See the [online-transcript installation report](online-transcripts.md#s25-installation--november-5). Release notes in [current.md](../releases/current.md) describe the 0.15.0-alpha.1 headphone-capture candidate. The published-build row records the verified baseline at review; check [GitHub Releases](https://github.com/andrepaim/distillpod/releases) for subsequent publication.
+The phone update retained its certificate, Firebase client configuration and existing library data; the online-transcript setting was visible and off. This is update/data-preservation evidence, not a live phone sync test or a store release. See the [online-transcript installation report](online-transcripts.md#s25-installation--november-5). The [published 0.15.0 release notes](https://github.com/andrepaim/distillpod/releases/tag/v0.15.0-alpha.1) describe headphone capture. The published-build row records the verified baseline at review; check [GitHub Releases](https://github.com/andrepaim/distillpod/releases) for subsequent publication.
 
 ## Implemented on main
 
@@ -34,6 +34,7 @@ These are dated results, not claims that every scenario was rerun for the curren
 
 | Area | Recorded evidence and boundary |
 | --- | --- |
+| Repository security, November 6 | `bad8488` passed [Android CI](https://github.com/andrepaim/distillpod/actions/runs/42221053158) and [Repository security](https://github.com/andrepaim/distillpod/actions/runs/42221053280): all five jobs passed. Secret scanning and data-container guards are active. [App Check](app-check-rollout.md) remains a plan with enforcement off; this is not new physical-phone evidence. |
 | Headphone integration, November 6 | Source `95c28aa` passed all four [main CI jobs](https://github.com/andrepaim/distillpod/actions/runs/42185294817). Local integration `1bb4248` has the identical file tree and passed 363 JVM tests, 15 Python tests, lint and debug/app-test builds. Isolated Android acceptance covers headphone/system keys and confirmation playback; actual Liberty 4 NC gestures and Bluetooth routing remain unverified. |
 | Automatic transcripts and confirmation sound, November 5 | Combined source `8fabf40` passed [Android CI](https://github.com/andrepaim/distillpod/actions/runs/42104947484), including isolated playback/Whisper and sound acceptance. This is not physical-device validation of the release candidate. |
 | Online transcripts and upgrades, November 5 | [Validation receipt](evidence/online-transcripts-validation.json): 248 JVM tests (82 core, 166 app), debug lint and app/instrumentation builds. JVM upgrade regression covers schemas 1–7. Device tests were compiled at that checkpoint; the later S25 update separately verifies preservation. |

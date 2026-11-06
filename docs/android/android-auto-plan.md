@@ -1,5 +1,9 @@
 # Android Auto implementation plan
 
+> Implemented design with remaining acceptance gates. Android Auto is on `main`
+> and in published alpha APKs. Use the [current setup guide](android-auto.md);
+> branch names and device results below identify historical checkpoints.
+
 Date: November 5, 2026. Status: core implementation and automated service checks completed on `feat/android-auto`; signed S22/Android Auto preview exercised. Corrected signed preview installed and launcher-enabled on the S25; physical-car acceptance remains open.
 
 Make DistillPod available in the Android Auto launcher when the owner connects the S25 Ultra to a compatible car. The car should browse the existing library, resume episodes, play downloads offline, and save moments through a Distill action. The phone remains responsible for playback and storage.

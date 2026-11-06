@@ -1,6 +1,6 @@
 # Firebase library sync
 
-This directory contains the isolated protocol/security test harness and deployed rules for basic library sync and the protocol-2 queue/preferences/finished-content extension. The Android adapter, durable cursor/bootstrap recovery, public-feed review and account UI are implemented. See the [usage/build/test guide](../docs/android/subscription-sync.md) and the [complete plan](../docs/android/firebase-sync-telemetry-plan.md) for scope and remaining milestones.
+This directory contains the isolated protocol/security test harness and rules for basic library sync, protocol-2 queue/preferences, and protocol-3 contextual moments. The finished-content Storage extension is retained for isolated tests and disabled in application builds. The Android adapter, durable cursor/bootstrap recovery, public-feed review and account UI are implemented. See the [usage/build/test guide](../docs/android/subscription-sync.md) and the [complete plan](../docs/android/firebase-sync-telemetry-plan.md) for scope and remaining milestones.
 
 ## Local tests
 
@@ -23,7 +23,7 @@ The owner authorized dedicated project `distillpod-native-sync` and Android app 
 
 The CLI login and downloaded client configuration are outside the repository. Service-account keys and OAuth credentials must never be committed. Client configuration is not an authorization boundary; rules and account lifecycle validation provide access control. Configured APKs use the explicit `distillpodFirebaseConfig` build property. CI uses demo Auth/Firestore emulators. The release workflow now requires and injects the `FIREBASE_CONFIG_JSON` repository secret for distribution builds; ordinary PR/debug builds remain unconfigured. Separate live staging, App Check and broader rollout validation remain open.
 
-Firestore rules cover basic library records, protocol-2 queue/episode/preferences records and finished-content manifests. Storage rules restrict immutable gzip objects to the authenticated active account generation. Enabled cloud scope excludes full transcripts, analyses, conversations and explanations. Complete account deletion, retention/compaction and independent cloud recovery backups remain later milestones. Do not deploy client/schema expansions without their corresponding rule tests and compatibility gates.
+Firestore rules cover basic library records, protocol-2 queue/episode/preferences records, protocol-3 contextual moments and experimental finished-content manifests. Protocol-3 rules prevent legacy writes from replacing new-format moments; the account upgrade remains explicit. Storage rules restrict immutable gzip objects to the authenticated active account generation. Enabled cloud scope excludes full transcripts, analyses, conversations and explanations. Complete account deletion, retention/compaction and independent cloud recovery backups remain later milestones. Do not deploy client/schema expansions without their corresponding rule tests and compatibility gates.
 
 ## Finished-content checks
 

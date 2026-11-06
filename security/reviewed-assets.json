@@ -239,6 +239,66 @@
       "6ced8eb5d0127565649fb0ea3d171aca6698d38270b7df7507bc818d279c6f44"
     ]
   },
+  "docs/demos/distill-result.png": {
+    "reason": "Visually reviewed synthetic documentation capture from an empty emulator; supplied example AI output and simulated headphone media key are disclosed in docs/demos/README.md.",
+    "sha256": [
+      "61b76a8d2b66eb3fe568c6037d86c9a81746a24e931b95eb7702c273ec9d01ec"
+    ]
+  },
+  "docs/demos/distillation.mp4": {
+    "reason": "Visually reviewed synthetic documentation capture from an empty emulator; supplied example AI output and simulated headphone media key are disclosed in docs/demos/README.md.",
+    "sha256": [
+      "b59cb2d6d7faf1d6889d757f0e2489f691a7524888eb77a7d14cc3c80dd4b6fc"
+    ]
+  },
+  "docs/demos/headphone-capture.mp4": {
+    "reason": "Visually reviewed synthetic documentation capture from an empty emulator; supplied example AI output and simulated headphone media key are disclosed in docs/demos/README.md.",
+    "sha256": [
+      "14738f5944f78f4e420444562eff782b58b743e24325146a2b96f0ce5eaa0128"
+    ]
+  },
+  "docs/demos/headphone-settings.png": {
+    "reason": "Visually reviewed synthetic documentation capture from an empty emulator; supplied example AI output and simulated headphone media key are disclosed in docs/demos/README.md.",
+    "sha256": [
+      "aa55280bf60079693acdc3a515485822da2adadc51153f8dfe630ffd4efa7738"
+    ]
+  },
+  "docs/demos/library.png": {
+    "reason": "Visually reviewed synthetic documentation capture from an empty emulator; supplied example AI output and simulated headphone media key are disclosed in docs/demos/README.md.",
+    "sha256": [
+      "ee45ac72f7695aacb2ef41d182420ef5565775f0804a195efdc07ee7c0dc9408"
+    ]
+  },
+  "docs/demos/player.png": {
+    "reason": "Visually reviewed synthetic documentation capture from an empty emulator; supplied example AI output and simulated headphone media key are disclosed in docs/demos/README.md.",
+    "sha256": [
+      "a93a1563efdce67c00805d4ae82bc285266c29547406955bf590d8f87bbae846"
+    ]
+  },
+  "docs/demos/queue.png": {
+    "reason": "Visually reviewed synthetic documentation capture from an empty emulator; supplied example AI output and simulated headphone media key are disclosed in docs/demos/README.md.",
+    "sha256": [
+      "941c5679ad78f38c5edfaeae121ad1e00547e8dd05e2310ccf08f982e03c10b1"
+    ]
+  },
+  "docs/demos/saved.png": {
+    "reason": "Visually reviewed synthetic documentation capture from an empty emulator; supplied example AI output and simulated headphone media key are disclosed in docs/demos/README.md.",
+    "sha256": [
+      "2ed5e9e192e98e8af903fc3efce8f44fe160a67696c4072335e2a54433e2721f"
+    ]
+  },
+  "docs/demos/settings.png": {
+    "reason": "Visually reviewed synthetic documentation capture from an empty emulator; supplied example AI output and simulated headphone media key are disclosed in docs/demos/README.md.",
+    "sha256": [
+      "29add4b74fd3e97a402be3dbf9741224a1a4854f86e880017c996e60df37560b"
+    ]
+  },
+  "docs/demos/transcript.png": {
+    "reason": "Visually reviewed synthetic documentation capture from an empty emulator; supplied example AI output and simulated headphone media key are disclosed in docs/demos/README.md.",
+    "sha256": [
+      "a297beed3d56ae649eee9ee90d53452b4a71a0d625b29960bcd4bfb9093b00f1"
+    ]
+  },
   "gradle/wrapper/gradle-wrapper.jar": {
     "reason": "Gradle wrapper bootstrap binary.",
     "sha256": [

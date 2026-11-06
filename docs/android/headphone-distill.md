@@ -1,5 +1,11 @@
 # Distill from headphone controls
 
+Available in [0.15.0-alpha.1](https://github.com/andrepaim/distillpod/releases/tag/v0.15.0-alpha.1).
+Watch the [captioned demo](../demos/headphone-capture.mp4) or read its
+[text walkthrough](../demos/README.md#hands-free-headphone-capture).
+The recording simulates the media-button command; physical earbud mapping still
+requires the device checks described below.
+
 ## Goal and scope
 
 Save the preceding 60 seconds of the current DistillPod episode using a Liberty 4 NC gesture, without taking the phone out or interrupting playback. The earbuds recognize the gesture; Android delivers its assigned media command. DistillPod does not receive a raw triple-tap gesture or a reliable left/right earbud identity.
@@ -18,7 +24,12 @@ This feature requires no new account, server, permission, Bluetooth SDK or acces
 
 Turning the option off restores normal previous-track media-button behavior. The feature is intended for an existing playback session; it does not promise to start an app that Android has force-stopped or take control from another media app or an active call.
 
-## Research and implementation baseline
+## Historical implementation record
+
+The remaining sections preserve the implementation design, sequence and dated
+validation. Their branch-specific instructions are not current setup steps.
+
+### Research and implementation baseline
 
 Reviewed 2026-11-05. Android app baseline: `origin/main` at `1ed76a3`.
 

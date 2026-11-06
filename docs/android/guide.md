@@ -2,9 +2,14 @@
 
 DistillPod is a native Android personal alpha with a local library, background podcast playback, on-device Whisper and optional ChatGPT episode understanding. Documentation follows `main`; features in published APKs can lag behind the source.
 
+Start with the [documentation index](../README.md), the [two introductory demos](../demos/README.md) or [troubleshooting](../troubleshooting.md).
+
 Use these guides for current instructions:
 
 - [Getting started](../getting-started.md): installation, search, playback, transcripts, saved moments, ChatGPT and optional Google library sync.
+- [Headphone capture](headphone-distill.md): optional previous-track capture while listening.
+- [Android Auto](android-auto.md): car setup, controls and assistant-search limitations.
+- [Contextual distills](contextual-distills.md): source selection, review and previous versions.
 - [Drive backup and restore](drive-backup.md): remembered backup files, dated snapshots, transfer and recovery.
 - [Library sync](subscription-sync.md): supported data, feed approval, account binding, conflicts and Firebase configuration.
 - [Existing online transcripts](online-transcripts.md): opt-in lookup, source matching and timing limitations.

@@ -1,5 +1,9 @@
 # DistillPod usability and visual review
 
+> Historical design and implementation record. The delivered UI has since evolved;
+> use the [current guide](../getting-started.md) and [current screenshots](../demos/README.md).
+> Original observations and validation results are preserved below.
+
 November 4, 2026. Review of the native app after the Spark sync merge; follows the earlier listening and search proposals. Scope: find, listen, read, save, revisit and manage a personal podcast library. The owner requested autonomous review and improvements.
 
 ## Design direction

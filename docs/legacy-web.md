@@ -14,7 +14,12 @@ git fetch origin --tags
 git worktree add ../distillpod-web web-legacy-final
 ```
 
-Use the archived README for its historical setup. A source archive is not a server-data backup: database files, downloaded media, deployment credentials and service configuration must be backed up separately. A private local source/database snapshot and Git bundle were created before this repository migration; none of that personal data is published.
+The old web deployment is retired. Its README is a historical setup reference,
+not current deployment guidance. A source archive is not a server-data backup:
+database files, downloaded media, deployment credentials and service
+configuration require separate handling. Migration recovery snapshots were
+kept outside the current Android tree; preserving Git ancestry does not remove
+data committed earlier. Do not treat the archive as a sanitized dataset.
 
 The Android app has a phone-owned library. It does not read or migrate the old server database automatically. OPML moves subscriptions; Android's library backup/restore moves Android library data.
 
