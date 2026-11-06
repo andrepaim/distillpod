@@ -18,6 +18,10 @@ target_include_directories(distillpod_bridge PUBLIC .)
 if(ANDROID)
     add_library(distillpod_whisper SHARED JniBridge.cpp)
     target_link_libraries(distillpod_whisper PRIVATE distillpod_bridge log)
+    # NDK r27 needs explicit ELF LOAD and RELRO alignment for 16 KB Android devices.
+    target_link_options(distillpod_whisper PRIVATE
+        "-Wl,-z,max-page-size=16384"
+        "-Wl,-z,common-page-size=16384")
 else()
     enable_testing()
     add_executable(transcriber_test ../../../../native-tests/transcriber_test.cpp)

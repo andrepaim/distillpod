@@ -5,7 +5,8 @@ import android.os.SystemClock
 import android.view.KeyEvent
 
 /** Called on the session's application thread. The earbuds, not the app, count taps. */
-internal class HeadphoneDistillButton(private val now: () -> Long = SystemClock::uptimeMillis) {
+internal class HeadphoneDistillButton(private val keyCode: Int = KeyEvent.KEYCODE_MEDIA_PREVIOUS,
+    private val now: () -> Long = SystemClock::uptimeMillis) {
     private data class Press(val device: Int, val downTime: Long)
     private var consumedPress: Press? = null
     private var lastPress: Press? = null
@@ -16,7 +17,7 @@ internal class HeadphoneDistillButton(private val now: () -> Long = SystemClock:
         if (intent.action != Intent.ACTION_MEDIA_BUTTON) return false
         val event = runCatching { intent.getParcelableExtra<KeyEvent>(Intent.EXTRA_KEY_EVENT) }.getOrNull()
             ?: return false
-        if (event.keyCode != KeyEvent.KEYCODE_MEDIA_PREVIOUS ||
+        if (event.keyCode != keyCode ||
             event.action !in listOf(KeyEvent.ACTION_DOWN, KeyEvent.ACTION_UP)) return false
         val press = Press(event.deviceId, event.downTime)
         // Finish consuming a remapped press even when the setting changes before release.

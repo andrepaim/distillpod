@@ -39,6 +39,26 @@ class AppGraph(val context: Context) {
     val importedQueue=kotlinx.coroutines.flow.MutableStateFlow<List<String>?>(null)
     val playbackEvents = dev.distillpod.android.playback.PlaybackEvents()
     val playback by lazy { dev.distillpod.android.playback.PlaybackRepository(context, db, scope) }
+    val carVoiceEntry = dev.distillpod.android.voice.CarVoiceEntry()
+    val voiceApiKey by lazy { dev.distillpod.android.voice.VoiceApiKeyStore(context) }
+    val headphoneVoice = dev.distillpod.android.voice.HeadphoneVoiceShortcut()
+    val carConnection by lazy {
+        kotlinx.coroutines.flow.MutableStateFlow<Int?>(null).also { state ->
+            androidx.car.app.connection.CarConnection(context).type.observeForever { state.value = it }
+        }
+    }
+    val voice: dev.distillpod.android.voice.VoiceCoordinator by lazy {
+        dev.distillpod.android.voice.VoiceCoordinator(scope, { changed -> playback.pauseForVoice(changed,
+                if (context.getSharedPreferences("voice", Context.MODE_PRIVATE).getBoolean("rewind", false)) 3000 else 0) },
+            { lease -> withContext(Dispatchers.IO) { dev.distillpod.android.voice.VoiceContext.load(db, lease.episode, lease.position) } },
+            { source -> dev.distillpod.android.voice.RealtimeVoice(source,
+                withContext(Dispatchers.IO) { voiceApiKey.requireKey() }, search = { query ->
+                    withContext(Dispatchers.IO) { dev.distillpod.android.voice.VoiceContext.search(db, source, query) }
+                }, ready = { dev.distillpod.android.voice.voiceReadyTone(if (voice.state.value.origin == dev.distillpod.android.voice.VoiceOrigin.HEADPHONES && android.os.Build.VERSION.SDK_INT >= 31)
+                    android.media.AudioManager.STREAM_VOICE_CALL else android.media.AudioManager.STREAM_MUSIC) }) },
+            { dev.distillpod.android.voice.AndroidVoiceOutput(context,
+                communication = voice.state.value.origin == dev.distillpod.android.voice.VoiceOrigin.HEADPHONES && android.os.Build.VERSION.SDK_INT >= 31) { voice.cancel(false) } })
+    }
     val ai by lazy { dev.distillpod.android.ai.ChatGptGateway(account.session, settings) }
     val onlineTranscripts by lazy { OnlineTranscriptRepository(this) }
     val transcription by lazy { TranscriptionRepository(this) }

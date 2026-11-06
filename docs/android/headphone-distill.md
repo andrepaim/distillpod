@@ -10,14 +10,14 @@ requires the device checks described below.
 
 Save the preceding 60 seconds of the current DistillPod episode using a Liberty 4 NC gesture, without taking the phone out or interrupting playback. The earbuds recognize the gesture; Android delivers its assigned media command. DistillPod does not receive a raw triple-tap gesture or a reliable left/right earbud identity.
 
-The first version remaps **Previous track** media-button events to Distill. It is optional and off by default. Play/pause, next, volume and noise-control gestures retain their existing behavior. Other accessories that send the same previous-track media-button event are affected while DistillPod handles media controls. Direct player controls in the phone UI and Android Auto are not remapped.
+The first version remaps **Previous track** media-button events to Distill. It is optional and off by default. Play/pause, next, volume and noise-control gestures retain their existing behavior. Voice-enabled builds can separately opt into the [Next-track voice shortcut](headphone-voice.md); that setting is independent from Previous-track Distill. Other accessories that send the same previous-track media-button event are affected while DistillPod handles media controls. Direct player controls in the phone UI and Android Auto are not remapped.
 
 This feature requires no new account, server, permission, Bluetooth SDK or accessibility service. It does not listen to the microphone. The setting is device-local and is excluded from portable preferences and cloud synchronization.
 
 ## Setup and expected experience
 
 1. In the Soundcore app, open **Liberty 4 NC → Controls** and assign the desired gesture (for example triple tap) to **Previous track**, if offered by the installed firmware/app. Remove other mappings to Previous track if you do not want those gestures to distill too. Single-earbud mode may have separate controls; verify those separately.
-2. In DistillPod, open **Settings → Playback & headphones** and enable **Distill with previous-track button**.
+2. In DistillPod, open **Settings → Playback & headphones** and enable **Previous track → Save moment**. Expand **Headphone setup** for the gesture instructions. Voice-enabled builds configure Next on this same page; confirmation sound is under Feedback.
 3. Start an episode in DistillPod. Use the configured gesture while listening, including with the phone locked.
 4. A successful new save plays the existing pen-scribble confirmation through the current media output at media volume. This means the moment was saved, not that AI generation finished. The sound can be disabled independently.
 5. Find the moment in Saved. Transcript preparation and AI generation follow the existing account, download and processing rules. Saving still works without an available transcript or ChatGPT connection.

@@ -66,7 +66,9 @@ import dev.distillpod.android.data.PodcastEntity
         SettingsDestination("Backup & Restore","Save or bring back a portable copy",Icons.Default.Restore){vm.open("backup")}
         SettingsDestination("Library sync","Google account and sync status",Icons.Default.Sync){vm.open("settings:sync")}
         SectionHeading("Listening & insights")
-        SettingsDestination("Playback & headphones","Headphone capture and confirmation sound",Icons.Default.Headphones){vm.open("settings:playback")}
+        SettingsDestination("Playback & headphones","Button shortcuts and save feedback",Icons.Default.Headphones){vm.open("settings:playback")}
+        if (vm.graph.context.resources.getBoolean(dev.distillpod.android.R.bool.voice_enabled))
+            SettingsDestination("Voice","API key and spoken answers",Icons.Default.Mic){vm.open("settings:voice")}
         SettingsDestination("Local transcription","Models and language · on this phone",Icons.Default.Subtitles){vm.open("settings:transcription")}
         SettingsDestination("ChatGPT",if(connected)"Connected · account and AI model" else "Connect for insights and questions",Icons.Default.AutoAwesome){vm.open("settings:ai")}
         SettingsDestination("Downloads & storage","Network, charging and audio storage",Icons.Default.Download){vm.open("settings:storage")}

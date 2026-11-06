@@ -14,6 +14,9 @@ import androidx.lifecycle.repeatOnLifecycle
 import dev.distillpod.android.features.AppViewModel
 import dev.distillpod.android.features.ProductApp
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 
 class MainActivity : ComponentActivity() {
     private val model: AppViewModel by viewModels { AppViewModel.factory(applicationContext.appGraph) }
@@ -34,6 +37,18 @@ class MainActivity : ComponentActivity() {
             }
         }
         setContent { ProductApp(model) }
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.RESUMED) {
+                val graph = applicationContext.appGraph
+                combine(graph.settings.flow, graph.playback.state.map { it.episodeId }.distinctUntilChanged(),
+                    graph.headphoneVoice.ready, graph.voiceApiKey.revisions) { prefs, episode, ready, _ ->
+                    Triple(prefs.headphoneVoice && graph.voiceApiKey.hasKey(), episode != null, ready)
+                }.distinctUntilChanged().collect { (enabled, hasEpisode, ready) ->
+                    if (!enabled) dev.distillpod.android.voice.HeadphoneVoiceService.stop(this@MainActivity)
+                    else if (hasEpisode && !ready) dev.distillpod.android.voice.HeadphoneVoiceService.arm(this@MainActivity)
+                }
+            }
+        }
     }
     override fun onResume() {
         super.onResume()
