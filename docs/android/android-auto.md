@@ -14,7 +14,7 @@ A public Play installation would use the usual distribution and car-quality revi
 
 | Section | Contents |
 | --- | --- |
-| Continue listening | Unfinished episodes with progress; the saved current episode first |
+| Continue | Unfinished episodes with progress; the saved current episode first |
 | Queue | The existing queue in its current order |
 | Downloads | Downloaded episodes whose local audio files still exist |
 | Podcasts | Subscribed shows, followed by their episodes |
@@ -66,4 +66,6 @@ See the [implementation plan](android-auto-plan.md), [TDD receipt](evidence/andr
 
 ## Voice preview
 
-Voice-enabled private builds add **Ask about this** to the expanded media player's extra/overflow actions. Supported templated-media hosts also expose **DistillPod Voice** with a native playback screen and Ask header action. Open that car entry first to bind the microphone-capable session. If the host only supports the ordinary media browser, Ask returns an unsupported result and does not use the phone microphone. **Settings → Voice** on the phone reports whether a car voice screen is connected. See [voice preview setup and validation limits](voice-mode.md). These paths still require parked-car validation; phone voice success alone does not establish Android Auto voice support.
+Voice-enabled private builds advertise **Ask about this** in the expanded media player's extra/overflow actions. On supported templated-media hosts, open **DistillPod** from the car launcher to get the native playback screen with **Ask** and **Library** header actions. Do not look for a separate Voice icon: Android Auto can use the existing DistillPod launcher entry for the templated experience. Reconnect Android Auto after an upgrade, then open the app from the launcher if a recent playback shortcut still shows the old player.
+
+If the host only supports the ordinary media browser, Ask returns an unsupported result and does not use the phone microphone. **Settings → Voice** on the phone reports whether a car voice screen is connected. The S25 with Android Auto 17.9 and Desktop Head Unit rendered the native Ask/Library controls on November 6, 2026; this does not establish real-car microphone support. See [voice preview setup and validation limits](voice-mode.md).

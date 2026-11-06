@@ -180,7 +180,7 @@ class AutoLibraryCallback(
         if (customCommand == dev.distillpod.android.voice.CarVoiceEntry.ASK) {
             val result = if (voiceEnabled() && openCarVoice()) SessionResult(SessionResult.RESULT_SUCCESS)
                 else SessionResult(SessionError(SessionError.ERROR_NOT_SUPPORTED,
-                    "Open DistillPod Voice from the car launcher. This host must support templated media apps."))
+                    "Open DistillPod from the car launcher. Voice needs a host that supports templated media apps."))
             return com.google.common.util.concurrent.Futures.immediateFuture(result)
         }
         if(customCommand==PlaybackControls.back || customCommand==PlaybackControls.forward) {

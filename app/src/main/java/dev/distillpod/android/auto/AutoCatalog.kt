@@ -20,10 +20,14 @@ class AutoCatalog(private val db: AppDatabase,private val artwork: ((String?)->a
         private const val MORE="distillpod:auto:more:"
     }
     private val dao=db.library()
-    private fun folder(id: String,title: String,art: String?=null): MediaItem = MediaItem.Builder().setMediaId(id)
+    private fun folder(id: String,title: String,art: String?=null,icon: String?=null): MediaItem = MediaItem.Builder().setMediaId(id)
         .setMediaMetadata(MediaMetadata.Builder().setTitle(title).setIsBrowsable(true).setIsPlayable(false)
-            .setArtworkUri(artwork?.invoke(art) ?: art?.let(android.net.Uri::parse)).build()).build()
-    private val roots get()=listOf(folder(CONTINUE,"Continue listening"),folder(QUEUE,"Queue"),folder(DOWNLOADS,"Downloads"),folder(PODCASTS,"Podcasts"))
+            .setArtworkUri(if (icon != null) android.net.Uri.parse("android.resource://dev.distillpod.android/drawable/$icon")
+                else artwork?.invoke(art) ?: art?.let(android.net.Uri::parse)).build()).build()
+    // The host highlights the icon slot above the label; leaving it empty looks misaligned.
+    private val roots get()=listOf(folder(CONTINUE,"Continue",icon="ic_auto_continue"),
+        folder(QUEUE,"Queue",icon="ic_auto_queue"),folder(DOWNLOADS,"Downloads",icon="ic_auto_downloads"),
+        folder(PODCASTS,"Podcasts",icon="ic_auto_podcasts"))
     suspend fun item(id: String): MediaItem? = when {
         id==ROOT -> folder(ROOT,"DistillPod")
         id.startsWith(MORE) -> decodeMore(id)?.let { if(item(it.first)?.mediaMetadata?.isBrowsable==true)folder(id,"More episodes") else null }

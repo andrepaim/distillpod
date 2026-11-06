@@ -16,7 +16,8 @@
         </provider>
         <provider android:name=".auto.AutoArtworkProvider" android:authorities="${applicationId}.auto.artwork" android:exported="true" />
         <meta-data android:name="com.google.android.gms.car.application" android:resource="${automotiveDescriptor}" />
-        <service android:name=".voice.VoiceCarService" android:label="DistillPod Voice" android:exported="true" android:enabled="${voiceEnabled}">
+        <meta-data android:name="androidx.car.app.TintableAttributionIcon" android:resource="@drawable/ic_launcher_monochrome" />
+        <service android:name=".voice.VoiceCarService" android:label="DistillPod" android:exported="true" android:enabled="${voiceEnabled}">
             <intent-filter>
                 <action android:name="androidx.car.app.CarAppService" />
                 <category android:name="androidx.car.app.category.MEDIA" />

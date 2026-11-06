@@ -30,8 +30,16 @@ class AutoCatalogTest {
     }
     @Test fun `root contains four browsable sections`() = fixture { _, c ->
         val rows=c.children(AutoCatalog.ROOT,0,20)
-        assertEquals(listOf("Continue listening","Queue","Downloads","Podcasts"),rows.map { it.mediaMetadata.title.toString() })
+        assertEquals(listOf("Continue","Queue","Downloads","Podcasts"),rows.map { it.mediaMetadata.title.toString() })
         assertTrue(rows.all { it.mediaMetadata.isBrowsable==true && it.mediaMetadata.isPlayable==false })
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val icons = rows.map { requireNotNull(it.mediaMetadata.artworkUri) }
+        assertEquals(4, icons.distinct().size)
+        icons.forEach { uri ->
+            assertEquals("android.resource", uri.scheme)
+            assertEquals(context.packageName, uri.authority)
+            assertNotEquals(0, context.resources.getIdentifier(uri.lastPathSegment, "drawable", context.packageName))
+        }
     }
     @Test fun `continue excludes completed and prioritizes current episode`() = fixture { db,c ->
         db.library().putPlayerSession(PlayerSessionEntity(episodeId="new"))
