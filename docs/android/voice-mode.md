@@ -16,6 +16,8 @@ The key is encrypted using the existing AES-GCM `TokenVault`, with its own app-p
 
 Choose **Ask about this**, review the disclosure and grant microphone access. The phone connects directly to OpenAI's Realtime WebSocket endpoint with the saved key as bearer authentication. API usage draws on the associated project's available credits/balance. Saving validates key syntax locally and does not make a paid request; provider entitlement is checked only when asking. No live access or billing claim is established by local fixture tests.
 
+Voice-enabled builds also provide an optional **Ask with next-track button** setting for headphones. Prepare it with the app open before locking the phone; its notification reports readiness. See the [headphone voice shortcut guide](headphone-voice.md) for Next/Previous behavior, microphone routing and validation limits.
+
 ## Transcript context
 
 A matching local or publisher transcript must cover the listening moment; uncertain online timings are excluded. Context is bounded to two preceding minutes, with no boundary-straddling future segments. The model may search earlier segments of the same transcript, at most twice, with bounded results. Excerpts are untrusted data. Spoken explanations are not independently verified and are not the text chat's validated JSON/citation output.

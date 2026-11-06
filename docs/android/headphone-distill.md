@@ -4,7 +4,7 @@
 
 Save the preceding 60 seconds of the current DistillPod episode using a Liberty 4 NC gesture, without taking the phone out or interrupting playback. The earbuds recognize the gesture; Android delivers its assigned media command. DistillPod does not receive a raw triple-tap gesture or a reliable left/right earbud identity.
 
-The first version remaps **Previous track** media-button events to Distill. It is optional and off by default. Play/pause, next, volume and noise-control gestures retain their existing behavior. Other accessories that send the same previous-track media-button event are affected while DistillPod handles media controls. Direct player controls in the phone UI and Android Auto are not remapped.
+The first version remaps **Previous track** media-button events to Distill. It is optional and off by default. Play/pause, next, volume and noise-control gestures retain their existing behavior. Voice-enabled builds can separately opt into the [Next-track voice shortcut](headphone-voice.md); that setting is independent from Previous-track Distill. Other accessories that send the same previous-track media-button event are affected while DistillPod handles media controls. Direct player controls in the phone UI and Android Auto are not remapped.
 
 This feature requires no new account, server, permission, Bluetooth SDK or accessibility service. It does not listen to the microphone. The setting is device-local and is excluded from portable preferences and cloud synchronization.
 
