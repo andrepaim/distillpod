@@ -15,22 +15,6 @@ DistillPod is for people who listen to podcasts to learn. Use AI to summarize an
 
 Connect your ChatGPT account for episode understanding and saved insights. Episode understanding uses publisher transcripts, optional existing online transcripts, or Whisper running locally on your phone. Optional Google sign-in synchronizes supported library data between installations; ChatGPT and Google are separate connections.
 
-## See DistillPod in action
-
-Save an idea without interrupting your listening, then return to its source.
-
-**Hands-free headphone capture** — enable the previous-track gesture, keep listening, and find the saved moment.
-
-https://github.com/user-attachments/assets/ea08ef16-e98d-4d18-820e-44c578a9574f
-
-**Distill from the player** — tap **Distill last 60 seconds**, then open the takeaway and its source.
-
-https://github.com/user-attachments/assets/7ee170df-6b29-4d74-93a3-87264acceadc
-
-These short, captioned recordings use synthetic demo content and example AI
-output; the headphone command is simulated on an emulator.
-[Video transcripts, downloadable copies and capture details](docs/demos/README.md).
-
 ## Turn listening into understanding
 
 An idea catches your attention. Tap **Distill last 60 seconds** and keep listening. DistillPod saves the source window immediately, then uses bounded surrounding transcript context to select a complete thought. A second AI request checks the takeaway against the source; a supporting quote appears when it can stand alone faithfully. Open Saved to revisit it, explore it further or replay the original moment. Your capture stays saved if transcription or an AI request needs a retry. Improve a saved distill without losing its previous version. See [contextual distills](docs/android/contextual-distills.md) for behavior, sync compatibility and evaluation limits.
