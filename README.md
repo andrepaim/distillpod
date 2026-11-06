@@ -29,10 +29,6 @@ An idea catches your attention. Tap **Distill last 60 seconds** and keep listeni
 
 The listening tools support that workflow: podcast search, public RSS subscriptions, OPML import, background playback, a persistent queue and offline downloads. [Headphone capture](docs/android/headphone-distill.md) lets a previous-track gesture save the moment while playback continues; turn it on in **Settings → Playback & headphones**. [Android Auto](docs/android/android-auto.md) brings the library, playback controls and Distill to a compatible car display. Connect a Drive backup file once for one-tap saves and a dated restore history. Backups preserve your library, listening progress, transcripts and saved insights.
 
-| Your listening library | A saved idea with its source |
-| --- | --- |
-| <img src="docs/demos/library.png" width="260" alt="Library with a fictional show and a resumable episode"> | <img src="docs/demos/distill-result.png" width="260" alt="Example saved takeaway, supporting quote and source replay"> |
-
 ## ChatGPT and transcription
 
 **AI is central to the DistillPod experience.** Connect an eligible ChatGPT account in Settings to generate quotes and insights, summaries and chapters, episode answers, explanations and podcast suggestions. Requests use your ChatGPT plan allowance; available models and usage limits depend on your account.
