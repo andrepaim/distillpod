@@ -3,6 +3,7 @@ package dev.distillpod.android.voice
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 
 interface VoiceLease {
     val episode: String
@@ -18,9 +19,10 @@ interface VoiceOutput : AutoCloseable {
     suspend fun drain()
 }
 interface VoiceConnection : AutoCloseable {
+    fun finishQuestion() {}
     suspend fun answer(input: VoiceInput, output: VoiceOutput, phase: (String) -> Unit, text: (String) -> Unit)
 }
-data class VoiceState(val phase: String = "Idle", val answer: String = "", val error: String? = null) {
+data class VoiceState(val phase: String = "Idle", val answer: String = "", val error: String? = null, val level: Float = 0f) {
     val active get() = phase != "Idle"
 }
 /** One job owns all resources; cancellation joins cleanup before another interaction starts. */
@@ -35,6 +37,7 @@ class VoiceCoordinator(
     val state = mutable.asStateFlow()
     private var job: Job? = null
     private var resume = false
+    private var connection: VoiceConnection? = null
     fun start(input: () -> VoiceInput, diagnostic: Boolean = false) {
         if (job != null) return
         resume = true
@@ -60,8 +63,15 @@ class VoiceCoordinator(
                                 speaker.play(audio); speaker.drain()
                             }
                         } else connect(source).use { connection ->
-                            input().use { mic -> connection.answer(mic, speaker,
-                                { mutable.value = mutable.value.copy(phase = it) },
+                            this@VoiceCoordinator.connection = connection
+                            input().use { mic -> connection.answer(object : VoiceInput {
+                                override fun start() = mic.start()
+                                override fun read(): ByteArray? = mic.read()?.also { bytes ->
+                                    mutable.update { if (it.phase == "Listening") it.copy(level = microphoneLevel(bytes)) else it }
+                                }
+                                override fun close() = mic.close()
+                            }, speaker,
+                                { mutable.value = mutable.value.copy(phase = it, level = 0f) },
                                 { mutable.value = mutable.value.copy(answer = (mutable.value.answer + it).take(8000)) }) }
                         }
                     }
@@ -74,11 +84,14 @@ class VoiceCoordinator(
                     "The voice answer was interrupted. You can ask again."
                     else "Voice unavailable. Check transcript, microphone permission, your saved OpenAI API key.")
             } finally {
+                connection = null
+                mutable.value = mutable.value.copy(phase = "Finishing", level = 0f)
                 try { withContext(NonCancellable) { lease?.finish(resume) } }
                 finally { mutable.value = mutable.value.copy(phase = "Idle"); job = null }
             }
         }
         job?.start()
     }
+    fun finishQuestion() { if (mutable.value.phase == "Listening") connection?.finishQuestion() }
     fun cancel(shouldResume: Boolean) { resume = shouldResume; job?.cancel() }
 }

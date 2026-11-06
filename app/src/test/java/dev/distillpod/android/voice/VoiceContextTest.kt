@@ -14,6 +14,13 @@ class VoiceContextTest {
         val selected = VoiceContext.select(10000, listOf(span(0,1000,"a".repeat(8000)), span(2000,3000,"b".repeat(8000))))
         assertEquals(listOf(2000L), selected.map { it.startMs })
     }
+    @Test fun `microphone meter measures actual PCM amplitude`() {
+        assertEquals(0f, microphoneLevel(ByteArray(960)), .0001f)
+        assertEquals(0f, microphoneLevel(byteArrayOf()), .0001f)
+        assertEquals(1f, microphoneLevel(byteArrayOf(-1,127,-1,127)), .0001f)
+        val quiet = microphoneLevel(byteArrayOf(0,1,0,1))
+        assertTrue(quiet > 0f && quiet < .1f)
+    }
     @Test fun `resampling preserves continuity across chunk boundaries`() {
         val samples = ShortArray(1000) { (it * 20 - 10000).toShort() }
         val bytes = samples.flatMap { listOf(it.toByte(), (it.toInt() shr 8).toByte()) }.toByteArray()

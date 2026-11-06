@@ -80,3 +80,14 @@ suspend fun voiceReadyTone() {
     try { tone.startTone(ToneGenerator.TONE_PROP_BEEP, 120); delay(160) }
     finally { tone.release() }
 }
+
+/** RMS of actual PCM input; scaled for a readable, bounded microphone meter. */
+fun microphoneLevel(pcm: ByteArray): Float {
+    if (pcm.size < 2) return 0f
+    var energy = 0.0
+    for (i in 0 until pcm.size - 1 step 2) {
+        val sample = ((pcm[i].toInt() and 255) or (pcm[i + 1].toInt() shl 8)).toShort().toDouble() / 32768
+        energy += sample * sample
+    }
+    return (kotlin.math.sqrt(energy / (pcm.size / 2)) * 5).toFloat().coerceIn(0f, 1f)
+}

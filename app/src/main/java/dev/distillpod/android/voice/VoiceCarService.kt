@@ -12,6 +12,8 @@ import androidx.lifecycle.*
 import dev.distillpod.android.R
 import dev.distillpod.android.appGraph
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.distinctUntilChanged
 
 class VoiceCarService : CarAppService() {
     override fun createHostValidator(): HostValidator = if (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0)
@@ -24,7 +26,7 @@ class VoiceCarScreen(context: CarContext) : Screen(context) {
     private val voice = context.appGraph.voice
     init {
         lifecycle.addObserver(object : DefaultLifecycleObserver {
-            override fun onCreate(owner: LifecycleOwner) { lifecycleScope.launch { voice.state.collect { invalidate() } } }
+            override fun onCreate(owner: LifecycleOwner) { lifecycleScope.launch { voice.state.map { it.phase to it.error }.distinctUntilChanged().collect { invalidate() } } }
             override fun onStop(owner: LifecycleOwner) { voice.cancel(false) }
         })
     }
@@ -33,7 +35,10 @@ class VoiceCarScreen(context: CarContext) : Screen(context) {
         val keyReady = carContext.appGraph.voiceApiKey.hasKey()
         val pane = Pane.Builder().addRow(Row.Builder().setTitle(if (state.active) state.phase else "Ask about this")
             .addText(state.error ?: if (keyReady) "One question, a short spoken answer, then your podcast resumes." else "Add your OpenAI API key on the phone player first. You can test the microphone here.").build())
-        if (state.active) pane.addAction(Action.Builder().setTitle("Cancel and resume").setOnClickListener { voice.cancel(true) }.build())
+        if (state.active) {
+            if (state.phase == "Listening") pane.addAction(Action.Builder().setTitle("Done").setOnClickListener { voice.finishQuestion() }.build())
+            pane.addAction(Action.Builder().setTitle("Cancel and resume").setOnClickListener { voice.cancel(true) }.build())
+        }
         else {
             if (keyReady) pane.addAction(Action.Builder().setTitle("Ask").setOnClickListener { start(false) }.build())
             pane.addAction(Action.Builder().setTitle("Test microphone").setOnClickListener { start(true) }.build())

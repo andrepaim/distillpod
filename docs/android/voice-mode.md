@@ -10,7 +10,7 @@ The `feat/realtime-voice` implementation adds an opt-in, one-question voice inte
 
 Voice needs no Firebase configuration, Google sign-in, broker endpoint or backend deployment. Existing optional library-sync configuration is independent.
 
-On the phone player choose **Add OpenAI API key**, paste a key from the API organization where you claimed your Pro credits, and choose **Save key**. The password field is masked and its dialog prevents screenshots. Its draft is not saved across activity recreation. **Replace OpenAI API key** opens an empty field; the saved key is never displayed. **Remove API key** cancels voice and removes the stored credential. Replacing a key also cancels an active voice session.
+Open **Settings → Voice → Add API key**, paste a key from the API organization where you claimed your Pro credits, and choose **Save key**. The password field is masked and its dialog prevents screenshots. Its draft is not saved across activity recreation. **Replace API key** opens an empty field; the saved key is never displayed. **Remove API key** cancels voice and removes the stored credential. Replacing a key also cancels an active voice session.
 
 The key is encrypted using the existing AES-GCM `TokenVault`, with its own app-private preference namespace and Android Keystore alias. It does not enter the APK, source files, portable settings, library backups or sync. App-level Android backup is disabled. Reinstalling or clearing app data requires entering it again. Encryption does not protect an API key from a compromised device while the app uses it; this owner-provided credential flow is intended for the personal alpha.
 
@@ -22,7 +22,7 @@ A matching local or publisher transcript must cover the listening moment; uncert
 
 ## Android Auto feasibility
 
-The enabled preview declares the templated media category and Car API 8. It presents Ask when a phone key is configured, Test microphone and Cancel and resume on a dedicated voice screen. Key entry stays on the phone. Google documents restrictions on templated media distribution; this is a personal-alpha prototype, not a claim of production Play eligibility.
+The enabled preview declares the templated media category and Car API 8. It presents Ask when a phone key is configured, Test microphone and Cancel and resume on a dedicated voice screen. Key entry stays in Settings → Voice on the phone. Google documents restrictions on templated media distribution; this is a personal-alpha prototype, not a claim of production Play eligibility.
 
 Test microphone records approximately three seconds and plays the recording back. This tests microphone/speaker routing without an API request or saved recording. Real Ask streams the question and selected transcript text directly to OpenAI. No voice application server is involved.
 
@@ -49,3 +49,14 @@ The phone-key change passed 91 core and 285 app JVM/Robolectric tests, debug lin
 ### Answer-burst regression
 
 The owner's first S22 phone trial captured a question, played an answer and resumed the podcast, but displayed the generic unavailable message. A fake-provider regression reproduced a matching failure: 200 audio chunks sent ahead of slower playback exceeded the old 64-event queue. The receive queue now bounds queued payload characters (4 MiB), individual message size and total event count, accommodating a short spoken answer without discarding ordinary bursts. The regression verifies all 200 chunks play and final output drains. Separate tests retain overflow protection and verify budget recovery after consumption. An actual interrupted answer now has an answer-specific message instead of suggesting a credential or transcript setup failure. The fix requires a repeated physical-phone trial; the owner's first result is not proof of the patched behavior.
+
+
+### Phone voice interface
+
+The player offers **Ask about this** and, after an interaction, **View last answer**. API key management and the optional three-second rewind are in **Settings → Voice**. A first Ask without a key opens those settings. Key encryption and namespaces are unchanged, so an existing phone key is retained.
+
+Asking opens a modal sheet over the paused player. Preparing shows a progress indicator and a reminder to wait for the tone. Listening shows a timer and a waveform computed from the actual PCM microphone RMS; silence produces a quiet baseline. **Done** finishes the question explicitly; automatic end-of-speech still works. The connection closes microphone input before switching to Answering. Manual completion disables VAD and processes its ordered acknowledgement before committing, avoiding duplicate commits when VAD already completed the same utterance.
+
+The spoken answer appears in a scrolling area capped at 220 dp inside the sheet. New text follows the bottom until the user drags the transcript. The sheet closes after a short return-to-player transition following successful cleanup. Last-answer review opens only on request and never starts another API call. Errors and retry controls stay in the sheet; dismissing it leaves no inline transcript or red error block on the player. The most recent answer remains process-local, with no persistent conversation history. Android Auto keeps native phase labels and large Done/Cancel actions; microphone-level updates do not invalidate its screen.
+
+The sheet update passed 91 core and 297 app JVM/Robolectric tests, debug lint, app/test APK assembly and 15 release-tool tests. Focused coverage includes real PCM meter levels, bounded transcript layout, completed-sheet dismissal, last-answer review, error dismissal, explicit Done and the VAD/Done commit race. These are automated checks; a repeated live phone/car interaction is still required to validate the revised interface on hardware.

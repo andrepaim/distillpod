@@ -26,6 +26,7 @@ class RealtimeVoice(private val source: String, apiKey: String, private val sear
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) { events.close(IllegalStateException("Voice connection failed")) }
         override fun onClosed(webSocket: WebSocket, code: Int, reason: String) { events.close() }
     })
+    override fun finishQuestion() { events.offer("""{"type":"local.finish_question"}""") }
     private fun send(value: JSONObject) { check(socket.queueSize() < 256_000 && socket.send(value.toString())) { "Voice connection congested" } }
     private suspend fun event() = JSONObject(events.receive()).also { check(it.optString("type") != "error") { "Voice request rejected" } }
     override suspend fun answer(input: VoiceInput, output: VoiceOutput, phase: (String) -> Unit, text: (String) -> Unit) = coroutineScope {
@@ -49,7 +50,7 @@ class RealtimeVoice(private val source: String, apiKey: String, private val sear
         session.put("tools", org.json.JSONArray().put(tool))
         send(JSONObject().put("type", "session.update").put("session", session))
         withTimeout(10_000) { while (event().optString("type") != "session.updated") {} }
-        ready(); phase("Listening"); input.start()
+        ready(); input.start(); phase("Listening")
         val reader = launch(Dispatchers.IO) {
             try {
                 while (isActive) {
@@ -59,11 +60,41 @@ class RealtimeVoice(private val source: String, apiKey: String, private val sear
                 }
             } catch (e: Exception) { ensureActive(); throw e }
         }
+        var manualFinish = false
         try {
-            withTimeout(8_000) { while (event().optString("type") != "input_audio_buffer.speech_started") {} }
-            withTimeout(30_000) { while (event().optString("type") != "input_audio_buffer.speech_stopped") {} }
+            var startedSpeaking = false
+            withTimeout(38_000) {
+                val speechDeadline = kotlin.time.TimeSource.Monotonic.markNow()
+                while (true) {
+                    val e = if (!startedSpeaking) withTimeout((8_000 - speechDeadline.elapsedNow().inWholeMilliseconds).coerceAtLeast(1)) { event() } else event()
+                    when (e.optString("type")) {
+                        "input_audio_buffer.speech_started" -> startedSpeaking = true
+                        "input_audio_buffer.speech_stopped" -> break
+                        "local.finish_question" -> { manualFinish = true; break }
+                    }
+                }
+            }
         } finally { reader.cancel(); input.close(); reader.join() }
         phase("Answering")
+        if (manualFinish) {
+            // Disable VAD before explicit commit. Read its ordered acknowledgement first,
+            // since VAD may already have committed the same utterance just before Done.
+            send(JSONObject().put("type", "session.update").put("session", JSONObject().put("type", "realtime")
+                .put("audio", JSONObject().put("input", JSONObject().put("turn_detection", JSONObject.NULL)))))
+            var committed = false
+            withTimeout(5000) {
+                while (true) {
+                    when (event().optString("type")) {
+                        "input_audio_buffer.committed" -> committed = true
+                        "session.updated" -> break
+                    }
+                }
+                if (!committed) {
+                    send(JSONObject().put("type", "input_audio_buffer.commit"))
+                    while (event().optString("type") != "input_audio_buffer.committed") {}
+                }
+            }
+        }
         send(JSONObject().put("type", "response.create"))
         var firstAudio = true
         var searches = 0
