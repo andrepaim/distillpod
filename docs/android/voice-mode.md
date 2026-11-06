@@ -1,5 +1,7 @@
 # Realtime voice preview
 
+The 0.16.0-alpha.1 signed personal-alpha release candidate includes this preview. Ordinary source/debug builds still default to disabled; use `-PdistillpodVoiceEnabled=true` to build it deliberately. See the [release notes](../releases/current.md) for setup and acceptance limits.
+
 The `feat/realtime-voice` implementation adds an opt-in, one-question voice interaction using `gpt-realtime-2.1-mini`. Default builds keep the feature and car service disabled. Voice uses an OpenAI project API key entered by the owner on the phone. Existing ChatGPT OAuth text features remain separately authorized.
 
 ## Build and setup
@@ -42,7 +44,7 @@ Exact-position resume is the default, with an optional local three-second rewind
 
 Local tests cover duplicate taps, cleanup, cancellation, missing context, startup failures, transcript boundaries and conversion. A fake WebSocket checks audio configuration, bearer authentication with a fixture project key, answer playback, transcript and drain without calling OpenAI. Key-store tests cover saving, validation, replacement preservation, removal and sanitized vault errors. A separate instrumentation test uses an isolated fixture vault to exercise Android Keystore encryption, reopening and removal; it never reads an owner's credential.
 
-Physical-car microphone routing, Android Keystore instrumentation, live model quality, latency and real API-credit consumption need deliberate validation. The initial implementation had no attached device; subsequent phone reports and DHU checks are separate evidence, recorded below. Keep the feature flag disabled by default. Private phone previews use the retained signing identity for in-place upgrades; publication follows the [release checklist](../releases.md).
+Physical-car microphone routing, Android Keystore instrumentation, live model quality, latency and real API-credit consumption need deliberate validation. The initial implementation had no attached device; subsequent phone reports and DHU checks are separate evidence, recorded below. Keep ordinary source/debug builds disabled by default. The 0.16.0 personal-alpha distribution explicitly enables the preview; physical acceptance limits still apply. Private phone previews use the retained signing identity for in-place upgrades; publication follows the [release checklist](../releases.md).
 
 The initial implementation was based on `origin/main` commit `95c28aa`. Its broker was subsequently removed in favor of this owner-provided phone key. Historical broker tests do not validate the current credential flow.
 

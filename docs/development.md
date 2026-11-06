@@ -82,6 +82,8 @@ commits for personal data containers and unreviewed binary media. See
 
 `release.yml` accepts version tags from main history, requests the additional unsigned release build/lint, and signs only after all validation jobs pass. Signing secrets are available only in the protected alpha-release environment. The publishing job has repository-content write permission; test jobs have read permission. See [releases](releases.md).
 
+Starting with 0.16.0-alpha.1, the signed personal-alpha distribution enables the voice preview through `-PdistillpodVoiceEnabled=true` in its release build step. Ordinary source/debug builds remain default-disabled; CI checks both configurations. Headphone voice remains off until the user configures a key, permissions and the shortcut.
+
 ## Deliberate device checks
 
 Documentation screenshots and videos have a separate opt-in fixture on an

@@ -49,15 +49,21 @@ Audio and model downloads default to Wi-Fi/unmetered networks. In **Settings →
 
 Once the complete transcript is ready, open **Summary & chapters** to generate an overview and jump to chapter timestamps, or open episode chat to ask questions about what was said. Answers use transcript excerpts and source references; replay the relevant audio to check the context.
 
+## Ask while listening
+
+The 0.16.0 personal-alpha distribution includes the voice preview. Save an OpenAI project API key in **Settings → Voice**, prepare a publisher/local transcript covering the current position, and use **Ask about this** in the player. Grant microphone access, wait for the tone, then ask. The sheet shows a live input waveform and a bounded answer transcript. Normal completion returns to the same podcast when playback has not changed. **View last answer** reopens the latest response without a new request. Voice uses your API key's allowance, separately from the connected ChatGPT account.
+
+For headphones, enable **Next track → Ask about the podcast** under **Playback & headphones**, grant microphone/notification access, and start playback with the app open. Wait for **Headphone voice ready** before locking the phone. Expand **Headphone setup** for gesture and route requirements. Supported Android Auto hosts use the usual DistillPod launcher entry; reconnect after updating and look for native **Ask**. See [voice setup and limitations](android/voice-mode.md) and [headphone voice](android/headphone-voice.md).
+
 ## Keep a moment
 
 While listening, select Distill last 60 seconds. DistillPod records that original source window immediately. Open Saved to revisit the excerpt and replay it. Source preparation or AI failure retains the capture for review and retry.
 
 With ChatGPT connected and the source transcript ready, DistillPod can generate a quote and concise insight for the saved moment. Source review may be required before generation. Choose **Explain this idea** to explore the excerpt further through an explanation, practical reflection and questions to investigate. Explanations use the transcript; they do not search the web.
 
-To capture from headphones, enable **Settings → Playback & headphones → Distill with previous-track button** (off by default). In the Soundcore app, assign your Liberty 4 NC gesture, such as triple tap, to **Previous track**, if available. While DistillPod handles playback, that button command saves the preceding minute without skipping. Other gestures or accessories sending the same button command will also distill. Turning the option off restores the usual previous-track action; single-earbud controls may need separate setup.
+To capture from headphones, enable **Settings → Playback & headphones → Previous track → Save moment** (off by default). In the Soundcore app, assign your Liberty 4 NC gesture, such as triple tap, to **Previous track**, if available. While DistillPod handles playback, that button command saves the preceding minute without skipping. Other gestures or accessories sending the same button command will also distill. Turning the option off restores the usual previous-track action; single-earbud controls may need separate setup.
 
-A pen-scribble sound confirms a new saved moment, independently of later insight generation. Adjust **Distill confirmation sound** on the same settings page; it uses media volume. See [headphone setup, design and validation limits](android/headphone-distill.md). Actual Liberty 4 NC gesture and Bluetooth routing still require physical-device validation.
+A pen-scribble sound confirms a new saved moment, independently of later insight generation. Adjust **Moment saved sound** on the same settings page; it uses media volume. See [headphone setup, design and validation limits](android/headphone-distill.md). Actual Liberty 4 NC gesture and Bluetooth routing still require physical-device validation.
 
 The completed takeaway may have no quote when the source does not support a
 standalone quotation. **Improve this distill** keeps the current result while

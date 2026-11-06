@@ -97,12 +97,14 @@ The `alpha-release` GitHub environment stores `ALPHA_KEYSTORE_BASE64`, `ALPHA_KE
 
 Distribution builds receive the `FIREBASE_CONFIG_JSON` repository secret through the reusable validation workflow. It contains the retained Android Firebase client configuration; a missing value fails the release build instead of silently disabling sync. It is written only to a private runner-temporary file and removed afterward. Ordinary PR/debug/emulator builds remain unconfigured and receive no production Firebase configuration.
 
+The 0.16.0 personal-alpha publishing configuration enables the voice preview explicitly with `-PdistillpodVoiceEnabled=true` during release lint/assembly. Source/debug defaults remain disabled. This is a distribution choice, not a stored user preference: headphones still require explicit setup and opt-in. Verify the downloaded APK's voice resource and car-service enablement alongside its metadata when publishing this configuration.
+
 The release job checks APK application ID, version name/code, non-debuggable state, 16 KB native-library alignment and the actual signing certificate. It publishes a build-info record with commit and workflow URL. Fork pull requests and ordinary CI do not receive signing secrets.
 
 ## Build or inspect locally
 
 ```sh
-./gradlew :app:lintRelease :app:assembleRelease
+./gradlew :app:lintRelease :app:assembleRelease -PdistillpodVoiceEnabled=true
 python3 scripts/release_metadata.py
 ```
 

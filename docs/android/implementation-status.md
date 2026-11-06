@@ -1,23 +1,26 @@
 # Android implementation status
 
-Reviewed against `main` at `bad8488` on November 6, 2026. This page distinguishes implemented code, downloadable releases and dated device evidence.
+Release preparation reviewed against `main` at `e67cd37` on November 6, 2026. This page distinguishes implemented code, downloadable releases and dated device evidence.
 
 ## Source and distribution
 
 | Item | State at this review |
 | --- | --- |
-| Main source | `0.15.0-alpha.1`, version code `24`, plus repository security guards; see [gradle.properties](../../gradle.properties) |
-| Latest published APK at review | [0.15.0-alpha.1](https://github.com/andrepaim/distillpod/releases/tag/v0.15.0-alpha.1), published November 6; APK, checksums and build metadata attached |
-| Latest recorded phone update | S25 in-place installation of 0.10.1-alpha.1, code 19, November 5, before GitHub publication |
+| Release candidate | `0.16.0-alpha.1`, version code `33`, including the merged voice/headphone work; see [gradle.properties](../../gradle.properties) |
+| Published APK baseline at preparation | [0.15.0-alpha.1](https://github.com/andrepaim/distillpod/releases/tag/v0.15.0-alpha.1), published November 6; APK, checksums and build metadata attached. Check Releases for later publication. |
+| Latest recorded phone update | S25 in-place private settings preview, code 32, November 6; [settings and alignment evidence](evidence/headphone-settings-validation.md) |
 | Database | Room schema 9 with migrations from schemas 1–8; no destructive fallback |
 | Supported Android/package | Android 10+ (`minSdk 29`), ARM64 and x86_64; `dev.distillpod.android` |
 | Default source/debug build | No production Firebase configuration; library sync shows unavailable |
-| Release workflow | Requires Firebase client configuration, validates an unsigned candidate and retains the personal-alpha signing identity |
+| Release workflow | Requires Firebase client configuration, enables the personal-alpha voice preview explicitly, validates an unsigned candidate and retains the signing identity |
 
-The phone update retained its certificate, Firebase client configuration and existing library data; the online-transcript setting was visible and off. This is update/data-preservation evidence, not a live phone sync test or a store release. See the [online-transcript installation report](online-transcripts.md#s25-installation--november-5). The [published 0.15.0 release notes](https://github.com/andrepaim/distillpod/releases/tag/v0.15.0-alpha.1) describe headphone capture. The published-build row records the verified baseline at review; check [GitHub Releases](https://github.com/andrepaim/distillpod/releases) for subsequent publication.
+The latest private S25 update retained its signing identity, Firebase client configuration, saved-key status and existing shortcut choices; see the [settings validation](evidence/headphone-settings-validation.md). The earlier [online-transcript installation](online-transcripts.md#s25-installation--november-5) separately records library-data preservation and its then-current setting. Neither establishes a new live sync test of this release candidate. The [published 0.15.0 release notes](https://github.com/andrepaim/distillpod/releases/tag/v0.15.0-alpha.1) describe headphone capture. The published-build row records the verified baseline at preparation; check [GitHub Releases](https://github.com/andrepaim/distillpod/releases) for subsequent publication.
 
 ## Implemented on main
 
+- **Voice preview:** phone Ask, encrypted on-phone API key management, live recording feedback, a bounded answer sheet and playback restoration. Supported Car API 8 hosts have native Ask/Library controls; browse tabs have aligned resource icons. The 0.16.0 distribution candidate enables voice while ordinary source/debug defaults remain disabled. Voice uses a separate OpenAI API key and API allowance. [Setup and validation limits](voice-mode.md).
+- **Unified headphone settings:** Previous track capture and optional Next track voice share Playback & headphones, with setup/readiness, expandable help and the shared moment-saved sound. Both mappings default off; settings and existing keys survive upgrades. A microphone foreground service prepared while visible supports locked-screen Next. Headset routing, interruptions and physical-car behavior retain their documented alpha acceptance limits. [Headphone voice](headphone-voice.md).
+- **Native compatibility:** the Whisper bridge uses 16 KB ELF alignment. Packaged-library and ZIP alignment were checked on the private preview; S25 startup used a 4 KB kernel. True 16 KB kernel execution remains outstanding.
 - **Headphone capture:** an optional, default-off, device-local setting maps Previous track media-button events to durable distill capture without seeking or pausing. Repeat suppression, platform caller verification and the existing sound preference apply; direct phone/Android Auto controls retain their behavior. [Setup and validation limits](headphone-distill.md).
 - **Library and discovery:** Room storage, public search through Apple's iTunes directory, direct RSS/Atom subscriptions, conditional refresh, cached browsing and OPML transfer. Feed parsing retains the latest 200 entries. The library has a searchable, alphabetically ordered show gallery; Saved and transcripts have text search, and Settings is grouped by task.
 - **Listening:** Media3 background streaming/offline playback, original-timeline position, speed, played controls and a persistent ordered queue. The full player rewinds 10 seconds and advances 30 seconds. Android Auto supports library browsing, queue/resume, seek, search and durable Distill capture. Downloads support bounded storage, range/validator resume, cancellation and protection for active/queued media.
@@ -34,6 +37,7 @@ These are dated results, not claims that every scenario was rerun for the curren
 
 | Area | Recorded evidence and boundary |
 | --- | --- |
+| Voice/headphone integration, November 6 | Combined `e67cd37` passed [main CI](https://github.com/andrepaim/distillpod/actions/runs/42259840485) and [security](https://github.com/andrepaim/distillpod/actions/runs/42259840509), including both build configurations and synthetic voice/Keystore emulator checks. Earlier S25 UI/update and DHU results are recorded separately; this does not establish physical-device validation of the signed release candidate. |
 | Repository security, November 6 | `bad8488` passed [Android CI](https://github.com/andrepaim/distillpod/actions/runs/42221053158) and [Repository security](https://github.com/andrepaim/distillpod/actions/runs/42221053280): all five jobs passed. Secret scanning and data-container guards are active. [App Check](app-check-rollout.md) remains a plan with enforcement off; this is not new physical-phone evidence. |
 | Headphone integration, November 6 | Source `95c28aa` passed all four [main CI jobs](https://github.com/andrepaim/distillpod/actions/runs/42185294817). Local integration `1bb4248` has the identical file tree and passed 363 JVM tests, 15 Python tests, lint and debug/app-test builds. Isolated Android acceptance covers headphone/system keys and confirmation playback; actual Liberty 4 NC gestures and Bluetooth routing remain unverified. |
 | Automatic transcripts and confirmation sound, November 5 | Combined source `8fabf40` passed [Android CI](https://github.com/andrepaim/distillpod/actions/runs/42104947484), including isolated playback/Whisper and sound acceptance. This is not physical-device validation of the release candidate. |
