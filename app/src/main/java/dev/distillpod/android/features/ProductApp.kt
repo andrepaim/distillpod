@@ -95,7 +95,7 @@ private fun date(ms: Long) = if (ms <= 0) "" else DateTimeFormatter.ofPattern("d
         route == "queue" -> "Listening queue"
         route == "settings" -> "Settings"
         route == "shows" -> "Your shows"
-        route.startsWith("settings:") -> when(route.substringAfter(':')) { "sync" -> "Library sync"; "ai" -> "ChatGPT"; "playback" -> "Playback & headphones"; "transcription" -> "Local transcription"; "storage" -> "Downloads & storage"; "library" -> "Import & notifications"; else -> "About DistillPod" }
+        route.startsWith("settings:") -> when(route.substringAfter(':')) { "sync" -> "Library sync"; "ai" -> "ChatGPT"; "voice" -> "Voice"; "playback" -> "Playback & headphones"; "transcription" -> "Local transcription"; "storage" -> "Downloads & storage"; "library" -> "Import & notifications"; else -> "About DistillPod" }
         route.startsWith("transcript:") -> "Transcript"
         route == "backup" -> "Backup & Restore"
         route == "player" -> "Now playing"
@@ -322,6 +322,7 @@ private fun date(ms: Long) = if (ms <= 0) "" else DateTimeFormatter.ofPattern("d
             Text(ep.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold, maxLines = 3, overflow = TextOverflow.Ellipsis)
             Text(podcast?.title ?: "Podcast", color = MaterialTheme.colorScheme.secondary, style = MaterialTheme.typography.bodyMedium)
         }
+        VoiceControls(vm)
         val skipped by vm.graph.playbackEvents.lastSkipped.collectAsStateWithLifecycle()
         if (skipped?.episodeId == ep.id) TextButton(onClick = vm::undoAdSkip) { Text("Ad skipped · Undo and replay") }
         player.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
@@ -537,6 +538,7 @@ private fun captureState(state: String) = when (state) { "waiting_transcript" ->
     LaunchedEffect(account.connected,section) { if (account.connected && section=="ai") vm.graph.account.refreshModels() }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         if(section=="sync") SubscriptionSyncSettings(vm)
+        if(section=="voice") VoiceSettings(vm)
         if(section=="playback") {
             Text("Playback & headphones", style = MaterialTheme.typography.titleLarge)
             SettingSwitch("Distill with previous-track button", "Save the last 60 seconds when your headphones send Previous track. Other accessories sending the same button command will also save a moment while DistillPod handles playback.", prefs.headphoneDistill) { vm.flag("headphoneDistill", it) }

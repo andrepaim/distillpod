@@ -22,7 +22,7 @@ import java.util.concurrent.TimeUnit
 @Config(sdk=[34])
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 class AutoSessionTest {
-    private fun fixture(playbackReady:CompletableDeferred<Unit>?=null,block:(AutoLibraryCallback,MediaLibrarySession,MediaSession.ControllerInfo)->Unit) {
+    private fun fixture(playbackReady:CompletableDeferred<Unit>?=null,voice:Boolean=false,openVoice:()->Boolean={false},block:(AutoLibraryCallback,MediaLibrarySession,MediaSession.ControllerInfo)->Unit) {
         val context=ApplicationProvider.getApplicationContext<Context>()
         val db=Room.inMemoryDatabaseBuilder(context,AppDatabase::class.java).build()
         runBlocking {
@@ -32,11 +32,48 @@ class AutoSessionTest {
         }
         val scope=CoroutineScope(SupervisorJob()+Dispatchers.Unconfined)
         val ready=CompletableDeferred(Unit)
-        val callback=AutoLibraryCallback(context.packageName,db,ready,scope,playbackReady?:ready)
+        val callback=AutoLibraryCallback(context.packageName,db,ready,scope,playbackReady?:ready,voiceEnabled={voice},openCarVoice=openVoice)
         val player=ExoPlayer.Builder(context).build()
         val session=MediaLibrarySession.Builder(context,player,callback).build()
         val controller=MediaSession.ControllerInfo.createTestOnlyControllerInfo("android.auto.test",1,1000,1,1,true,Bundle.EMPTY)
         try {block(callback,session,controller)}finally{session.release();player.release();scope.cancel();db.close()}
+    }
+    @Test fun `enabled voice advertises Ask in both modern and legacy car layouts`() = fixture(voice=true) { c,s,b ->
+        val result = c.onConnect(s,b)
+        val ask = dev.distillpod.android.voice.CarVoiceEntry.ASK
+        assertTrue(result.availableSessionCommands.contains(ask))
+        assertEquals("Ask about this", result.customLayout!!.single { it.sessionCommand == ask }.displayName.toString())
+        assertTrue(result.mediaButtonPreferences!!.any { it.sessionCommand == ask })
+    }
+    @Test fun `disabled voice does not advertise an unusable car action`() = fixture { c,s,b ->
+        val result = c.onConnect(s,b)
+        assertFalse(result.availableSessionCommands.contains(dev.distillpod.android.voice.CarVoiceEntry.ASK))
+        assertFalse(result.customLayout!!.any { it.sessionCommand == dev.distillpod.android.voice.CarVoiceEntry.ASK })
+    }
+    @Test fun `Ask dispatches to host bound car entry point`() {
+        var calls = 0
+        fixture(voice=true,openVoice={ calls++; true }) { c,s,b ->
+            val result = c.onCustomCommand(s,b,dev.distillpod.android.voice.CarVoiceEntry.ASK,Bundle.EMPTY).get()
+            assertEquals(SessionResult.RESULT_SUCCESS,result.resultCode)
+            assertEquals(1,calls)
+        }
+    }
+    @Test fun `unavailable car host reports unsupported without starting playback`() = fixture(voice=true) { c,s,b ->
+        val result = c.onCustomCommand(s,b,dev.distillpod.android.voice.CarVoiceEntry.ASK,Bundle.EMPTY).get()
+        assertEquals(SessionError.ERROR_NOT_SUPPORTED,result.resultCode)
+        assertFalse(s.player.playWhenReady)
+    }
+    @Test fun `car token bridge is restricted to this application`() = fixture { c,s,b ->
+        val command = dev.distillpod.android.voice.CarVoiceEntry.TOKEN
+        assertFalse(c.onConnect(s,b).availableSessionCommands.contains(command))
+        assertEquals(SessionError.ERROR_PERMISSION_DENIED,c.onCustomCommand(s,b,command,Bundle.EMPTY).get().resultCode)
+        val internal = MediaSession.ControllerInfo.createTestOnlyControllerInfo(ApplicationProvider.getApplicationContext<Context>().packageName,1,1000,1,1,true,Bundle.EMPTY)
+        assertTrue(c.onConnect(s,internal).availableSessionCommands.contains(command))
+        val result = c.onCustomCommand(s,internal,command,Bundle.EMPTY).get()
+        assertEquals(SessionResult.RESULT_SUCCESS,result.resultCode)
+        @Suppress("DEPRECATION")
+        val token = result.extras.getParcelable<android.media.session.MediaSession.Token>(dev.distillpod.android.voice.CarVoiceEntry.TOKEN_EXTRA)
+        assertEquals(s.platformToken,token)
     }
     @Test fun `untrusted external controllers cannot connect`()=fixture {c,s,_ ->
         val caller=MediaSession.ControllerInfo.createTestOnlyControllerInfo("untrusted",1,1000,1,1,false,Bundle.EMPTY)

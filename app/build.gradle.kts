@@ -37,6 +37,11 @@ android {
             require(value.matches(Regex("[A-Za-z0-9_.:/-]*"))) { "Invalid Firebase client configuration" }
             resValue("string", resource, value)
         }
+        val voiceEnabled = providers.gradleProperty("distillpodVoiceEnabled").getOrElse("false").toBooleanStrict()
+        resValue("bool", "voice_enabled", voiceEnabled.toString())
+        manifestPlaceholders["voiceEnabled"] = voiceEnabled.toString()
+        manifestPlaceholders["voiceMinCarApi"] = if (voiceEnabled) "8" else "1"
+        manifestPlaceholders["automotiveDescriptor"] = if (voiceEnabled) "@xml/automotive_voice_desc" else "@xml/automotive_app_desc"
         applicationId = "dev.distillpod.android"
         minSdk = 29
         targetSdk = 35
@@ -57,6 +62,9 @@ android {
 }
 dependencies {
     implementation(project(":core"))
+    implementation("androidx.car.app:app:1.7.0")
+    implementation("androidx.car.app:app-projected:1.7.0")
+    implementation("androidx.media:media:1.7.0")
     implementation(platform("com.google.firebase:firebase-bom:34.8.0"))
     implementation("com.google.firebase:firebase-auth")
     implementation("com.google.firebase:firebase-firestore")

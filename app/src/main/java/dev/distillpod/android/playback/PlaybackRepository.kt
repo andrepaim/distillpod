@@ -141,6 +141,46 @@ class PlaybackRepository(context: Context, private val db: AppDatabase, private 
             c.prepare();c.playWhenReady=playWhenReady
         }
     }
+    suspend fun carPlaybackToken(): android.support.v4.media.session.MediaSessionCompat.Token {
+        val c = controller()
+        val future = withContext(Dispatchers.Main) {
+            c.sendCustomCommand(dev.distillpod.android.voice.CarVoiceEntry.TOKEN, android.os.Bundle.EMPTY)
+        }
+        val result = withContext(Dispatchers.IO) { future.get(10, TimeUnit.SECONDS) }
+        check(result.resultCode == androidx.media3.session.SessionResult.RESULT_SUCCESS)
+        @Suppress("DEPRECATION")
+        val token = result.extras.getParcelable<android.media.session.MediaSession.Token>(dev.distillpod.android.voice.CarVoiceEntry.TOKEN_EXTRA)
+            ?: error("Car playback token unavailable")
+        return android.support.v4.media.session.MediaSessionCompat.Token.fromToken(token)
+    }
+    suspend fun pauseForVoice(changed: () -> Unit, rewindMs: Long = 0): dev.distillpod.android.voice.VoiceLease {
+        val c = controller()
+        return withContext(Dispatchers.Main) {
+            val id = c.currentMediaItem?.mediaId ?: error("Play an episode first")
+            val position = c.currentPosition.coerceAtLeast(0)
+            val wasPlaying = c.playWhenReady
+            c.pause()
+            var valid = true
+            val listener = object : Player.Listener {
+                override fun onMediaItemTransition(item: MediaItem?, reason: Int) { valid = false; changed() }
+                override fun onPositionDiscontinuity(old: Player.PositionInfo, new: Player.PositionInfo, reason: Int) { valid = false; changed() }
+                override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) { valid = false; changed() }
+                override fun onPlayerError(error: androidx.media3.common.PlaybackException) { valid = false; changed() }
+            }
+            c.addListener(listener)
+            object : dev.distillpod.android.voice.VoiceLease {
+                override val episode = id
+                override val position = position
+                override suspend fun finish(resume: Boolean) = withContext(Dispatchers.Main) {
+                    c.removeListener(listener)
+                    if (resume && valid && wasPlaying && c.currentMediaItem?.mediaId == id) {
+                        if (rewindMs > 0) c.seekTo((position - rewindMs.coerceAtMost(3000)).coerceAtLeast(0))
+                        c.play()
+                    }
+                }
+            }
+        }
+    }
     suspend fun capture(): Pair<String, Long> { val c = controller(); return withContext(Dispatchers.Main) { (c.currentMediaItem?.mediaId ?: error("Play an episode first")) to c.currentPosition.coerceAtLeast(0) } }
     suspend fun captureSource(): Triple<String, Long, String?> { val c = controller(); return withContext(Dispatchers.Main) {
         Triple(c.currentMediaItem?.mediaId ?: error("Play an episode first"), c.currentPosition.coerceAtLeast(0), c.currentMediaItem?.localConfiguration?.uri?.takeIf { it.scheme == "file" }?.path)

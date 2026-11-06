@@ -82,6 +82,9 @@ class PlaybackService : MediaLibraryService() {
                 val ep=dao.episode(id)?:error("Episode is unavailable")
                 graph.captures.save(id,position,file!=null && file==ep.localFile)
             },prepareMoment={id->graph.scope.launch(Dispatchers.IO){runCatching {graph.captures.prepareSaved(id)}};Unit},artwork=artwork::uri,
+            voiceEnabled = { resources.getBoolean(R.bool.voice_enabled) },
+            openCarVoice = { graph.carVoiceEntry.open() },
+            onExternalPlaybackCommand = { graph.voice.cancel(false) },
             headphoneDistillEnabled = { headphoneDistill },
             onHeadphoneCaptureFailure = {
                 android.widget.Toast.makeText(this, "Couldn't save moment. Play an episode and try again.", android.widget.Toast.LENGTH_SHORT).show()
@@ -94,8 +97,8 @@ class PlaybackService : MediaLibraryService() {
                 }.getOrDefault(false)
             })
         session = MediaLibrarySession.Builder(this, player, libraryCallback).setSessionActivity(activity)
-            .setCustomLayout(dev.distillpod.android.playback.PlaybackControls.buttons)
-            .setMediaButtonPreferences(dev.distillpod.android.playback.PlaybackControls.buttons).build()
+            .setCustomLayout(libraryCallback.playbackLayout())
+            .setMediaButtonPreferences(libraryCallback.playbackLayout()).build()
         scope.launch {
             graph.ready.await()
             combine(dao.observePodcasts(),dao.observeEpisodes(),dao.observeQueue(),browseCurrent) {pods,episodes,queue,current->
