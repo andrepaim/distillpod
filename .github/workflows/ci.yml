@@ -70,6 +70,10 @@ jobs:
         run: python3 -m unittest discover -s scripts -p 'test_*.py'
       - name: Test, lint and build
         run: ./gradlew --no-daemon :core:test :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
+      - name: Validate opt-in voice configuration
+        run: |
+          ./gradlew --no-daemon :app:testDebugUnitTest :app:lintDebug :app:assembleDebug -PdistillpodVoiceEnabled=true
+          ./gradlew --no-daemon :app:assembleDebug
       - name: Build unsigned distribution candidate
         if: inputs.build_release == true
         env:
@@ -169,6 +173,7 @@ jobs:
           script: |
             DISTILLPOD_SERIAL=emulator-5554 scripts/emulator-tests.sh /tmp/distillpod-fixtures
             JAVA_HOME="$DISTILLPOD_FIREBASE_JAVA" PATH="$DISTILLPOD_FIREBASE_JAVA/bin:$PATH" firebase/node_modules/.bin/firebase --config firebase/firebase.json emulators:exec --only auth,firestore,storage --project demo-distillpod-sync 'env DISTILLPOD_SERIAL=emulator-5554 scripts/sync-device-tests.sh'
+            DISTILLPOD_SERIAL=emulator-5554 scripts/voice-device-tests.sh /tmp/distillpod-fixtures
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
@@ -176,4 +181,5 @@ jobs:
           path: |
             /tmp/distillpod-instrumentation.log
             /tmp/distillpod-sync-device.log*
+            /tmp/distillpod-voice-device.log
           retention-days: 14

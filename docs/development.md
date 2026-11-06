@@ -56,6 +56,8 @@ CI also waits up to 30 seconds for user storage to become RUNNING_UNLOCKED after
 
 The browser integration check validates receipt of a real browser's callback and its state/client identity. A separate Android TCP check reads the complete HTTP response while the listener scope remains open. This tests callback delivery and response completion independently of Chrome's accessibility representation of a plain-text page.
 
+CI validates both the default-disabled and opt-in voice build configurations. After ordinary/cloud emulator acceptance, `scripts/voice-device-tests.sh /tmp/distillpod-fixtures` builds with `distillpodVoiceEnabled=true` and runs only the synthetic headphone-key/foreground-service and isolated Keystore tests. The runner refuses physical phones; it uses no live provider credential or paid request. The voice-only device test is excluded from default-disabled acceptance.
+
 ## Firebase acceptance
 
 The optional sync implementation on `main` has isolated Firebase protocol/security and Storage suites. Use Node 22 and Java 21 for these suites (keep Java 17 for Android):
