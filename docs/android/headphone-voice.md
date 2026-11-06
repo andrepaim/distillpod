@@ -11,6 +11,8 @@ Voice-enabled builds support an optional **Next track** media-key shortcut. This
 
 The Next card shows Off, Setup required, Ready or Open app to prepare, with a setup/permission action when needed. **Headphone setup** expands the gesture, single-earbud and locked-phone instructions. **Feedback → Moment saved sound** controls confirmation sound for headphone, phone and car captures. Existing choices are retained when upgrading; the preference keys and defaults are unchanged.
 
+See the [settings consolidation validation](evidence/headphone-settings-validation.md) for emulator layout/permission checks and the S25 installation of private preview code 32.
+
 Next pauses the episode and starts a question. Wait for the tone, then speak. End-of-speech detection finishes the question automatically; another Next press finishes it explicitly. During preparation or the answer, Next cancels/stops voice and resumes the unchanged podcast when its playback lease remains valid. Presses during cleanup are consumed. Duplicate, repeated and rapidly repeated events cannot start duplicate questions.
 
 Previous retains its separately configured Distill shortcut. Turning off the Next mapping restores ordinary next-track behavior. The mapping intercepts hardware media-key events, not normal player UI commands. Other accessories sending the same Next media key also trigger the shortcut while DistillPod handles playback. Untrusted controllers cannot invoke it.
