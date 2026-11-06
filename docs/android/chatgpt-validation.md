@@ -1,5 +1,9 @@
 # ChatGPT account validation and connection screen correction
 
+> Historical validation report. Results and commands below apply to the stated
+> revision and device. For current behavior, use the [usage guide](../getting-started.md),
+> [build instructions](../development.md) and [implementation status](implementation-status.md).
+
 Date: November 1, 2026. Branch: `feat/native-android`.
 
 The owner approved DistillPod's identity and ChatGPT plan permissions in the Android emulator. An OpenAI confirmation email corroborated the grant. The app then completed real Responses requests before and after the APK upgrade using that saved OAuth connection and displayed an insight for a short, non-sensitive sample about habits and routines. No API key or separately billed fallback was used.

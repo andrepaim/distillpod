@@ -14,6 +14,15 @@ Method: Test-driven development (TDD), with separate evidence for local tests, F
 
 The owner explicitly declined Blaze and chose local-only transcripts. Billing was unlinked and verified disabled with no billing account linked. Do not enable billing again without explicit authorization. Production builds disable the paid content extension regardless of client bucket configuration. Queue and portable preferences can use protocol 2 with Firestore on Spark; transcript/analysis/conversation/explanation text remains local and transferable through the existing manual backup. The Storage implementation and emulator tests are retained as inactive development work, not an enabled product feature.
 
+## How to read this plan now
+
+The architecture and unchecked gates below describe the original broader plan.
+They do not authorize enabling its cancelled paid-content milestone. Current
+Spark capabilities include protocol-2 queue/preferences and protocol-3 contextual
+moments. App Check remains [planned](app-check-rollout.md); telemetry, complete
+account erasure and independent cloud recovery remain unimplemented. Use the
+[usage and compatibility guide](subscription-sync.md) for the deployed scope.
+
 ## Extended portable-library increment — November 4 (historical checkpoint)
 
 Implementation now includes versioned queue order and per-key portable preferences, immutable compressed finished-content artifacts, account/generation-scoped Storage rules, source/hash/size validation, atomic restore, and protocol-2 compatibility gating. Finished transcripts, completed analyses, conversation branches and explanations restore without regenerating AI/transcription. Existing source alternatives and active processing are preserved. Room schema 7 adds portable preference values and artifact staging state.

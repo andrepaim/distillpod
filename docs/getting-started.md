@@ -4,6 +4,13 @@ Install the APK attached to a [GitHub release](https://github.com/andrepaim/dist
 
 This guide follows `main`, which can be ahead of the downloadable APK. Check the release notes and [implementation status](android/implementation-status.md) for feature availability in your build.
 
+Watch the [headphone-capture demo](demos/headphone-capture.mp4) or the
+[on-screen distillation demo](demos/distillation.mp4). Both use synthetic content;
+[transcripts and recording details](demos/README.md) describe the examples.
+For a first session: follow a show, play an episode, prepare its transcript, then
+save a moment. ChatGPT adds the generated takeaway; saving the source works even
+when disconnected.
+
 ## Connect ChatGPT
 
 Start in **Settings → ChatGPT → Continue with ChatGPT**. The connection powers DistillPod's quotes and insights, episode summaries and chapters, episode chat, saved-idea explanations and interest-based podcast suggestions. Account/model eligibility and plan limits apply; requests use your ChatGPT plan allowance.
@@ -21,6 +28,10 @@ A subscription fetches feed metadata and episode listings. Download audio explic
 The library offers Continue listening, followed shows and recent episodes. The show gallery lists followed shows alphabetically and offers local search. Saved and transcript screens also offer text search. Use Play next or Add to queue to choose what comes next. The mini-player opens the full player and queue. The player rewinds 10 seconds and advances 30 seconds; speed choices are 1×, 1.25×, 1.5× and 2×. Playback can continue with the screen locked; Android media controls offer transport actions.
 
 Downloaded episodes can play without a network connection. Streaming requires access to the publisher's audio host. Listen from the original source timeline; reviewed ad ranges are optional, and seeking into a range lets you hear it normally.
+
+| Library | Full player |
+| --- | --- |
+| ![Synthetic library with Continue listening](demos/library.png) | ![Player with playback controls and the Distill action](demos/player.png) |
 
 ## Prepare a transcript
 
@@ -48,11 +59,26 @@ To capture from headphones, enable **Settings → Playback & headphones → Dist
 
 A pen-scribble sound confirms a new saved moment, independently of later insight generation. Adjust **Distill confirmation sound** on the same settings page; it uses media volume. See [headphone setup, design and validation limits](android/headphone-distill.md). Actual Liberty 4 NC gesture and Bluetooth routing still require physical-device validation.
 
+The completed takeaway may have no quote when the source does not support a
+standalone quotation. **Improve this distill** keeps the current result while
+preparing a replacement; **Previous versions** can restore an earlier result.
+If more context is needed, use the offered context/transcription retry instead
+of repeatedly capturing the same instant. See [contextual distills](android/contextual-distills.md).
+
+| Headphone setup | Example finished moment |
+| --- | --- |
+| ![Playback and headphone capture settings](demos/headphone-settings.png) | ![Takeaway, supporting quote and replay controls using demo text](demos/distill-result.png) |
+
 ## Sync supported library data
 
 In a configured build, open **Settings → Library sync → Connect Google & sync library**. Review existing feeds, approve only public sources, then choose the Google account for this library. Google sign-in is separate from ChatGPT and from the Drive file picker. An unconfigured source/debug build shows “Cloud sync is unavailable in this build.”
 
 Approved subscriptions, listening progress, played status and saved moments synchronize. **Sync queue & preferences** additionally shares queue order and transcription model/language/AI-model choices. Full transcripts, analyses, episode chat and explanations still require Backup & Restore for transfer. Downloads, models and credentials stay on each device.
+
+Update every installation before enabling contextual-moment sync's account
+protocol upgrade. Until then, new-format moments can remain pending while other
+supported changes sync. [Protocol compatibility](android/subscription-sync.md#contextual-moments-and-protocol-3)
+explains the explicit upgrade and older-client behavior.
 
 Use the same Google account on another installation. Offline changes wait for reconnection; conflicts offer **Keep this phone’s choice** or **Use the cloud choice**. Pause or sign out to stop sync while keeping the local library. The library remains bound to its original account; account switching and complete account erasure are not implemented. Sync propagates changes and deletions, so keep independent backups. See the [sync guide](android/subscription-sync.md).
 
@@ -71,3 +97,10 @@ Open a prepared saved moment and tap **Create post**. Choose **Quote & discussio
 The completed result offers **Share** and an optional **Change** instruction. The menu includes copying, direct discussion editing, undo, image saving and deletion as applicable. You can leave the screen during generation; failed or canceled changes preserve the last completed version. Finish publication in the receiving app, and copy the infographic description separately if the recipient does not retain it.
 
 Find results through **Saved → Your posts**, even after deleting the original moment. Posts and infographic assets are local and included in bounded library backups; library sync does not upload them. Infographics use AI-designed vector scenes rendered locally because the current account connection does not support the hosted image-generation tool. Reopening or sharing a completed result does not regenerate it.
+
+## When something needs attention
+
+Use [Troubleshooting](troubleshooting.md) for transcript waiting states, a saved
+moment without a takeaway, headphone controls, sync conflicts, backups and APK
+updates. The [documentation index](README.md) links the complete current guides
+and distinguishes them from historical validation reports.

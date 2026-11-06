@@ -1,5 +1,9 @@
 # Android emulator validation and playback continuation
 
+> Historical validation report. Results and commands below apply to the stated
+> revision and device. For current behavior, use the [usage guide](../getting-started.md),
+> [build instructions](../development.md) and [implementation status](implementation-status.md).
+
 Date: November 1, 2026. Branch: `feat/native-android`.
 
 The debug app and instrumentation APK were installed and executed on the Windows-hosted `Medium_Phone_API_36.1` AVD: Android 16, x86_64, 1080 × 2400 display, approximately 2 GB guest RAM. Windows ADB port 5038 isolates the connection from Linux SDK tooling. This supersedes the earlier receipt's statement that no Android runtime testing had been performed.

@@ -1,5 +1,9 @@
 # Loopback callback listener correction
 
+> Historical validation report. Results and commands below apply to the stated
+> revision and device. For current behavior, use the [usage guide](../getting-started.md),
+> [build instructions](../development.md) and [implementation status](implementation-status.md).
+
 Date: November 1, 2026. Branch: `feat/native-android`.
 
 The owner received a ChatGPT permission confirmation email on the S22 Ultra, but the app had no saved credential envelope. Browser diagnostics showed a navigation to the local `/auth/callback` ending in `ERR_CONNECTION_TIMED_OUT`. The email established a grant, not a completed connection in this installation.

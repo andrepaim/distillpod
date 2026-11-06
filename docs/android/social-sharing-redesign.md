@@ -1,6 +1,6 @@
 # Social sharing redesign: two finished outputs
 
-Date: November 5, 2026. Status: implemented and validated as a preview on `feat/social-sharing`, installed for owner testing. This supersedes the product direction in [the original design](social-sharing-design.md). The installed first version is a technical baseline, not the UX to extend.
+Design dated November 5, 2026. Status reviewed November 6: the two-format workflow is implemented on `main` and included in published alpha APKs. The branch/device results below are historical checkpoints. This supersedes the product direction in [the original design](social-sharing-design.md). For current steps, see [Create a social post](../getting-started.md#create-a-social-post).
 
 ## Why the first approach failed
 

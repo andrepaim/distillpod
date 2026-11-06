@@ -1,5 +1,9 @@
 # Personal Android build progress
 
+> Historical validation report. Results and commands below apply to the stated
+> revision and device. For current behavior, use the [usage guide](../getting-started.md),
+> [build instructions](../development.md) and [implementation status](implementation-status.md).
+
 Started November 2, 2026. Authorization: continue until the app is usable. Target: S22 Ultra SM-S908E, Android 16. Existing credentials and prior work are preserved. The owner chose a fresh Android library; the existing web app is retained.
 
 ## Delivered alpha flows

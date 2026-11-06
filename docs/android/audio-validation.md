@@ -1,5 +1,9 @@
 # Android audio decoding and cancellation continuation
 
+> Historical validation report. Results and commands below apply to the stated
+> revision and device. For current behavior, use the [usage guide](../getting-started.md),
+> [build instructions](../development.md) and [implementation status](implementation-status.md).
+
 Date: November 1, 2026. Branch: `feat/native-android`.
 
 This continues F05 in the [implementation plan](../android-implementation-plan.md). The previous harness required a prepared mono 16 kHz WAV. It now accepts locally selected MP3, M4A/AAC and WAV clips and supports cancellation of decoding and native inference. Gate F remains open until the target physical phone and representative podcast/language samples are tested.

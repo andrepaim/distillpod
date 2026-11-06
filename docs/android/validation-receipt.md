@@ -1,5 +1,9 @@
 # Android feasibility validation receipt
 
+> Historical validation report. Results and commands below apply to the stated
+> revision and device. For current behavior, use the [usage guide](../getting-started.md),
+> [build instructions](../development.md) and [implementation status](implementation-status.md).
+
 Date: November 1, 2026. Branch: `feat/native-android`.
 
 ## Verified locally

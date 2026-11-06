@@ -1,5 +1,9 @@
 # Background playback validation
 
+> Historical validation report. Results and commands below apply to the stated
+> revision and device. For current behavior, use the [usage guide](../getting-started.md),
+> [build instructions](../development.md) and [implementation status](implementation-status.md).
+
 Target: owner's S22 Ultra, Android 16. The owner authorized a connected, unused hour. No Bluetooth headset or speaker is available, so physical Bluetooth disconnect/reconnect remains open.
 
 ## Screen-off fix

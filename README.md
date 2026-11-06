@@ -15,6 +15,22 @@ DistillPod is for people who listen to podcasts to learn. Use AI to summarize an
 
 Connect your ChatGPT account for episode understanding and saved insights. Episode understanding uses publisher transcripts, optional existing online transcripts, or Whisper running locally on your phone. Optional Google sign-in synchronizes supported library data between installations; ChatGPT and Google are separate connections.
 
+## See DistillPod in action
+
+Save an idea without interrupting your listening, then return to its source.
+
+**Hands-free headphone capture** — enable the previous-track gesture, keep listening, and find the saved moment.
+
+https://github.com/user-attachments/assets/ea08ef16-e98d-4d18-820e-44c578a9574f
+
+**Distill from the player** — tap **Distill last 60 seconds**, then open the takeaway and its source.
+
+https://github.com/user-attachments/assets/7ee170df-6b29-4d74-93a3-87264acceadc
+
+These short, captioned recordings use synthetic demo content and example AI
+output; the headphone command is simulated on an emulator.
+[Video transcripts, downloadable copies and capture details](docs/demos/README.md).
+
 ## Turn listening into understanding
 
 An idea catches your attention. Tap **Distill last 60 seconds** and keep listening. DistillPod saves the source window immediately, then uses bounded surrounding transcript context to select a complete thought. A second AI request checks the takeaway against the source; a supporting quote appears when it can stand alone faithfully. Open Saved to revisit it, explore it further or replay the original moment. Your capture stays saved if transcription or an AI request needs a retry. Improve a saved distill without losing its previous version. See [contextual distills](docs/android/contextual-distills.md) for behavior, sync compatibility and evaluation limits.
@@ -27,7 +43,11 @@ An idea catches your attention. Tap **Distill last 60 seconds** and keep listeni
 | Explore a saved idea | Request an explanation, a practical reflection and questions to investigate further |
 | Find more to listen to | Request podcast suggestions based on your interests, with real feeds checked before results appear |
 
-The listening tools support that workflow: podcast search, public RSS subscriptions, OPML import, background playback, a persistent queue and offline downloads. [Android Auto](docs/android/android-auto.md) brings the library, playback controls and Distill to a compatible car display. Connect a Drive backup file once for one-tap saves and a dated restore history. Backups preserve your library, listening progress, transcripts and saved insights.
+The listening tools support that workflow: podcast search, public RSS subscriptions, OPML import, background playback, a persistent queue and offline downloads. [Headphone capture](docs/android/headphone-distill.md) lets a previous-track gesture save the moment while playback continues; turn it on in **Settings → Playback & headphones**. [Android Auto](docs/android/android-auto.md) brings the library, playback controls and Distill to a compatible car display. Connect a Drive backup file once for one-tap saves and a dated restore history. Backups preserve your library, listening progress, transcripts and saved insights.
+
+| Your listening library | A saved idea with its source |
+| --- | --- |
+| <img src="docs/demos/library.png" width="260" alt="Library with a fictional show and a resumable episode"> | <img src="docs/demos/distill-result.png" width="260" alt="Example saved takeaway, supporting quote and source replay"> |
 
 ## ChatGPT and transcription
 
@@ -42,7 +62,7 @@ Playback, local transcription and source-moment capture also work without ChatGP
 1. Open [Releases](https://github.com/andrepaim/distillpod/releases) and download the attached `distillpod-<version>.apk` from the newest alpha release.
 2. On your Android phone, open the APK and allow installation from your browser or file manager when Android asks.
 3. Open **Settings → ChatGPT**, choose **Continue with ChatGPT**, and complete sign-in to connect your account.
-4. Search for a podcast, follow it and open an episode. Choose **Prepare transcript**; if a local model is needed, download Tiny or Base in Settings.
+4. Search for a podcast, follow it and play an episode. Transcript preparation starts automatically by default; **Prepare transcript** also starts it manually. If a local model is needed, download Tiny or Base in Settings.
 5. With a complete transcript, try **Summary & chapters** or ask the episode a question. While listening, use **Distill last 60 seconds** to start your saved collection.
 
 Requires **Android 10 or later**. The APK includes ARM64 and x86_64. For updates, install the newer release over the existing app. Keep the same application ID and signing identity; do not uninstall as an update step. Current alpha releases retain the certificate used by the existing personal-alpha installation.
@@ -97,6 +117,9 @@ branding/     Selected Listening Drop icon
 [Development and test instructions →](docs/development.md)
 
 ## Project notes
+
+Start with the [documentation index](docs/README.md) for current usage guides,
+troubleshooting, development references and clearly marked historical evidence.
 
 This repository contains the native Android app. The previous self-hosted web version is preserved on [`legacy/web`](https://github.com/andrepaim/distillpod/tree/legacy/web), with its final source tagged [`web-legacy-final`](https://github.com/andrepaim/distillpod/tree/web-legacy-final).
 

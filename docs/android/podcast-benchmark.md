@@ -1,5 +1,9 @@
 # S22 Ultra podcast transcription check
 
+> Historical validation report. Results and commands below apply to the stated
+> revision and device. For current behavior, use the [usage guide](../getting-started.md),
+> [build instructions](../development.md) and [implementation status](implementation-status.md).
+
 Executed November 2, 2026 on the Samsung S22 Ultra SM-S908E, Android 16/API 36, ARM64. This supplements the earlier repeated-speech chunk recovery test with real English and Brazilian Portuguese podcast audio. The official multilingual Tiny and Base files were size/hash verified; both are now available in the installed app.
 
 | Model | Language | Audio | Native elapsed | Real-time factor | Sampled peak process PSS |

@@ -1,5 +1,9 @@
 # Live transcription progress
 
+> Historical validation report. Results and commands below apply to the stated
+> revision and device. For current behavior, use the [usage guide](../getting-started.md),
+> [build instructions](../development.md) and [implementation status](implementation-status.md).
+
 November 2, 2026. Version 0.2.1-alpha addresses the progress display moving only when a two-minute chunk was saved.
 
 Whisper now reports native progress and segment completion through JNI. An application-scoped flow carries the current phase and active audio work to the transcript controls; the bar animates to measured progress and the audio counter advances within a chunk. Downloading, model verification, decoding, inference startup and saving have distinct status text and busy indicators.

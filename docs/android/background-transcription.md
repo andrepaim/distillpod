@@ -1,5 +1,9 @@
 # Transcription with the screen locked
 
+> Historical validation report. Results and commands below apply to the stated
+> revision and device. For current behavior, use the [usage guide](../getting-started.md),
+> [build instructions](../development.md) and [implementation status](implementation-status.md).
+
 November 4, 2026.
 
 The reported symptom was preparation stopping after the phone locked, with another manual start required. The old implementation already promoted each WorkManager worker to a foreground service, but finished that worker after every two-minute audio window and scheduled another job for the next window. That left execution dependent on another Android scheduling decision between checkpoints. Android 16 also applies JobScheduler runtime quotas to foreground WorkManager jobs. The attached S22 reports API 36. Historical logs from the reported run are unavailable, so this identifies a code-level failure path rather than proving which OS stop reason occurred yesterday.

@@ -1,5 +1,9 @@
 # DistillPod Android UI improvement proposal
 
+> Historical design and implementation record. The delivered UI has since evolved;
+> use the [current guide](../getting-started.md) and [current screenshots](../demos/README.md).
+> Original observations and validation results are preserved below.
+
 Follow-up: [full design review, November 4](full-design-review.md), including searchable collections, transcript reading and grouped settings.
 
 November 3, 2026. Owner authorization: research, choose and implement improvements independently. The completed playback reliability work is recorded in [background playback](background-playback.md).
