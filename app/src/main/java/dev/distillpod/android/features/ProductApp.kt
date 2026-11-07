@@ -317,7 +317,9 @@ private fun date(ms: Long) = if (ms <= 0) "" else DateTimeFormatter.ofPattern("d
     var dragging by remember(ep.id) { mutableStateOf<Float?>(null) }
     val displayedPosition = dragging?.toLong() ?: player.positionMs
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        Cover(ep.imageUrl ?: podcast?.imageUrl, Modifier.size(196.dp))
+        if (ep.mimeType?.startsWith("video/") == true) {
+            VideocastPlayer(vm.graph.playback, ep.id) { Cover(ep.imageUrl ?: podcast?.imageUrl, Modifier.size(196.dp)) }
+        } else Cover(ep.imageUrl ?: podcast?.imageUrl, Modifier.size(196.dp))
         Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(5.dp)) {
             Text(ep.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold, maxLines = 3, overflow = TextOverflow.Ellipsis)
             Text(podcast?.title ?: "Podcast", color = MaterialTheme.colorScheme.secondary, style = MaterialTheme.typography.bodyMedium)

@@ -54,10 +54,12 @@ class PlaybackService : MediaLibraryService() {
         graph.carConnection
         val dao = graph.db.library()
         val player = ExoPlayer.Builder(this)
+            .setMediaSourceFactory(dev.distillpod.android.video.VideocastMediaSourceFactory(this, graph.youtube))
             .setSeekBackIncrementMs(10000).setSeekForwardIncrementMs(30000)
             .setWakeMode(C.WAKE_MODE_LOCAL)
             .setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_SPEECH).build(), true)
             .setHandleAudioBecomingNoisy(true).build()
+        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, true).build()
         val health = dev.distillpod.android.playback.PlaybackHealthRecorder(this, player)
         val transcription = dev.distillpod.android.playback.PlaybackTranscription(
             scope, graph.settings.flow.map { it.transcribeOnPlayback },
@@ -144,12 +146,19 @@ class PlaybackService : MediaLibraryService() {
                     Player.STATE_READY->graph.diagnostics.event("playback.ready",reason="ready")
                 }
             }
+            private var videoEpisodeId: String? = null
             override fun onPlayerError(error: androidx.media3.common.PlaybackException) {graph.diagnostics.failure("playback",error)}
             override fun onIsPlayingChanged(isPlaying:Boolean) {graph.diagnostics.event("playback.state",reason=if(isPlaying) "playing" else "paused")}
             override fun onTimelineChanged(timeline:androidx.media3.common.Timeline,reason:Int) {
                 if(reason==Player.TIMELINE_CHANGE_REASON_PLAYLIST_CHANGED)snapshot(queueBoundary=true)
             }
             override fun onMediaItemTransition(item: MediaItem?, reason: Int) {
+                // Video is opt-in for the current episode, including queue auto-advance.
+                if (videoEpisodeId != item?.mediaId) {
+                    player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+                        .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, true).build()
+                    videoEpisodeId = item?.mediaId
+                }
                 browseCurrent.value=item?.mediaId
                 if (!restoring && reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO && previousId != null) {
                     writes.trySend(Snapshot(emptyList(), previousId, if (previousDuration > 0) previousDuration else previousPosition, previousDuration, true, player.playbackParameters.speed, boundary=true))
@@ -226,6 +235,12 @@ class PlaybackService : MediaLibraryService() {
         scope.launch {
             dao.observeEpisodes().collect { episodes ->
                 val current = player.currentMediaItem ?: return@collect
+                // A downloaded YouTube file is audio-only. Progress updates must not replace
+                // an explicitly selected video stream with that local audio file.
+                if (current.localConfiguration?.uri?.let {
+                    dev.distillpod.core.YouTubeUrl.videoId(it.toString()) != null &&
+                        it.getQueryParameter("distillpod_video") == "1"
+                } == true) return@collect
                 val ep = episodes.firstOrNull { it.id == current.mediaId } ?: return@collect
                 val local = ep.localFile?.let(::File)?.takeIf { it.isFile } ?: return@collect
                 val uri = Uri.fromFile(local)

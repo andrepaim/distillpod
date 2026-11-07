@@ -170,8 +170,8 @@ private val topics = listOf(SearchTopic("Technology", Icons.Default.Memory), Sea
         Column(Modifier.fillMaxWidth().imePadding().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Icon(Icons.Default.RssFeed, null, tint = MaterialTheme.colorScheme.secondary)
             Text("Add a podcast feed", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
-            Text("Paste a public RSS feed address to add the show directly.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            OutlinedTextField(rssDraft, { rssDraft = it.take(2048) }, label = { Text("RSS feed URL") }, modifier = Modifier.fillMaxWidth(), maxLines = 3)
+            Text("Paste a public RSS feed, YouTube playlist or video link.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            OutlinedTextField(rssDraft, { rssDraft = it.take(2048) }, label = { Text("RSS or YouTube URL") }, modifier = Modifier.fillMaxWidth(), maxLines = 3)
             Button(onClick = { rss = false; onQuery(rssDraft.trim()); onFollow(rssDraft.trim()) }, enabled = isFeedAddress(rssDraft) && !adding,
                 modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) { Text("Add feed") }
         }

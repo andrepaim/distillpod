@@ -6,6 +6,7 @@ DistillPod uses third-party components under their respective licenses. This lis
 - **AndroidX / Jetpack Compose, Room, WorkManager and Media3**: Android libraries from their upstream Maven publications and AndroidX source distributions.
 - **Kotlin and Kotlin coroutines**: upstream JetBrains distributions and license notices.
 - **OkHttp**: upstream Square/OkHttp distribution and license notices.
+- **youtubedl-android 0.18.1**: GPL-3.0 wrapper from https://github.com/yausername/youtubedl-android/tree/0.18.1, with its bundled Python, QuickJS and yt-dlp distributions and their respective notices. This introduces a GPL-covered dependency; distributing a combined APK must satisfy its source and license requirements. The upstream [LICENSE](https://github.com/yausername/youtubedl-android/blob/0.18.1/LICENSE) remains authoritative. No runtime extractor updates are downloaded by DistillPod.
 - **Coil**: upstream Coil distribution and license notices.
 - **Nimbus JOSE + JWT**: upstream Connect2id distribution and license notices.
 - **Firebase Android Authentication, Firestore and Storage SDKs**: upstream Firebase Android SDK distributions and their bundled notices.

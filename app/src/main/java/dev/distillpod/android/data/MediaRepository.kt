@@ -31,7 +31,8 @@ class ActiveFiles {
 }
 
 class MediaRepository(context: Context, private val db: AppDatabase, private val settings: AppSettings,
-    private val downloader: ResumableDownloader, val active: ActiveFiles) {
+    private val downloader: ResumableDownloader, val active: ActiveFiles,
+    private val resolveAudio: (String) -> String = { it }) {
     private val dao = db.library()
     val directory = File(context.filesDir, "media").apply { mkdirs() }
     val modelsDirectory = File(context.filesDir, "models").apply { mkdirs() }
@@ -48,10 +49,24 @@ class MediaRepository(context: Context, private val db: AppDatabase, private val
         val partial = File(directory, "$id.partial")
         val target = File(directory, "$id-${UUID.randomUUID()}.audio")
         try {
-            val result = downloader.download(ep.audioUrl, partial, target, ep.etag, ep.lastModified,
-                maximumBytes = (prefs.storageLimitBytes - otherBytes).coerceAtLeast(0)) { progress ->
+            val youtube = dev.distillpod.core.YouTubeUrl.videoId(ep.audioUrl) != null
+            val resolved = runInterruptible(Dispatchers.IO) { resolveAudio(ep.audioUrl) }
+            // A fresh extraction can select a different representation; never append old bytes.
+            if (youtube) withContext(Dispatchers.IO) { partial.delete() }
+            val result = downloader.download(resolved, partial, target, if (youtube) null else ep.etag, if (youtube) null else ep.lastModified,
+                maximumBytes = (prefs.storageLimitBytes - otherBytes).coerceAtLeast(0),
+                rangeChunkBytes = if (youtube) dev.distillpod.android.video.YOUTUBE_RANGE_BYTES else null) { progress ->
                 runBlocking { dao.downloadProgress(id, "downloading", progress.bytes, progress.total, progress.etag, progress.lastModified, null) }
                 notify(progress)
+            }
+            if (youtube) withContext(Dispatchers.IO) {
+                val extractor = android.media.MediaExtractor()
+                try {
+                    extractor.setDataSource(target.absolutePath)
+                    require((0 until extractor.trackCount).any {
+                        extractor.getTrackFormat(it).getString(android.media.MediaFormat.KEY_MIME)?.startsWith("audio/") == true
+                    }) { "YouTube returned an invalid audio file. Please retry." }
+                } finally { extractor.release() }
             }
             db.withTransaction {
                 val latest = dao.episode(id) ?: error("Episode is no longer available")

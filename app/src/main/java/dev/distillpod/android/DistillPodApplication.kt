@@ -25,11 +25,13 @@ class AppGraph(val context: Context) {
     val http = OkHttpClient.Builder().connectTimeout(20, TimeUnit.SECONDS).readTimeout(30, TimeUnit.SECONDS)
         .addInterceptor { it.proceed(it.request().newBuilder().header("User-Agent", "DistillPod/0.2 (Android)").build()) }.build()
     val syncAccount by lazy { dev.distillpod.android.sync.SubscriptionSyncAccount(this) }
-    val podcasts = PodcastRepository(db, http, onSubscriptionChanged = { syncAccount.kick() }, onFeedNeeded = { jobs.refresh(it) })
+    val youtube = dev.distillpod.android.video.YouTubeSource(dev.distillpod.android.video.AndroidYouTubeExtractor(context))
+    val podcasts = PodcastRepository(db, http, onSubscriptionChanged = { syncAccount.kick() }, onFeedNeeded = { jobs.refresh(it) }, youtube = youtube)
     val portableSync by lazy {dev.distillpod.android.sync.PortableLibrarySync(db,changed={syncAccount.kick()})}
     val collectionSync by lazy {dev.distillpod.android.sync.CollectionSync(db,changed={syncAccount.kick()})}
     val activeFiles = ActiveFiles()
-    val media = MediaRepository(context, db, settings, ResumableDownloader(http), activeFiles)
+    val media = MediaRepository(context, db, settings, ResumableDownloader(http), activeFiles,
+        resolveAudio = { url -> if (dev.distillpod.core.YouTubeUrl.videoId(url) != null) youtube.streams(url).audio else url })
     val account = AccountRepository(context, scope)
     val jobs = AppJobs(context)
     val posts by lazy { PostRepository(db) }

@@ -54,6 +54,11 @@ android {
         ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
     }
     buildTypes.getByName("release") { isDebuggable = false }
+    packaging { jniLibs {
+        useLegacyPackaging = true
+        // The runtime stores its Python archive under a .so name; it is not an ELF library.
+        keepDebugSymbols += "**/libpython.zip.so"
+    } }
     sourceSets.getByName("androidTest").assets.srcDir(providers.gradleProperty("distillpodFixtureDir").getOrElse("src/androidTest/assets"))
     sourceSets.getByName("androidTest").assets.srcDir("schemas")
     sourceSets.getByName("androidTest").assets.srcDir("src/test/resources")
@@ -64,6 +69,8 @@ android {
     testOptions { unitTests.isIncludeAndroidResources = true }
 }
 dependencies {
+    implementation("io.github.junkfood02.youtubedl-android:library:0.18.1")
+    implementation("androidx.media3:media3-ui:1.5.1")
     implementation(project(":core"))
     implementation("io.sentry:sentry-android-core:8.40.0")
     implementation("androidx.car.app:app:1.7.0")

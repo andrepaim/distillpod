@@ -35,7 +35,22 @@ fun mediaItem(ep: EpisodeEntity, podcast: PodcastEntity?): MediaItem {
             .setArtworkUri((ep.imageUrl ?: podcast?.imageUrl)?.takeIf { it.startsWith("https://") || it.startsWith("http://") }?.let(Uri::parse)).build()).build()
 }
 
-class PlaybackRepository(context: Context, private val db: AppDatabase, private val scope: CoroutineScope) {
+internal fun videocastMediaItem(ep: EpisodeEntity, podcast: PodcastEntity?, video: Boolean): MediaItem =
+    mediaItem(ep, podcast).let {
+        if (video && dev.distillpod.core.YouTubeUrl.videoId(ep.audioUrl) != null)
+            it.buildUpon().setUri(Uri.parse(ep.audioUrl).buildUpon().appendQueryParameter("distillpod_video", "1").build()).build()
+        else it
+    }
+
+/** Queue edits must keep an active video URI even when offline audio is also available. */
+internal fun preserveVideoItem(ep: EpisodeEntity, podcast: PodcastEntity?, current: MediaItem?): MediaItem {
+    val uri = current?.localConfiguration?.uri
+    return if (current?.mediaId == ep.id && uri != null &&
+        dev.distillpod.core.YouTubeUrl.videoId(uri.toString()) != null && uri.getQueryParameter("distillpod_video") == "1") current
+        else mediaItem(ep, podcast)
+}
+
+class PlaybackRepository(private val context: Context, private val db: AppDatabase, private val scope: CoroutineScope) {
     private val future = MediaController.Builder(context, SessionToken(context, ComponentName(context, PlaybackService::class.java))).buildAsync()
     private val mutable = MutableStateFlow(PlaybackState())
     val state = mutable.asStateFlow()
@@ -58,6 +73,36 @@ class PlaybackRepository(context: Context, private val db: AppDatabase, private 
         }, ContextCompat.getMainExecutor(context))
     }
     private suspend fun controller() = withContext(Dispatchers.IO) { future.get(10, TimeUnit.SECONDS) }
+    suspend fun sessionPlayer(): Player = controller()
+    fun leaveVideo(episodeId: String) { scope.launch { runCatching { video(episodeId, false) } } }
+
+    /** Swap the same episode at the same position; offline audio remains the default. */
+    suspend fun video(episodeId: String, enabled: Boolean) {
+        val c = controller()
+        val id = withContext(Dispatchers.Main) { c.currentMediaItem?.mediaId } ?: return
+        if (id != episodeId) return
+        val ep = db.library().episode(id) ?: return
+        val youtube = dev.distillpod.core.YouTubeUrl.videoId(ep.audioUrl) != null
+        if (enabled && youtube) {
+            val streams = runInterruptible(Dispatchers.IO) { (context.applicationContext as dev.distillpod.android.DistillPodApplication).graph.youtube.streams(ep.audioUrl) }
+            require(streams.video != null) { "No compatible video is available for this episode" }
+        }
+        val podcast = db.library().podcast(ep.podcastId)
+        withContext(Dispatchers.Main) {
+            if (c.currentMediaItem?.mediaId != id) return@withContext
+            c.trackSelectionParameters = c.trackSelectionParameters.buildUpon()
+                .setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_VIDEO, !enabled).build()
+            if (youtube) {
+                val desired = videocastMediaItem(ep, podcast, enabled)
+                if (c.currentMediaItem?.localConfiguration?.uri != desired.localConfiguration?.uri) {
+                    val position = c.currentPosition.coerceAtLeast(0)
+                    c.replaceMediaItem(c.currentMediaItemIndex, desired)
+                    c.seekTo(position)
+                    c.prepare()
+                }
+            }
+        }
+    }
     suspend fun play(id: String, positionMs: Long? = null) {
         val ep = db.library().episode(id) ?: error("Episode is unavailable")
         val controller = controller()
@@ -65,7 +110,7 @@ class PlaybackRepository(context: Context, private val db: AppDatabase, private 
         val podcasts = db.library().podcasts().associateBy { it.id }
         withContext(Dispatchers.Main) {
             if (controller.currentMediaItem?.mediaId == id) {
-                val desired = mediaItem(ep, podcasts[ep.podcastId])
+                val desired = preserveVideoItem(ep, podcasts[ep.podcastId], controller.currentMediaItem)
                 if (controller.currentMediaItem?.localConfiguration?.uri != desired.localConfiguration?.uri) {
                     val position = positionMs ?: controller.currentPosition.coerceAtLeast(0)
                     controller.replaceMediaItem(controller.currentMediaItemIndex, desired)
@@ -101,7 +146,7 @@ class PlaybackRepository(context: Context, private val db: AppDatabase, private 
             ids.add(at, id)
             val index = ids.indexOf(current).coerceAtLeast(0)
             val position = if (current in ids) c.currentPosition.coerceAtLeast(0) else 0L
-            c.setMediaItems(ids.map { mediaItem(all.getValue(it), podcasts[all.getValue(it).podcastId]) }, index, position)
+            c.setMediaItems(ids.map { preserveVideoItem(all.getValue(it), podcasts[all.getValue(it).podcastId], c.currentMediaItem) }, index, position)
             c.prepare()
         }
     }
@@ -141,7 +186,7 @@ class PlaybackRepository(context: Context, private val db: AppDatabase, private 
             val position=if(current in ids)c.currentPosition.coerceAtLeast(0) else all.getValue(ids[index]).positionMs
             val playWhenReady=c.playWhenReady
             imported(ids)
-            c.setMediaItems(ids.map {mediaItem(all.getValue(it),podcasts[all.getValue(it).podcastId])},index,position)
+            c.setMediaItems(ids.map {preserveVideoItem(all.getValue(it),podcasts[all.getValue(it).podcastId],c.currentMediaItem)},index,position)
             c.prepare();c.playWhenReady=playWhenReady
         }
     }
