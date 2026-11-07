@@ -6,6 +6,7 @@ import android.view.KeyEvent
 
 /** Called on the session's application thread. The earbuds, not the app, count taps. */
 internal class HeadphoneDistillButton(private val keyCode: Int = KeyEvent.KEYCODE_MEDIA_PREVIOUS,
+    private val report: (String) -> Unit = {},
     private val now: () -> Long = SystemClock::uptimeMillis) {
     private data class Press(val device: Int, val downTime: Long)
     private var consumedPress: Press? = null
@@ -22,6 +23,7 @@ internal class HeadphoneDistillButton(private val keyCode: Int = KeyEvent.KEYCOD
         val press = Press(event.deviceId, event.downTime)
         // Finish consuming a remapped press even when the setting changes before release.
         if (!enabled) {
+            report("disabled")
             if (press != consumedPress) return false
             if (event.action == KeyEvent.ACTION_UP) consumedPress = null
             return true
@@ -36,8 +38,10 @@ internal class HeadphoneDistillButton(private val keyCode: Int = KeyEvent.KEYCOD
         lastPress = press
         if (event.repeatCount == 0 && !event.isCanceled && !duplicate) {
             lastCaptureAt = time
+            report("accepted")
             capture()
         }
+        if(duplicate)report("duplicate") else if(event.isCanceled)report("cancelled") else if(event.repeatCount>0)report("repeat")
         return true
     }
 }

@@ -32,6 +32,7 @@ jobs:
       build_release: true
     secrets:
       FIREBASE_CONFIG_JSON: ${{ secrets.FIREBASE_CONFIG_JSON }}
+      SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
 
   publish:
     name: Sign and publish alpha APK

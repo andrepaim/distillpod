@@ -119,6 +119,7 @@ class TranscriptionRepository(private val graph: AppGraph,
         val prefs = graph.settings.flow.first()
         val ep = dao.episode(row.episodeId) ?: return
         val needNetwork = ep.localFile?.let { File(it).isFile } != true || row.source == "publisher"
+        graph.diagnostics.event("transcription.queued",row.revision,reason=transcriptionWaitReason(graph.context,prefs,needNetwork) ?: "scheduled")
         val constraints = Constraints.Builder().setRequiresBatteryNotLow(true).setRequiresCharging(prefs.chargingOnly)
             .apply { if (needNetwork) setRequiredNetworkType(if (prefs.wifiOnly) NetworkType.UNMETERED else NetworkType.CONNECTED) }.build()
         manager.enqueueUniqueWork("transcript:${row.episodeId}:${row.revision}:$start", ExistingWorkPolicy.KEEP,
@@ -156,8 +157,11 @@ class TranscriptionRepository(private val graph: AppGraph,
         var row = dao.transcript(id) ?: return
         if (row.revision != revision || row.state in listOf("paused", "ready", "stale")) return
         val run = UUID.randomUUID().toString()
+        graph.diagnostics.event("transcription.started",revision)
         live.update { it + (id to TranscriptProgress(revision, run, TranscriptStage.STARTING, row.processedMs, row.durationMs)) }
+        var lastDiagnosticStage: TranscriptStage? = null
         fun report(stage: TranscriptStage, workedMs: Long? = null, durationMs: Long? = null, start: Long? = null, end: Long? = null) {
+            if(stage!=lastDiagnosticStage) {lastDiagnosticStage=stage;graph.diagnostics.event("transcription.stage",revision,reason=stage.name.lowercase())}
             live.update { all -> val current = all[id]
                 if (current?.run != run) all else all + (id to current.copy(stage = stage, workedMs = workedMs ?: current.workedMs,
                     durationMs = durationMs ?: current.durationMs, chunkStartMs = start ?: current.chunkStartMs, chunkEndMs = end ?: current.chunkEndMs))
@@ -258,6 +262,7 @@ class TranscriptionRepository(private val graph: AppGraph,
                     if (next == null) {
                         graph.db.withTransaction {
                             dao.putTranscript(current.copy(state = "ready", processedMs = duration))
+                            graph.diagnostics.event("transcription.completed",revision)
                             dao.deselectOnline(id)
                         }
                     }
@@ -265,6 +270,7 @@ class TranscriptionRepository(private val graph: AppGraph,
                 }
             } finally { wave.delete(); graph.activeFiles.release(source); graph.activeFiles.release(modelPath) }
         } catch (error: Exception) {
+            graph.diagnostics.failure("transcription",error,revision)
             withContext(NonCancellable) {
                 val current = dao.transcript(id)
                 if (current?.revision == revision && current.state !in listOf("paused", "stale", "ready")) dao.putTranscript(current.copy(state = if (error is CancellationException) "queued" else "failed", error = if (error is CancellationException) null else safeFailure(error)))

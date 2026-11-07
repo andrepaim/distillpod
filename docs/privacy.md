@@ -18,7 +18,7 @@ Cloud records are protected by per-user security rules and the provider's transp
 
 ## Telemetry status
 
-The core module contains a tested event/consent boundary. Firebase Analytics, Crashlytics and Performance SDK adapters and live collection are not yet enabled. Enabling library sync does not opt into telemetry.
+Optional cloud diagnostics use Sentry with a device-local, default-off consent setting, bounded offline storage and allowlisted technical events. See [cloud diagnostics](android/cloud-diagnostics.md) for collected fields, delivery limits and validation evidence. Firebase Analytics, Crashlytics and Performance collection remain disabled. Enabling library sync does not opt into diagnostics. Configured S22 log and handled-error delivery have been verified; native crash reporting is not included.
 
 ## Network requests
 

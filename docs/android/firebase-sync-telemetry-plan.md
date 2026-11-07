@@ -284,6 +284,8 @@ Dependencies: P0 → P1 → P2 → P3. P4 telemetry can proceed after P0; P5 sta
 
 ### P4 — Consent, telemetry and diagnostic instrumentation
 
+Current direction: the [Sentry diagnostics implementation](cloud-diagnostics.md) replaces the proposed Firebase telemetry adapters below. The original unchecked requirements remain evidence of outstanding scope; they are not implemented merely by adding Sentry. Configured S22 log and handled-error ingestion are verified; remaining scope is recorded in that guide.
+
 - [ ] Add typed allowlisted event APIs and separate diagnostics/usage preferences with collection disabled before consent.
 - [ ] Integrate Crashlytics and NDK reporting, release build identity, R8 mapping and native symbol upload.
 - [ ] Integrate Analytics explicit events; inspect/disable unwanted automatic collection, advertising identifiers and sensitive screen/URL attributes.

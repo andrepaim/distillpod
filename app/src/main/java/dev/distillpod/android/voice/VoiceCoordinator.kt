@@ -36,6 +36,8 @@ class VoiceCoordinator(
     private val context: suspend (VoiceLease) -> String,
     private val connect: suspend (String) -> VoiceConnection,
     private val output: () -> VoiceOutput,
+    private val diagnosticEvent: (String,String) -> Unit = {_,_->},
+    private val diagnosticFailure: (Throwable) -> Unit = {},
 ) {
     private val mutable = MutableStateFlow(VoiceState())
     val state = mutable.asStateFlow()
@@ -46,6 +48,7 @@ class VoiceCoordinator(
         prepareAudio: suspend () -> AutoCloseable = { AutoCloseable {} }) {
         if (job != null) return
         resume = true
+        diagnosticEvent("voice.started",origin.name.lowercase())
         mutable.value = VoiceState("Preparing", origin = origin)
         job = scope.launch(start = CoroutineStart.LAZY) {
             var lease: VoiceLease? = null
@@ -87,6 +90,7 @@ class VoiceCoordinator(
                 if (cancelled is TimeoutCancellationException) mutable.value = mutable.value.copy(error = "Voice request timed out")
                 else throw cancelled
             } catch (error: Exception) {
+                diagnosticFailure(error)
                 if (error is HeadsetDisconnected) resume = false
                 mutable.value = mutable.value.copy(error = if (error is HeadsetDisconnected)
                     "Headset disconnected. Reconnect it before asking again."
@@ -98,7 +102,7 @@ class VoiceCoordinator(
                 connection = null
                 mutable.value = mutable.value.copy(phase = "Finishing", level = 0f)
                 try { withContext(NonCancellable) { lease?.finish(resume) } }
-                finally { mutable.value = mutable.value.copy(phase = "Idle", origin = null); job = null }
+                finally { diagnosticEvent("voice.finished",if(resume) "resume_requested" else "resume_cancelled"); mutable.value = mutable.value.copy(phase = "Idle", origin = null); job = null }
             }
         }
         job?.start()

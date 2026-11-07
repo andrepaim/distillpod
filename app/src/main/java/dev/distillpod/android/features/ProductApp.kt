@@ -95,7 +95,7 @@ private fun date(ms: Long) = if (ms <= 0) "" else DateTimeFormatter.ofPattern("d
         route == "queue" -> "Listening queue"
         route == "settings" -> "Settings"
         route == "shows" -> "Your shows"
-        route.startsWith("settings:") -> when(route.substringAfter(':')) { "sync" -> "Library sync"; "ai" -> "ChatGPT"; "voice" -> "Voice"; "playback" -> "Playback & headphones"; "transcription" -> "Local transcription"; "storage" -> "Downloads & storage"; "library" -> "Import & notifications"; else -> "About DistillPod" }
+        route.startsWith("settings:") -> when(route.substringAfter(':')) { "diagnostics" -> "Diagnostics"; "sync" -> "Library sync"; "ai" -> "ChatGPT"; "voice" -> "Voice"; "playback" -> "Playback & headphones"; "transcription" -> "Local transcription"; "storage" -> "Downloads & storage"; "library" -> "Import & notifications"; else -> "About DistillPod" }
         route.startsWith("transcript:") -> "Transcript"
         route == "backup" -> "Backup & Restore"
         route == "player" -> "Now playing"
@@ -535,6 +535,7 @@ private fun captureState(state: String) = when (state) { "waiting_transcript" ->
     val context = LocalContext.current
     val version = remember(context) { context.packageManager.getPackageInfo(context.packageName, 0).versionName.orEmpty() }
     if(section=="overview") {SettingsOverview(vm,account.connected);return}
+    if(section=="diagnostics") {DiagnosticsSettings(vm);return}
     LaunchedEffect(account.connected,section) { if (account.connected && section=="ai") vm.graph.account.refreshModels() }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         if(section=="sync") SubscriptionSyncSettings(vm)

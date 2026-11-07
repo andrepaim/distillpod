@@ -163,6 +163,7 @@ class SubscriptionSyncAccount(private val graph:AppGraph) {
         try {
             if(contentConfigured && graph.db.sync().view("__extended_scope")!=null)artifacts.capture()
         } catch(error:Exception) {
+            graph.diagnostics.failure("sync",error)
             if(error is CancellationException)throw error
             graph.db.sync().binding()?.let {graph.db.sync().putBinding(it.copy(status="error"))}
             throw error

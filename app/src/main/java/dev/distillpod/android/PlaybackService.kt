@@ -48,6 +48,7 @@ class PlaybackService : MediaLibraryService() {
     private val adSkipping = ReviewedAdSkipping()
     override fun onCreate() {
         super.onCreate()
+        applicationContext.appGraph.diagnostics.event("playback.service_started")
         val graph = applicationContext.appGraph
         // Observe projection before any Next event, including hosts using the legacy media browser.
         graph.carConnection
@@ -66,7 +67,7 @@ class PlaybackService : MediaLibraryService() {
                     graph.transcription.prepareAutomatically(id)
                 }
             },
-            onFailure = { android.util.Log.w("PlaybackService", "Automatic transcript preparation failed", it) },
+            onFailure = { graph.diagnostics.failure("transcription",it) },
         )
         player.addAnalyticsListener(health)
         scope.launch { while (isActive) { health.sample(); delay(5000) } }
@@ -83,10 +84,11 @@ class PlaybackService : MediaLibraryService() {
             saveMoment={id,position,file->
                 val ep=dao.episode(id)?:error("Episode is unavailable")
                 graph.captures.save(id,position,file!=null && file==ep.localFile)
-            },prepareMoment={id->graph.scope.launch(Dispatchers.IO){runCatching {graph.captures.prepareSaved(id)}};Unit},artwork=artwork::uri,
+            },prepareMoment={id->graph.scope.launch(Dispatchers.IO){runCatching {graph.captures.prepareSaved(id)}.onFailure {graph.diagnostics.failure("capture",it,id)}};Unit},artwork=artwork::uri,
             voiceEnabled = { resources.getBoolean(R.bool.voice_enabled) },
             openCarVoice = { graph.carVoiceEntry.open() },
             onExternalPlaybackCommand = { graph.voice.cancel(false) },
+            diagnostics = graph.diagnostics,
             headphoneDistillEnabled = { headphoneDistill },
             headphoneVoiceEnabled = { graph.preferences.value.headphoneVoice },
             onHeadphoneVoice = {
@@ -132,6 +134,8 @@ class PlaybackService : MediaLibraryService() {
             previousId = id; previousDuration = player.duration.coerceAtLeast(0); previousPosition = player.currentPosition.coerceAtLeast(0)
         }
         player.addListener(object : Player.Listener {
+            override fun onPlayerError(error: androidx.media3.common.PlaybackException) {graph.diagnostics.failure("playback",error)}
+            override fun onIsPlayingChanged(isPlaying:Boolean) {graph.diagnostics.event("playback.state",reason=if(isPlaying) "playing" else "paused")}
             override fun onTimelineChanged(timeline:androidx.media3.common.Timeline,reason:Int) {
                 if(reason==Player.TIMELINE_CHANGE_REASON_PLAYLIST_CHANGED)snapshot(queueBoundary=true)
             }
@@ -257,6 +261,7 @@ class PlaybackService : MediaLibraryService() {
     }
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? = session
     override fun onDestroy() {
+        applicationContext.appGraph.diagnostics.event("playback.service_stopped")
         applicationContext.appGraph.activeFiles.playback = null
         applicationContext.appGraph.activeFiles.queued = emptySet()
         val player=session?.player

@@ -94,6 +94,8 @@ Settings → Backup & Restore → Create backup file connects a Drive document o
 
 Credentials, downloaded audio, model binaries and private device file paths are excluded. Reconnect the account and re-download audio/models on a destination installation. OPML transfers subscriptions only.
 
+To report a listening problem, enable **Settings → Diagnostics → Share diagnostics** before reproducing it. Afterward, use **Copy diagnostic reference** and include the approximate time, action tried, expected result and what happened. Reports upload when connected, including mobile data; **Send test diagnostic** verifies the path with a harmless handled error. See [cloud diagnostics](android/cloud-diagnostics.md) for privacy and delivery limits.
+
 Developer checks are diagnostics for deliberate testing. They are not needed for normal listening, and fixture suites belong on an isolated emulator.
 
 ## Create a social post
