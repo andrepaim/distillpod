@@ -89,6 +89,10 @@ class PlaybackService : MediaLibraryService() {
             openCarVoice = { graph.carVoiceEntry.open() },
             onExternalPlaybackCommand = { graph.voice.cancel(false) },
             diagnostics = graph.diagnostics,
+            saveMomentWithSource = {id,position,file,source ->
+                val ep=dao.episode(id)
+                graph.captures.save(id,position,file!=null && file==ep?.localFile,source=source)
+            },
             headphoneDistillEnabled = { headphoneDistill },
             headphoneVoiceEnabled = { graph.preferences.value.headphoneVoice },
             onHeadphoneVoice = {

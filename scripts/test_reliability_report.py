@@ -10,7 +10,7 @@ class ReliabilityReportTest(unittest.TestCase):
   rows=[row('retry',1,'failed'),row('retry',2,'running','b'),row('retry',3,'completed','b'),row('wait',1,'waiting'),row('unknown',1,'unknown'),row('failure',1,'failed'),row('test',1,'failed',test=True)]
   rows+=rows[:3]
   result=report.summarize(rows)['features']['transcription']
-  self.assertEqual(4,result['observed_jobs']);self.assertEqual(5,result['observed_attempts'])
+  self.assertEqual(4,result['observed_jobs']);self.assertEqual(3,result['observed_attempts']);self.assertEqual(1,result['queued_only_attempt_ids']);self.assertEqual(1,result['unknown_only_attempt_ids'])
   self.assertEqual(.5,result['resolved_success_rate']);self.assertEqual(1,result['recovered_jobs'])
  def test_empty_sample_has_no_success_rate(self):
   self.assertEqual({},report.summarize([])['features'])

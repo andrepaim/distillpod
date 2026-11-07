@@ -4,7 +4,7 @@ Date: 2026-11-07. Initial physical application source: `6e8d6de` (feature branch
 
 ## Automated local checks
 
-- 91 core and 334 app JVM tests passed for the configured voice-enabled candidate, including independent consent, revocation, retry/replay identity, clock changes, restart reconciliation, unknown outcomes and text-before-output-failure behavior.
+- 91 core and 335 app JVM tests passed for the configured voice-enabled candidate, including independent consent, revocation, retry/replay identity, clock changes, restart reconciliation, unknown outcomes and text-before-output-failure behavior.
 - Voice-enabled debug lint/assembly and configured release lint/assembly passed. Default voice-disabled app JVM tests, debug lint/assembly also passed.
 - 24 Python tooling tests passed, including duplicate delivery, retry recovery, outstanding/unknown jobs and denominator fixtures.
 - Candidate APK passed release metadata/signature checks against the retained certificate, voice/car configuration checks, Firebase resource comparison with the published baseline, disabled paid-content sync and six native ELF 16 KB alignment checks.

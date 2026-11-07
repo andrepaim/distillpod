@@ -30,24 +30,33 @@ class CaptureRepository(private val db: AppDatabase, private val ai: AiGateway, 
     }
     /** Durable acceptance is independent from preparation, authorization and inference. */
     suspend fun save(id: String, position: Long, verifiedSource: Boolean, source:String="background"): String {
-        require(position>=0) { "Playback position is invalid" }
-        val ep = dao.episode(id) ?: error("Episode is unavailable")
-        val (saved,created) = db.withTransaction {
-            val recent=dao.recentCapture(id,position,System.currentTimeMillis()-2000)
-            if(recent!=null)recent to false else {
-                val fresh=DistillationEntity(UUID.randomUUID().toString(),id,(position-60000).coerceAtLeast(0),position,
-                    fingerprint=if(verifiedSource)ep.mediaFingerprint else "unverified:${ep.id}",attempt=UUID.randomUUID().toString())
-                dao.putDistillation(fresh)
-                dao.putMomentAttempt(MomentAttemptEntity(fresh.attempt,fresh.id,"{\"expanded\":false}"))
-                portable.recordMoment(fresh)
-                fresh to true
+        val request=UUID.randomUUID().toString()
+        diagnostics?.event("capture.started",request,source=source)
+        try {
+            require(position>=0) { "Playback position is invalid" }
+            val ep = dao.episode(id) ?: error("Episode is unavailable")
+            val (saved,created) = db.withTransaction {
+                val recent=dao.recentCapture(id,position,System.currentTimeMillis()-2000)
+                if(recent!=null)recent to false else {
+                    val fresh=DistillationEntity(UUID.randomUUID().toString(),id,(position-60000).coerceAtLeast(0),position,
+                        fingerprint=if(verifiedSource)ep.mediaFingerprint else "unverified:${ep.id}",attempt=UUID.randomUUID().toString())
+                    dao.putDistillation(fresh)
+                    dao.putMomentAttempt(MomentAttemptEntity(fresh.attempt,fresh.id,"{\"expanded\":false}"))
+                    portable.recordMoment(fresh)
+                    fresh to true
+                }
             }
+            diagnostics?.event("capture.completed",request,source=source,related=saved.id)
+            diagnostics?.event("capture.saved",saved.id,reason=if(created) "created" else "deduplicated",source=source)
+            onPortableChanged()
+            if(created)try {onSaved(saved.id)}catch(_:Exception) { /* Optional feedback cannot fail a durable save. */ }
+            return saved.id
+        } catch(error:Exception) {
+            diagnostics?.event("capture.failed",request,reason=dev.distillpod.android.diagnostics.Diagnostics.reason(error),source=source)
+            throw error
         }
-        onPortableChanged()
-        if(created)try {onSaved(saved.id)}catch(_:Exception) { /* Optional feedback cannot fail a durable save. */ }
-        diagnostics?.event("capture.saved",saved.id,reason=if(created) "created" else "deduplicated",source=source)
-        return saved.id
     }
+
     suspend fun prepareSaved(id:String) {
         dao.distillation(id)?.takeIf {it.state=="waiting_transcript"}?.let {hydrate(it)}
     }

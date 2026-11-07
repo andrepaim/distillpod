@@ -72,6 +72,25 @@ class DiagnosticsTest {
         assertTrue(payload.contains("usage.feature"));assertFalse(payload.contains("voice.started"))
         d.usageConsent(false)
     }
+    @Test fun `capture requests include failures and saved moments create one dependency job`() {
+        val d=Diagnostics(context,"https://abc123@o1.ingest.sentry.io/1");d.consent(true)
+        val request=java.util.UUID.randomUUID().toString();val moment=java.util.UUID.randomUUID().toString()
+        val db=androidx.room.Room.inMemoryDatabaseBuilder(context,dev.distillpod.android.data.AppDatabase::class.java).build()
+        try {
+            val repo=dev.distillpod.android.data.CaptureRepository(db,object:dev.distillpod.android.ai.AiGateway {
+                override suspend fun complete(instructions:String,input:String,onDelta:(String)->Unit):dev.distillpod.android.ai.AiText=error("Unused")
+            },{false},{},{},diagnostics=d)
+            kotlinx.coroutines.runBlocking {try {repo.save("missing",-1,false,source="phone");fail("Invalid position must fail")}catch(_:IllegalArgumentException){}}
+        } finally {db.close()}
+        d.event("capture.started",request);d.event("capture.completed",request,related=moment)
+        d.event("capture.saved",moment,reason="created")
+        d.event("capture.prepared",moment,reason="waiting_auth")
+        d.awaitIdle()
+        assertEquals(setOf("failed","completed"),d.journal.latest().filter {it.kind=="capture"}.map {it.state}.toSet())
+        assertEquals("waiting_auth",d.journal.latest().single {it.kind=="distillation"}.reason)
+        assertEquals(3,d.journal.latest().size)
+        d.consent(false)
+    }
     @Test fun `outbox survives reopening and bounds storage and expiry`() {
         val directory=temporary.newFolder()
         val now=System.currentTimeMillis()

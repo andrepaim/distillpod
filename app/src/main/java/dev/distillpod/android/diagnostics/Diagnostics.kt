@@ -127,8 +127,14 @@ class Diagnostics(private val context: Context, private val dsn:String = context
         if(name=="voice.started") {voiceOperation=UUID.randomUUID().toString()}
         if(name=="playback.service_started")playbackOperation=UUID.randomUUID().toString()
         val id=operation ?: when(kind){"voice"->voiceOperation;"playback"->playbackOperation;else->null} ?: return
+        if(name=="capture.saved") {
+            if(reason=="created")journal.transition("distillation",id,"waiting","transcript_required",source)
+            return
+        }
         val state=when(name) {
-            "capture.saved"->"completed"
+            "capture.started"->"running"
+            "capture.completed"->"completed"
+            "capture.prepared"->when(reason) {"queued"->"queued";"waiting_auth","waiting_quota","waiting_transcript","review_source"->"waiting";else->"failed"}
             "transcription.queued"->if(reason in setOf("scheduled","queued"))"queued" else "waiting"
             "transcription.started","distillation.started","voice.started","playback.service_started"->"running"
             "transcription.stage"->if(reason=="queued")"queued" else "running"
@@ -141,9 +147,8 @@ class Diagnostics(private val context: Context, private val dsn:String = context
             "playback.service_stopped"->"completed"
             else->if(name.endsWith(".failed"))if(reason=="cancelled")"interrupted" else "failed" else null
         } ?: return
-        val feature=if(name=="capture.waiting")"distillation" else kind
+        val feature=if(name in setOf("capture.waiting","capture.prepared"))"distillation" else kind
         journal.transition(feature,id,state,reason,if(kind=="voice")reason.takeIf {it in OperationJournal.SOURCES} ?: "background" else source,attempt)
-        if(name=="capture.saved" && reason=="created") {journal.transition("distillation",id,"waiting","transcript_required",source)}
     }
     private fun safeInitialize() {
         try {initialize()}catch(_:Exception) {Sentry.close();status.value="Diagnostics could not start"}
@@ -265,7 +270,7 @@ class Diagnostics(private val context: Context, private val dsn:String = context
                 if(name=="playback.state" && reason=="paused" || name=="playback.service_stopped")timings.remove("playing")?.let {attributes["playing_ms"]=(tick-it).coerceAtLeast(0)}
             }
             operation?.takeIf {runCatching {UUID.fromString(it)}.isSuccess}?.let {attributes["operation_id"]=it}
-            related?.takeIf {runCatching {UUID.fromString(it)}.isSuccess}?.let {attributes["transcript_id"]=it}
+            related?.takeIf {runCatching {UUID.fromString(it)}.isSuccess}?.let {attributes[if(name=="capture.completed")"moment_id" else "transcript_id"]=it}
             attempt?.takeIf {runCatching {UUID.fromString(it)}.isSuccess}?.let {attributes["attempt_id"]=it}
             elapsedMs?.takeIf {it>=0}?.let {attributes["elapsed_ms"]=it}
             val network=context.getSystemService(ConnectivityManager::class.java)
@@ -304,7 +309,7 @@ class Diagnostics(private val context: Context, private val dsn:String = context
     internal fun uploaded() { prefs.edit().putString("last_upload",java.time.Instant.now().toString()).apply();status.value="Last upload: ${java.text.DateFormat.getDateTimeInstance().format(java.util.Date())}" }
     companion object {
         private val EVENT_NAMES=setOf("transcription.quality","diagnostics.health","operation.summary","usage.feature","transcription.paused","transcription.cancelled","distillation.cancelled","voice.recording","voice.text","voice.audio","voice.resumed","voice.resume_failed","playback.buffering","playback.ready","playback.focus","playback.route","app.started","diagnostics.test","diagnostics.failed","headphone.received","headphone.rejected","headphone.previous","headphone.next",
-            "capture.requested","capture.accepted","capture.saved","capture.waiting","capture.transcript_link","capture.prepared","capture.failed",
+            "capture.started","capture.completed","capture.requested","capture.accepted","capture.saved","capture.waiting","capture.transcript_link","capture.prepared","capture.failed",
             "transcription.dependency","transcription.started","transcription.stage","transcription.queued","transcription.completed","transcription.failed",
             "distillation.started","distillation.finished","distillation.failed","playback.service_started","playback.service_stopped","playback.state","playback.failed",
             "voice.started","voice.finished","voice.failed","sync.finished","sync.failed","worker.failed")

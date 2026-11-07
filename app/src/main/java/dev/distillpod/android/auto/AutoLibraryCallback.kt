@@ -37,6 +37,7 @@ class AutoLibraryCallback(
     private val headphoneVoiceEnabled: () -> Boolean = { false },
     private val onHeadphoneVoice: () -> Unit = {},
     private val diagnostics: dev.distillpod.android.diagnostics.Diagnostics? = null,
+    private val saveMomentWithSource: (suspend (String,Long,String?,String)->String)? = null,
 ): MediaLibrarySession.Callback {
     override fun onPlayerCommandRequest(session: MediaSession, controller: MediaSession.ControllerInfo, playerCommand: Int): Int {
         if (controller.packageName != packageName && playerCommand in setOf(Player.COMMAND_PLAY_PAUSE,
@@ -208,7 +209,7 @@ class AutoLibraryCallback(
         captureBusy=true;publishCarLayout(session,"Saving…",false)
         return request {
             try {
-                val saved=saveMoment(id,position,file)
+                val saved=saveMomentWithSource?.invoke(id,position,file,source) ?: saveMoment(id,position,file)
                 diagnostics?.event("capture.accepted",saved,source=source)
                 // Durable acceptance survives cancellation or process death before dispatch.
                 runCatching { prepareMoment(saved) }
