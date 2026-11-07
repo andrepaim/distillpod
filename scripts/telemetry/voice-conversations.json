@@ -26,7 +26,7 @@
           "aggregates": [
             "count_unique(summary_id)"
           ],
-          "conditions": "schema_version:1 !test_traffic:true message:operation.summary feature:voice",
+          "conditions": "tags[schema_version,number]:1 !tags[test_traffic,boolean]:true message:operation.summary feature:voice",
           "orderby": "-count_unique(summary_id)"
         }
       ],
@@ -58,7 +58,7 @@
           "aggregates": [
             "count_unique(event_id)"
           ],
-          "conditions": "schema_version:1 !test_traffic:true message:[voice.recording,voice.text,voice.audio,voice.resumed,voice.resume_failed]",
+          "conditions": "tags[schema_version,number]:1 !tags[test_traffic,boolean]:true message:[voice.recording,voice.text,voice.audio,voice.resumed,voice.resume_failed]",
           "orderby": "-count_unique(event_id)"
         }
       ],
@@ -79,14 +79,14 @@
         {
           "name": "",
           "fields": [
-            "max(stage_elapsed_ms)"
+            "max(tags[stage_elapsed_ms,number])"
           ],
           "columns": [],
           "aggregates": [
-            "max(stage_elapsed_ms)"
+            "max(tags[stage_elapsed_ms,number])"
           ],
-          "conditions": "schema_version:1 !test_traffic:true message:voice.audio has:stage_elapsed_ms",
-          "orderby": "-max(stage_elapsed_ms)"
+          "conditions": "tags[schema_version,number]:1 !tags[test_traffic,boolean]:true message:voice.audio has:stage_elapsed_ms",
+          "orderby": "-max(tags[stage_elapsed_ms,number])"
         }
       ],
       "layout": {

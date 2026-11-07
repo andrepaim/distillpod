@@ -28,7 +28,7 @@
           "aggregates": [
             "count_unique(summary_id)"
           ],
-          "conditions": "schema_version:1 !test_traffic:true message:operation.summary",
+          "conditions": "tags[schema_version,number]:1 !tags[test_traffic,boolean]:true message:operation.summary",
           "orderby": "-count_unique(summary_id)"
         }
       ],
@@ -58,7 +58,7 @@
           "aggregates": [
             "count_unique(event_id)"
           ],
-          "conditions": "schema_version:1 !test_traffic:true message:[transcription.failed,distillation.failed,playback.failed,voice.failed,capture.failed]",
+          "conditions": "tags[schema_version,number]:1 !tags[test_traffic,boolean]:true message:[transcription.failed,distillation.failed,playback.failed,voice.failed,capture.failed]",
           "orderby": "-count_unique(event_id)"
         }
       ],

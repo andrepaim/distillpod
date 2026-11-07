@@ -26,7 +26,7 @@
           "aggregates": [
             "count_unique(event_id)"
           ],
-          "conditions": "schema_version:1 !test_traffic:true message:usage.feature",
+          "conditions": "tags[schema_version,number]:1 !tags[test_traffic,boolean]:true message:usage.feature",
           "orderby": "-count_unique(event_id)"
         }
       ],
@@ -56,7 +56,7 @@
           "aggregates": [
             "count_unique(installation_id)"
           ],
-          "conditions": "schema_version:1 !test_traffic:true message:diagnostics.health",
+          "conditions": "tags[schema_version,number]:1 !tags[test_traffic,boolean]:true message:diagnostics.health",
           "orderby": "-count_unique(installation_id)"
         }
       ],
@@ -77,14 +77,14 @@
         {
           "name": "",
           "fields": [
-            "max(pending_envelopes)"
+            "max(tags[pending_envelopes,number])"
           ],
           "columns": [],
           "aggregates": [
-            "max(pending_envelopes)"
+            "max(tags[pending_envelopes,number])"
           ],
-          "conditions": "schema_version:1 !test_traffic:true message:diagnostics.health",
-          "orderby": "-max(pending_envelopes)"
+          "conditions": "tags[schema_version,number]:1 !tags[test_traffic,boolean]:true message:diagnostics.health",
+          "orderby": "-max(tags[pending_envelopes,number])"
         }
       ],
       "layout": {
@@ -104,14 +104,14 @@
         {
           "name": "",
           "fields": [
-            "max(dropped_reports)"
+            "max(tags[dropped_reports,number])"
           ],
           "columns": [],
           "aggregates": [
-            "max(dropped_reports)"
+            "max(tags[dropped_reports,number])"
           ],
-          "conditions": "schema_version:1 !test_traffic:true message:diagnostics.health",
-          "orderby": "-max(dropped_reports)"
+          "conditions": "tags[schema_version,number]:1 !tags[test_traffic,boolean]:true message:diagnostics.health",
+          "orderby": "-max(tags[dropped_reports,number])"
         }
       ],
       "layout": {

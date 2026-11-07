@@ -24,7 +24,7 @@
           "aggregates": [
             "count_unique(summary_id)"
           ],
-          "conditions": "schema_version:1 !test_traffic:true message:operation.summary feature:playback",
+          "conditions": "tags[schema_version,number]:1 !tags[test_traffic,boolean]:true message:operation.summary feature:playback",
           "orderby": "-count_unique(summary_id)"
         }
       ],
@@ -56,7 +56,7 @@
           "aggregates": [
             "count_unique(event_id)"
           ],
-          "conditions": "schema_version:1 !test_traffic:true message:[headphone.received,headphone.rejected,headphone.previous,headphone.next]",
+          "conditions": "tags[schema_version,number]:1 !tags[test_traffic,boolean]:true message:[headphone.received,headphone.rejected,headphone.previous,headphone.next]",
           "orderby": "-count_unique(event_id)"
         }
       ],
@@ -88,7 +88,7 @@
           "aggregates": [
             "count_unique(event_id)"
           ],
-          "conditions": "schema_version:1 !test_traffic:true message:[playback.ready,playback.buffering,playback.state,playback.failed]",
+          "conditions": "tags[schema_version,number]:1 !tags[test_traffic,boolean]:true message:[playback.ready,playback.buffering,playback.state,playback.failed]",
           "orderby": "-count_unique(event_id)"
         }
       ],
@@ -109,14 +109,14 @@
         {
           "name": "",
           "fields": [
-            "max(stage_elapsed_ms)"
+            "max(tags[stage_elapsed_ms,number])"
           ],
           "columns": [],
           "aggregates": [
-            "max(stage_elapsed_ms)"
+            "max(tags[stage_elapsed_ms,number])"
           ],
-          "conditions": "schema_version:1 !test_traffic:true message:playback.ready has:stage_elapsed_ms",
-          "orderby": "-max(stage_elapsed_ms)"
+          "conditions": "tags[schema_version,number]:1 !tags[test_traffic,boolean]:true message:playback.ready has:stage_elapsed_ms",
+          "orderby": "-max(tags[stage_elapsed_ms,number])"
         }
       ],
       "layout": {

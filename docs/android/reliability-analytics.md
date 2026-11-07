@@ -4,7 +4,7 @@ The optional Sentry integration now records durable, content-free operation revi
 
 ## Contract and interpretation
 
-`operation.summary` schema 1 contains random summary/operation/attempt identifiers, feature, outcome, safe reason/source, monotonically increasing operation sequence, observation/start timestamps, elapsed time and originating operation release. Envelope release identifies the uploading app; `operation_release` identifies the revision's app version. Elapsed time is monotonic within an attempt in the same process; `-1` means unavailable after restart. It includes waiting within that attempt and must not be labelled CPU/inference time. Transcription processing passes have separate attempt identifiers. Repeated completion callbacks are ignored. A later explicit generation attempt can follow a completed generation.
+`operation.summary` schema 1 contains random summary/operation/attempt identifiers, feature, outcome, safe reason/source, monotonically increasing operation sequence, observation/start timestamps, elapsed time and revision app version. Envelope release identifies the uploading app; `operation_release` identifies the revision's app version. Elapsed time is monotonic within an attempt in the same process; `-1` means unavailable after restart. It includes waiting within that attempt and must not be labelled CPU/inference time. Transcription processing passes have separate attempt identifiers. Repeated completion callbacks are ignored. A later explicit generation attempt can follow a completed generation.
 
 The private atomic journal under `noBackupFilesDir/reliability` keeps at most 500 revisions for 72 hours. It is separate from library data, exports and synchronization. Transitions are persisted synchronously before best-effort detailed log dispatch; failures are suppressed to keep app actions working. Startup reconciles only previously observed unfinished jobs against current transcript and saved-insight state. An unmatched playback/voice operation becomes unknown, never assumed successful. It does not upload the existing library when consent is enabled.
 
@@ -31,6 +31,7 @@ Outcome widgets count distinct **summary revisions**, grouped by outcome. They s
 For aggregate job rates, export the operation-summary attributes over the selected reporting window and run:
 
 ```sh
+python3 scripts/telemetry/export_operations.py --token-file /private/token --organization ORG --project-id ID --period 7d --output /private/path/summary-attributes.json
 python3 scripts/telemetry/reliability_report.py /private/path/summary-attributes.json
 ```
 
@@ -42,7 +43,7 @@ Definitions can be reviewed and deployed idempotently with `deploy_dashboards.py
 
 Settings shows pending envelopes, locally observed dropped reports and the last HTTP acknowledgement. Hourly `diagnostics.health` reports expose queue depth and drop counters while diagnostics is enabled. These are last-observed values, not a remote heartbeat: Android/offline/force-stop delays apply. Existing 5 MB / 1,000-envelope / 72-hour limits, per-device daily budgets and retry backoff remain. No per-second/per-token collection is added. A journal summary has upload priority over detailed logs during periodic recovery. Cloud quota exhaustion can still prevent reporting the gap itself.
 
-Keep the organization on free Developer with billing disabled. Current Logs documentation specifies a seven-day Developer query window; verify the account before promising monthly trends. Existing project issue alerts remain; notification destinations are unchanged. Dashboard definitions and a verified export report provide the initial reliability view; minimum-volume regression alerts and long-term rollups require subsequent baseline data and review.
+Keep the organization on free Developer with billing disabled. Current Logs documentation specifies a seven-day Developer query window; verify the account before promising monthly trends. Two additional production-only issue alerts are configured: [repeated failures](https://paim-3q.sentry.io/monitors/alerts/6307038/) with a five-event/hour threshold, and [new or regressed unhandled crashes](https://paim-3q.sentry.io/monitors/alerts/6307039/). Both exclude synthetic test reports and have a 60-minute notification cooldown. Notifications target the owner account only; existing project defaults are retained. Configuration is verified by read-back, not by deliberately crashing the owner phone or forcing an email. Percentage-regression alerts and long-term rollups require subsequent baseline data and review.
 
 ## Validation
 

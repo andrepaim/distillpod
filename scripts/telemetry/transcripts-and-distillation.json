@@ -28,7 +28,7 @@
           "aggregates": [
             "count_unique(summary_id)"
           ],
-          "conditions": "schema_version:1 !test_traffic:true message:operation.summary feature:[transcription,distillation,capture]",
+          "conditions": "tags[schema_version,number]:1 !tags[test_traffic,boolean]:true message:operation.summary feature:[transcription,distillation,capture]",
           "orderby": "-count_unique(summary_id)"
         }
       ],
@@ -58,7 +58,7 @@
           "aggregates": [
             "count_unique(event_id)"
           ],
-          "conditions": "schema_version:1 !test_traffic:true message:transcription.stage",
+          "conditions": "tags[schema_version,number]:1 !tags[test_traffic,boolean]:true message:transcription.stage",
           "orderby": "-count_unique(event_id)"
         }
       ],
@@ -81,17 +81,17 @@
           "fields": [
             "feature",
             "outcome",
-            "max(elapsed_ms)"
+            "max(tags[elapsed_ms,number])"
           ],
           "columns": [
             "feature",
             "outcome"
           ],
           "aggregates": [
-            "max(elapsed_ms)"
+            "max(tags[elapsed_ms,number])"
           ],
-          "conditions": "schema_version:1 !test_traffic:true message:operation.summary elapsed_ms:>=0",
-          "orderby": "-max(elapsed_ms)"
+          "conditions": "tags[schema_version,number]:1 !tags[test_traffic,boolean]:true message:operation.summary tags[elapsed_ms,number]:>=0",
+          "orderby": "-max(tags[elapsed_ms,number])"
         }
       ],
       "layout": {
@@ -113,19 +113,19 @@
           "fields": [
             "transcript_source",
             "model_category",
-            "empty_output",
-            "max(covered_audio_ms)"
+            "tags[empty_output,boolean]",
+            "max(tags[covered_audio_ms,number])"
           ],
           "columns": [
             "transcript_source",
             "model_category",
-            "empty_output"
+            "tags[empty_output,boolean]"
           ],
           "aggregates": [
-            "max(covered_audio_ms)"
+            "max(tags[covered_audio_ms,number])"
           ],
-          "conditions": "schema_version:1 !test_traffic:true message:transcription.quality",
-          "orderby": "-max(covered_audio_ms)"
+          "conditions": "tags[schema_version,number]:1 !tags[test_traffic,boolean]:true message:transcription.quality",
+          "orderby": "-max(tags[covered_audio_ms,number])"
         }
       ],
       "layout": {
