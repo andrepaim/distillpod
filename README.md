@@ -81,7 +81,7 @@ Your library, listening progress, queue, transcripts, saved moments and generate
 
 Requested AI features send relevant text, questions or interests to OpenAI. Voice also streams your spoken question and selected transcript context using your API key. Infographics can send a public-topic research query for web search. Local Whisper preparation does not upload episode audio for cloud transcription. Podcast search, feeds, artwork and downloads contact their respective providers.
 
-ChatGPT credentials and the voice API key are encrypted on the phone. Account credentials are excluded from library backups and sync. There is no required DistillPod server. Library sync is optional, and live analytics/crash collection is not enabled. [Privacy and data handling →](docs/privacy.md)
+ChatGPT credentials and the voice API key are encrypted on the phone. Account credentials are excluded from library backups and sync. There is no required DistillPod server. Library sync is optional. Cloud diagnostics are also optional and default off: enable them in Settings → Diagnostics to share sanitized technical events and error reports with Sentry. Reports exclude podcast content and credentials; no session replay is collected. [Privacy and data handling →](docs/privacy.md)
 
 ## Personal alpha
 
