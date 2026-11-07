@@ -154,11 +154,17 @@ class TranscriptionRepository(private val graph: AppGraph,
     }
 
     private suspend fun processChunk(id: String, revision: String, execution: TranscriptExecution) {
-        var row = dao.transcript(id) ?: return
-        if (row.revision != revision || row.state in listOf("paused", "ready", "stale")) return
         val run = UUID.randomUUID().toString()
-        graph.diagnostics.event("transcription.started",revision,attempt=run)
-        live.update { it + (id to TranscriptProgress(revision, run, TranscriptStage.STARTING, row.processedMs, row.durationMs)) }
+        // Pause and initial progress publication share the same lock. A queued pass
+        // must not republish STARTING after pause has cleared the live estimate.
+        var row = controls.withLock {
+            val current=dao.transcript(id) ?: return@withLock null
+            if(current.revision!=revision || current.state in listOf("paused","ready","stale"))return@withLock null
+            dao.putTranscript(current.copy(state="processing",error=null))
+            graph.diagnostics.event("transcription.started",revision,attempt=run)
+            live.update {it+(id to TranscriptProgress(revision,run,TranscriptStage.STARTING,current.processedMs,current.durationMs))}
+            current
+        } ?: return
         var lastDiagnosticStage: TranscriptStage? = null
         fun report(stage: TranscriptStage, workedMs: Long? = null, durationMs: Long? = null, start: Long? = null, end: Long? = null) {
             if(stage!=lastDiagnosticStage) {lastDiagnosticStage=stage;graph.diagnostics.event("transcription.stage",revision,reason=stage.name.lowercase())}
@@ -169,7 +175,6 @@ class TranscriptionRepository(private val graph: AppGraph,
         }
         try {
             execution.foreground()
-            dao.putTranscript(row.copy(state = "processing", error = null))
             val initialEp = dao.episode(id) ?: return
             if (row.source == "publisher") {
                 report(TranscriptStage.PUBLISHER)
