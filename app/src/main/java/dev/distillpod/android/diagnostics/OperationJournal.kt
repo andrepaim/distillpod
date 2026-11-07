@@ -11,12 +11,15 @@ internal class OperationJournal(private val file: File, private val now: () -> L
         val sequence:Int, val release:String, val delivered:Boolean = false)
     private val rows=mutableListOf<Row>()
     private val clocks=mutableMapOf<String,Long>()
+    private var nextSequence=0
     var dropped=0L; private set
     init {
         if(file.exists()) try { DataInputStream(FileInputStream(file)).use { input ->
             require(input.readInt()==1);dropped=input.readLong()
             val size=input.readInt();require(size in 0..500)
             repeat(size) { rows+=Row(input.readUTF(),input.readUTF(),input.readUTF(),input.readUTF(),input.readUTF(),input.readUTF(),input.readUTF(),input.readLong(),input.readLong(),input.readLong(),input.readInt(),input.readUTF(),input.readBoolean()) }
+            nextSequence=rows.maxOfOrNull {it.sequence} ?: 0
+            if(input.available()>=4)nextSequence=maxOf(nextSequence,input.readInt())
         } } catch(_:Exception) { rows.clear();dropped++ }
     }
     @Synchronized fun transition(kind:String, operation:String, state:String, reason:String="none", source:String="background", attempt:String?=null) {
@@ -32,13 +35,13 @@ internal class OperationJournal(private val file: File, private val now: () -> L
         val elapsed=clocks[key]?.let {(monotonic()-it).coerceAtLeast(0)} ?: -1L
         if(newAttempt)clocks[key]=monotonic()
         rows+=Row(UUID.randomUUID().toString(),kind,operation,attemptId,state,reason,old?.source?.takeUnless {it=="background"} ?: source,
-            old?.started ?: now(),now(),if(newAttempt)0 else elapsed,(old?.sequence ?: 0)+1,release)
+            old?.started ?: now(),now(),if(newAttempt)0 else elapsed,Math.incrementExact(nextSequence).also {nextSequence=it},release)
         prune();save()
     }
     @Synchronized fun pending():List<Row> {prune();return rows.filterNot {it.delivered}.toList()}
     @Synchronized fun latest():List<Row> = rows.groupBy {it.kind to it.operation}.values.map {it.last()}
     @Synchronized fun acknowledge(id:String) {val i=rows.indexOfFirst {it.id==id};if(i>=0){rows[i]=rows[i].copy(delivered=true);save()}}
-    @Synchronized fun clear() {rows.clear();clocks.clear();dropped=0;file.delete()}
+    @Synchronized fun clear() {rows.clear();clocks.clear();dropped=0;runCatching {save()}.onFailure {file.delete()}}
     @Synchronized fun recover(resolve:(String,String)->String?) {
         latest().filter {it.state !in TERMINAL}.forEach {
             val state=resolve(it.kind,it.operation) ?: "unknown"
@@ -57,6 +60,9 @@ internal class OperationJournal(private val file: File, private val now: () -> L
             val out=DataOutputStream(stream);out.writeInt(1);out.writeLong(dropped);out.writeInt(rows.size)
             rows.forEach {r->listOf(r.id,r.kind,r.operation,r.attempt,r.state,r.reason,r.source).forEach(out::writeUTF)
                 out.writeLong(r.started);out.writeLong(r.updated);out.writeLong(r.elapsed);out.writeInt(r.sequence);out.writeUTF(r.release);out.writeBoolean(r.delivered)}
+            // A content-free scalar survives pruning/revocation so later outcomes
+            // cannot sort behind earlier reports already retained by Sentry.
+            out.writeInt(nextSequence)
             out.flush();stream.fd.sync()
         };check(tmp.renameTo(file))
     }

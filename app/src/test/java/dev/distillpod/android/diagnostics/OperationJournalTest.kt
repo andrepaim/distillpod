@@ -40,6 +40,33 @@ class OperationJournalTest {
         assertTrue(journal.pending().size<=500);assertTrue(journal.dropped>0)
         journal.clear();assertTrue(journal.pending().isEmpty())
     }
+    @Test fun `revision ordering survives expiry reopening and consent revocation`() {
+        val file=File(folder.root,"journal");var wall=1000L;val job=id()
+        val first=OperationJournal(file,{wall})
+        first.transition("transcription",job,"running")
+        val original=first.latest().single().sequence
+        wall+=73*60*60*1000L
+        assertTrue(first.pending().isEmpty())
+        first.transition("transcription",job,"completed")
+        val afterExpiry=first.latest().single().sequence
+        assertTrue(afterExpiry>original)
+        first.clear();assertTrue(first.latest().isEmpty())
+        val reopened=OperationJournal(file,{wall})
+        reopened.transition("transcription",job,"failed")
+        assertTrue(reopened.latest().single().sequence>afterExpiry)
+    }
+    @Test fun `earlier journal files without sequence metadata remain readable`() {
+        val file=File(folder.root,"journal");val job=id()
+        val first=OperationJournal(file);first.transition("voice",job,"running")
+        // Earlier private candidates ended directly after the last row.
+        val bytes=file.readBytes();file.writeBytes(bytes.copyOf(bytes.size-4))
+        val upgraded=OperationJournal(file)
+        upgraded.transition("voice",job,"completed")
+        assertEquals("completed",upgraded.latest().single().state)
+        assertTrue(upgraded.latest().single().sequence>first.latest().single().sequence)
+        upgraded.clear()
+        assertFalse(file.readText().contains(job))
+    }
     @Test(expected=IllegalArgumentException::class) fun `content cannot be an identifier`() {
         OperationJournal(File(folder.root,"journal")).transition("voice","private content","running")
     }

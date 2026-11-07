@@ -96,7 +96,7 @@
       }
     },
     {
-      "title": "Reported local drop counters",
+      "title": "Local discard and limit incidents",
       "displayType": "table",
       "widgetType": "logs",
       "interval": "1h",

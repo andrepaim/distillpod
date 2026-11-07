@@ -1,15 +1,17 @@
 # Reliability analytics delivery evidence
 
-Date: 2026-11-07. Application source: `6e8d6de` (feature branch); later dashboard/tooling/documentation revisions are recorded by Git. Candidate: 0.18.0-alpha.1, code 35. Publication and merged-commit CI are separate gates.
+Date: 2026-11-07. Initial physical application source: `6e8d6de` (feature branch). The final journal-ordering update and copy changes follow in this PR; the release tree is identified by Git/build-info. Candidate: 0.18.0-alpha.1, code 35. Publication and merged-commit CI are separate gates.
 
 ## Automated local checks
 
-- 91 core and 332 app JVM tests passed for the configured voice-enabled candidate, including independent consent, revocation, retry/replay identity, clock changes, restart reconciliation, unknown outcomes and text-before-output-failure behavior.
+- 91 core and 334 app JVM tests passed for the configured voice-enabled candidate, including independent consent, revocation, retry/replay identity, clock changes, restart reconciliation, unknown outcomes and text-before-output-failure behavior.
 - Voice-enabled debug lint/assembly and configured release lint/assembly passed. Default voice-disabled app JVM tests, debug lint/assembly also passed.
 - 24 Python tooling tests passed, including duplicate delivery, retry recovery, outstanding/unknown jobs and denominator fixtures.
 - Candidate APK passed release metadata/signature checks against the retained certificate, voice/car configuration checks, Firebase resource comparison with the published baseline, disabled paid-content sync and six native ELF 16 KB alignment checks.
 
 The first emulator CI run exposed a race between pause and initial transcript progress publication. Startup registration/state publication now shares the controls mutex with pause; the existing native pause/resume acceptance test passed on the fixed revision in [Android CI 42378711638](https://github.com/andrepaim/distillpod/actions/runs/42378711638). Native, Firebase, Kotlin/lint/APK and isolated emulator/voice acceptance jobs all passed.
+
+The final ordering tests also cover expiry followed by completion, consent revocation/reopening, and compatibility with earlier journal files. A content-free global sequence counter is retained when record contents are cleared.
 
 ## Cloud checks
 

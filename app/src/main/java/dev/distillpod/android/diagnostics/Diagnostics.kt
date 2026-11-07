@@ -35,7 +35,7 @@ class Diagnostics(private val context: Context, private val dsn:String = context
     val enabled get()=prefs.getBoolean("enabled",false)
     val usageEnabled get()=prefs.getBoolean("usage_enabled",false)
     val collecting get()=enabled || usageEnabled
-    val reportingHealth get()="${queue.files().size} pending envelopes · ${prefs.getLong("dropped",0)+journal.dropped} reports dropped · last acknowledgement: ${prefs.getString("last_upload","none")}"
+    val reportingHealth get()="${queue.files().size} pending envelopes · ${prefs.getLong("dropped",0)+journal.dropped} collection warnings · last acknowledgement: ${prefs.getString("last_upload","none")}"
     val configured get()=dsn.isNotBlank()
     val reference get()="${context.packageManager.getPackageInfo(context.packageName,0).versionName} / installation $installation / session $session"
     init { if(collecting && configured) safeInitialize() }
