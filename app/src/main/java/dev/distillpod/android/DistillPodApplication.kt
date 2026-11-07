@@ -87,6 +87,7 @@ class AppGraph(val context: Context) {
         }
         scope.launch(Dispatchers.IO) {
         try {
+            if(diagnostics.enabled) {
             val reliabilityStates=mutableMapOf<Pair<String,String>,String>()
             db.library().transcripts().forEach {row->reliabilityStates["transcription" to row.revision]=when(row.state){
                 "ready"->"completed";"failed"->"failed";"paused"->"paused";"queued","processing"->"queued";else->"unknown"}}
@@ -94,6 +95,7 @@ class AppGraph(val context: Context) {
                 "succeeded"->"completed";"failed","needs_context","unclear_source","no_speech"->"failed"
                 "queued"->"queued";else->"waiting"}}
             diagnostics.reconcile(reliabilityStates)
+            }
             portableSync.releaseSessions(); importFeasibility(); understanding.recoverInterrupted(); explanations.recoverInterrupted(); recommendations.recoverInterrupted()
             db.library().distillations().filter { it.state == "queued" }.forEach { jobs.capture(it.id) }
             db.library().episodes().filter { it.downloadState in listOf("queued", "downloading") }.forEach { jobs.download(it.id) }
