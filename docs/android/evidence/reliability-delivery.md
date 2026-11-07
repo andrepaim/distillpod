@@ -4,9 +4,9 @@ Date: 2026-11-07. Initial physical application source: `6e8d6de` (feature branch
 
 ## Automated local checks
 
-- 91 core and 337 app JVM tests passed for the configured voice-enabled candidate, including independent consent, revocation, retry/replay identity, clock changes, restart reconciliation, unknown outcomes and text-before-output-failure behavior.
+- 91 core and 338 app JVM tests passed for the configured voice-enabled candidate, including independent consent, revocation, retry/replay identity, clock changes, restart reconciliation, unknown outcomes and text-before-output-failure behavior.
 - Voice-enabled debug lint/assembly and configured release lint/assembly passed. Default voice-disabled app JVM tests, debug lint/assembly also passed.
-- 24 Python tooling tests passed, including duplicate delivery, retry recovery, outstanding/unknown jobs and denominator fixtures.
+- 25 Python tooling tests passed, including duplicate delivery, retry recovery, outstanding/unknown jobs and denominator fixtures.
 - Candidate APK passed release metadata/signature checks against the retained certificate, voice/car configuration checks, Firebase resource comparison with the published baseline, disabled paid-content sync and six native ELF 16 KB alignment checks.
 
 The first emulator CI run exposed a race between pause and initial transcript progress publication. Startup registration/state publication now shares the controls mutex with pause; the existing native pause/resume acceptance test passed on the fixed revision in [Android CI 42378711638](https://github.com/andrepaim/distillpod/actions/runs/42378711638). Native, Firebase, Kotlin/lint/APK and isolated emulator/voice acceptance jobs all passed.
@@ -15,7 +15,7 @@ The final ordering tests also cover expiry followed by completion, consent revoc
 
 ## Cloud checks
 
-- Five dashboards were created, then updated from the checked-in definitions, with widget read-back verified. All 17 underlying widget queries executed successfully against Sentry's Explore Logs API.
+- Five dashboards were created, then updated from the checked-in definitions, with widget read-back verified. All 18 underlying widget queries executed successfully against Sentry's Explore Logs API.
 - Numeric/boolean fields require `tags[field,number]` / `tags[field,boolean]`. Tests caught and corrected untyped filtering that otherwise silently returned zero rows. Numeric widget aggregations also use typed references.
 - A desktop-generated, staging-only synthetic fixture delivered five records representing four unique operation revisions (including a duplicated completion). Cloud aggregation returned two running revisions, one failure and one completion; the duplicate completion had raw count two and distinct summary count one. This validates cloud deduplication/query semantics, not phone operation execution.
 - The production export/report tool retrieved the S22 candidate's startup operation and classified it as outstanding with no resolved success rate, rather than treating it as successful. Exports stay in private operator storage.

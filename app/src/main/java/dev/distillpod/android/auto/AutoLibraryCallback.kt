@@ -216,7 +216,7 @@ class AutoLibraryCallback(
                 withContext(Dispatchers.Main.immediate){publishCarLayout(session,"Saved",true)}
                 SessionResult(SessionResult.RESULT_SUCCESS,Bundle().apply {putString("momentId",saved)})
             } catch(cancelled:CancellationException){throw cancelled}
-            catch(error:Exception){diagnostics?.failure("capture",error);SessionResult(SessionError.ERROR_IO)}
+            catch(error:Exception){diagnostics?.failure("capture",error,source=source);SessionResult(SessionError.ERROR_IO)}
             finally {scope.launch(Dispatchers.Main.immediate){captureBusy=false;delay(1500);publishCarLayout(session,"Distill",true)}}
         }
     }

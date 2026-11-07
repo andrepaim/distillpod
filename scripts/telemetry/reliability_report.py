@@ -25,7 +25,7 @@ def summarize(records):
         attempts=defaultdict(set)
         for r in rows:attempts[r['attempt_id']].add(r['outcome'])
         for states in attempts.values():
-            if states & {'running','completed','failed','cancelled','interrupted'}:f['observed_attempts']+=1
+            if states & {'running','partial','completed','failed','cancelled','interrupted'}:f['observed_attempts']+=1
             elif states <= {'queued','waiting','paused'}:f['queued_only_attempt_ids']+=1
             else:f['unknown_only_attempt_ids']+=1
         if latest['outcome']=='completed' and any(r['outcome'] in ('failed','interrupted') for r in rows):f['recovered_jobs']+=1

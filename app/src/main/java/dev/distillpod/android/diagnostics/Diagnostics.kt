@@ -138,7 +138,8 @@ class Diagnostics(private val context: Context, private val dsn:String = context
             "distillation.queued"->if(reason=="queued")"queued" else "waiting"
             "transcription.queued"->if(reason in setOf("scheduled","queued"))"queued" else "waiting"
             "transcription.started","distillation.started","voice.started","playback.service_started"->"running"
-            "transcription.stage"->if(reason=="queued")"queued" else "running"
+            "transcription.stage"->if(reason=="queued")return else "running"
+            "transcription.partial"->"partial"
             "transcription.completed"->"completed"
             "transcription.paused"->"paused"
             "transcription.cancelled","distillation.cancelled"->"cancelled"
@@ -293,14 +294,15 @@ class Diagnostics(private val context: Context, private val dsn:String = context
         }}
         try {throw IllegalStateException("Synthetic diagnostics verification")}catch(error:Exception) {failure("diagnostics",error)}
     }
-    fun failure(stage:String,error:Throwable,operation:String?=null) {
-        event("$stage.failed",operation,reason(error))
+    fun failure(stage:String,error:Throwable,operation:String?=null,source:String="background") {
+        event("$stage.failed",operation,reason(error),source=source)
         if(!enabled || !configured || error is kotlinx.coroutines.CancellationException)return
         try {
             // Copy stack frames, never message/cause/suppressed payloads from the original throwable.
             val safe=RuntimeException("Diagnostic failure: ${reason(error)}").also {it.stackTrace=error.stackTrace}
             Sentry.captureException(safe) { scope ->
                 scope.setTag("stage",stage)
+                scope.setTag("source",source.takeIf {it in OperationJournal.SOURCES} ?: "background")
                 scope.setTag("test_traffic",(stage=="diagnostics").toString())
                 scope.setTag("reason",reason(error))
                 scope.setTag("exception_type",error.javaClass.name.take(160))
@@ -310,12 +312,12 @@ class Diagnostics(private val context: Context, private val dsn:String = context
     }
     internal fun uploaded() { prefs.edit().putString("last_upload",java.time.Instant.now().toString()).apply();status.value="Last upload: ${java.text.DateFormat.getDateTimeInstance().format(java.util.Date())}" }
     companion object {
-        private val EVENT_NAMES=setOf("transcription.quality","diagnostics.health","operation.summary","usage.feature","transcription.paused","transcription.cancelled","distillation.cancelled","voice.recording","voice.text","voice.audio","voice.resumed","voice.resume_failed","playback.buffering","playback.ready","playback.focus","playback.route","app.started","diagnostics.test","diagnostics.failed","headphone.received","headphone.rejected","headphone.previous","headphone.next",
+        private val EVENT_NAMES=setOf("transcription.quality","diagnostics.health","operation.summary","usage.feature","transcription.partial","transcription.paused","transcription.cancelled","distillation.cancelled","voice.recording","voice.text","voice.audio","voice.resumed","voice.resume_failed","playback.buffering","playback.ready","playback.focus","playback.route","app.started","diagnostics.test","diagnostics.failed","headphone.received","headphone.rejected","headphone.previous","headphone.next",
             "capture.started","capture.completed","capture.requested","capture.accepted","capture.saved","capture.waiting","capture.transcript_link","capture.prepared","capture.failed",
             "transcription.dependency","transcription.started","transcription.stage","transcription.queued","transcription.completed","transcription.failed",
             "distillation.queued","distillation.started","distillation.finished","distillation.failed","playback.service_started","playback.service_stopped","playback.state","playback.failed",
             "voice.started","voice.finished","voice.failed","sync.finished","sync.failed","worker.failed")
-        private val REASONS=setOf("reconciled","process_interrupted","buffering","ended","resume_succeeded","resume_failed","none","created","deduplicated","transcript_required","waiting","waiting_auth","waiting_quota","waiting_transcript","queued","unknown",
+        private val REASONS=setOf("partial","superseded","reconciled","process_interrupted","buffering","ended","resume_succeeded","resume_failed","none","created","deduplicated","transcript_required","waiting","waiting_auth","waiting_quota","waiting_transcript","queued","unknown",
             "no_speech","needs_context","review_source","unclear_source","succeeded","failed","ready","rejected","disabled","accepted","duplicate","cancelled","repeat","untrusted",
             "charging_required","battery_low","offline","wifi_required","scheduled","online","publisher","downloading","checking_model","decoding","starting","transcribing","saving",
             "playing","paused","phone","car","headphones","resume_requested","resume_cancelled","dns","timeout","permission","auth_expired","quota","network_or_storage","invalid_data","internal")

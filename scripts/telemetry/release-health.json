@@ -69,6 +69,38 @@
         "h": 3,
         "minH": 3
       }
+    },
+    {
+      "title": "Managed errors and crashes by release",
+      "displayType": "table",
+      "widgetType": "error-events",
+      "interval": "1h",
+      "queries": [
+        {
+          "name": "",
+          "fields": [
+            "release",
+            "issue",
+            "count()"
+          ],
+          "columns": [
+            "release",
+            "issue"
+          ],
+          "aggregates": [
+            "count()"
+          ],
+          "conditions": "!stage:diagnostics !test_traffic:true",
+          "orderby": "-count()"
+        }
+      ],
+      "layout": {
+        "x": 0,
+        "y": 6,
+        "w": 6,
+        "h": 3,
+        "minH": 3
+      }
     }
   ]
 }

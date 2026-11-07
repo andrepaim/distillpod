@@ -91,6 +91,18 @@ class DiagnosticsTest {
         assertEquals(3,d.journal.latest().size)
         d.consent(false)
     }
+    @Test fun `queued stage cannot erase a network hold and partial text is not completed`() {
+        val d=Diagnostics(context,"https://abc123@o1.ingest.sentry.io/1");d.consent(true)
+        val job=java.util.UUID.randomUUID().toString()
+        d.event("transcription.started",job)
+        d.event("transcription.queued",job,reason="wifi_required")
+        d.event("transcription.stage",job,reason="queued")
+        assertEquals("waiting",d.journal.latest().single().state)
+        assertEquals("wifi_required",d.journal.latest().single().reason)
+        d.event("transcription.partial",job,reason="partial")
+        assertEquals("partial",d.journal.latest().single().state)
+        d.consent(false)
+    }
     @Test fun `outbox survives reopening and bounds storage and expiry`() {
         val directory=temporary.newFolder()
         val now=System.currentTimeMillis()

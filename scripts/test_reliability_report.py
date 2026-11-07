@@ -14,3 +14,8 @@ class ReliabilityReportTest(unittest.TestCase):
   self.assertEqual(.5,result['resolved_success_rate']);self.assertEqual(1,result['recovered_jobs'])
  def test_empty_sample_has_no_success_rate(self):
   self.assertEqual({},report.summarize([])['features'])
+
+ def test_partial_transcript_is_visible_without_a_completed_success(self):
+  row=dict(summary_id='partial',installation_id='device',feature='transcription',operation_id='job',sequence=1,outcome='partial',attempt_id='attempt',test_traffic=False,schema_version=1)
+  f=report.summarize([row])['features']['transcription']
+  self.assertEqual(1,f['outcomes']['partial']);self.assertIsNone(f['resolved_success_rate']);self.assertEqual(1,f['observed_attempts'])

@@ -48,7 +48,7 @@ internal class OperationJournal(private val file: File, private val now: () -> L
         latest().filter {it.state !in TERMINAL}.forEach {
             val state=resolve(it.kind,it.operation) ?: "unknown"
             if(it.state=="running" && state=="queued")transition(it.kind,it.operation,"interrupted","process_interrupted",it.source)
-            val reason=if(state==it.state)it.reason else if(state=="completed")"reconciled" else "process_interrupted"
+            val reason=if(state==it.state)it.reason else if(state=="completed")"reconciled" else if(state=="partial")"partial" else "process_interrupted"
             transition(it.kind,it.operation,state,reason,it.source)
         }
     }
@@ -72,7 +72,7 @@ internal class OperationJournal(private val file: File, private val now: () -> L
     }
     companion object {
         val KINDS=setOf("capture","transcription","distillation","playback","voice")
-        val TERMINAL=setOf("completed","failed","cancelled","interrupted","unknown")
+        val TERMINAL=setOf("partial","completed","failed","cancelled","interrupted","unknown")
         val STATES=TERMINAL+setOf("queued","running","waiting","paused")
         val SOURCES=setOf("background","phone","headphones","car")
     }

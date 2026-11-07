@@ -69,7 +69,7 @@ class AppViewModel(val graph: AppGraph, private val saved: SavedStateHandle) : V
         viewModelScope.launch {
             try { block() }
             catch (cancelled: CancellationException) { throw cancelled }
-            catch (error: Exception) { graph.diagnostics.failure("worker",error);messages.send(safeFailure(error)) }
+            catch (error: Exception) { graph.diagnostics.failure("worker",error,source="phone");messages.send(safeFailure(error)) }
             finally { busy.update { it - key } }
         }
     }

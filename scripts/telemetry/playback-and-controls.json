@@ -115,7 +115,7 @@
           "aggregates": [
             "max(tags[stage_elapsed_ms,number])"
           ],
-          "conditions": "tags[schema_version,number]:1 !tags[test_traffic,boolean]:true message:playback.ready has:stage_elapsed_ms",
+          "conditions": "tags[schema_version,number]:1 !tags[test_traffic,boolean]:true message:playback.ready tags[stage_elapsed_ms,number]:>=0",
           "orderby": "-max(tags[stage_elapsed_ms,number])"
         }
       ],
