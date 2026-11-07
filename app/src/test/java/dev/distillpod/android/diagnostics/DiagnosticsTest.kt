@@ -21,6 +21,7 @@ class DiagnosticsTest {
         context=ApplicationProvider.getApplicationContext()
         context.getSharedPreferences("diagnostics",0).edit().clear().commit()
         File(context.noBackupFilesDir,"diagnostics").deleteRecursively()
+        File(context.noBackupFilesDir,"reliability").deleteRecursively()
         WorkManagerTestInitHelper.initializeTestWorkManager(context)
     }
     @After fun finish() {Sentry.close()}
@@ -43,6 +44,33 @@ class DiagnosticsTest {
         assertTrue(payload.contains("invalid_data"))
         diagnostics.consent(false);diagnostics.event("diagnostics.test");diagnostics.awaitIdle()
         assertTrue(diagnostics.queue.files().isEmpty())
+    }
+    @Test fun `usage consent alone never enables diagnostic errors or operation journal`() {
+        val d=Diagnostics(context,"https://abc123@o1.ingest.sentry.io/1")
+        d.usageConsent(true)
+        d.event("voice.started",reason="phone")
+        d.failure("capture",Exception("SECRET"),java.util.UUID.randomUUID().toString())
+        d.usage("private podcast title");d.awaitIdle()
+        val payload=d.queue.files().joinToString {it.readText()}
+        assertTrue(payload.contains("usage.feature"));assertFalse(payload.contains("Diagnostic failure"))
+        assertFalse(payload.contains("private podcast title"));assertTrue(d.journal.latest().isEmpty())
+        d.usageConsent(false);assertTrue(d.queue.files().isEmpty())
+    }
+    @Test fun `durable summaries persist before executor and synthetic retries have stable identifiers`() {
+        val d=Diagnostics(context,"https://abc123@o1.ingest.sentry.io/1");d.consent(true)
+        val job=java.util.UUID.randomUUID().toString()
+        d.event("transcription.started",job)
+        assertEquals("running",d.journal.latest().single {it.operation==job}.state)
+        d.event("transcription.completed",job);d.awaitIdle()
+        assertEquals("completed",d.journal.latest().single {it.operation==job}.state)
+        assertTrue(d.queue.files().any {it.readText().contains("operation.summary")})
+        assertTrue(d.journal.pending().isEmpty())
+        d.usageConsent(true);d.consent(false)
+        assertTrue(d.usageEnabled);assertTrue(d.journal.latest().isEmpty())
+        d.event("voice.started",reason="phone");d.awaitIdle()
+        val payload=d.queue.files().joinToString {it.readText()}
+        assertTrue(payload.contains("usage.feature"));assertFalse(payload.contains("voice.started"))
+        d.usageConsent(false)
     }
     @Test fun `outbox survives reopening and bounds storage and expiry`() {
         val directory=temporary.newFolder()

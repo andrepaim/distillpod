@@ -1,0 +1,126 @@
+{
+  "title": "DistillPod \u2014 Usage and reporting health",
+  "projects": [],
+  "environment": [
+    "production"
+  ],
+  "period": "7d",
+  "widgets": [
+    {
+      "title": "Opt-in feature actions",
+      "displayType": "table",
+      "widgetType": "logs",
+      "interval": "1h",
+      "queries": [
+        {
+          "name": "",
+          "fields": [
+            "feature",
+            "source",
+            "count_unique(event_id)"
+          ],
+          "columns": [
+            "feature",
+            "source"
+          ],
+          "aggregates": [
+            "count_unique(event_id)"
+          ],
+          "conditions": "tags[schema_version,number]:1 !tags[test_traffic,boolean]:true message:usage.feature",
+          "orderby": "-count_unique(event_id)"
+        }
+      ],
+      "layout": {
+        "x": 0,
+        "y": 0,
+        "w": 6,
+        "h": 3,
+        "minH": 3
+      }
+    },
+    {
+      "title": "Reporting installations",
+      "displayType": "table",
+      "widgetType": "logs",
+      "interval": "1h",
+      "queries": [
+        {
+          "name": "",
+          "fields": [
+            "release",
+            "count_unique(installation_id)"
+          ],
+          "columns": [
+            "release"
+          ],
+          "aggregates": [
+            "count_unique(installation_id)"
+          ],
+          "conditions": "tags[schema_version,number]:1 !tags[test_traffic,boolean]:true message:diagnostics.health",
+          "orderby": "-count_unique(installation_id)"
+        }
+      ],
+      "layout": {
+        "x": 0,
+        "y": 3,
+        "w": 6,
+        "h": 3,
+        "minH": 3
+      }
+    },
+    {
+      "title": "Last observed queue pressure",
+      "displayType": "table",
+      "widgetType": "logs",
+      "interval": "1h",
+      "queries": [
+        {
+          "name": "",
+          "fields": [
+            "max(tags[pending_envelopes,number])"
+          ],
+          "columns": [],
+          "aggregates": [
+            "max(tags[pending_envelopes,number])"
+          ],
+          "conditions": "tags[schema_version,number]:1 !tags[test_traffic,boolean]:true message:diagnostics.health",
+          "orderby": "-max(tags[pending_envelopes,number])"
+        }
+      ],
+      "layout": {
+        "x": 0,
+        "y": 6,
+        "w": 6,
+        "h": 3,
+        "minH": 3
+      }
+    },
+    {
+      "title": "Reported local drop counters",
+      "displayType": "table",
+      "widgetType": "logs",
+      "interval": "1h",
+      "queries": [
+        {
+          "name": "",
+          "fields": [
+            "max(tags[dropped_reports,number])"
+          ],
+          "columns": [],
+          "aggregates": [
+            "max(tags[dropped_reports,number])"
+          ],
+          "conditions": "tags[schema_version,number]:1 !tags[test_traffic,boolean]:true message:diagnostics.health",
+          "orderby": "-max(tags[dropped_reports,number])"
+        }
+      ],
+      "layout": {
+        "x": 0,
+        "y": 9,
+        "w": 6,
+        "h": 3,
+        "minH": 3
+      }
+    }
+  ]
+}

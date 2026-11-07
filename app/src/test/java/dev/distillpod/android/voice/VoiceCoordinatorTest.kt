@@ -40,6 +40,28 @@ class VoiceCoordinatorTest {
         assertEquals(true, resumed); assertTrue(closed); assertTrue(input.closed)
         assertEquals("Idle", coordinator.state.value.phase)
     }
+    @Test fun `text response followed by output failure remains a failed voice operation`() = runTest {
+        val events=mutableListOf<Pair<String,String>>()
+        var resumed=false
+        val coordinator=VoiceCoordinator(this,{object:VoiceLease {
+            override val episode="ep";override val position=0L
+            override suspend fun finish(resume:Boolean){resumed=resume}
+        }},{"source"},{object:VoiceConnection {
+            override suspend fun answer(input:VoiceInput,output:VoiceOutput,phase:(String)->Unit,text:(String)->Unit) {
+                input.start();phase("Answering");text("Synthetic answer");output.play(byteArrayOf(0,0))
+            }
+            override fun close(){}
+        }},{object:VoiceOutput {
+            override suspend fun play(pcm:ByteArray){error("Synthetic output failure")}
+            override suspend fun drain(){}
+            override fun close(){}
+        }},diagnosticEvent={name,reason->events+=name to reason})
+        coordinator.start({Input()});runCurrent()
+        assertTrue(resumed);assertTrue(events.contains("voice.text" to "none"))
+        assertFalse(events.any {it.first=="voice.audio"})
+        assertTrue(events.contains("voice.finished" to "failed"))
+        assertFalse(coordinator.state.value.active)
+    }
     @Test fun `external interruption cancels output and prevents resume`() = runTest {
         var changed: () -> Unit = {}; var resumed: Boolean? = null; var closed = false
         val coordinator = VoiceCoordinator(this, { callback ->

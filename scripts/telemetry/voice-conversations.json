@@ -1,0 +1,101 @@
+{
+  "title": "DistillPod \u2014 Voice conversations",
+  "projects": [],
+  "environment": [
+    "production"
+  ],
+  "period": "7d",
+  "widgets": [
+    {
+      "title": "Observed voice outcomes",
+      "displayType": "table",
+      "widgetType": "logs",
+      "interval": "1h",
+      "queries": [
+        {
+          "name": "",
+          "fields": [
+            "outcome",
+            "reason",
+            "count_unique(summary_id)"
+          ],
+          "columns": [
+            "outcome",
+            "reason"
+          ],
+          "aggregates": [
+            "count_unique(summary_id)"
+          ],
+          "conditions": "tags[schema_version,number]:1 !tags[test_traffic,boolean]:true message:operation.summary feature:voice",
+          "orderby": "-count_unique(summary_id)"
+        }
+      ],
+      "layout": {
+        "x": 0,
+        "y": 0,
+        "w": 6,
+        "h": 3,
+        "minH": 3
+      }
+    },
+    {
+      "title": "Recording, text, audio and restoration",
+      "displayType": "table",
+      "widgetType": "logs",
+      "interval": "1h",
+      "queries": [
+        {
+          "name": "",
+          "fields": [
+            "message",
+            "reason",
+            "count_unique(event_id)"
+          ],
+          "columns": [
+            "message",
+            "reason"
+          ],
+          "aggregates": [
+            "count_unique(event_id)"
+          ],
+          "conditions": "tags[schema_version,number]:1 !tags[test_traffic,boolean]:true message:[voice.recording,voice.text,voice.audio,voice.resumed,voice.resume_failed]",
+          "orderby": "-count_unique(event_id)"
+        }
+      ],
+      "layout": {
+        "x": 0,
+        "y": 3,
+        "w": 6,
+        "h": 3,
+        "minH": 3
+      }
+    },
+    {
+      "title": "Longest observed time to audio output",
+      "displayType": "table",
+      "widgetType": "logs",
+      "interval": "1h",
+      "queries": [
+        {
+          "name": "",
+          "fields": [
+            "max(tags[stage_elapsed_ms,number])"
+          ],
+          "columns": [],
+          "aggregates": [
+            "max(tags[stage_elapsed_ms,number])"
+          ],
+          "conditions": "tags[schema_version,number]:1 !tags[test_traffic,boolean]:true message:voice.audio has:stage_elapsed_ms",
+          "orderby": "-max(tags[stage_elapsed_ms,number])"
+        }
+      ],
+      "layout": {
+        "x": 0,
+        "y": 6,
+        "w": 6,
+        "h": 3,
+        "minH": 3
+      }
+    }
+  ]
+}
