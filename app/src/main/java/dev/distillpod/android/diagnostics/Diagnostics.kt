@@ -74,7 +74,7 @@ class Diagnostics(private val context: Context, private val dsn:String = context
                     event.setTag("installation_id",installation)
                     event.setTag("android_api",Build.VERSION.SDK_INT.toString())
                     event.exceptions?.forEach { exception ->
-                        exception.value=null
+                        exception.value="Diagnostic failure: ${event.getTag("reason")?.takeIf {it in REASONS} ?: "internal"}"
                         exception.stacktrace?.frames?.forEach { frame ->
                             frame.vars=null;frame.absPath=null;frame.preContext=null;frame.postContext=null;frame.contextLine=null
                         }
@@ -153,6 +153,11 @@ class Diagnostics(private val context: Context, private val dsn:String = context
             Sentry.logger().log(SentryLogLevel.INFO,SentryLogParameters.create(SentryAttributes.fromMap(attributes)),name)
         }catch(_:Exception) {}
     }
+    /** Intentional handled failure through the same path used by real operations. */
+    fun test() {
+        event("diagnostics.test",source="phone")
+        try {throw IllegalStateException("Synthetic diagnostics verification")}catch(error:Exception) {failure("diagnostics",error)}
+    }
     fun failure(stage:String,error:Throwable,operation:String?=null) {
         event("$stage.failed",operation,reason(error))
         if(!enabled || !configured || error is kotlinx.coroutines.CancellationException)return
@@ -169,7 +174,7 @@ class Diagnostics(private val context: Context, private val dsn:String = context
     }
     internal fun uploaded() { status.value="Last upload: ${java.text.DateFormat.getDateTimeInstance().format(java.util.Date())}" }
     companion object {
-        private val EVENT_NAMES=setOf("app.started","diagnostics.test","headphone.received","headphone.rejected","headphone.previous","headphone.next",
+        private val EVENT_NAMES=setOf("app.started","diagnostics.test","diagnostics.failed","headphone.received","headphone.rejected","headphone.previous","headphone.next",
             "capture.requested","capture.accepted","capture.saved","capture.waiting","capture.transcript_link","capture.prepared","capture.failed",
             "transcription.dependency","transcription.started","transcription.stage","transcription.queued","transcription.completed","transcription.failed",
             "distillation.started","distillation.finished","distillation.failed","playback.service_started","playback.service_stopped","playback.state","playback.failed",

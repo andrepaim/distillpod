@@ -1,12 +1,12 @@
 # Cloud diagnostics
 
-Implementation branch: `feat/cloud-diagnostics`. Local automated checks and an S22 update/settings smoke have passed; live Sentry delivery and configured-device acceptance are pending. This document describes the candidate, not a published APK or verified cloud deployment.
+Optional cloud diagnostics use Sentry. The configured S22 candidate has delivered a log and handled error to the owner project, with readable managed stack frames. Publication status is tracked separately in GitHub Releases.
 
 ## Setup and use
 
 Create a free Sentry Developer organization and Android project. Store its public client DSN in the repository Actions secret `SENTRY_DSN`. Release validation requires it; ordinary source builds remain unconfigured. For a configured local build, provide `SENTRY_DSN` in the build environment without printing it. The app accepts HTTPS ingestion on Sentry-hosted domains. No Sentry management/authentication token is embedded in the app.
 
-Open Settings → Diagnostics and enable Share diagnostics. This consent is device-local, off by default, independent of library sync and accounts. Send test diagnostic emits a harmless `diagnostics.test` log. Confirm arrival in Sentry's Logs view; a queued event or successful local logging call does not prove cloud ingestion. Test traffic belongs in staging. Non-debuggable builds use production.
+Open Settings → Diagnostics and enable Share diagnostics. This consent is device-local, off by default, independent of library sync and accounts. Send test diagnostic emits a harmless `diagnostics.test` log and a deliberately handled error through the real reporting path; it does not crash or invoke AI. Confirm arrival in Sentry's Logs view; a queued event or successful local logging call does not prove cloud ingestion. Test traffic belongs in staging. Non-debuggable builds use production.
 
 Copy diagnostic reference includes app version, random installation/session identifiers and the current time. Include the approximate incident time, action tried, expected behavior and observed result in a bug report. The installation reference supports searches for earlier sessions after restarting the app. It is not a Google identity. Do not include credentials or podcast content.
 
@@ -32,7 +32,7 @@ Revoking consent closes reporting, cancels diagnostic work and clears queued dat
 
 The candidate includes managed Android crash/ANR SDK integration and sanitized handled errors. Native Whisper crash collection/symbol upload, R8 symbol automation, cloud-created dashboards/alerts, full persistent operation-state reconciliation and aggregate reliability denominators are not yet implemented. The release currently does not enable R8 minification. Do not claim native crash diagnosis or complete success-rate dashboards from these events.
 
-Required acceptance before the requested merge/release: automated consent/redaction/outbox checks, upload retry/acknowledgement checks, regression tests/lint/build for both voice configurations, configured S22 in-place upgrade/UI checks, a staging log and handled error observed remotely, an offline/reconnect check, and review of the resulting production build configuration. Deliberate crashes and destructive tests run only on a disposable emulator. No live AI request is needed to validate reporting transport.
+Acceptance for merge/release includes: automated consent/redaction/outbox checks, upload retry/acknowledgement checks, regression tests/lint/build for both voice configurations, configured S22 in-place upgrade/UI checks, a staging log and handled error observed remotely, an offline/reconnect check, and review of the resulting production build configuration. Deliberate crashes and destructive tests run only on a disposable emulator. No live AI request is needed to validate reporting transport.
 
 Provider references: [Android logs](https://docs.sentry.io/platforms/android/logs/), [Android filtering](https://docs.sentry.io/platforms/android/configuration/filtering/), [pricing](https://sentry.io/pricing/). Keep the organization on Developer; no paid-overage authorization is implied.
 
@@ -41,4 +41,4 @@ Provider references: [Android logs](https://docs.sentry.io/platforms/android/log
 - Default voice-disabled build: 91 core + 324 app JVM tests, debug lint and APK assembly passed before the delivery test was added.
 - Voice-enabled build: 325 app JVM tests (including consent/redaction/outbox and HTTP delivery tests), debug lint and assembly passed. Tooling: 22 Python tests passed.
 - Physical S22: candidate code 33 installed in place over private code 27 using the retained certificate; app launched, Settings → Diagnostics was reached, and the unconfigured state/default-off consent were visible. This did not validate real headphone delivery, live AI, crash/ANR ingestion, offline upload recovery or the final release artifact.
-- No Sentry DSN/management access is available yet. Cloud acceptance, merge and publication remain pending. The local phone candidate preserves the prior Firebase configuration and voice-enabled distribution behavior; it is not a newly published release.
+- The owner project is provisioned and the release DSN is stored in GitHub Actions. A configured S22 candidate delivered `diagnostics.test` and a handled error, `DISTILLPOD-ANDROID-1`, with readable `Diagnostics.kt` frames and sanitized message `Diagnostic failure: internal`. Offline reports survived a force-stop/relaunch (3 pending envelopes became 5 after startup events); Wi-Fi/mobile-data settings were restored. After reconnection the queue drained to zero and Sentry returned matching `network:offline` logs with their original timestamps, establishing remote recovery. The phone candidate used code 33 before the release metadata bump; it is not evidence of a published code-34 binary.

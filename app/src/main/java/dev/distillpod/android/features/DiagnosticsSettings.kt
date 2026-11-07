@@ -31,7 +31,7 @@ import kotlinx.coroutines.withContext
         }
         Text(if(diagnostics.configured)status else "Cloud reporting is not configured in this build.")
         Text("Reports upload when internet is available, including on mobile data. Pending reports expire after 72 hours. Turning this off clears pending reports; previously uploaded reports follow Sentry retention.",style=MaterialTheme.typography.bodySmall)
-        OutlinedButton(enabled=enabled && diagnostics.configured,onClick={scope.launch(Dispatchers.IO){diagnostics.event("diagnostics.test",source="phone")}}){Text("Send test diagnostic")}
+        OutlinedButton(enabled=enabled && diagnostics.configured,onClick={scope.launch(Dispatchers.IO){diagnostics.test()}}){Text("Send test diagnostic")}
         OutlinedButton(onClick={clipboard.setText(AnnotatedString("DistillPod diagnostic reference: ${diagnostics.reference}\nApproximate time: ${java.time.OffsetDateTime.now()}\nDescribe the action, expected result and what happened. No podcast content or credentials are needed."))}){Text("Copy diagnostic reference")}
         Text("When reporting a problem, include the reference, approximate time and the action you tried. A missing headphone event cannot prove whether Android delivered the press.",style=MaterialTheme.typography.bodySmall)
     }
