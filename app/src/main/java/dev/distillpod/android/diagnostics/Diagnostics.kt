@@ -82,21 +82,35 @@ class Diagnostics(private val context: Context, private val dsn:String = context
     /** Runs on the IO startup path, after reading authoritative application state. */
     internal fun reconcile(states:Map<Pair<String,String>,String>):Unit = synchronized(lock) {
         if(!enabled)return
-        runCatching {journal.recover {kind,id->states[kind to id]};flushSummaries()}
+        runCatching {journal.recover {kind,id->states[kind to id]};executor.execute {flushSummaries()}}
     }
-    internal fun flushSummaries():Unit = synchronized(lock) {
+    internal fun flushSummaries() {
+        val epoch=generation
         if(!enabled || !configured)return
-        runCatching {
-            val last=prefs.getLong("last_health",0)
-            if(System.currentTimeMillis()-last>60*60*1000 && log("diagnostics.health",mapOf("stream" to "diagnostics",
-                "pending_envelopes" to queue.files().size,"dropped_reports" to (prefs.getLong("dropped",0)+journal.dropped),"test_traffic" to false)))prefs.edit().putLong("last_health",System.currentTimeMillis()).apply()
-            for(row in journal.pending()) {
-                if(log("operation.summary",mapOf("summary_id" to row.id,"operation_id" to row.operation,
-                    "attempt_id" to row.attempt,"feature" to row.kind,"outcome" to row.state,"reason" to row.reason,
-                    "source" to row.source,"sequence" to row.sequence,"operation_started_ms" to row.started,
-                    "observed_at_ms" to row.updated,"operation_release" to row.release,"test_traffic" to (row.reason=="synthetic"),"elapsed_ms" to row.elapsed,"stream" to "diagnostics")))journal.acknowledge(row.id)
-                else break
+        synchronized(lock) {
+            if(!enabled || epoch!=generation)return
+            runCatching {
+                val last=prefs.getLong("last_health",0)
+                if(System.currentTimeMillis()-last>60*60*1000 && log("diagnostics.health",mapOf("stream" to "diagnostics",
+                    "pending_envelopes" to queue.files().size,"dropped_reports" to (prefs.getLong("dropped",0)+journal.dropped),"test_traffic" to false)))prefs.edit().putLong("last_health",System.currentTimeMillis()).apply()
             }
+        }
+        val pending=runCatching {journal.pending()}.getOrElse {return}
+        for(row in pending) {
+            // Release the consent lock between records: a large recovered backlog
+            // must not hold up a foreground media command or consent withdrawal.
+            val accepted=synchronized(lock) {
+                if(!enabled || epoch!=generation)return
+                runCatching {
+                    val stored=log("operation.summary",mapOf("summary_id" to row.id,"operation_id" to row.operation,
+                        "attempt_id" to row.attempt,"feature" to row.kind,"outcome" to row.state,"reason" to row.reason,
+                        "source" to row.source,"sequence" to row.sequence,"operation_started_ms" to row.started,
+                        "observed_at_ms" to row.updated,"operation_release" to row.release,"test_traffic" to (row.reason=="synthetic"),"elapsed_ms" to row.elapsed,"stream" to "diagnostics"))
+                    if(stored)journal.acknowledge(row.id)
+                    stored
+                }.getOrDefault(false)
+            }
+            if(!accepted)return
         }
     }
     private fun log(name:String,fields:Map<String,Any>):Boolean {
@@ -193,8 +207,8 @@ class Diagnostics(private val context: Context, private val dsn:String = context
         WorkManager.getInstance(context).enqueueUniquePeriodicWork("diagnostics-recovery",ExistingPeriodicWorkPolicy.KEEP,
             PeriodicWorkRequestBuilder<DiagnosticsUploadWorker>(15,TimeUnit.MINUTES).setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()).build())
         status.value="Enabled"
+        // The event executor flushes recovered summaries off the startup thread.
         event("app.started")
-        flushSummaries()
         schedule()
     }
     private fun persist(envelope:SentryEnvelope,options:SentryOptions,epoch:Long) {
