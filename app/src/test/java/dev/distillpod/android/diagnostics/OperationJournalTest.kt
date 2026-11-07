@@ -79,6 +79,18 @@ class OperationJournalTest {
         journal.transition("distillation",job,"completed")
         assertEquals("completed",journal.latest().single().state)
     }
+    @Test fun `recovery preserves expected wait reasons and records interrupted execution before requeue`() {
+        val file=File(folder.root,"journal");val wait=id();val run=id()
+        OperationJournal(file).apply {
+            transition("distillation",wait,"waiting","waiting_quota")
+            transition("transcription",run,"running")
+        }
+        val recovered=OperationJournal(file)
+        recovered.recover {kind,_->if(kind=="distillation")"waiting" else "queued"}
+        assertEquals("waiting_quota",recovered.latest().single {it.operation==wait}.reason)
+        assertEquals("queued",recovered.latest().single {it.operation==run}.state)
+        assertTrue(recovered.pending().any {it.operation==run && it.state=="interrupted"})
+    }
     @Test(expected=IllegalArgumentException::class) fun `content cannot be an identifier`() {
         OperationJournal(File(folder.root,"journal")).transition("voice","private content","running")
     }

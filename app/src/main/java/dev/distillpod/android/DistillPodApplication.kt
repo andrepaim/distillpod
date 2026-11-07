@@ -93,7 +93,7 @@ class AppGraph(val context: Context) {
                 "ready"->"completed";"failed"->"failed";"paused"->"paused";"queued","processing"->"queued";else->"unknown"}}
             db.library().distillations().forEach {row->reliabilityStates["distillation" to row.id]=when(row.state){
                 "succeeded"->"completed";"failed","needs_context","unclear_source","no_speech"->"failed"
-                "queued"->"queued";else->"waiting"}}
+                "queued"->"queued";"running","reviewing"->"interrupted";"waiting_auth","waiting_quota","waiting_transcript","review_source"->"waiting";else->"unknown"}}
             diagnostics.reconcile(reliabilityStates)
             }
             portableSync.releaseSessions(); importFeasibility(); understanding.recoverInterrupted(); explanations.recoverInterrupted(); recommendations.recoverInterrupted()

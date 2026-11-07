@@ -47,7 +47,9 @@ internal class OperationJournal(private val file: File, private val now: () -> L
     @Synchronized fun recover(resolve:(String,String)->String?) {
         latest().filter {it.state !in TERMINAL}.forEach {
             val state=resolve(it.kind,it.operation) ?: "unknown"
-            transition(it.kind,it.operation,state,if(state=="completed")"reconciled" else "process_interrupted",it.source)
+            if(it.state=="running" && state=="queued")transition(it.kind,it.operation,"interrupted","process_interrupted",it.source)
+            val reason=if(state==it.state)it.reason else if(state=="completed")"reconciled" else "process_interrupted"
+            transition(it.kind,it.operation,state,reason,it.source)
         }
     }
     private fun prune() {
