@@ -1,0 +1,74 @@
+{
+  "title": "DistillPod \u2014 Release health",
+  "projects": [],
+  "environment": [
+    "production"
+  ],
+  "period": "7d",
+  "widgets": [
+    {
+      "title": "Observed outcome transitions by release",
+      "displayType": "table",
+      "widgetType": "logs",
+      "interval": "1h",
+      "queries": [
+        {
+          "name": "",
+          "fields": [
+            "release",
+            "feature",
+            "outcome",
+            "count_unique(summary_id)"
+          ],
+          "columns": [
+            "release",
+            "feature",
+            "outcome"
+          ],
+          "aggregates": [
+            "count_unique(summary_id)"
+          ],
+          "conditions": "schema_version:1 !test_traffic:true message:operation.summary",
+          "orderby": "-count_unique(summary_id)"
+        }
+      ],
+      "layout": {
+        "x": 0,
+        "y": 0,
+        "w": 6,
+        "h": 3,
+        "minH": 3
+      }
+    },
+    {
+      "title": "Observed handled failure events",
+      "displayType": "table",
+      "widgetType": "logs",
+      "interval": "1h",
+      "queries": [
+        {
+          "name": "",
+          "fields": [
+            "message",
+            "count_unique(event_id)"
+          ],
+          "columns": [
+            "message"
+          ],
+          "aggregates": [
+            "count_unique(event_id)"
+          ],
+          "conditions": "schema_version:1 !test_traffic:true message:[transcription.failed,distillation.failed,playback.failed,voice.failed,capture.failed]",
+          "orderby": "-count_unique(event_id)"
+        }
+      ],
+      "layout": {
+        "x": 0,
+        "y": 3,
+        "w": 6,
+        "h": 3,
+        "minH": 3
+      }
+    }
+  ]
+}

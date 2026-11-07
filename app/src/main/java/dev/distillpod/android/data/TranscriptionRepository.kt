@@ -84,7 +84,7 @@ class TranscriptionRepository(private val graph: AppGraph,
     }
     suspend fun pause(id: String) = controls.withLock {
         live.update { it - id }
-        dao.transcript(id)?.let { dao.putTranscript(it.copy(state = "paused", error = null)) }
+        dao.transcript(id)?.let { dao.putTranscript(it.copy(state = "paused", error = null));graph.diagnostics.event("transcription.paused",it.revision) }
         running[id]?.cancel()
         manager.cancelAllWorkByTag("transcript:$id")
     }
@@ -157,7 +157,7 @@ class TranscriptionRepository(private val graph: AppGraph,
         var row = dao.transcript(id) ?: return
         if (row.revision != revision || row.state in listOf("paused", "ready", "stale")) return
         val run = UUID.randomUUID().toString()
-        graph.diagnostics.event("transcription.started",revision)
+        graph.diagnostics.event("transcription.started",revision,attempt=run)
         live.update { it + (id to TranscriptProgress(revision, run, TranscriptStage.STARTING, row.processedMs, row.durationMs)) }
         var lastDiagnosticStage: TranscriptStage? = null
         fun report(stage: TranscriptStage, workedMs: Long? = null, durationMs: Long? = null, start: Long? = null, end: Long? = null) {
@@ -177,7 +177,7 @@ class TranscriptionRepository(private val graph: AppGraph,
                     if (error is CancellationException) throw error
                     false
                 }
-                if (published) { graph.captures.transcriptUpdated(id); return }
+                if (published) { graph.diagnostics.event("transcription.completed",revision);graph.captures.transcriptUpdated(id); return }
                 val prefs = graph.settings.flow.first()
                 row = row.copy(source = "whisper", model = prefs.model, language = prefs.language)
                 dao.putTranscript(row)
@@ -209,7 +209,7 @@ class TranscriptionRepository(private val graph: AppGraph,
                         dao.putTranscript(row.copy(state = "ready"))
                         dao.deselectOnline(id)
                     }
-                    graph.captures.transcriptUpdated(id); return
+                    graph.diagnostics.event("transcription.completed",revision);graph.captures.transcriptUpdated(id); return
                 }
                 val decodeStart = (start - 2000).coerceAtLeast(0)
                 report(TranscriptStage.DECODING, start = start, end = start + CHUNK_MS)
@@ -262,10 +262,10 @@ class TranscriptionRepository(private val graph: AppGraph,
                     if (next == null) {
                         graph.db.withTransaction {
                             dao.putTranscript(current.copy(state = "ready", processedMs = duration))
-                            graph.diagnostics.event("transcription.completed",revision)
                             dao.deselectOnline(id)
                         }
                     }
+                    if(next==null)graph.diagnostics.event("transcription.completed",revision)
                     else if (execution.reschedule) enqueue(current, next)
                 }
             } finally { wave.delete(); graph.activeFiles.release(source); graph.activeFiles.release(modelPath) }
@@ -279,7 +279,9 @@ class TranscriptionRepository(private val graph: AppGraph,
         } finally {
             withContext(NonCancellable) {
                 val current = dao.transcript(id)
-                if (current?.revision == revision && current.state == "queued") report(TranscriptStage.QUEUED, current.processedMs, current.durationMs)
+                if(current?.revision==revision && current.state=="ready")graph.diagnostics.transcriptQuality(revision,current.source,current.model,current.language,
+                    current.durationMs,current.processedMs,dao.segments(id,revision).isEmpty())
+                if (current?.revision == revision && current.state == "queued") {graph.diagnostics.event("transcription.queued",revision,reason="scheduled");report(TranscriptStage.QUEUED, current.processedMs, current.durationMs)}
                 else live.update { if (it[id]?.run == run) it - id else it }
             }
         }

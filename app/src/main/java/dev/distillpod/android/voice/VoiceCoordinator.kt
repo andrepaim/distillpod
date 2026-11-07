@@ -52,6 +52,9 @@ class VoiceCoordinator(
         mutable.value = VoiceState("Preparing", origin = origin)
         job = scope.launch(start = CoroutineStart.LAZY) {
             var lease: VoiceLease? = null
+            var outcome="failed"
+            var textReported=false
+            var audioReported=false
             try {
                 withTimeout(90_000) {
                     lease = pause { cancel(false) }
@@ -74,21 +77,26 @@ class VoiceCoordinator(
                         } else connect(source).use { connection ->
                             this@VoiceCoordinator.connection = connection
                             input().use { mic -> connection.answer(object : VoiceInput {
-                                override fun start() = mic.start()
+                                override fun start() { mic.start();diagnosticEvent("voice.recording","none") }
                                 override fun read(): ByteArray? = mic.read()?.also { bytes ->
                                     mutable.update { if (it.phase == "Listening") it.copy(level = microphoneLevel(bytes)) else it }
                                 }
                                 override fun close() = mic.close()
-                            }, speaker,
+                            }, object:VoiceOutput {
+                                override suspend fun play(pcm:ByteArray) {speaker.play(pcm);if(!audioReported){audioReported=true;diagnosticEvent("voice.audio","none")}}
+                                override suspend fun drain()=speaker.drain()
+                                override fun close() {}
+                            },
                                 { mutable.value = mutable.value.copy(phase = it, level = 0f) },
-                                { mutable.value = mutable.value.copy(answer = (mutable.value.answer + it).take(8000)) }) }
+                                { if(!textReported){textReported=true;diagnosticEvent("voice.text","none")};mutable.value = mutable.value.copy(answer = (mutable.value.answer + it).take(8000)) }) }
                         }
                     }
                     }
                 }
+                outcome="succeeded"
             } catch (cancelled: CancellationException) {
                 if (cancelled is TimeoutCancellationException) mutable.value = mutable.value.copy(error = "Voice request timed out")
-                else throw cancelled
+                else {outcome="cancelled";throw cancelled}
             } catch (error: Exception) {
                 diagnosticFailure(error)
                 if (error is HeadsetDisconnected) resume = false
@@ -101,8 +109,10 @@ class VoiceCoordinator(
             } finally {
                 connection = null
                 mutable.value = mutable.value.copy(phase = "Finishing", level = 0f)
-                try { withContext(NonCancellable) { lease?.finish(resume) } }
-                finally { diagnosticEvent("voice.finished",if(resume) "resume_requested" else "resume_cancelled"); mutable.value = mutable.value.copy(phase = "Idle", origin = null); job = null }
+                try { withContext(NonCancellable) { lease?.finish(resume) }
+                    if(lease!=null)diagnosticEvent("voice.resumed",if(resume)"resume_requested" else "resume_cancelled")
+                } catch(error:Exception) {outcome="failed";diagnosticEvent("voice.resume_failed","resume_failed");throw error}
+                finally { diagnosticEvent("voice.finished",outcome); mutable.value = mutable.value.copy(phase = "Idle", origin = null); job = null }
             }
         }
         job?.start()

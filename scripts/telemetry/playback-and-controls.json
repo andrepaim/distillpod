@@ -1,0 +1,131 @@
+{
+  "title": "DistillPod \u2014 Playback and controls",
+  "projects": [],
+  "environment": [
+    "production"
+  ],
+  "period": "7d",
+  "widgets": [
+    {
+      "title": "Playback outcomes",
+      "displayType": "table",
+      "widgetType": "logs",
+      "interval": "1h",
+      "queries": [
+        {
+          "name": "",
+          "fields": [
+            "outcome",
+            "count_unique(summary_id)"
+          ],
+          "columns": [
+            "outcome"
+          ],
+          "aggregates": [
+            "count_unique(summary_id)"
+          ],
+          "conditions": "schema_version:1 !test_traffic:true message:operation.summary feature:playback",
+          "orderby": "-count_unique(summary_id)"
+        }
+      ],
+      "layout": {
+        "x": 0,
+        "y": 0,
+        "w": 6,
+        "h": 3,
+        "minH": 3
+      }
+    },
+    {
+      "title": "Headphone decisions",
+      "displayType": "table",
+      "widgetType": "logs",
+      "interval": "1h",
+      "queries": [
+        {
+          "name": "",
+          "fields": [
+            "message",
+            "reason",
+            "count_unique(event_id)"
+          ],
+          "columns": [
+            "message",
+            "reason"
+          ],
+          "aggregates": [
+            "count_unique(event_id)"
+          ],
+          "conditions": "schema_version:1 !test_traffic:true message:[headphone.received,headphone.rejected,headphone.previous,headphone.next]",
+          "orderby": "-count_unique(event_id)"
+        }
+      ],
+      "layout": {
+        "x": 0,
+        "y": 3,
+        "w": 6,
+        "h": 3,
+        "minH": 3
+      }
+    },
+    {
+      "title": "Playback events",
+      "displayType": "table",
+      "widgetType": "logs",
+      "interval": "1h",
+      "queries": [
+        {
+          "name": "",
+          "fields": [
+            "message",
+            "reason",
+            "count_unique(event_id)"
+          ],
+          "columns": [
+            "message",
+            "reason"
+          ],
+          "aggregates": [
+            "count_unique(event_id)"
+          ],
+          "conditions": "schema_version:1 !test_traffic:true message:[playback.ready,playback.buffering,playback.state,playback.failed]",
+          "orderby": "-count_unique(event_id)"
+        }
+      ],
+      "layout": {
+        "x": 0,
+        "y": 6,
+        "w": 6,
+        "h": 3,
+        "minH": 3
+      }
+    },
+    {
+      "title": "Longest observed buffering interval",
+      "displayType": "table",
+      "widgetType": "logs",
+      "interval": "1h",
+      "queries": [
+        {
+          "name": "",
+          "fields": [
+            "max(stage_elapsed_ms)"
+          ],
+          "columns": [],
+          "aggregates": [
+            "max(stage_elapsed_ms)"
+          ],
+          "conditions": "schema_version:1 !test_traffic:true message:playback.ready has:stage_elapsed_ms",
+          "orderby": "-max(stage_elapsed_ms)"
+        }
+      ],
+      "layout": {
+        "x": 0,
+        "y": 9,
+        "w": 6,
+        "h": 3,
+        "minH": 3
+      }
+    }
+  ]
+}

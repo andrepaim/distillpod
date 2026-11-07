@@ -24,12 +24,12 @@ class CaptureRepository(private val db: AppDatabase, private val ai: AiGateway, 
     private val busy = setOf("waiting_transcript", "queued", "running", "reviewing")
 
     suspend fun capture(id: String, position: Long, verifiedSource: Boolean): String {
-        val saved=save(id,position,verifiedSource)
+        val saved=save(id,position,verifiedSource,source="phone")
         prepareSaved(saved)
         return saved
     }
     /** Durable acceptance is independent from preparation, authorization and inference. */
-    suspend fun save(id: String, position: Long, verifiedSource: Boolean): String {
+    suspend fun save(id: String, position: Long, verifiedSource: Boolean, source:String="background"): String {
         require(position>=0) { "Playback position is invalid" }
         val ep = dao.episode(id) ?: error("Episode is unavailable")
         val (saved,created) = db.withTransaction {
@@ -45,7 +45,7 @@ class CaptureRepository(private val db: AppDatabase, private val ai: AiGateway, 
         }
         onPortableChanged()
         if(created)try {onSaved(saved.id)}catch(_:Exception) { /* Optional feedback cannot fail a durable save. */ }
-        diagnostics?.event("capture.saved",saved.id,reason=if(created) "created" else "deduplicated")
+        diagnostics?.event("capture.saved",saved.id,reason=if(created) "created" else "deduplicated",source=source)
         return saved.id
     }
     suspend fun prepareSaved(id:String) {
