@@ -89,6 +89,10 @@ class PlaybackService : MediaLibraryService() {
             openCarVoice = { graph.carVoiceEntry.open() },
             onExternalPlaybackCommand = { graph.voice.cancel(false) },
             diagnostics = graph.diagnostics,
+            saveMomentWithSource = {id,position,file,source ->
+                val ep=dao.episode(id)
+                graph.captures.save(id,position,file!=null && file==ep?.localFile,source=source)
+            },
             headphoneDistillEnabled = { headphoneDistill },
             headphoneVoiceEnabled = { graph.preferences.value.headphoneVoice },
             onHeadphoneVoice = {
@@ -134,6 +138,12 @@ class PlaybackService : MediaLibraryService() {
             previousId = id; previousDuration = player.duration.coerceAtLeast(0); previousPosition = player.currentPosition.coerceAtLeast(0)
         }
         player.addListener(object : Player.Listener {
+            override fun onPlaybackStateChanged(playbackState:Int) {
+                when(playbackState) {
+                    Player.STATE_BUFFERING->graph.diagnostics.event("playback.buffering",reason="buffering")
+                    Player.STATE_READY->graph.diagnostics.event("playback.ready",reason="ready")
+                }
+            }
             override fun onPlayerError(error: androidx.media3.common.PlaybackException) {graph.diagnostics.failure("playback",error)}
             override fun onIsPlayingChanged(isPlaying:Boolean) {graph.diagnostics.event("playback.state",reason=if(isPlaying) "playing" else "paused")}
             override fun onTimelineChanged(timeline:androidx.media3.common.Timeline,reason:Int) {

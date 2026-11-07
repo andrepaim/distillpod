@@ -59,8 +59,9 @@ class AppGraph(val context: Context) {
                     android.media.AudioManager.STREAM_VOICE_CALL else android.media.AudioManager.STREAM_MUSIC) }) },
             { dev.distillpod.android.voice.AndroidVoiceOutput(context,
                 communication = voice.state.value.origin == dev.distillpod.android.voice.VoiceOrigin.HEADPHONES && android.os.Build.VERSION.SDK_INT >= 31) { voice.cancel(false) } },
-            diagnosticEvent={name,reason -> diagnostics.event(name,reason=reason)},
-            diagnosticFailure={diagnostics.failure("voice",it)})
+            diagnosticEvent={name,reason -> diagnostics.event(name,reason=reason,
+                source=reason.takeIf {it in setOf("phone","car","headphones")} ?: voice.state.value.origin?.name?.lowercase() ?: "background")},
+            diagnosticFailure={diagnostics.failure("voice",it,source=voice.state.value.origin?.name?.lowercase() ?: "background")})
     }
     val ai by lazy { dev.distillpod.android.ai.ChatGptGateway(account.session, settings) }
     val onlineTranscripts by lazy { OnlineTranscriptRepository(this) }
@@ -87,6 +88,15 @@ class AppGraph(val context: Context) {
         }
         scope.launch(Dispatchers.IO) {
         try {
+            if(diagnostics.enabled) {
+            val reliabilityStates=mutableMapOf<Pair<String,String>,String>()
+            db.library().transcripts().forEach {row->reliabilityStates["transcription" to row.revision]=when(row.state){
+                "ready"->"completed";"partial"->"partial";"waiting_model"->"waiting";"stale"->"cancelled";"failed"->"failed";"paused"->"paused";"queued","processing"->"queued";else->"unknown"}}
+            db.library().distillations().forEach {row->reliabilityStates["distillation" to row.id]=when(row.state){
+                "succeeded"->"completed";"failed","needs_context","unclear_source","no_speech"->"failed"
+                "queued"->"queued";"running","reviewing"->"interrupted";"waiting_auth","waiting_quota","waiting_transcript","review_source"->"waiting";else->"unknown"}}
+            diagnostics.reconcile(reliabilityStates)
+            }
             portableSync.releaseSessions(); importFeasibility(); understanding.recoverInterrupted(); explanations.recoverInterrupted(); recommendations.recoverInterrupted()
             db.library().distillations().filter { it.state == "queued" }.forEach { jobs.capture(it.id) }
             db.library().episodes().filter { it.downloadState in listOf("queued", "downloading") }.forEach { jobs.download(it.id) }

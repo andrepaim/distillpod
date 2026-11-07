@@ -46,13 +46,13 @@ class ProductFlowDeviceTest {
             episode = dao.episodesForPodcast(podcast).single().id
             compose.waitUntil(10000) { compose.onAllNodesWithText("Device validation episode").fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithContentDescription("Play Device validation episode").performClick()
-            await { graph.playback.state.value.episodeId == episode && graph.playback.state.value.playing }
+            await("playback starts") { graph.playback.state.value.episodeId == episode && graph.playback.state.value.playing }
             graph.playback.pause()
             graph.jobs.download(episode)
-            await { dao.episode(episode)?.downloadState == "downloaded" }
+            await("episode download completes") { dao.episode(episode)?.downloadState == "downloaded" }
             assertTrue(java.io.File(dao.episode(episode)!!.localFile!!).isFile)
             graph.transcription.prepare(episode)
-            await { dao.transcript(episode)?.state == "ready" }
+            await("publisher transcript is ready") { dao.transcript(episode)?.state == "ready" }
             val gateway = object : AiGateway {
                 override suspend fun complete(instructions: String, input: String, onDelta: (String) -> Unit) =
                     AiText(if(instructions==MomentGeneration.reviewPrompt) """{"passageComplete":true,"takeawaySupported":true,"relevant":true,"quoteFaithful":true,"needsContext":false,"issues":[]}""" else
@@ -77,13 +77,13 @@ class ProductFlowDeviceTest {
             compose.activityRule.scenario.recreate()
             compose.onNodeWithText("The speaker urges people to contribute to their community.", substring = true).assertIsDisplayed().performClick()
             compose.onNodeWithText("Replay source · ${dev.distillpod.android.features.timestamp(dao.distillation(capture)!!.sourceStartMs)}").performScrollTo().performClick()
-            await { graph.playback.state.value.episodeId == episode && graph.playback.state.value.playing }
+            await("saved source replay starts") { graph.playback.state.value.episodeId == episode && graph.playback.state.value.playing }
             assertEquals(dao.episode(episode)!!.localFile, graph.playback.captureSource().third)
             assertEquals(10000L, dao.distillation(capture)!!.endMs)
         } finally {
             episode?.let {
                 graph.playback.pause(); graph.playback.remove(it)
-                await { !graph.activeFiles.busy(dao.episode(it)?.localFile ?: "") }
+                await("playback releases the fixture download") { !graph.activeFiles.busy(dao.episode(it)?.localFile ?: "") }
                 graph.media.deleteDownload(it)
             }
             podcast?.let { dao.deletePodcast(it) }
@@ -91,7 +91,8 @@ class ProductFlowDeviceTest {
         }
     }
 
-    private suspend fun await(predicate: suspend () -> Boolean) = withTimeout(45000) {
-        while (!predicate()) delay(100)
+    private suspend fun await(stage: String, predicate: suspend () -> Boolean) {
+        try { withTimeout(45000) { while (!predicate()) delay(100) } }
+        catch (timeout: TimeoutCancellationException) { throw AssertionError("Timed out waiting for: $stage", timeout) }
     }
 }

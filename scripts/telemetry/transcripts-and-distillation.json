@@ -1,0 +1,140 @@
+{
+  "title": "DistillPod \u2014 Transcripts and distillation",
+  "projects": [],
+  "environment": [
+    "production"
+  ],
+  "period": "7d",
+  "widgets": [
+    {
+      "title": "Observed pipeline outcomes",
+      "displayType": "table",
+      "widgetType": "logs",
+      "interval": "1h",
+      "queries": [
+        {
+          "name": "",
+          "fields": [
+            "feature",
+            "outcome",
+            "reason",
+            "count_unique(summary_id)"
+          ],
+          "columns": [
+            "feature",
+            "outcome",
+            "reason"
+          ],
+          "aggregates": [
+            "count_unique(summary_id)"
+          ],
+          "conditions": "tags[schema_version,number]:1 !tags[test_traffic,boolean]:true message:operation.summary feature:[transcription,distillation,capture]",
+          "orderby": "-count_unique(summary_id)"
+        }
+      ],
+      "layout": {
+        "x": 0,
+        "y": 0,
+        "w": 6,
+        "h": 3,
+        "minH": 3
+      }
+    },
+    {
+      "title": "Transcription stages",
+      "displayType": "table",
+      "widgetType": "logs",
+      "interval": "1h",
+      "queries": [
+        {
+          "name": "",
+          "fields": [
+            "reason",
+            "count_unique(event_id)"
+          ],
+          "columns": [
+            "reason"
+          ],
+          "aggregates": [
+            "count_unique(event_id)"
+          ],
+          "conditions": "tags[schema_version,number]:1 !tags[test_traffic,boolean]:true message:transcription.stage",
+          "orderby": "-count_unique(event_id)"
+        }
+      ],
+      "layout": {
+        "x": 0,
+        "y": 3,
+        "w": 6,
+        "h": 3,
+        "minH": 3
+      }
+    },
+    {
+      "title": "Longest observed attempt durations",
+      "displayType": "table",
+      "widgetType": "logs",
+      "interval": "1h",
+      "queries": [
+        {
+          "name": "",
+          "fields": [
+            "feature",
+            "outcome",
+            "max(tags[elapsed_ms,number])"
+          ],
+          "columns": [
+            "feature",
+            "outcome"
+          ],
+          "aggregates": [
+            "max(tags[elapsed_ms,number])"
+          ],
+          "conditions": "tags[schema_version,number]:1 !tags[test_traffic,boolean]:true message:operation.summary tags[elapsed_ms,number]:>=0",
+          "orderby": "-max(tags[elapsed_ms,number])"
+        }
+      ],
+      "layout": {
+        "x": 0,
+        "y": 6,
+        "w": 6,
+        "h": 3,
+        "minH": 3
+      }
+    },
+    {
+      "title": "Transcript coverage and empty output",
+      "displayType": "table",
+      "widgetType": "logs",
+      "interval": "1h",
+      "queries": [
+        {
+          "name": "",
+          "fields": [
+            "transcript_source",
+            "model_category",
+            "tags[empty_output,boolean]",
+            "max(tags[covered_audio_ms,number])"
+          ],
+          "columns": [
+            "transcript_source",
+            "model_category",
+            "tags[empty_output,boolean]"
+          ],
+          "aggregates": [
+            "max(tags[covered_audio_ms,number])"
+          ],
+          "conditions": "tags[schema_version,number]:1 !tags[test_traffic,boolean]:true message:transcription.quality",
+          "orderby": "-max(tags[covered_audio_ms,number])"
+        }
+      ],
+      "layout": {
+        "x": 0,
+        "y": 9,
+        "w": 6,
+        "h": 3,
+        "minH": 3
+      }
+    }
+  ]
+}

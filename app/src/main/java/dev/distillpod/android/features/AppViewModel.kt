@@ -69,7 +69,7 @@ class AppViewModel(val graph: AppGraph, private val saved: SavedStateHandle) : V
         viewModelScope.launch {
             try { block() }
             catch (cancelled: CancellationException) { throw cancelled }
-            catch (error: Exception) { graph.diagnostics.failure("worker",error);messages.send(safeFailure(error)) }
+            catch (error: Exception) { graph.diagnostics.failure("worker",error,source="phone");messages.send(safeFailure(error)) }
             finally { busy.update { it - key } }
         }
     }
@@ -110,7 +110,7 @@ class AppViewModel(val graph: AppGraph, private val saved: SavedStateHandle) : V
     fun duplicatePost(id: String) = action("post:$id") { open("post:${graph.posts.duplicate(id).id}") }
     fun deletePost(id: String) = action("post:$id") { graph.posts.delete(id) }
     fun deleteCapture(id: String) = action("capture:$id") { graph.portableSync.deleteMoment(id) }
-    fun prepareTranscript(id: String, local: Boolean = false) = action("transcript:$id") { graph.transcription.prepare(id, local); messages.send("Transcript preparation queued") }
+    fun prepareTranscript(id: String, local: Boolean = false) = action("transcript:$id") { graph.diagnostics.usage("transcription");graph.transcription.prepare(id, local); messages.send("Transcript preparation queued") }
     fun pauseTranscript(id: String) = action("transcript:$id") { graph.transcription.pause(id) }
     fun captureMoment() = action("distill") {
         graph.diagnostics.event("capture.requested",source="phone")
@@ -121,7 +121,7 @@ class AppViewModel(val graph: AppGraph, private val saved: SavedStateHandle) : V
         messages.send("Moment saved at ${timestamp(position)}")
         open("capture:$saved")
     }
-    fun generateCapture(id: String, confirm: Boolean = false) = action("capture:$id") { graph.captures.generate(id, confirm) }
+    fun generateCapture(id: String, confirm: Boolean = false) = action("capture:$id") { graph.diagnostics.usage("distillation");graph.captures.generate(id, confirm) }
     fun improveCapture(id: String, expanded: Boolean = false) = action("capture:$id") { graph.captures.improve(id, expanded) }
     fun retranscribeCapture(id: String) = action("capture:$id") {
         val moment=dao.distillation(id) ?: return@action

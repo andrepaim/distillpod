@@ -84,7 +84,7 @@ class TranscriptionRepository(private val graph: AppGraph,
     }
     suspend fun pause(id: String) = controls.withLock {
         live.update { it - id }
-        dao.transcript(id)?.let { dao.putTranscript(it.copy(state = "paused", error = null)) }
+        dao.transcript(id)?.let { dao.putTranscript(it.copy(state = "paused", error = null));graph.diagnostics.event("transcription.paused",it.revision) }
         running[id]?.cancel()
         manager.cancelAllWorkByTag("transcript:$id")
     }
@@ -154,11 +154,17 @@ class TranscriptionRepository(private val graph: AppGraph,
     }
 
     private suspend fun processChunk(id: String, revision: String, execution: TranscriptExecution) {
-        var row = dao.transcript(id) ?: return
-        if (row.revision != revision || row.state in listOf("paused", "ready", "stale")) return
         val run = UUID.randomUUID().toString()
-        graph.diagnostics.event("transcription.started",revision)
-        live.update { it + (id to TranscriptProgress(revision, run, TranscriptStage.STARTING, row.processedMs, row.durationMs)) }
+        // Pause and initial progress publication share the same lock. A queued pass
+        // must not republish STARTING after pause has cleared the live estimate.
+        var row = controls.withLock {
+            val current=dao.transcript(id) ?: return@withLock null
+            if(current.revision!=revision || current.state in listOf("paused","ready","stale"))return@withLock null
+            dao.putTranscript(current.copy(state="processing",error=null))
+            graph.diagnostics.event("transcription.started",revision,attempt=run)
+            live.update {it+(id to TranscriptProgress(revision,run,TranscriptStage.STARTING,current.processedMs,current.durationMs))}
+            current
+        } ?: return
         var lastDiagnosticStage: TranscriptStage? = null
         fun report(stage: TranscriptStage, workedMs: Long? = null, durationMs: Long? = null, start: Long? = null, end: Long? = null) {
             if(stage!=lastDiagnosticStage) {lastDiagnosticStage=stage;graph.diagnostics.event("transcription.stage",revision,reason=stage.name.lowercase())}
@@ -167,9 +173,9 @@ class TranscriptionRepository(private val graph: AppGraph,
                     durationMs = durationMs ?: current.durationMs, chunkStartMs = start ?: current.chunkStartMs, chunkEndMs = end ?: current.chunkEndMs))
             }
         }
+        var onlineCompleted=false
         try {
             execution.foreground()
-            dao.putTranscript(row.copy(state = "processing", error = null))
             val initialEp = dao.episode(id) ?: return
             if (row.source == "publisher") {
                 report(TranscriptStage.PUBLISHER)
@@ -184,7 +190,7 @@ class TranscriptionRepository(private val graph: AppGraph,
             }
             if (row.lookupOnline) {
                 report(TranscriptStage.ONLINE)
-                if (onlineLookup(initialEp, row)) return
+                if (onlineLookup(initialEp, row)) {onlineCompleted=true;return}
                 currentCoroutineContext().ensureActive()
                 val current = dao.transcript(id) ?: return
                 if (current.revision != revision || current.state in listOf("paused", "stale")) return
@@ -262,24 +268,39 @@ class TranscriptionRepository(private val graph: AppGraph,
                     if (next == null) {
                         graph.db.withTransaction {
                             dao.putTranscript(current.copy(state = "ready", processedMs = duration))
-                            graph.diagnostics.event("transcription.completed",revision)
                             dao.deselectOnline(id)
                         }
                     }
-                    else if (execution.reschedule) enqueue(current, next)
+                    if(next!=null && execution.reschedule) enqueue(current, next)
                 }
             } finally { wave.delete(); graph.activeFiles.release(source); graph.activeFiles.release(modelPath) }
         } catch (error: Exception) {
-            graph.diagnostics.failure("transcription",error,revision)
             withContext(NonCancellable) {
                 val current = dao.transcript(id)
-                if (current?.revision == revision && current.state !in listOf("paused", "stale", "ready")) dao.putTranscript(current.copy(state = if (error is CancellationException) "queued" else "failed", error = if (error is CancellationException) null else safeFailure(error)))
+                if(current?.state in listOf("ready","partial"))graph.diagnostics.failure("worker",error)
+                else if(!(error is CancellationException && current?.state=="paused"))graph.diagnostics.failure("transcription",error,revision)
+                if (current?.revision == revision && current.state !in listOf("paused", "stale", "ready", "partial")) dao.putTranscript(current.copy(state = if (error is CancellationException) "queued" else "failed", error = if (error is CancellationException) null else safeFailure(error)))
             }
             if (error is CancellationException) throw error
         } finally {
             withContext(NonCancellable) {
                 val current = dao.transcript(id)
-                if (current?.revision == revision && current.state == "queued") report(TranscriptStage.QUEUED, current.processedMs, current.durationMs)
+                if(onlineCompleted || current?.revision==revision) {
+                    when {
+                        onlineCompleted || current?.state=="ready" -> graph.diagnostics.event("transcription.completed",revision)
+                        current?.state=="partial" -> graph.diagnostics.event("transcription.partial",revision,reason="partial")
+                        current?.state=="waiting_model" -> graph.diagnostics.event("transcription.queued",revision,reason="checking_model")
+                        current?.state=="stale" -> graph.diagnostics.event("transcription.cancelled",revision,reason="superseded")
+                    }
+                    if(current!=null && current.state in listOf("ready","partial"))graph.diagnostics.transcriptQuality(revision,current.source,current.model,current.language,
+                        current.durationMs,current.processedMs,dao.segments(id,current.revision).isEmpty())
+                } else if(current!=null)graph.diagnostics.event("transcription.cancelled",revision,reason="superseded")
+                if (current?.revision == revision && current.state == "queued") {
+                    val ep=dao.episode(id)
+                    val needsNetwork=ep?.localFile?.let {File(it).isFile}!=true || current.source=="publisher"
+                    graph.diagnostics.event("transcription.queued",revision,reason=transcriptionWaitReason(graph.context,graph.settings.flow.first(),needsNetwork) ?: "scheduled")
+                    report(TranscriptStage.QUEUED,current.processedMs,current.durationMs)
+                }
                 else live.update { if (it[id]?.run == run) it - id else it }
             }
         }

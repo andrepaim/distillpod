@@ -30,7 +30,7 @@ Revoking consent closes reporting, cancels diagnostic work and clears queued dat
 
 ## Scope and evidence boundaries
 
-The candidate includes managed Android crash/ANR SDK integration and sanitized handled errors. Native Whisper crash collection/symbol upload, R8 symbol automation, cloud-created dashboards/alerts, full persistent operation-state reconciliation and aggregate reliability denominators are not yet implemented. The release currently does not enable R8 minification. Do not claim native crash diagnosis or complete success-rate dashboards from these events.
+The candidate includes managed Android crash/ANR SDK integration and sanitized handled errors. Native Whisper crash collection/symbol upload and R8 symbol automation are not implemented. The [reliability analytics increment](reliability-analytics.md) adds bounded persistent operation reconciliation, versioned dashboard definitions and an aggregate report with explicit denominators. The release currently does not enable R8 minification. Do not claim native crash diagnosis or complete success-rate dashboards from these events.
 
 Acceptance for merge/release includes: automated consent/redaction/outbox checks, upload retry/acknowledgement checks, regression tests/lint/build for both voice configurations, configured S22 in-place upgrade/UI checks, a staging log and handled error observed remotely, an offline/reconnect check, and review of the resulting production build configuration. Deliberate crashes and destructive tests run only on a disposable emulator. No live AI request is needed to validate reporting transport.
 

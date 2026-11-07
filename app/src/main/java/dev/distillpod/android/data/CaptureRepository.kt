@@ -24,30 +24,39 @@ class CaptureRepository(private val db: AppDatabase, private val ai: AiGateway, 
     private val busy = setOf("waiting_transcript", "queued", "running", "reviewing")
 
     suspend fun capture(id: String, position: Long, verifiedSource: Boolean): String {
-        val saved=save(id,position,verifiedSource)
+        val saved=save(id,position,verifiedSource,source="phone")
         prepareSaved(saved)
         return saved
     }
     /** Durable acceptance is independent from preparation, authorization and inference. */
-    suspend fun save(id: String, position: Long, verifiedSource: Boolean): String {
-        require(position>=0) { "Playback position is invalid" }
-        val ep = dao.episode(id) ?: error("Episode is unavailable")
-        val (saved,created) = db.withTransaction {
-            val recent=dao.recentCapture(id,position,System.currentTimeMillis()-2000)
-            if(recent!=null)recent to false else {
-                val fresh=DistillationEntity(UUID.randomUUID().toString(),id,(position-60000).coerceAtLeast(0),position,
-                    fingerprint=if(verifiedSource)ep.mediaFingerprint else "unverified:${ep.id}",attempt=UUID.randomUUID().toString())
-                dao.putDistillation(fresh)
-                dao.putMomentAttempt(MomentAttemptEntity(fresh.attempt,fresh.id,"{\"expanded\":false}"))
-                portable.recordMoment(fresh)
-                fresh to true
+    suspend fun save(id: String, position: Long, verifiedSource: Boolean, source:String="background"): String {
+        val request=UUID.randomUUID().toString()
+        diagnostics?.event("capture.started",request,source=source)
+        try {
+            require(position>=0) { "Playback position is invalid" }
+            val ep = dao.episode(id) ?: error("Episode is unavailable")
+            val (saved,created) = db.withTransaction {
+                val recent=dao.recentCapture(id,position,System.currentTimeMillis()-2000)
+                if(recent!=null)recent to false else {
+                    val fresh=DistillationEntity(UUID.randomUUID().toString(),id,(position-60000).coerceAtLeast(0),position,
+                        fingerprint=if(verifiedSource)ep.mediaFingerprint else "unverified:${ep.id}",attempt=UUID.randomUUID().toString())
+                    dao.putDistillation(fresh)
+                    dao.putMomentAttempt(MomentAttemptEntity(fresh.attempt,fresh.id,"{\"expanded\":false}"))
+                    portable.recordMoment(fresh)
+                    fresh to true
+                }
             }
+            diagnostics?.event("capture.completed",request,source=source,related=saved.id)
+            diagnostics?.event("capture.saved",saved.id,reason=if(created) "created" else "deduplicated",source=source)
+            onPortableChanged()
+            if(created)try {onSaved(saved.id)}catch(_:Exception) { /* Optional feedback cannot fail a durable save. */ }
+            return saved.id
+        } catch(error:Exception) {
+            diagnostics?.event("capture.failed",request,reason=dev.distillpod.android.diagnostics.Diagnostics.reason(error),source=source)
+            throw error
         }
-        onPortableChanged()
-        if(created)try {onSaved(saved.id)}catch(_:Exception) { /* Optional feedback cannot fail a durable save. */ }
-        diagnostics?.event("capture.saved",saved.id,reason=if(created) "created" else "deduplicated")
-        return saved.id
     }
+
     suspend fun prepareSaved(id:String) {
         dao.distillation(id)?.takeIf {it.state=="waiting_transcript"}?.let {hydrate(it)}
     }
@@ -139,14 +148,18 @@ class CaptureRepository(private val db: AppDatabase, private val ai: AiGateway, 
             dao.putMomentAttempt(attempt.copy(run=UUID.randomUUID().toString()))
             dao.putDistillation(current.copy(state=if(connected())"queued" else "waiting_auth",fingerprint=if(current.insight==null)ep.mediaFingerprint else current.fingerprint,error=null));true
         }
+        if(queued)diagnostics?.event("distillation.queued",id,reason=if(connected())"queued" else "waiting_auth")
         if(queued && connected())enqueue(id)
     }
 
-    suspend fun cancel(id: String) = db.withTransaction {
-        dao.distillation(id)?.takeIf { it.state in busy }?.let {
-            dao.momentAttempt(it.attempt)?.let { a -> dao.putMomentAttempt(a.copy(run=UUID.randomUUID().toString())) }
-            dao.putDistillation(it.copy(state="failed",error="Generation paused. Your saved result and source are kept."))
+    suspend fun cancel(id: String) {
+        val changed=db.withTransaction {
+            val current=dao.distillation(id)?.takeIf {it.state in busy} ?: return@withTransaction false
+            dao.momentAttempt(current.attempt)?.let {dao.putMomentAttempt(it.copy(run=UUID.randomUUID().toString()))}
+            dao.putDistillation(current.copy(state="failed",error="Generation paused. Your saved result and source are kept."))
+            true
         }
+        if(changed)diagnostics?.event("distillation.cancelled",id,reason="cancelled")
     }
 
     suspend fun restoreVersion(id: String, versionId: String) {
@@ -176,11 +189,11 @@ class CaptureRepository(private val db: AppDatabase, private val ai: AiGateway, 
         val saved=db.withTransaction {
             dao.distillation(id)?.takeIf { it.state=="queued" }?.also { dao.putDistillation(it.copy(state="running",error=null)) }
         } ?: return
-        diagnostics?.event("distillation.started",saved.id,attempt=saved.attempt)
         var execution: String? = null
         try {
             var attempt=dao.momentAttempt(saved.attempt) ?: error("Prepare the source again before generating")
             execution=attempt.run
+            diagnostics?.event("distillation.started",saved.id,attempt=attempt.run)
             val context=MomentGeneration.context(attempt.contextJson)
             check(context.spans.isNotEmpty()) { "No usable source context" }
             if(valid(id,attempt)==null)return
@@ -201,7 +214,8 @@ class CaptureRepository(private val db: AppDatabase, private val ai: AiGateway, 
                             "unclear_source" -> "The transcript is too unclear to explain faithfully. Review or transcribe it again.";else -> null }))
                     true
                 }
-                if(!accepted || candidate.outcome!="ready") { diagnostics?.event("distillation.finished",saved.id,reason=candidate.outcome);return }
+                if(!accepted)return
+                if(candidate.outcome!="ready") { diagnostics?.event("distillation.finished",saved.id,reason=candidate.outcome);return }
                 attempt=next
             }
             val candidate=MomentGeneration.candidate(attempt.candidateJson,context)
@@ -223,8 +237,8 @@ class CaptureRepository(private val db: AppDatabase, private val ai: AiGateway, 
                 attempt=next
             }
             val review=MomentGeneration.review(attempt.reviewJson,context)
-            db.withTransaction {
-                val current=valid(id,attempt) ?: return@withTransaction
+            val outcome=db.withTransaction {
+                val current=valid(id,attempt) ?: return@withTransaction null
                 if(!review.accepted) {
                     val state=if(review.needsContext)"needs_context" else "unclear_source"
                     dao.putMomentAttempt(attempt.copy(state="rejected"))
@@ -238,16 +252,25 @@ class CaptureRepository(private val db: AppDatabase, private val ai: AiGateway, 
                     MomentGeneration.validateSource(finished.sourceJson,finished.startMs,finished.endMs)
                     dao.putDistillation(finished);dao.putMomentAttempt(attempt.copy(state="succeeded"));portable.recordMoment(finished)
                 }
-            };onPortableChanged()
-            diagnostics?.event("distillation.finished",saved.id,reason=dao.distillation(saved.id)?.state ?: "unknown")
+                if(review.accepted)"succeeded" else if(review.needsContext)"needs_context" else "unclear_source"
+            }
+            if(outcome==null)return
+            diagnostics?.event("distillation.finished",saved.id,reason=outcome)
+            onPortableChanged()
         } catch(error: Exception) {
-            diagnostics?.failure("distillation",error,saved.id)
-            withContext(NonCancellable) { db.withTransaction {
+            val owned=withContext(NonCancellable) { db.withTransaction {
                 val current=dao.distillation(id)
-                if(current!=null && current.attempt==saved.attempt && current.state in setOf("running","reviewing") && dao.momentAttempt(saved.attempt)?.run==execution)dao.putDistillation(current.copy(
+                if(current==null || current.attempt!=saved.attempt || current.state !in setOf("running","reviewing") || dao.momentAttempt(saved.attempt)?.run!=execution)return@withTransaction false
+                dao.putDistillation(current.copy(
                     state=when(error) {is QuotaExceeded -> "waiting_quota";is ReauthorizationRequired -> "waiting_auth";else -> "failed"},
                     error=if(error is CancellationException)"Generation was interrupted. Your source and any completed candidate are saved." else safeFailure(error)))
+                true
             } }
+            if(owned) {
+                diagnostics?.failure("distillation",error,saved.id)
+                if(error is QuotaExceeded || error is ReauthorizationRequired)diagnostics?.event("distillation.queued",saved.id,
+                    reason=if(error is QuotaExceeded)"waiting_quota" else "waiting_auth")
+            }
             if(error is CancellationException)throw error
         }
     }

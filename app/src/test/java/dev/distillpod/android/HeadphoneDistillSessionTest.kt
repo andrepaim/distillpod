@@ -47,22 +47,27 @@ class HeadphoneDistillSessionTest {
         val sounds = AtomicInteger()
         val preparations = AtomicInteger()
         val saves = AtomicInteger()
+        val origins = java.util.concurrent.CopyOnWriteArrayList<String>()
         var failures = 0
         val repository = CaptureRepository(db, object : AiGateway {
             override suspend fun complete(instructions: String, input: String, onDelta: (String) -> Unit): AiText =
                 error("Headphone capture must not call AI directly")
         }, { false }, {}, {}, onSaved = { sounds.incrementAndGet() })
         val callback = AutoLibraryCallback(context.packageName, db, ready, scope,
-            saveMoment = { id, position, file ->
-                saves.incrementAndGet()
-                if (failSave) error("Storage unavailable")
-                repository.save(id, position, file == "/episode.wav")
+            saveMoment = { id, position, file -> persistMoment(id,position,file,"background") },
+            saveMomentWithSource = { id,position,file,source ->
+                origins+=source;persistMoment(id,position,file,source)
             }, prepareMoment = {
                 preparations.incrementAndGet()
                 if (failPrepare) error("Preparation unavailable")
             }, headphoneDistillEnabled = { enabled }, onHeadphoneCaptureFailure = { failures++ },
             isTrustedMediaButtonCaller = { platformTrusted && it.uid == 1000 },
             voiceEnabled = { voiceBuild }, headphoneVoiceEnabled = { voiceEnabled }, onHeadphoneVoice = { questions++ })
+        private suspend fun persistMoment(id:String,position:Long,file:String?,source:String):String {
+            saves.incrementAndGet()
+            if(failSave)error("Storage unavailable")
+            return repository.save(id,position,file=="/episode.wav",source=source)
+        }
         val player = ExoPlayer.Builder(context).build()
         val session = MediaLibrarySession.Builder(context, player, callback).build()
         val controller = MediaSession.ControllerInfo.createTestOnlyControllerInfo("android", 1, 1000, 1, 1, true, Bundle.EMPTY)
@@ -110,6 +115,7 @@ class HeadphoneDistillSessionTest {
         f.ready.complete(Unit)
         await { f.preparations.get() == 1 }
         val saved = f.rows().single()
+        assertEquals(listOf("headphones"), f.origins)
         assertEquals("e", saved.episodeId)
         assertEquals(15000L, saved.startMs)
         assertEquals(75000L, saved.endMs)
