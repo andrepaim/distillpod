@@ -15,7 +15,8 @@ class OperationJournalTest {
         val journal=OperationJournal(file,{1000},{ticks})
         journal.transition("transcription",job,"running");ticks+=50
         journal.transition("transcription",job,"failed","timeout")
-        journal.transition("transcription",job,"failed","timeout")
+        journal.transition("transcription",job,"failed","internal")
+        assertEquals("timeout",journal.latest().single().reason)
         assertEquals(2,journal.pending().size);assertEquals(50L,journal.latest().single().elapsed)
         val report=journal.pending().last();assertEquals(report.id,OperationJournal(file,{1000}).pending().last().id)
         journal.acknowledge(report.id);assertFalse(OperationJournal(file,{1000}).pending().any {it.id==report.id})
@@ -66,6 +67,17 @@ class OperationJournalTest {
         assertTrue(upgraded.latest().single().sequence>first.latest().single().sequence)
         upgraded.clear()
         assertFalse(file.readText().contains(job))
+    }
+    @Test fun `late completion or failure cannot replace cancellation and an explicit retry can start`() {
+        val journal=OperationJournal(File(folder.root,"journal"));val job=id()
+        journal.transition("distillation",job,"running")
+        journal.transition("distillation",job,"cancelled")
+        journal.transition("distillation",job,"failed")
+        journal.transition("distillation",job,"completed")
+        assertEquals("cancelled",journal.latest().single().state)
+        journal.transition("distillation",job,"running",attempt=id())
+        journal.transition("distillation",job,"completed")
+        assertEquals("completed",journal.latest().single().state)
     }
     @Test(expected=IllegalArgumentException::class) fun `content cannot be an identifier`() {
         OperationJournal(File(folder.root,"journal")).transition("voice","private content","running")

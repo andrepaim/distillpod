@@ -26,8 +26,10 @@ internal class OperationJournal(private val file: File, private val now: () -> L
         require(kind in KINDS && state in STATES && source in SOURCES && reason.matches(Regex("[a-z_]{1,40}")))
         UUID.fromString(operation);attempt?.let {UUID.fromString(it)}
         val old=rows.lastOrNull {it.kind==kind && it.operation==operation}
+        if(old?.state==state && state in TERMINAL)return
         // A repeated callback is not another attempt. Explicit starts after failure are retries.
         if(old?.state==state && old.reason==reason && (attempt==null || old.attempt==attempt))return
+        if(old?.state=="cancelled" && state in setOf("completed","failed","interrupted"))return
         if(old?.state=="completed" && !(state=="running" && attempt!=null && attempt!=old.attempt))return
         val newAttempt=old==null || state=="running" && (old.state in TERMINAL || attempt!=null && attempt!=old.attempt)
         val attemptId=if(newAttempt) attempt ?: UUID.randomUUID().toString() else old!!.attempt

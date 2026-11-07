@@ -135,6 +135,7 @@ class Diagnostics(private val context: Context, private val dsn:String = context
             "capture.started"->"running"
             "capture.completed"->"completed"
             "capture.prepared"->when(reason) {"queued"->"queued";"waiting_auth","waiting_quota","waiting_transcript","review_source"->"waiting";else->"failed"}
+            "distillation.queued"->if(reason=="queued")"queued" else "waiting"
             "transcription.queued"->if(reason in setOf("scheduled","queued"))"queued" else "waiting"
             "transcription.started","distillation.started","voice.started","playback.service_started"->"running"
             "transcription.stage"->if(reason=="queued")"queued" else "running"
@@ -143,6 +144,7 @@ class Diagnostics(private val context: Context, private val dsn:String = context
             "transcription.cancelled","distillation.cancelled"->"cancelled"
             "capture.waiting"->"waiting"
             "distillation.finished"->if(reason=="succeeded")"completed" else "failed"
+            "voice.resume_failed"->"failed"
             "voice.finished"->if(reason=="succeeded")"completed" else if(reason=="cancelled")"cancelled" else "failed"
             "playback.service_stopped"->"completed"
             else->if(name.endsWith(".failed"))if(reason=="cancelled")"interrupted" else "failed" else null
@@ -311,7 +313,7 @@ class Diagnostics(private val context: Context, private val dsn:String = context
         private val EVENT_NAMES=setOf("transcription.quality","diagnostics.health","operation.summary","usage.feature","transcription.paused","transcription.cancelled","distillation.cancelled","voice.recording","voice.text","voice.audio","voice.resumed","voice.resume_failed","playback.buffering","playback.ready","playback.focus","playback.route","app.started","diagnostics.test","diagnostics.failed","headphone.received","headphone.rejected","headphone.previous","headphone.next",
             "capture.started","capture.completed","capture.requested","capture.accepted","capture.saved","capture.waiting","capture.transcript_link","capture.prepared","capture.failed",
             "transcription.dependency","transcription.started","transcription.stage","transcription.queued","transcription.completed","transcription.failed",
-            "distillation.started","distillation.finished","distillation.failed","playback.service_started","playback.service_stopped","playback.state","playback.failed",
+            "distillation.queued","distillation.started","distillation.finished","distillation.failed","playback.service_started","playback.service_stopped","playback.state","playback.failed",
             "voice.started","voice.finished","voice.failed","sync.finished","sync.failed","worker.failed")
         private val REASONS=setOf("reconciled","process_interrupted","buffering","ended","resume_succeeded","resume_failed","none","created","deduplicated","transcript_required","waiting","waiting_auth","waiting_quota","waiting_transcript","queued","unknown",
             "no_speech","needs_context","review_source","unclear_source","succeeded","failed","ready","rejected","disabled","accepted","duplicate","cancelled","repeat","untrusted",

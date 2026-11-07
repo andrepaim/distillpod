@@ -275,9 +275,9 @@ class TranscriptionRepository(private val graph: AppGraph,
                 }
             } finally { wave.delete(); graph.activeFiles.release(source); graph.activeFiles.release(modelPath) }
         } catch (error: Exception) {
-            graph.diagnostics.failure("transcription",error,revision)
             withContext(NonCancellable) {
                 val current = dao.transcript(id)
+                if(!(error is CancellationException && current?.state=="paused"))graph.diagnostics.failure("transcription",error,revision)
                 if (current?.revision == revision && current.state !in listOf("paused", "stale", "ready")) dao.putTranscript(current.copy(state = if (error is CancellationException) "queued" else "failed", error = if (error is CancellationException) null else safeFailure(error)))
             }
             if (error is CancellationException) throw error

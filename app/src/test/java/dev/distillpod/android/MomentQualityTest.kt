@@ -137,9 +137,16 @@ class MomentQualityTest {
     @Test fun `cancellation during review preserves prior result and prevents publication`()=fixture { db ->
         var id=""
         lateinit var repo:CaptureRepository
-        repo=repository(db,gateway { prompt,_ -> if(prompt==MomentGeneration.generatePrompt)ready else {repo.cancel(id);accepted} })
-        id=repo.capture("e",60000,true);repo.run(id)
-        assertNull(db.library().distillation(id)!!.insight);assertEquals("failed",db.library().distillation(id)!!.state)
+        val context=ApplicationProvider.getApplicationContext<android.content.Context>()
+        androidx.work.testing.WorkManagerTestInitHelper.initializeTestWorkManager(context)
+        val diagnostics=dev.distillpod.android.diagnostics.Diagnostics(context,"https://abc123@o1.ingest.sentry.io/1")
+        diagnostics.consent(true)
+        try {
+            repo=CaptureRepository(db,gateway { prompt,_ -> if(prompt==MomentGeneration.generatePrompt)ready else {repo.cancel(id);accepted} },{true},{},{},diagnostics=diagnostics)
+            id=repo.capture("e",60000,true);repo.run(id)
+            assertNull(db.library().distillation(id)!!.insight);assertEquals("failed",db.library().distillation(id)!!.state)
+            assertEquals("cancelled",diagnostics.journal.latest().single {it.kind=="distillation" && it.operation==id}.state)
+        } finally {diagnostics.consent(false);io.sentry.Sentry.close()}
     }
     @Test fun `waiting context can be canceled without a later transcript update starting AI`()=fixture { db ->
         db.library().deleteCoverage("e")

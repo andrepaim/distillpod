@@ -95,7 +95,7 @@ class VoiceCoordinator(
                 }
                 outcome="succeeded"
             } catch (cancelled: CancellationException) {
-                if (cancelled is TimeoutCancellationException) mutable.value = mutable.value.copy(error = "Voice request timed out")
+                if (cancelled is TimeoutCancellationException) {diagnosticEvent("voice.failed","timeout");mutable.value = mutable.value.copy(error = "Voice request timed out")}
                 else {outcome="cancelled";throw cancelled}
             } catch (error: Exception) {
                 diagnosticFailure(error)
@@ -111,7 +111,7 @@ class VoiceCoordinator(
                 mutable.value = mutable.value.copy(phase = "Finishing", level = 0f)
                 try { withContext(NonCancellable) { lease?.finish(resume) }
                     if(lease!=null)diagnosticEvent("voice.resumed",if(resume)"resume_requested" else "resume_cancelled")
-                } catch(error:Exception) {outcome="failed";diagnosticEvent("voice.resume_failed","resume_failed");throw error}
+                } catch(error:Exception) {outcome="failed";diagnosticEvent("voice.resume_failed","resume_failed");diagnosticFailure(error);throw error}
                 finally { diagnosticEvent("voice.finished",outcome); mutable.value = mutable.value.copy(phase = "Idle", origin = null); job = null }
             }
         }
