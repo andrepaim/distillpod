@@ -163,6 +163,13 @@ class OwnerVideocastDeviceTest {
                     await { C.TRACK_TYPE_VIDEO !in it.trackSelectionParameters.disabledTrackTypes && it.playbackState == Player.STATE_READY && it.videoSize.width > 0 }
                     val position = withContext(Dispatchers.Main) { c.currentPosition }
                     val uri = withContext(Dispatchers.Main) { c.currentMediaItem!!.localConfiguration!!.uri }
+                    // The owner may already be holding the phone horizontally: automatic
+                    // fullscreen is correct, so leave it first to test explicit entry too.
+                    if (device.hasObject(androidx.test.uiautomator.By.desc("Exit fullscreen"))) {
+                        device.wait(androidx.test.uiautomator.Until.findObject(androidx.test.uiautomator.By.text("Got it")), 1500)?.click()
+                        device.pressBack()
+                        assertTrue(device.wait(androidx.test.uiautomator.Until.hasObject(androidx.test.uiautomator.By.desc("Enter fullscreen")), 10_000))
+                    }
                     clickDescription("Enter fullscreen")
                     assertTrue(device.wait(androidx.test.uiautomator.Until.hasObject(androidx.test.uiautomator.By.desc("Exit fullscreen")), 15_000))
                     withTimeout(10_000) { while (context.resources.configuration.orientation != android.content.res.Configuration.ORIENTATION_LANDSCAPE) delay(50) }
