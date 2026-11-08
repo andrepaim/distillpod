@@ -125,7 +125,27 @@ class OwnerVideocastDeviceTest {
                         assertFalse(c.playWhenReady); assertEquals(position, c.currentPosition)
                         assertEquals(1.25f, c.playbackParameters.speed, 0.001f)
                     }
-                    receipt("ui_background", JSONObject().put("homeRestoresAudio", true).put("pausedPositionAndSpeedPreserved", true))
+                    // Repeat while the public extractor is still pending, not only after READY.
+                    context.startActivity(android.content.Intent(context, MainActivity::class.java)
+                        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                        .putExtra("openPlayer", true))
+                    val nextChip = device.wait(androidx.test.uiautomator.Until.findObject(androidx.test.uiautomator.By.text("Video").enabled(true)), 15_000)
+                    assertNotNull(nextChip)
+                    graph.youtube.invalidate(dao.episode(id)!!.audioUrl)
+                    nextChip!!.click()
+                    assertTrue("Exercise the loading state before backgrounding", device.wait(
+                        androidx.test.uiautomator.Until.hasObject(androidx.test.uiautomator.By.text("Loading…")), 5_000))
+                    assertTrue(device.pressHome())
+                    // Beyond the extraction deadline: a late result must never re-enable video.
+                    delay(45_000)
+                    withContext(Dispatchers.Main) {
+                        assertTrue(C.TRACK_TYPE_VIDEO in c.trackSelectionParameters.disabledTrackTypes)
+                        assertNull(c.currentMediaItem?.localConfiguration?.uri?.getQueryParameter("distillpod_video"))
+                        assertFalse(c.playWhenReady); assertEquals(position, c.currentPosition)
+                        assertEquals(1.25f, c.playbackParameters.speed, 0.001f)
+                    }
+                    receipt("ui_background", JSONObject().put("homeRestoresAudio", true).put("pendingVideoStaysCancelled", true)
+                        .put("pausedPositionAndSpeedPreserved", true))
                 } finally { restore() }
             }
             "offline" -> {

@@ -15,6 +15,10 @@ import androidx.media3.common.Player
 import androidx.media3.ui.PlayerView
 import dev.distillpod.android.playback.PlaybackRepository
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.job
+import java.util.concurrent.atomic.AtomicReference
 
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 @Composable internal fun VideocastPlayer(playback: PlaybackRepository, episodeId: String, audioOnlyArtwork: @Composable () -> Unit) {
@@ -23,6 +27,7 @@ import kotlinx.coroutines.CancellationException
     var loading by remember(episodeId) { mutableStateOf(false) }
     var error by remember(episodeId) { mutableStateOf<String?>(null) }
     var firstFrame by remember(episodeId) { mutableStateOf(false) }
+    val modeRequest = remember(playback, episodeId) { AtomicReference<Job?>() }
     val failure by playback.videoFailure.collectAsStateWithLifecycle()
     LaunchedEffect(failure, episodeId) {
         if (failure?.first == episodeId) { video = false; error = failure?.second }
@@ -38,18 +43,22 @@ import kotlinx.coroutines.CancellationException
         player?.addListener(listener)
         onDispose { player?.removeListener(listener) }
     }
-    LaunchedEffect(episodeId, video) {
+    LaunchedEffect(playback, episodeId, video) {
+        val request = currentCoroutineContext().job
+        modeRequest.set(request)
         firstFrame = false
         loading = true
         try { playback.video(episodeId, video) }
         catch (e: CancellationException) { throw e }
         catch (_: Exception) { video = false; error = "Video is unavailable. Switched to audio mode." }
-        finally { loading = false }
+        finally { modeRequest.compareAndSet(request, null); loading = false }
     }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     DisposableEffect(lifecycle, playback, episodeId) {
         val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_STOP) {
             video = false
+            // A pending extraction must not enable video after the audio reset below.
+            modeRequest.getAndSet(null)?.cancel()
             // Recomposition pauses with the host. Restore audio in the app scope now,
             // rather than waiting for the video-state effect to run on the next frame.
             playback.leaveVideo(episodeId)

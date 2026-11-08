@@ -62,7 +62,13 @@ internal fun preserveVideoItem(ep: EpisodeEntity, podcast: PodcastEntity?, curre
         else mediaItem(ep, podcast)
 }
 
-class PlaybackRepository(private val context: Context, private val db: AppDatabase, private val scope: CoroutineScope) {
+class PlaybackRepository(private val context: Context, private val db: AppDatabase, private val scope: CoroutineScope,
+    private val prepareVideo: suspend (String) -> Unit = { url ->
+        val streams = runInterruptible(Dispatchers.IO) {
+            (context.applicationContext as dev.distillpod.android.DistillPodApplication).graph.youtube.streams(url)
+        }
+        require(streams.video != null) { "No compatible video is available for this episode" }
+    }) {
     private val future = MediaController.Builder(context, SessionToken(context, ComponentName(context, PlaybackService::class.java))).buildAsync()
     private val mutable = MutableStateFlow(PlaybackState())
     val state = mutable.asStateFlow()
@@ -96,10 +102,7 @@ class PlaybackRepository(private val context: Context, private val db: AppDataba
         if (id != episodeId) return
         val ep = db.library().episode(id) ?: return
         val youtube = dev.distillpod.core.YouTubeUrl.videoId(ep.audioUrl) != null
-        if (enabled && youtube) {
-            val streams = runInterruptible(Dispatchers.IO) { (context.applicationContext as dev.distillpod.android.DistillPodApplication).graph.youtube.streams(ep.audioUrl) }
-            require(streams.video != null) { "No compatible video is available for this episode" }
-        }
+        if (enabled && youtube) prepareVideo(ep.audioUrl)
         val podcast = db.library().podcast(ep.podcastId)
         withContext(Dispatchers.Main) {
             if (c.currentMediaItem?.mediaId != id) return@withContext
