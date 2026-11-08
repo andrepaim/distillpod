@@ -1,7 +1,7 @@
 # Sentry ingestion and quota review
 
 Review for [issue #27](https://github.com/andrepaim/distillpod/issues/27), November 8,
-2026, against source `41b59f2` after integrating current main. This is a read-only review: no Sentry settings,
+2026, against source `41b59f2`; integration rechecked against main `87f9fbb`. This is a read-only review: no Sentry settings,
 client keys, billing, notifications, APKs or backend deployments were changed.
 
 ## Findings and verification status
