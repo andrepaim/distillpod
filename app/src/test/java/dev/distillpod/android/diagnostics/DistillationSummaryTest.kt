@@ -30,11 +30,12 @@ class DistillationSummaryTest {
         val db=Room.inMemoryDatabaseBuilder(context,AppDatabase::class.java).build()
         try {
             val dao=db.library()
+            val revision=java.util.UUID.randomUUID().toString()
             dao.putPodcast(PodcastEntity("p","https://example.test/feed","Synthetic"))
             dao.putEpisode(EpisodeEntity("e","p","g","Synthetic","https://example.test/audio",durationMs=200000,mediaFingerprint="sha"))
-            dao.putTranscript(TranscriptEntity("e","r","sha","tiny","en",state="ready",durationMs=200000))
-            dao.putCoverage(CoverageEntity("e","r",0,200000))
-            dao.putSegments(listOf(SegmentEntity("e","r",40000,60000,"Synthetic thought remains supported by this passage.")))
+            dao.putTranscript(TranscriptEntity("e",revision,"sha","tiny","en",state="ready",durationMs=200000))
+            dao.putCoverage(CoverageEntity("e",revision,0,200000))
+            dao.putSegments(listOf(SegmentEntity("e",revision,40000,60000,"Synthetic thought remains supported by this passage.")))
             var calls=0
             val ai=object:AiGateway {
                 override suspend fun complete(instructions:String,input:String,onDelta:(String)->Unit)=AiText(answer(++calls),"PRIVATE-MODEL")
@@ -78,6 +79,7 @@ class DistillationSummaryTest {
         assertEquals(1,(first["review_attempted_calls"] as Number).toInt())
         assertEquals("review",first["stage"]);assertEquals("quota",first["stage_outcome"])
         assertEquals(first["execution_id"],first["summary_id"])
+        assertEquals(true,first["correlation_complete"])
         assertTrue((first["emitted_at_ms"] as Number).toLong()>=(first["observed_at_ms"] as Number).toLong())
         repo.generate(id);repo.run(id)
         val second=summaries(d).map {fields(it)}.single {it["execution_id"]!=first["execution_id"]}
