@@ -26,6 +26,8 @@ internal class OperationJournal(private val file: File, private val now: () -> L
         require(kind in KINDS && state in STATES && source in SOURCES && reason.matches(Regex("[a-z_]{1,40}")))
         UUID.fromString(operation);attempt?.let {UUID.fromString(it)}
         val old=rows.lastOrNull {it.kind==kind && it.operation==operation}
+        // An uncorrelated legacy callback cannot be assigned to the latest run.
+        if(old?.correlation!=null && correlation==null)return
         val changedExecution=correlation?.executionId!=null && old?.correlation?.executionId!=null &&
             correlation.executionId!=old.correlation.executionId
         val changedAttempt=correlation?.generationAttemptId!=null && old?.correlation?.generationAttemptId!=null &&
@@ -36,14 +38,14 @@ internal class OperationJournal(private val file: File, private val now: () -> L
         // A repeated callback is not another attempt. Explicit starts after failure are retries.
         if(old?.state==state && old.reason==reason && (attempt==null || old.attempt==attempt) && correlation==old.correlation)return
         if(old?.state=="cancelled" && state in setOf("completed","failed","interrupted"))return
-        if(old?.state=="completed" && !(state=="running" && (attempt!=null && attempt!=old.attempt || changedExecution || changedAttempt)))return
+        if(old?.state=="completed" && !(state !in TERMINAL && (changedExecution || changedAttempt) || state=="running" && attempt!=null && attempt!=old.attempt))return
         val newAttempt=old==null || changedExecution || changedAttempt || state=="running" && (old.state in TERMINAL || attempt!=null && attempt!=old.attempt)
         val attemptId=if(newAttempt) correlation?.executionId ?: attempt ?: UUID.randomUUID().toString() else old!!.attempt
         val key="$kind:$operation:$attemptId"
         val elapsed=clocks[key]?.let {(monotonic()-it).coerceAtLeast(0)} ?: -1L
         if(newAttempt)clocks[key]=monotonic()
         rows+=Row(UUID.randomUUID().toString(),kind,operation,attemptId,state,reason,old?.source?.takeUnless {it=="background"} ?: source,
-            old?.started ?: observedAt,observedAt,if(newAttempt)0 else elapsed,Math.incrementExact(nextSequence).also {nextSequence=it},release,correlation=correlation ?: old?.correlation)
+            old?.started ?: observedAt,observedAt,if(newAttempt)0 else elapsed,Math.incrementExact(nextSequence).also {nextSequence=it},release,correlation=correlation)
         prune();save()
     }
     @Synchronized fun pending():List<Row> {prune();return rows.filterNot {it.delivered}.toList()}
