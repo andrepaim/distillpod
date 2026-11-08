@@ -98,6 +98,36 @@ class OwnerVideocastDeviceTest {
                     receipt("queue", JSONObject().put("selectionPreserved", true).put("nextStartsInAudio", true).put("obsoleteCleanupIgnored", true))
                 } finally { restore() }
             }
+            "ui_background" -> {
+                check(!context.getSystemService(android.app.KeyguardManager::class.java).isKeyguardLocked) {
+                    "The owner must unlock the phone before the foreground UI check"
+                }
+                unmetered(); snapshot()
+                try {
+                    fixture(graph.youtube.feed(id, playlist).episodes.first())
+                    graph.playback.play(id, 5_000); await { it.isPlaying }
+                    graph.playback.pause(); graph.playback.speed(1.25f)
+                    await { !it.isPlaying && it.playbackState == Player.STATE_READY }
+                    val c = player()
+                    val position = withContext(Dispatchers.Main) { c.currentPosition }
+                    context.startActivity(android.content.Intent(context, MainActivity::class.java)
+                        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                        .putExtra("openPlayer", true))
+                    val device = androidx.test.uiautomator.UiDevice.getInstance(instrumentation)
+                    val chip = device.wait(androidx.test.uiautomator.Until.findObject(androidx.test.uiautomator.By.text("Video").enabled(true)), 15_000)
+                    assertNotNull("Video control must be visible in the actual player", chip)
+                    chip!!.click()
+                    await { C.TRACK_TYPE_VIDEO !in it.trackSelectionParameters.disabledTrackTypes && it.playbackState == Player.STATE_READY }
+                    assertTrue(device.pressHome())
+                    await { C.TRACK_TYPE_VIDEO in it.trackSelectionParameters.disabledTrackTypes &&
+                        it.currentMediaItem?.localConfiguration?.uri?.getQueryParameter("distillpod_video") == null && it.playbackState == Player.STATE_READY }
+                    withContext(Dispatchers.Main) {
+                        assertFalse(c.playWhenReady); assertEquals(position, c.currentPosition)
+                        assertEquals(1.25f, c.playbackParameters.speed, 0.001f)
+                    }
+                    receipt("ui_background", JSONObject().put("homeRestoresAudio", true).put("pausedPositionAndSpeedPreserved", true))
+                } finally { restore() }
+            }
             "offline" -> {
                 check(backup.isFile)
                 check(context.getSystemService(ConnectivityManager::class.java).activeNetwork == null) { "Host must disconnect networking for offline acceptance" }

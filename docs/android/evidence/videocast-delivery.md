@@ -9,6 +9,7 @@ Branch: `feat/videocast-reliability`, based on main `8f90899`. Date: 2026-11-08.
 - Both packaged ABIs contain ten ELF libraries in total with 16 KiB load-segment alignment. The two Python files named `.so` are ZIP archives and are retained without symbol stripping.
 - A real source distribution was assembled from committed project/Whisper sources and three checksum-verified upstream source archives. Source archives contain no untracked operator files. Public source manifests, notices and the app/core GPL licenses accompany the distribution.
 - Public live emulator acceptance decoded audio and rendered a video frame with the updated extractor. Synthetic playback, source swapping during preparation and queue tests passed. Full PR CI on `dc42912` passed native/Firebase checks, both voice build configurations and isolated Android/cloud/voice acceptance. Later test-only/evidence changes require their own final CI run.
+- A real Compose-host lifecycle regression reproduced video remaining enabled after the activity stopped, because the frame clock paused before the state-driven effect could restore audio. The lifecycle callback now requests audio directly in the app scope, keyed to the current episode. The regression passed after the fix, checking audio mode before activity resume and preserving paused position, speed and current item. It uses synthetic local audio and does not establish video decoding. The final revision's CI status is recorded in PR #16.
 
 ## Physical S22
 
@@ -25,7 +26,7 @@ The configured local debug candidate was installed in place using the retained c
 
 ## Locked-screen gate
 
-The release owner additionally requires a measured 60-minute locked, USB-powered, muted audio trial outside instrumentation, using the explicit playback-reliability protocol. The test stores/restores the owner queue, speed, position and player volume, and temporarily disables automatic transcription for that fixture. The final elapsed time, interruptions and cleanup result are recorded in PR #16. This gate does not establish unplugged battery drain, audible sound quality, real Bluetooth/head-unit behavior or native crash collection.
+The release owner additionally requires a measured 60-minute locked, USB-powered, muted audio trial outside instrumentation, using the explicit playback-reliability protocol. The test stores/restores the owner queue, speed, position and player volume, and temporarily disables automatic transcription for that fixture. The installed hour-trial revision is `6320edc`; the later Compose lifecycle fix does not change its playback service. The final elapsed time, interruptions, separate lifecycle acceptance and cleanup result are recorded in PR #16. This gate does not establish unplugged battery drain, audible sound quality, real Bluetooth/head-unit behavior or native crash collection.
 
 ## Cloud observations
 

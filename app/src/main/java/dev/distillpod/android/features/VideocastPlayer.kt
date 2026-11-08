@@ -47,8 +47,13 @@ import kotlinx.coroutines.CancellationException
         finally { loading = false }
     }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
-    DisposableEffect(lifecycle) {
-        val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_STOP) video = false }
+    DisposableEffect(lifecycle, playback, episodeId) {
+        val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_STOP) {
+            video = false
+            // Recomposition pauses with the host. Restore audio in the app scope now,
+            // rather than waiting for the video-state effect to run on the next frame.
+            playback.leaveVideo(episodeId)
+        } }
         lifecycle.addObserver(observer)
         onDispose { lifecycle.removeObserver(observer) }
     }
