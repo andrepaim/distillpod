@@ -15,6 +15,21 @@ import java.io.File
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk=[34])
 class DiagnosticsTest {
+    @Test fun `owner acceptance emits marked logs without replacing real operation history`() {
+        val d=Diagnostics(context,"https://abc123@o1.ingest.sentry.io/1")
+        val operation=java.util.UUID.randomUUID().toString()
+        dev.distillpod.android.sync.SubscriptionCloudAccess.instrumentation=true
+        try {
+            d.consent(true)
+            d.event("transcription.started",operation)
+            d.event("youtube.extraction_completed",operation,reason="succeeded",elapsedMs=123)
+            d.awaitIdle()
+            val payload=d.queue.files().joinToString {it.readText()}
+            assertTrue(payload.contains("youtube.extraction_completed"))
+            assertTrue(payload.contains(operation));assertTrue(d.journal.latest().isEmpty())
+            assertTrue(Regex("\"test_traffic\"\\s*:\\s*\\{[^}]*\"value\"\\s*:\\s*true").containsMatchIn(payload))
+        } finally {d.consent(false);dev.distillpod.android.sync.SubscriptionCloudAccess.instrumentation=false}
+    }
     @get:Rule val temporary=TemporaryFolder()
     private lateinit var context:Context
     @Before fun setup() {

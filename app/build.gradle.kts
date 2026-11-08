@@ -1,4 +1,8 @@
 import groovy.json.JsonSlurper
+import java.io.File
+import java.io.IOException
+import java.net.URI
+import java.security.MessageDigest
 
 plugins {
     id("com.android.application")
@@ -24,6 +28,50 @@ fun clientString(key: String): String = when(key) {
     else -> ""
 }
 ksp { arg("room.schemaLocation", "$projectDir/schemas") }
+// Immutable build input, verified before packaging. Never update executable code on the phone.
+val youtubeExtractorSpec = JsonSlurper().parse(rootProject.file("scripts/youtube_extractor.json")) as Map<*, *>
+val youtubeExtractorVersion = youtubeExtractorSpec["version"] as String
+val youtubeExtractorSha256 = youtubeExtractorSpec["sha256"] as String
+val youtubeResources = layout.buildDirectory.dir("generated/youtube/res")
+val prepareYoutubeExtractor by tasks.registering {
+    inputs.property("version", youtubeExtractorVersion)
+    inputs.property("sha256", youtubeExtractorSha256)
+    val output = youtubeResources.map { it.file("raw/ytdlp.bin") }
+    outputs.file(output)
+    doLast {
+        val destination = output.get().asFile
+        destination.parentFile.mkdirs()
+        fun checksum(file: File) = MessageDigest.getInstance("SHA-256").digest(file.readBytes()).joinToString("") { "%02x".format(it) }
+        if (destination.isFile && checksum(destination) == youtubeExtractorSha256) return@doLast
+        val temporary = File(destination.parentFile, "ytdlp.download")
+        try {
+            val urls = listOf("https://api.github.com/${youtubeExtractorSpec["asset"]}",
+                "https://github.com/yt-dlp/yt-dlp/releases/download/$youtubeExtractorVersion/yt-dlp")
+            var downloaded = false
+            var failure: IOException? = null
+            for (attempt in 0..2) {
+                for (url in urls) {
+                    try {
+                        val connection = URI(url).toURL().openConnection()
+                        connection.setRequestProperty("Accept", "application/octet-stream")
+                        connection.setRequestProperty("User-Agent", "DistillPodBuild/1.0")
+                        connection.connectTimeout = 15_000; connection.readTimeout = 30_000
+                        connection.getInputStream().use { input -> temporary.outputStream().use { input.copyTo(it) } }
+                        downloaded = true
+                        break
+                    } catch (error: IOException) { failure = error; temporary.delete() }
+                }
+                if (downloaded) break
+                if (attempt < 2) Thread.sleep((attempt + 1) * 1_000L)
+            }
+            check(downloaded) { "Cannot fetch the pinned YouTube extractor: ${failure?.javaClass?.simpleName}" }
+            val digest = MessageDigest.getInstance("SHA-256").digest(temporary.readBytes()).joinToString("") { "%02x".format(it) }
+            check(digest == youtubeExtractorSha256) { "YouTube extractor checksum mismatch" }
+            check(temporary.renameTo(destination)) { "Cannot finalize the pinned extractor" }
+        } finally { temporary.delete() }
+    }
+}
+tasks.named("preBuild").configure { dependsOn(prepareYoutubeExtractor) }
 android {
     namespace = "dev.distillpod.android"
     compileSdk = 35
@@ -51,19 +99,28 @@ android {
         testInstrumentationRunner = "dev.distillpod.android.IsolatedTestRunner"
         versionCode = providers.gradleProperty("distillpodVersionCode").get().toInt()
         versionName = providers.gradleProperty("distillpodVersionName").get()
+        resValue("string", "youtube_extractor_version", youtubeExtractorVersion)
         ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
     }
     buildTypes.getByName("release") { isDebuggable = false }
+    packaging { jniLibs {
+        useLegacyPackaging = true
+        // The runtime stores its Python archive under a .so name; it is not an ELF library.
+        keepDebugSymbols += "**/libpython.zip.so"
+    } }
     sourceSets.getByName("androidTest").assets.srcDir(providers.gradleProperty("distillpodFixtureDir").getOrElse("src/androidTest/assets"))
     sourceSets.getByName("androidTest").assets.srcDir("schemas")
     sourceSets.getByName("androidTest").assets.srcDir("src/test/resources")
     sourceSets.getByName("test").resources.srcDir("schemas")
+    sourceSets.getByName("main").res.srcDir(youtubeResources)
     buildFeatures { compose = true }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }
     testOptions { unitTests.isIncludeAndroidResources = true }
 }
 dependencies {
+    implementation("io.github.junkfood02.youtubedl-android:library:0.18.1")
+    implementation("androidx.media3:media3-ui:1.5.1")
     implementation(project(":core"))
     implementation("io.sentry:sentry-android-core:8.40.0")
     implementation("androidx.car.app:app:1.7.0")

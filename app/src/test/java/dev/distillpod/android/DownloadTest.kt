@@ -67,4 +67,35 @@ class DownloadTest {
             assertEquals("replacement", part.readText())
         } } finally { dir.deleteRecursively() }
     }
+
+    @Test fun `bounded ranges download the entire resource including a shorter final chunk`() = runBlocking {
+        val dir = files()
+        try { MockWebServer().use { server ->
+            for ((start, body) in listOf(0 to "abcd", 4 to "efgh", 8 to "ij"))
+                server.enqueue(MockResponse().setResponseCode(206).setHeader("Content-Range", "bytes $start-${start + body.length - 1}/10").setBody(body))
+            val target = File(dir, "final")
+            val result = ResumableDownloader(OkHttpClient()).download(server.url("/audio").toString(), File(dir, "partial"), target, rangeChunkBytes = 4)
+            assertEquals("abcdefghij", target.readText())
+            assertEquals(10L, result.bytes)
+            assertEquals(listOf("bytes=0-3", "bytes=4-7", "bytes=8-9"), (1..3).map { server.takeRequest().getHeader("Range") })
+        } } finally { dir.deleteRecursively() }
+    }
+
+    @Test fun `bounded download restarts on a changed representation and never finalizes truncated chunks`() = runBlocking {
+        val dir = files()
+        try { MockWebServer().use { server ->
+            server.enqueue(MockResponse().setResponseCode(206).setHeader("Content-Range", "bytes 0-3/6").setHeader("ETag", "old").setBody("old!"))
+            server.enqueue(MockResponse().setResponseCode(206).setHeader("Content-Range", "bytes 4-5/6").setHeader("ETag", "new").setBody("xx"))
+            server.enqueue(MockResponse().setResponseCode(206).setHeader("Content-Range", "bytes 0-3/6").setHeader("ETag", "new").setBody("new!"))
+            server.enqueue(MockResponse().setResponseCode(206).setHeader("Content-Range", "bytes 4-5/6").setHeader("ETag", "new").setBody("ok"))
+            val target = File(dir, "final")
+            ResumableDownloader(OkHttpClient()).download(server.url("/audio").toString(), File(dir, "partial"), target, rangeChunkBytes = 4)
+            assertEquals("new!ok", target.readText())
+            server.enqueue(MockResponse().setResponseCode(206).setHeader("Content-Range", "bytes 0-3/6").setBody("ab"))
+            server.enqueue(MockResponse().setResponseCode(206).setHeader("Content-Range", "bytes 0-3/6").setBody("ab"))
+            val truncated = File(dir, "truncated")
+            assertTrue(runCatching { ResumableDownloader(OkHttpClient()).download(server.url("/audio").toString(), File(dir, "new.partial"), truncated, rangeChunkBytes = 4) }.isFailure)
+            assertFalse(truncated.exists())
+        } } finally { dir.deleteRecursively() }
+    }
 }

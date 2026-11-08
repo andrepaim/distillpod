@@ -20,6 +20,7 @@ import dev.distillpod.android.playback.mediaItem
 import java.io.File
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.first
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.*
@@ -70,12 +71,16 @@ class PlaybackReliabilityDeviceTest {
         try {
             // Allow the service's initial persisted queue restoration to finish.
             delay(1500)
+            val automatic = graph.settings.flow.first().transcribeOnPlayback
             val original = withContext(Dispatchers.Main) {
                 JSONObject().put("queue", JSONArray((0 until c.mediaItemCount).map { c.getMediaItemAt(it).mediaId }))
                     .put("current", c.currentMediaItem?.mediaId ?: "").put("position", c.currentPosition.coerceAtLeast(0))
                     .put("speed", c.playbackParameters.speed.toDouble()).put("volume", c.volume.toDouble())
+                    .put("automatic", automatic)
             }
             backup.writeText(original.toString())
+            // This is an audio continuity trial; do not start unrelated full-episode inference.
+            graph.settings.flag("transcribeOnPlayback", false)
             File(directory, "playback-health.jsonl").delete()
             File(directory, "playback-health.enabled").writeText(id)
             withContext(Dispatchers.Main) {
@@ -115,6 +120,7 @@ class PlaybackReliabilityDeviceTest {
             delay(1500)
             assertEquals(episodes.map { it.id }, dao.queue().map { it.episodeId })
             assertEquals(original.getDouble("speed").toFloat(), dao.playerSession()!!.speed, 0.001f)
+            if (original.has("automatic")) graph.settings.flag("transcribeOnPlayback", original.getBoolean("automatic"))
             backup.delete()
         } finally { withContext(Dispatchers.Main) { c.release() } }
     }
