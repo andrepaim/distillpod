@@ -19,7 +19,7 @@ import org.robolectric.annotation.Config
 class DistillationSummaryTest {
     private val ready="""{"outcome":"ready","passageStart":0,"passageEnd":0,"takeaway":"Synthetic thought remains supported by this passage.","quoteStart":0,"quoteEnd":0}"""
     private val accepted="""{"passageComplete":true,"takeawaySupported":true,"relevant":true,"quoteFaithful":true,"needsContext":false,"issues":[]}"""
-    private fun fixture(answer:suspend(Int)->String, test:suspend(CaptureRepository,AppDatabase,Diagnostics,String)->Unit)=runBlocking {
+    private fun fixture(answer:suspend(Int)->String, model:String="PRIVATE-MODEL", test:suspend(CaptureRepository,AppDatabase,Diagnostics,String)->Unit)=runBlocking {
         val context=ApplicationProvider.getApplicationContext<Context>()
         context.getSharedPreferences("diagnostics",0).edit().clear().commit()
         java.io.File(context.noBackupFilesDir,"diagnostics").deleteRecursively()
@@ -38,7 +38,7 @@ class DistillationSummaryTest {
             dao.putSegments(listOf(SegmentEntity("e",revision,40000,60000,"Synthetic thought remains supported by this passage.")))
             var calls=0
             val ai=object:AiGateway {
-                override suspend fun complete(instructions:String,input:String,onDelta:(String)->Unit)=AiText(answer(++calls),"PRIVATE-MODEL")
+                override suspend fun complete(instructions:String,input:String,onDelta:(String)->Unit)=AiText(answer(++calls),model)
             }
             val repo=CaptureRepository(db,ai,{true},{},{},diagnostics=d)
             val id=repo.capture("e",60000,true)
@@ -72,7 +72,7 @@ class DistillationSummaryTest {
     }
     @Test fun `review resume has new execution identity and counts only new attempted requests`()=fixture({
         when(it) {1->ready;2->throw QuotaExceeded();else->accepted}
-    }) {repo,_,d,id->
+    },model="gpt-5") {repo,_,d,id->
         repo.run(id)
         val first=fields(summaries(d).single())
         assertEquals(1,(first["generation_attempted_calls"] as Number).toInt())
@@ -88,6 +88,7 @@ class DistillationSummaryTest {
         assertEquals(-1L,(second["generation_elapsed_ms"] as Number).toLong())
         assertEquals(1,(second["review_attempted_calls"] as Number).toInt())
         assertEquals("cached",second["generation_outcome"])
+        assertEquals("gpt-5",second["generator_model"]);assertEquals("gpt-5",second["reviewer_model"])
         assertEquals("published",second["stage_outcome"])
         assertEquals(true,second["candidate_reused"])
     }
@@ -191,6 +192,14 @@ class DistillationSummaryTest {
             repo.run(id)
             assertEquals("succeeded",db.library().distillation(id)!!.state)
             assertTrue(summaries(d).isEmpty())
+        }
+    }
+    @Test fun `failed ownership storage check is not mislabeled as a stale provider result`() {
+        var close:()->Unit={}
+        fixture({close();ready}) {repo,db,d,id->
+            close={db.close()}
+            runCatching {repo.run(id)}
+            assertEquals("internal_failure",fields(summaries(d).single())["stage_outcome"])
         }
     }
     @Test fun `consent off and revocation prevent stage envelopes`()=fixture({ready}) {repo,_,d,id->
