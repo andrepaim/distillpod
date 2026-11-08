@@ -8,6 +8,7 @@ import androidx.room.Room
 import dev.distillpod.android.ai.*
 import dev.distillpod.android.data.*
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.first
 import okhttp3.mockwebserver.*
 import okio.Buffer
 import org.junit.Assert.*
@@ -21,6 +22,8 @@ class ProductFlowDeviceTest {
 
     @Test fun subscriptionDownloadTranscriptCaptureAndReplaySurviveRecreation() = runBlocking {
         val graph = compose.activity.applicationContext.appGraph
+        graph.ready.await()
+        val originalWifiOnly = graph.settings.flow.first().wifiOnly
         val dao = graph.db.library()
         val audio = InstrumentationRegistry.getInstrumentation().context.assets.open("jfk.wav").use { it.readBytes() }
         val server = MockWebServer()
@@ -42,6 +45,10 @@ class ProductFlowDeviceTest {
         var podcast: String? = null
         var episode: String? = null
         try {
+            // This loopback flow tests the product pipeline, independent of whether
+            // the emulator's real default connection is metered. Policy has its own suite.
+            graph.settings.flag("wifi", false)
+            graph.jobs.configureNetworkPolicy()
             podcast = graph.podcasts.subscribe(server.url("/feed").toString())
             episode = dao.episodesForPodcast(podcast).single().id
             compose.waitUntil(10000) { compose.onAllNodesWithText("Device validation episode").fetchSemanticsNodes().isNotEmpty() }
@@ -81,13 +88,18 @@ class ProductFlowDeviceTest {
             assertEquals(dao.episode(episode)!!.localFile, graph.playback.captureSource().third)
             assertEquals(10000L, dao.distillation(capture)!!.endMs)
         } finally {
-            episode?.let {
-                graph.playback.pause(); graph.playback.remove(it)
-                await("playback releases the fixture download") { !graph.activeFiles.busy(dao.episode(it)?.localFile ?: "") }
-                graph.media.deleteDownload(it)
+            try {
+                episode?.let {
+                    graph.playback.pause(); graph.playback.remove(it)
+                    await("playback releases the fixture download") { !graph.activeFiles.busy(dao.episode(it)?.localFile ?: "") }
+                    graph.media.deleteDownload(it)
+                }
+                podcast?.let { dao.deletePodcast(it) }
+            } finally {
+                graph.settings.flag("wifi", originalWifiOnly)
+                graph.jobs.configureNetworkPolicy()
+                server.shutdown()
             }
-            podcast?.let { dao.deletePodcast(it) }
-            server.shutdown()
         }
     }
 

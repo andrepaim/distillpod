@@ -8,6 +8,7 @@ import dev.distillpod.android.NativeWhisper
 import dev.distillpod.android.appGraph
 import dev.distillpod.android.work.workForeground
 import dev.distillpod.android.work.TranscriptionService
+import dev.distillpod.android.work.withNetworkType
 import dev.distillpod.core.*
 import java.io.File
 import java.util.UUID
@@ -39,6 +40,7 @@ class TranscriptionRepository(private val graph: AppGraph,
     private val manager get() = WorkManager.getInstance(graph.context)
     private val processing = Mutex()
     private val controls = Mutex()
+    private val scheduling = Mutex()
     private val running = ConcurrentHashMap<String, Job>()
     private val live = MutableStateFlow<Map<String, TranscriptProgress>>(emptyMap())
     val progress = live.asStateFlow()
@@ -101,7 +103,7 @@ class TranscriptionRepository(private val graph: AppGraph,
         val prefs = graph.settings.flow.first()
         for (row in pending()) {
             val ep = dao.episode(row.episodeId) ?: continue
-            val network = ep.localFile?.let { File(it).isFile } != true || row.source == "publisher"
+            val network = transcriptionNeedsNetwork(ep, row)
             if (transcriptionAllowed(graph.context, prefs, network)) return row
             enqueue(row, nextStart(row) ?: 0)
         }
@@ -115,17 +117,37 @@ class TranscriptionRepository(private val graph: AppGraph,
         }
     }
 
-    private suspend fun enqueue(row: TranscriptEntity, start: Long) {
+    internal suspend fun configureNetworkPolicy() = scheduling.withLock { withContext(Dispatchers.IO) {
         val prefs = graph.settings.flow.first()
-        val ep = dao.episode(row.episodeId) ?: return
-        val needNetwork = ep.localFile?.let { File(it).isFile } != true || row.source == "publisher"
+        for (row in pending()) {
+            val ep = dao.episode(row.episodeId) ?: continue
+            val network = if (!transcriptionNeedsNetwork(ep, row)) NetworkType.NOT_REQUIRED
+                else if (prefs.wifiOnly) NetworkType.UNMETERED else NetworkType.CONNECTED
+            val start = nextStart(row) ?: continue
+            for (info in manager.getWorkInfosForUniqueWork("transcript:${row.episodeId}:${row.revision}:$start").get()) {
+                if (info.state.isFinished || info.constraints.requiredNetworkType == network) continue
+                val request = OneTimeWorkRequestBuilder<TranscriptWorker>().setId(info.id)
+                    .setInputData(workDataOf("episode" to row.episodeId, "revision" to row.revision))
+                    .setConstraints(info.constraints.withNetworkType(network))
+                    .setInitialDelay(info.initialDelayMillis, java.util.concurrent.TimeUnit.MILLISECONDS)
+                    .apply { info.tags.forEach { addTag(it) } }.build()
+                manager.updateWork(request).get()
+            }
+        }
+    } }
+
+    private suspend fun enqueue(row: TranscriptEntity, start: Long) = scheduling.withLock { withContext(Dispatchers.IO) {
+        val prefs = graph.settings.flow.first()
+        val ep = dao.episode(row.episodeId) ?: return@withContext
+        val needNetwork = transcriptionNeedsNetwork(ep, row)
         graph.diagnostics.event("transcription.queued",row.revision,reason=transcriptionWaitReason(graph.context,prefs,needNetwork) ?: "scheduled")
         val constraints = Constraints.Builder().setRequiresBatteryNotLow(true).setRequiresCharging(prefs.chargingOnly)
             .apply { if (needNetwork) setRequiredNetworkType(if (prefs.wifiOnly) NetworkType.UNMETERED else NetworkType.CONNECTED) }.build()
         manager.enqueueUniqueWork("transcript:${row.episodeId}:${row.revision}:$start", ExistingWorkPolicy.KEEP,
             OneTimeWorkRequestBuilder<TranscriptWorker>().setInputData(workDataOf("episode" to row.episodeId, "revision" to row.revision))
-                .setConstraints(constraints).addTag("transcript:${row.episodeId}").build())
-    }
+                .setConstraints(constraints).addTag("transcript:${row.episodeId}").build()).result.get()
+        Unit
+    } }
     private suspend fun nextStart(row: TranscriptEntity): Long? {
         if (row.durationMs <= 0) return 0
         val covered = dao.coverage(row.episodeId, row.revision).associateBy { it.startMs }
@@ -297,7 +319,7 @@ class TranscriptionRepository(private val graph: AppGraph,
                 } else if(current!=null)graph.diagnostics.event("transcription.cancelled",revision,reason="superseded")
                 if (current?.revision == revision && current.state == "queued") {
                     val ep=dao.episode(id)
-                    val needsNetwork=ep?.localFile?.let {File(it).isFile}!=true || current.source=="publisher"
+                    val needsNetwork=transcriptionNeedsNetwork(ep,current)
                     graph.diagnostics.event("transcription.queued",revision,reason=transcriptionWaitReason(graph.context,graph.settings.flow.first(),needsNetwork) ?: "scheduled")
                     report(TranscriptStage.QUEUED,current.processedMs,current.durationMs)
                 }

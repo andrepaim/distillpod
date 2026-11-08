@@ -116,7 +116,7 @@ class AppGraph(val context: Context) {
                     if (!pending) dev.distillpod.android.work.SocialPostJobs.enqueue(context,row.id,post.attempt)
                 }
             }
-            jobs.configureRefresh(); transcription.recover(); ready.complete(Unit)
+            jobs.configureNetworkPolicy(); transcription.recover(); ready.complete(Unit)
             automation.observe()
             captures.resumeSaved()
         }
