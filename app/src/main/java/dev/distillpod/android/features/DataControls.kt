@@ -1,16 +1,12 @@
 package dev.distillpod.android.features
 
-import android.Manifest
-import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.core.app.NotificationManagerCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -31,16 +27,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
     }
 }
 
+/** Canonical notification destination; platform recovery behavior lives in NotificationAccess. */
 @Composable fun NotificationControls() {
-    val context = LocalContext.current
-    var notifications by remember { mutableStateOf(NotificationManagerCompat.from(context).areNotificationsEnabled()) }
-    val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { notifications = it }
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text("Background progress", style = MaterialTheme.typography.titleMedium)
-        Text(if (notifications) "Notifications are enabled for playback and processing." else "Enable notifications to see playback controls and download or transcript progress outside the app.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        if (!notifications) OutlinedButton(onClick = {
-            if (Build.VERSION.SDK_INT >= 33) permission.launch(Manifest.permission.POST_NOTIFICATIONS)
-            else context.startActivity(android.content.Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName))
-        }) { Text("Enable notifications") }
-    }
+    NotificationAccess()
 }

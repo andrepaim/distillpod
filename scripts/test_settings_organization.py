@@ -32,7 +32,13 @@ class SettingsOrganizationTest(unittest.TestCase):
         data = (FEATURES / "DataControls.kt").read_text()
         library, notifications = data.split('@Composable fun NotificationControls()', 1)
         self.assertNotIn('RequestPermission', library)
-        self.assertIn('RequestPermission', notifications)
+        self.assertIn('NotificationAccess()', notifications)
+        self.assertNotIn('NotificationAccess()', library)
+        self.assertNotIn('RequestPermission', notifications)
+        self.assertIn('NotificationControls()', self.section("notifications"))
+        access = (FEATURES / "NotificationAccess.kt").read_text()
+        self.assertIn('RequestPermission', access)
+        self.assertIn('Lifecycle.Event.ON_RESUME', access)
 
 if __name__ == "__main__":
     unittest.main()
