@@ -265,6 +265,20 @@ class Diagnostics(private val context: Context, private val dsn:String = context
         val observedTick=android.os.SystemClock.elapsedRealtime()
         executor.execute {if(enabled && generation==epoch) {eventNow(name,operation,reason,source,elapsedMs,related,attempt,observedTick,snapshot,observedAt);flushSummaries()}}
     }
+    /** One compact terminal observation. No arbitrary attributes or provider strings cross this boundary. */
+    internal fun attemptSummary(summary:DistillationOutcome, correlation:DiagnosticCorrelation?, observedAt:Long=System.currentTimeMillis()) {
+        if(!enabled || !configured || dev.distillpod.android.sync.SubscriptionCloudAccess.instrumentation)return
+        val execution=correlation?.executionId ?: return
+        synchronized(lock) {
+            if(!enabled)return
+            runCatching {
+                log("distillation.attempt_summary",summary.fields()+correlation.fields()+mapOf(
+                    "summary_id" to execution,"operation_id" to (correlation.momentId ?: execution),
+                    "observed_at_ms" to observedAt,"stream" to "diagnostics",
+                    "test_traffic" to dev.distillpod.android.sync.SubscriptionCloudAccess.instrumentation))
+            }
+        }
+    }
     internal fun awaitIdle() {executor.submit {}.get(5,TimeUnit.SECONDS)}
     private fun eventNow(name:String, operation:String?, reason:String, source:String, elapsedMs:Long?,related:String?,attempt:String?,observedTick:Long,correlation:DiagnosticCorrelation?,observedAt:Long) {
         if(!enabled || !configured)return
@@ -324,7 +338,7 @@ class Diagnostics(private val context: Context, private val dsn:String = context
     }
     internal fun uploaded() { prefs.edit().putString("last_upload",java.time.Instant.now().toString()).apply();status.value="Last upload: ${java.text.DateFormat.getDateTimeInstance().format(java.util.Date())}" }
     companion object {
-        private val EVENT_NAMES=setOf("youtube.extraction_started","youtube.extraction_completed","youtube.extraction_failed","youtube.extraction_retry","youtube.stream_refreshed","videocast.video_requested","videocast.audio_restored","videocast.first_frame","videocast.failed","videocast.download_validated","transcription.quality","diagnostics.health","operation.summary","usage.feature","transcription.partial","transcription.paused","transcription.cancelled","distillation.cancelled","voice.recording","voice.text","voice.audio","voice.resumed","voice.resume_failed","playback.buffering","playback.ready","playback.focus","playback.route","app.started","diagnostics.test","diagnostics.failed","headphone.received","headphone.rejected","headphone.previous","headphone.next",
+        private val EVENT_NAMES=setOf("distillation.attempt_summary","youtube.extraction_started","youtube.extraction_completed","youtube.extraction_failed","youtube.extraction_retry","youtube.stream_refreshed","videocast.video_requested","videocast.audio_restored","videocast.first_frame","videocast.failed","videocast.download_validated","transcription.quality","diagnostics.health","operation.summary","usage.feature","transcription.partial","transcription.paused","transcription.cancelled","distillation.cancelled","voice.recording","voice.text","voice.audio","voice.resumed","voice.resume_failed","playback.buffering","playback.ready","playback.focus","playback.route","app.started","diagnostics.test","diagnostics.failed","headphone.received","headphone.rejected","headphone.previous","headphone.next",
             "capture.started","capture.completed","capture.requested","capture.accepted","capture.saved","capture.waiting","capture.transcript_link","capture.prepared","capture.failed",
             "transcription.dependency","transcription.started","transcription.stage","transcription.queued","transcription.completed","transcription.failed",
             "distillation.discarded","distillation.queued","distillation.started","distillation.finished","distillation.failed","playback.service_started","playback.service_stopped","playback.state","playback.failed",
