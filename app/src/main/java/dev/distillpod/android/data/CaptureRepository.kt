@@ -81,27 +81,32 @@ class CaptureRepository(private val db: AppDatabase, private val ai: AiGateway, 
     private suspend fun hydrate(saved: DistillationEntity) {
         val started=System.nanoTime()
         val evidence=dev.distillpod.android.diagnostics.ContextPreparationEvidence()
-        var identity:DiagnosticCorrelation?=null
+        val collectionEpoch=diagnostics?.correlationEpoch ?: UUID.randomUUID().toString()
+        var identity:DiagnosticCorrelation?=DiagnosticCorrelation(collectionEpoch=collectionEpoch)
+        var invalidBoundsFailure=false
         try {
             val ep = dao.episode(saved.episodeId) ?: run {
                 evidence.outcome="episode_missing";evidence.reason="episode_missing";return
             }
             val attempt = dao.momentAttempt(saved.attempt) ?: MomentAttemptEntity(UUID.randomUUID().toString(),saved.id,"{\"expanded\":false}")
-            identity=correlation(attempt)
+            identity=correlation(attempt).copy(collectionEpoch=collectionEpoch)
             val expanded = JSONObject(attempt.contextJson).optBoolean("expanded")
             evidence.expanded=expanded
             val availableTranscript=dao.transcript(ep.id)
             evidence.source=availableTranscript?.source ?: "missing"
             val transcript = availableTranscript?.takeUnless { it.source == "online" }
-            identity=correlation(attempt,transcript?.revision)
+            identity=correlation(attempt,transcript?.revision).copy(collectionEpoch=collectionEpoch)
             // Publisher transcripts can be complete even when the feed has no episode duration.
             // Only a complete, matching transcript can supply the missing end boundary.
             val duration = ep.durationMs.takeIf { it > 0 }
                 ?: transcript?.takeIf { it.state == "ready" && it.fingerprint == ep.mediaFingerprint && it.durationMs > 0 }?.durationMs
                 ?: 0L
             evidence.durationKnown=duration>0
-            val range = MomentContexts.range(saved.endMs, duration, expanded)
-            val coverage = transcript?.let { dao.coverage(ep.id,it.revision).map { c -> TimeRange(c.startMs,c.endMs) } }.orEmpty()
+            val range = try {MomentContexts.range(saved.endMs, duration, expanded)}
+                catch(error:IllegalArgumentException) {invalidBoundsFailure=true;throw error}
+            val storedCoverage=transcript?.let {dao.coverage(ep.id,it.revision)}.orEmpty()
+            val coverage = try {storedCoverage.map {c -> TimeRange(c.startMs,c.endMs)}}
+                catch(error:IllegalArgumentException) {invalidBoundsFailure=true;throw error}
             val covered = transcript != null && transcript.fingerprint == ep.mediaFingerprint && normalizeRanges(coverage,Long.MAX_VALUE)
                 .any { it.startMs <= range.startMs && it.endMs >= range.endMs }
             evidence.coverageComplete=covered
@@ -165,7 +170,7 @@ class CaptureRepository(private val db: AppDatabase, private val ai: AiGateway, 
             if(!changed) {evidence.outcome="superseded";evidence.reason="superseded"}
             if(changed) {
                 val prepared=dao.momentAttempt(attempt.id) ?: attempt
-                identity=correlation(prepared)
+                identity=correlation(prepared).copy(collectionEpoch=collectionEpoch)
                 diagnostics?.event("capture.transcript_link",saved.id,reason="ready",related=transcript.revision,correlation=correlation(prepared))
                 diagnostics?.event("capture.prepared",saved.id,reason=state,correlation=correlation(prepared));onPortableChanged()
             }
@@ -174,7 +179,7 @@ class CaptureRepository(private val db: AppDatabase, private val ai: AiGateway, 
             evidence.outcome="cancelled";evidence.reason="cancelled";throw cancelled
         } catch(error:Exception) {
             evidence.outcome="failed"
-            evidence.reason=if(error is IllegalArgumentException)"invalid_bounds" else "internal"
+            evidence.reason=if(invalidBoundsFailure)"invalid_bounds" else "internal"
             throw error
         } finally {
             diagnostics?.contextSummary(saved.id,evidence,(System.nanoTime()-started)/1_000_000,identity)

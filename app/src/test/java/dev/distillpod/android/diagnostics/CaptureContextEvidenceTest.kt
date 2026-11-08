@@ -39,6 +39,8 @@ class CaptureContextEvidenceTest {
             dao.putTranscript(TranscriptEntity("ep",revision,"private-content-hash","tiny","en",
                 state="ready",durationMs=if(kind=="unknown")0 else 300000,processedMs=300000))
             if(kind !in setOf("missing","cancelled","exception"))dao.putCoverage(CoverageEntity("ep",revision,0,if(kind=="partial")100000 else 300000))
+            if(kind=="online")dao.putTranscript(dao.transcript("ep")!!.copy(source="online"))
+            if(kind=="transcript_source")dao.putTranscript(dao.transcript("ep")!!.copy(fingerprint="changed-private-hash"))
             val segments=when(kind) {
                 "empty" -> listOf(SegmentEntity("ep",revision,140000,200000,"  "))
                 "crossing" -> listOf(SegmentEntity("ep",revision,70000,150000,"left private"),
@@ -54,23 +56,33 @@ class CaptureContextEvidenceTest {
                 }
             }
             val repo=CaptureRepository(db,ai,{
+                if(kind=="superseded")runBlocking {dao.putDistillation(dao.distillations().single().copy(state="failed"))}
+                if(kind=="epoch") {diagnostics.consent(false);diagnostics.consent(true)}
                 if(kind=="revision")runBlocking {dao.putTranscript(dao.transcript("ep")!!.copy(revision=UUID.randomUUID().toString()))}
                 true
             },{
                 if(kind=="cancelled")throw kotlinx.coroutines.CancellationException(secret)
                 if(kind=="exception")throw IllegalStateException(secret)
-            }, {},diagnostics=diagnostics)
+            }, {},onPortableChanged={
+                if(kind=="callback" && runBlocking {dao.distillations().single().state!="waiting_transcript"})
+                    throw IllegalArgumentException(secret)
+            },diagnostics=diagnostics)
             val id=repo.save("ep",200000,kind!="source")
             if(kind=="invalid")dao.putDistillation(dao.distillation(id)!!.copy(startMs=-1))
             if(kind=="invalid_range")dao.putDistillation(dao.distillation(id)!!.copy(endMs=-1))
             diagnostics.consent(true);diagnostics.awaitIdle()
             if(kind=="budget")context.getSharedPreferences("diagnostics",0).edit()
                 .putInt("budget_routine",800).putInt("sent",800).commit()
-            if(kind in setOf("invalid_range","cancelled","exception")) {
+            if(kind in setOf("invalid_range","cancelled","exception","callback")) {
                 try {repo.prepareSaved(id);fail("Expected preparation failure")}catch(_:Exception) {}
             } else repo.prepareSaved(id)
             diagnostics.awaitIdle()
             val payloads=diagnostics.queue.files().map {it.readText()}.filter {it.contains("capture.context_summary")}
+            if(kind=="epoch") {
+                assertTrue("Old preparation crossed consent epochs",payloads.isEmpty())
+                assertEquals("queued",dao.distillation(id)!!.state)
+                return@runBlocking emptyMap()
+            }
             assertEquals(1,payloads.size)
             val payload=payloads.single()
             // Synthetic, content-free producer envelopes also exercise the offline report consumer.
@@ -97,6 +109,27 @@ class CaptureContextEvidenceTest {
         assertEquals("cancelled",scenario("cancelled")["context_reason"])
         assertEquals("internal",scenario("exception")["context_reason"])
         assertEquals("ready",scenario("budget")["context_reason"])
+    }
+    @Test fun `superseded and post-freeze callback exits report persistence truthfully`() {
+        val stale=scenario("superseded")
+        assertEquals("superseded",stale["outcome"])
+        assertEquals(false,stale["frozen_context"])
+        val callback=scenario("callback")
+        assertEquals("failed",callback["outcome"])
+        assertEquals("internal",callback["context_reason"])
+        assertEquals(true,callback["frozen_context"])
+    }
+    @Test fun `online exclusion and mismatched coverage retain source policy`() {
+        val online=scenario("online")
+        assertEquals("online",online["transcript_source"])
+        assertEquals("transcript_required",online["outcome"])
+        val mismatch=scenario("transcript_source")
+        assertEquals("source_mismatch",mismatch["context_reason"])
+        assertEquals(false,mismatch["coverage_complete"])
+        assertEquals(0,(mismatch["missing_duration_ms"] as Number).toInt())
+    }
+    @Test fun `preparation snapshot never crosses consent epochs`() {
+        scenario("epoch")
     }
     @Test fun `missing and partial source coverage are truthful waits`() {
         val missing=scenario("missing")

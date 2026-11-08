@@ -1,6 +1,6 @@
 # Context readiness diagnostics (schema 1)
 
-Issue #36 adds one bounded `capture.context_summary` for each entered preparation, including waits, stale writes, cancellation and exceptions. It uses the #34 critical admission lane (shared 160/day reserve within the 1,000/day total), normal reporting consent and existing queue/redaction. Admission is not guaranteed delivery. No event is emitted when reporting is disabled/unconfigured.
+Issue #36 adds one bounded `capture.context_summary` for each entered preparation, including waits, stale writes, cancellation and exceptions. It uses the #34 critical admission lane (shared 160/day reserve within the 1,000/day total), normal reporting consent and existing queue/redaction. Admission is not guaranteed delivery. No event is emitted when reporting is disabled/unconfigured. The preparation snapshots its collection epoch at entry; disable/re-enable during preparation suppresses the old summary even if its frozen identity was refreshed later. Epoch guards are local-only and never serialized.
 
 ## Semantics
 
@@ -20,6 +20,6 @@ Preparation never adds an AI request, changes segment selection/sentence splitti
 
 ## Validation
 
-Core TDD first failed for the missing measurement API, then passed after implementation. Synthetic Robolectric producer tests cover absent/partial coverage, complete empty spans, crossing boundaries, oversized input, invalid capture/range bounds, changed source/revision, unknown duration and successful frozen context. They assert one summary per preparation and exact equality with persisted context counts, no AI calls and no serialized private fixture content. Content-free actual Sentry envelopes are written under ignored `app/build/test-context-fixtures` for the #38 consumer tests.
+Core TDD first failed for the missing measurement API, then passed after implementation. Synthetic Robolectric producer tests cover absent/partial coverage, complete empty spans, crossing boundaries, oversized input, invalid capture/range bounds, changed source/revision, unknown duration and successful frozen context. Additional cases cover online exclusion, mismatched transcript fingerprints, superseded writes, callback failures after freezing, cancellation, exception-message redaction, exhausted routine admission, disabled consent and a reproduced consent-toggle race. They assert one admitted summary per preparation and exact equality with persisted context counts, no AI calls and no serialized private fixture content. Content-free actual Sentry envelopes are written under ignored `app/build/test-context-fixtures` for the #38 consumer tests.
 
 Fresh emulator and USB-phone acceptance are required before merge. No owner device, content, live account, backend, security setting or release is touched by these tests.
