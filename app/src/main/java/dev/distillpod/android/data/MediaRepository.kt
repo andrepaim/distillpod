@@ -21,6 +21,13 @@ val whisperModels = listOf(
     ModelSpec("base", "Base · larger model", 147951465, "60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe"),
 )
 
+data class AudioStorageUsage(
+    val quotaBytes: Long,
+    val downloadedBytes: Long,
+    val partialCacheBytes: Long,
+    val modelBytes: Long,
+)
+
 class ActiveFiles {
     private val processing = ConcurrentHashMap<String, AtomicInteger>()
     @Volatile var playback: String? = null
@@ -46,7 +53,7 @@ class MediaRepository(context: Context, private val db: AppDatabase, private val
         val ep = dao.episode(id) ?: error("Episode is no longer available")
         ep.localFile?.let(::File)?.takeIf { it.isFile && it.length() == ep.downloadedBytes && ep.downloadState == "downloaded" }?.let { return@withLock it }
         val prefs = settings.flow.first()
-        val otherBytes = withContext(Dispatchers.IO) { directory.listFiles()?.filter { it.name != "$id.partial" }?.sumOf { it.length() } ?: 0 }
+        val otherBytes = withContext(Dispatchers.IO) { audioFiles().filter { it.name != "$id.partial" }.sumOf { it.length() } }
         val partial = File(directory, "$id.partial")
         val target = File(directory, "$id-${UUID.randomUUID()}.audio")
         try {
@@ -91,20 +98,72 @@ class MediaRepository(context: Context, private val db: AppDatabase, private val
         }
     }
 
-    suspend fun deleteDownload(id: String) = withContext(Dispatchers.IO) {
+    // Use the same file set for quota enforcement and Settings; Room byte counts can be stale.
+    private fun audioFiles(): List<File> = directory.listFiles()?.filter { it.isFile }.orEmpty()
+
+    suspend fun storageUsage(): AudioStorageUsage = withContext(Dispatchers.IO) {
+        val completed = dao.episodes().filter { it.downloadState == "downloaded" }.mapNotNull { it.localFile }.toSet()
+        val sizes = audioFiles().map { it.absolutePath to it.length() }
+        val quota = sizes.sumOf { it.second }
+        val downloaded = sizes.filter { it.first in completed }.sumOf { it.second }
+        AudioStorageUsage(quota, downloaded, quota - downloaded,
+            modelsDirectory.listFiles()?.filter { it.isFile }?.sumOf { it.length() } ?: 0)
+    }
+
+    private suspend fun requireRemovable(ep: EpisodeEntity, partial: File) {
+        require(partial.canonicalFile.parentFile == directory.canonicalFile) { "Invalid audio path" }
+        val paths = listOfNotNull(ep.localFile, partial.absolutePath)
+        require(paths.none(active::busy) &&
+            dao.queue().none { it.episodeId == ep.id } &&
+            dao.transcript(ep.id)?.state !in listOf("queued", "processing") &&
+            ep.downloadState !in listOf("queued", "downloading")) {
+            "This audio is playing, queued or being transcribed. Stop that work before deleting it."
+        }
+    }
+
+    suspend fun discardPausedPartial(id: String): Long = episodeTransfers.withLock {
         locks.getOrPut("episode:$id") { Mutex() }.withLock {
-            val ep = dao.episode(id) ?: return@withLock
-            val file = ep.localFile?.let(::File)
-            require(file == null || !active.busy(file.absolutePath)) { "This audio is playing or being transcribed. Stop that work before deleting it." }
-            if (file != null) check(!file.exists() || file.delete()) { "Could not delete the audio file" }
-            File(directory, "$id.partial").delete()
-            dao.removeDownload(id)
+            withContext(Dispatchers.IO) {
+                db.withTransaction {
+                    val ep = dao.episode(id) ?: error("Episode is no longer available")
+                    require(ep.downloadState == "paused" && ep.localFile == null) { "Only a paused partial download can be discarded." }
+                    val partial = File(directory, "$id.partial")
+                    requireRemovable(ep, partial)
+                    val bytes = partial.length()
+                    check(!partial.exists() || partial.delete()) { "Could not discard the partial download" }
+                    dao.downloadProgress(id, "none", 0, 0, null, null, null)
+                    bytes
+                }
+            }
+        }
+    }
+
+    suspend fun deleteDownload(id: String) = episodeTransfers.withLock {
+        withContext(Dispatchers.IO) {
+            locks.getOrPut("episode:$id") { Mutex() }.withLock {
+                db.withTransaction {
+                    val ep = dao.episode(id) ?: return@withTransaction
+                    val partial = File(directory, "$id.partial")
+                    requireRemovable(ep, partial)
+                    val file = ep.localFile?.let(::File)
+                    require(file == null || file.canonicalFile.parentFile == directory.canonicalFile) { "Invalid audio path" }
+                    if (file != null) check(!file.exists() || file.delete()) { "Could not delete the audio file" }
+                    check(!partial.exists() || partial.delete()) { "Could not delete the partial download" }
+                    dao.removeDownload(id)
+                    dao.downloadProgress(id, "none", 0, 0, null, null, null)
+                }
+            }
         }
     }
 
     suspend fun clearUnusedAudio(): Long = episodeTransfers.withLock { withContext(Dispatchers.IO) {
         val episodes = dao.episodes()
-        val known = episodes.mapNotNull { it.localFile }.toSet() + episodes.filter { it.downloadState in listOf("paused", "queued", "downloading") }
+        val protectedIds = dao.queue().map { it.episodeId }.toSet() +
+            listOfNotNull(dao.playerSession()?.episodeId) +
+            dao.transcripts().filter { it.state in listOf("queued", "processing") }.map { it.episodeId }
+        val known = episodes.mapNotNull { it.localFile }.toSet() + episodes.filter {
+            it.downloadState in listOf("paused", "queued", "downloading") || it.id in protectedIds
+        }
             .map { File(directory, "${it.id}.partial").absolutePath }
         var bytes = 0L
         directory.listFiles()?.filter { it.isFile && it.absolutePath !in known && !active.busy(it.absolutePath) }?.forEach { file ->
