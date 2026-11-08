@@ -198,13 +198,21 @@ interface LibraryDao {
     @Query("UPDATE suggestions SET dismissed=1 WHERE feedUrl=:url") suspend fun dismissSuggestion(url: String)
 }
 
-@Database(entities = [MomentAttemptEntity::class, MomentVersionEntity::class, OnlineTranscriptEntity::class, TranscriptLookupEntity::class, PostDraftEntity::class, PodcastEntity::class, EpisodeEntity::class, QueueEntryEntity::class, PlayerSessionEntity::class,
+@Database(entities = [ShowAutomationEntity::class, EpisodeAutomationEntity::class, EpisodeAdPreferenceEntity::class, MomentAttemptEntity::class, MomentVersionEntity::class, OnlineTranscriptEntity::class, TranscriptLookupEntity::class, PostDraftEntity::class, PodcastEntity::class, EpisodeEntity::class, QueueEntryEntity::class, PlayerSessionEntity::class,
     TranscriptEntity::class, SegmentEntity::class, CoverageEntity::class, DistillationEntity::class, ModelEntity::class,
-    AnalysisEntity::class, AnalysisPartEntity::class, MessageEntity::class, ResearchEntity::class, SuggestionEntity::class, SyncOutboxEntity::class, SyncBindingEntity::class, SyncRemoteEntity::class, SyncPublicFeedEntity::class, SyncViewEntity::class, SyncPreferenceEntity::class, SyncArtifactEntity::class], version = 9, exportSchema = true)
+    AnalysisEntity::class, AnalysisPartEntity::class, MessageEntity::class, ResearchEntity::class, SuggestionEntity::class, SyncOutboxEntity::class, SyncBindingEntity::class, SyncRemoteEntity::class, SyncPublicFeedEntity::class, SyncViewEntity::class, SyncPreferenceEntity::class, SyncArtifactEntity::class], version = 10, exportSchema = true)
 abstract class AppDatabase : RoomDatabase() {
+    abstract fun automation(): AutomationDao
     abstract fun library(): LibraryDao
     abstract fun sync(): SyncDao
     companion object {
+        val MIGRATION_9_10 = object : androidx.room.migration.Migration(9, 10) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS show_automation (podcastId TEXT NOT NULL PRIMARY KEY, enabledAt INTEGER NOT NULL, initialized INTEGER NOT NULL)")
+                db.execSQL("CREATE TABLE IF NOT EXISTS episode_automation (episodeId TEXT NOT NULL PRIMARY KEY, podcastId TEXT NOT NULL, stage TEXT NOT NULL)")
+                db.execSQL("CREATE TABLE IF NOT EXISTS episode_ad_preferences (episodeId TEXT NOT NULL PRIMARY KEY, revision TEXT NOT NULL, enabled INTEGER NOT NULL)")
+            }
+        }
         val MIGRATION_1_2 = object : androidx.room.migration.Migration(1, 2) {
             override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE analyses ADD COLUMN model TEXT")
@@ -270,6 +278,6 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_moment_versions_momentId ON moment_versions(momentId)")
             }
         }
-        fun open(context: Context): AppDatabase = Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "library.db").addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9).build()
+        fun open(context: Context): AppDatabase = Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "library.db").addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10).build()
     }
 }

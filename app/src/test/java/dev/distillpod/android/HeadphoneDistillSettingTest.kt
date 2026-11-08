@@ -27,13 +27,18 @@ class HeadphoneDistillSettingTest {
         }
         try {
             session {
+                assertEquals(6, it.flow.first().refreshHours)
                 assertFalse(it.flow.first().headphoneDistill)
                 assertFalse(it.flow.first().headphoneVoice)
+                it.refreshHours(12)
+                assertTrue(runCatching { it.refreshHours(0) }.isFailure)
+                assertTrue(runCatching { it.refreshHours(169) }.isFailure)
                 it.flag("headphoneVoice", true)
                 it.flag("headphoneDistill", true)
                 it.flag("distillSound", false)
             }
             session {
+                assertEquals(12, it.flow.first().refreshHours)
                 assertTrue(it.flow.first().headphoneDistill)
                 assertTrue(it.flow.first().headphoneVoice)
                 assertFalse(it.flow.first().distillSound)

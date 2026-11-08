@@ -36,7 +36,7 @@ class AppJobs(private val context: Context) {
     suspend fun configureRefresh() {
         val prefs = context.appGraph.settings.flow.first()
         if (prefs.refresh) manager.enqueueUniquePeriodicWork("refresh-periodic", ExistingPeriodicWorkPolicy.UPDATE,
-            PeriodicWorkRequestBuilder<LibraryWorker>(6, TimeUnit.HOURS).setInputData(workDataOf("kind" to "refresh"))
+            PeriodicWorkRequestBuilder<LibraryWorker>(prefs.refreshHours.toLong(), TimeUnit.HOURS).setInputData(workDataOf("kind" to "refresh"))
                 .setConstraints(Constraints.Builder().setRequiredNetworkType(if (prefs.wifiOnly) NetworkType.UNMETERED else NetworkType.CONNECTED).build()).build())
         else manager.cancelUniqueWork("refresh-periodic")
     }
@@ -90,6 +90,7 @@ class LibraryWorker(context: Context, params: WorkerParameters) : CoroutineWorke
                 "refresh" -> if(target.isBlank())graph.podcasts.refreshAll() else graph.podcasts.refresh(target)
                 else -> return Result.failure()
             }
+            graph.automation.kick()
             Result.success()
         } catch (cancelled: CancellationException) {
             withContext(NonCancellable) {
@@ -100,7 +101,11 @@ class LibraryWorker(context: Context, params: WorkerParameters) : CoroutineWorke
             }
             throw cancelled
         }
-        catch (error: Exception) { applicationContext.appGraph.diagnostics.failure("worker",error);Result.failure() }
+        catch (error: Exception) {
+            graph.diagnostics.failure("worker", error)
+            if (inputData.getString("kind") == "download" && error is java.io.IOException && runAttemptCount < 3) Result.retry()
+            else Result.failure()
+        }
     }
 }
 
@@ -115,6 +120,7 @@ class UnderstandingWorker(context: Context, params: WorkerParameters) : Coroutin
             "explain" -> graph.explanations.run(target)
             else -> return Result.failure()
         }
+        graph.automation.kick()
         return Result.success()
     }
 }

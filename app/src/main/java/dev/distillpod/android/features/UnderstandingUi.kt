@@ -36,7 +36,6 @@ private fun objects(json: String): List<JSONObject> = runCatching { val a = JSON
     if (ep == null) return
     val analyses by vm.analyses.collectAsStateWithLifecycle()
     val transcripts by vm.transcripts.collectAsStateWithLifecycle()
-    val prefs by vm.graph.preferences.collectAsStateWithLifecycle()
     val account by vm.graph.account.state.collectAsStateWithLifecycle()
     val busy by vm.busy.collectAsStateWithLifecycle()
     val row = analyses.firstOrNull { it.episodeId == ep.id }
@@ -74,9 +73,7 @@ private fun objects(json: String): List<JSONObject> = runCatching { val a = JSON
                     Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(checked = ad.optBoolean("approved"), onCheckedChange = { vm.approveAd(ep.id, index, it) }, enabled = transcript?.source != "online"); Text("Approve this range for skipping") }
                 } }
             }
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("Skip approved ads", Modifier.weight(1f)); Switch(prefs.skipAds, { vm.flag("skipAds", it) })
-            }
+            PlayerAdControls(vm, ep, showReview = false)
             if (ep.localFile == null) Text("Download this episode to use verified ad skipping.", style = MaterialTheme.typography.bodySmall)
         }
     }

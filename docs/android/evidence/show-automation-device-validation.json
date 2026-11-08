@@ -1,0 +1,89 @@
+{
+  "date": "2026-11-08",
+  "sourceRevision": "c613a42a9516e4df04b0eb0a613afa75bea45089",
+  "implementationRevision": "5f34344",
+  "applicationId": "dev.distillpod.android.validation",
+  "testApplicationId": "dev.distillpod.android.validation.test",
+  "devices": [
+    {
+      "name": "emulator",
+      "android": "16",
+      "abi": "x86_64"
+    },
+    {
+      "name": "phone",
+      "model": "Samsung SM-S908E (S22 Ultra)",
+      "android": "16",
+      "abi": "arm64-v8a",
+      "connection": "USB"
+    }
+  ],
+  "artifacts": {
+    "app/build/outputs/apk/debug/app-debug.apk": "0475efb0baeee0962f00943fae5d55e85acbc7aa3a77e815249cf5dc4a0f85b5",
+    "app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk": "25ba15b2f69b53dd5e5b6608fad9efa4a47a687652cc69381682d65e2ea048bb"
+  },
+  "runs": [
+    {
+      "device": "emulator",
+      "phase": "verified",
+      "passed": 14,
+      "elapsedSeconds": 29.912
+    },
+    {
+      "device": "emulator",
+      "phase": "final-stage",
+      "passed": 1,
+      "elapsedSeconds": 3.857
+    },
+    {
+      "device": "emulator",
+      "phase": "final-verify",
+      "passed": 1,
+      "elapsedSeconds": 3.509
+    },
+    {
+      "device": "phone",
+      "phase": "verified",
+      "passed": 13,
+      "elapsedSeconds": 15.328
+    },
+    {
+      "device": "phone",
+      "phase": "final-stage",
+      "passed": 1,
+      "elapsedSeconds": 1.493
+    },
+    {
+      "device": "phone",
+      "phase": "final-verify",
+      "passed": 1,
+      "elapsedSeconds": 0.934
+    }
+  ],
+  "verified": [
+    "Future-only feed baseline and duplicate prevention",
+    "Real WorkManager audio download and publisher transcript processing",
+    "Summary, chapters, and ad markers from an injected synthetic AI gateway",
+    "Player switch hidden before analysis, enabled only after matching completed processing",
+    "Actual ad skipping on downloaded silent fixture audio, persistence across activity recreation, and disabled skipping",
+    "12-hour preference persisted and applied to a single periodic WorkManager request",
+    "Room upgrades from schemas 1 through 9",
+    "MP3 decoding and real local Whisper speech recognition on both architectures",
+    "Emulator streaming playback with automatic local Whisper transcription and stable transcript revision",
+    "Job, transcript, and interval persistence through force-stop/reopen on both devices"
+  ],
+  "cleanup": {
+    "temporaryPackagesRemovedFromBothDevices": true,
+    "ownerInstallationMetadataUnchanged": true,
+    "ownerDataAccessedOrModified": false,
+    "globalDeviceSettingsChanged": false
+  },
+  "initialAttempts": "Initial phone UI checks failed while the device was dozing behind the lock screen. The owner unlocked it; both subsequent UI checks and the final complete phone suite passed. An intermediate emulator run contained an assumption skip for the phase test; the final suite executes that test without a skip.",
+  "limitations": [
+    "Periodic request configuration was checked; an actual 6-hour unattended interval was not observed.",
+    "Deep Doze, unplugged battery drain, and long-duration background scheduling were not measured.",
+    "The complete new automation workflow used publisher transcript text and a fake AI response; real local Whisper was checked separately.",
+    "No live account, paid AI request, production sync, release APK upgrade, or owner-app migration was exercised.",
+    "Physical UI checks required an unlocked device."
+  ]
+}

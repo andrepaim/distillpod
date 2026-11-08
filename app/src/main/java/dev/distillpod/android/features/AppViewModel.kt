@@ -42,6 +42,16 @@ class AppViewModel(val graph: AppGraph, private val saved: SavedStateHandle) : V
     val chat = dao.observeMessages().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     val research = dao.observeResearch().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     val suggestions = dao.observeSuggestions().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    val automationShows = graph.db.automation().observeShows().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    val automationJobs = graph.db.automation().observeJobs().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    val adPreferences = graph.db.automation().observeAds().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    fun automateShow(id: String, enabled: Boolean) = action("automation:$id") { graph.automation.setEnabled(id, enabled) }
+    fun retryAutomation(id: String) = action("auto-retry:$id") { graph.automation.retry(id) }
+    fun refreshHours(hours: Int) = action("settings") { graph.settings.refreshHours(hours); graph.jobs.configureRefresh() }
+    fun skipEpisodeAds(id: String, enabled: Boolean) = action("ads:$id") {
+        setEpisodeAdSkipping(graph.db, id, enabled)
+    }
+
     val player = graph.playback.state
     private val directorySearch = PodcastSearch(viewModelScope, graph.podcasts::search, graph.settings::rememberSearch)
     val search = directorySearch.state
@@ -99,7 +109,7 @@ class AppViewModel(val graph: AppGraph, private val saved: SavedStateHandle) : V
     fun deleteDownload(id: String) = action("delete:$id") { graph.media.deleteDownload(id) }
     fun clearUnusedAudio() = action("storage") { messages.send("Cleared ${fileSize(graph.media.clearUnusedAudio())} of unused audio. Queued and active files were kept.") }
     fun markCompleted(id: String, complete: Boolean) = action("completed:$id") { graph.portableSync.markCompleted(id, complete) }
-    fun unsubscribe(id: String) = action("unsubscribe:$id") { graph.podcasts.unsubscribe(id); root("library") }
+    fun unsubscribe(id: String) = action("unsubscribe:$id") { graph.automation.setEnabled(id, false); graph.podcasts.unsubscribe(id); root("library") }
     fun downloadModel(id: String) = action("model:$id") { graph.jobs.model(id) }
     fun deleteModel(id: String) = action("model:$id") { graph.media.deleteModel(id) }
     fun flag(key: String, value: Boolean) = action("settings") { graph.settings.flag(key, value); graph.jobs.configureRefresh() }
