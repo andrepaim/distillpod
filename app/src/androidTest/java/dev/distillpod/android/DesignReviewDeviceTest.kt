@@ -63,7 +63,8 @@ class DesignReviewDeviceTest {
         compose.onNodeWithContentDescription("Back").performClick()
         compose.onNodeWithText("Português").performScrollTo().assertIsDisplayed()
         compose.onNodeWithContentDescription("Back").performClick()
-        compose.onNodeWithText("Library").performScrollTo().performClick()
+        // Match the settings card, not the bottom navigation Library tab.
+        compose.onNode(hasText("Library") and hasText("Import, export and refresh subscriptions")).performScrollTo().performClick()
         compose.onNodeWithText("Refresh subscriptions").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Export OPML").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Moment saved sound").assertDoesNotExist()
