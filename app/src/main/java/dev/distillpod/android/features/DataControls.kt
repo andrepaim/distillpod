@@ -15,14 +15,11 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable fun DataControls(vm: AppViewModel) {
-    val context = LocalContext.current
     val busy by vm.busy.collectAsStateWithLifecycle()
     val exportOpml = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/x-opml")) { uri -> uri?.let(vm::exportOpml) }
     val importOpml = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let(vm::importOpml) }
-    var notifications by remember { mutableStateOf(NotificationManagerCompat.from(context).areNotificationsEnabled()) }
-    val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { notifications = it }
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text("Your library", style = MaterialTheme.typography.titleLarge)
+        TextButton(onClick = { vm.open("settings:sync") }) { Text("Library sync") }
         Text("Keep a portable copy in Google Drive or another location. Restore into this library without replacing existing items.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         OutlinedButton(onClick = { vm.open("backup") }) { Text("Backup & Restore") }
         Text("Podcast subscriptions", style = MaterialTheme.typography.titleMedium)
@@ -31,6 +28,14 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
             OutlinedButton(onClick = { exportOpml.launch("distillpod-subscriptions.opml") }, enabled = "opml" !in busy) { Text("Export OPML") }
             OutlinedButton(onClick = { importOpml.launch(arrayOf("text/*", "application/xml", "application/octet-stream")) }, enabled = "opml" !in busy) { Text("Import OPML") }
         }
+    }
+}
+
+@Composable fun NotificationControls() {
+    val context = LocalContext.current
+    var notifications by remember { mutableStateOf(NotificationManagerCompat.from(context).areNotificationsEnabled()) }
+    val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { notifications = it }
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text("Background progress", style = MaterialTheme.typography.titleMedium)
         Text(if (notifications) "Notifications are enabled for playback and processing." else "Enable notifications to see playback controls and download or transcript progress outside the app.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (!notifications) OutlinedButton(onClick = {
