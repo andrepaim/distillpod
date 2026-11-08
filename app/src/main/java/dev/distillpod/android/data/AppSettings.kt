@@ -23,6 +23,7 @@ data class Preferences(
     val transcribeOnPlayback: Boolean = true, val distillSound: Boolean = true,
     val headphoneDistill: Boolean = false,
     val headphoneVoice: Boolean = false,
+    val refreshHours: Int = 6,
 )
 
 class AppSettings(context: Context, private val store: androidx.datastore.core.DataStore<androidx.datastore.preferences.core.Preferences> = context.applicationContext.settingsDataStore, private val db:AppDatabase?=null, private val portableChanged:()->Unit={}) {
@@ -36,6 +37,7 @@ class AppSettings(context: Context, private val store: androidx.datastore.core.D
         p[booleanPreferencesKey("distillSound")] ?: true,
         p[booleanPreferencesKey("headphoneDistill")] ?: false,
         p[booleanPreferencesKey("headphoneVoice")] ?: false,
+        (p[intPreferencesKey("refreshHours")] ?: 6).coerceIn(1, 168),
     ) }
     val flow = if(db==null)localFlow else combine(localFlow,db.sync().observePreferences()) {local,rows->
         val p=rows.associate {it.name to it.value}
@@ -56,6 +58,10 @@ class AppSettings(context: Context, private val store: androidx.datastore.core.D
         }
         store.edit { it[stringPreferencesKey(key)] = value } }
     suspend fun flag(key: String, value: Boolean) { store.edit { it[booleanPreferencesKey(key)] = value } }
+    suspend fun refreshHours(hours: Int) {
+        require(hours in 1..168) { "Choose an interval from 1 to 168 hours" }
+        store.edit { it[intPreferencesKey("refreshHours")] = hours }
+    }
     suspend fun storage(bytes: Long) { require(bytes >= 250_000_000); store.edit { it[longPreferencesKey("storageLimit")] = bytes } }
     fun value(key: String) = store.data.map { it[stringPreferencesKey(key)] ?: "" }
     val recentSearches = value("podcastSearches").map(::searchHistory)

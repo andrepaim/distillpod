@@ -191,6 +191,7 @@ private fun date(ms: Long) = if (ms <= 0) "" else DateTimeFormatter.ofPattern("d
                     TextButton(onClick = { if (selected.subscribed) vm.unsubscribe(selected.id) else vm.subscribe(selected.feedUrl) }) { Text(if (selected.subscribed) "Unsubscribe" else "Subscribe") }
                 }
             }
+            if (selected.subscribed) ShowAutomationControls(vm, selected.id)
             if (selected.description.isNotBlank()) Text(selected.description, maxLines = 5, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 12.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if (podcastId == null && filter == "all" && resume != null) item(key = "resume") {
@@ -323,6 +324,7 @@ private fun date(ms: Long) = if (ms <= 0) "" else DateTimeFormatter.ofPattern("d
             Text(podcast?.title ?: "Podcast", color = MaterialTheme.colorScheme.secondary, style = MaterialTheme.typography.bodyMedium)
         }
         VoiceControls(vm)
+        PlayerAdControls(vm, ep)
         val skipped by vm.graph.playbackEvents.lastSkipped.collectAsStateWithLifecycle()
         if (skipped?.episodeId == ep.id) TextButton(onClick = vm::undoAdSkip) { Text("Ad skipped · Undo and replay") }
         player.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
@@ -590,6 +592,7 @@ private fun captureState(state: String) = when (state) { "waiting_transcript" ->
         SettingSwitch("Wi-Fi / unmetered downloads only", "Audio and model downloads wait for an unmetered network.", prefs.wifiOnly) { vm.flag("wifi", it) }
         SettingSwitch("Transcribe while charging", "Pause new transcription chunks until power is connected.", prefs.chargingOnly) { vm.flag("charging", it) }
         SettingSwitch("Refresh subscriptions", "Check your followed feeds periodically when Android permits.", prefs.refresh) { vm.flag("refresh", it) }
+        RefreshIntervalControl(vm, prefs)
         HorizontalDivider(); Text("Storage", style = MaterialTheme.typography.titleLarge)
         Text("Downloaded audio: ${fileSize(episodes.filter { it.localFile != null }.sumOf { it.downloadedBytes })}", color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text("Audio limit: ${fileSize(prefs.storageLimitBytes)}. Deleting downloads keeps saved insights and listening progress.", style = MaterialTheme.typography.bodySmall)
