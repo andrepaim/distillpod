@@ -21,6 +21,8 @@ class Diagnostics(private val context: Context, private val dsn:String = context
     private val prefs=context.getSharedPreferences("diagnostics",Context.MODE_PRIVATE)
     internal val queue=DiagnosticQueue(java.io.File(context.noBackupFilesDir,"diagnostics"),onDrop={prefs.edit().putLong("dropped",prefs.getLong("dropped",0)+1).commit()})
     private val lock=Any()
+    private val budget=DiagnosticBudget(prefs)
+    private val admissionLane=ThreadLocal<DiagnosticBudget.Lane>()
     internal val journal=OperationJournal(java.io.File(context.noBackupFilesDir,"reliability/journal"),release=context.packageManager.getPackageInfo(context.packageName,0).versionName ?: "unknown")
     private val persisted=ThreadLocal<Boolean>()
     private val timings=mutableMapOf<String,Long>()
@@ -44,7 +46,7 @@ class Diagnostics(private val context: Context, private val dsn:String = context
         prefs.edit().putBoolean("enabled",allow).commit()
         Sentry.close()
         queue.clear()
-        if(!allow)journal.clear()
+        if(!allow){journal.clear();prefs.edit().remove("suppressed_summaries").commit()}
         if(collecting && configured) safeInitialize() else {
             WorkManager.getInstance(context).cancelUniqueWork("diagnostics-upload")
             WorkManager.getInstance(context).cancelUniqueWork("diagnostics-recovery")
@@ -90,18 +92,27 @@ class Diagnostics(private val context: Context, private val dsn:String = context
         synchronized(lock) {
             if(!enabled || epoch!=generation)return
             runCatching {
+                val healthFields=budget.fields()
+                val exhaustion=budget.exhaustion()
                 val last=prefs.getLong("last_health",0)
-                if(System.currentTimeMillis()-last>60*60*1000 && log("diagnostics.health",mapOf("stream" to "diagnostics",
-                    "pending_envelopes" to queue.files().size,"dropped_reports" to (prefs.getLong("dropped",0)+journal.dropped),"test_traffic" to false)))prefs.edit().putLong("last_health",System.currentTimeMillis()).apply()
+                if((System.currentTimeMillis()-last>6*60*60*1000 || exhaustion!=prefs.getString("health_exhaustion","")) && log("diagnostics.health",mapOf("stream" to "diagnostics",
+                    "pending_envelopes" to queue.files().size,"dropped_reports" to (prefs.getLong("dropped",0)+journal.dropped),"test_traffic" to false)+healthFields))prefs.edit().putLong("last_health",System.currentTimeMillis()).putString("health_exhaustion",exhaustion).apply()
             }
         }
         val pending=runCatching {journal.pending()}.getOrElse {return}
+        val denied=mutableMapOf<DiagnosticBudget.Lane,MutableSet<String>>()
         for(row in pending) {
             // Release the consent lock between records: a large recovered backlog
             // must not hold up a foreground media command or consent withdrawal.
             val accepted=synchronized(lock) {
                 if(!enabled || epoch!=generation)return
-                runCatching {
+                val lane=DiagnosticBudget.lane("operation.summary",row.state)
+                if(!journal.isPending(row.id)) {
+                    true // Another flush acknowledged this snapshot while the lock was released.
+                } else if(!budget.available(lane)) {
+                    denied.getOrPut(lane){mutableSetOf()}.add(row.id)
+                    false
+                } else runCatching {
                     val stored=log("operation.summary",mapOf("summary_id" to row.id,"operation_id" to row.operation,
                         "attempt_id" to row.attempt,"feature" to row.kind,"outcome" to row.state,"reason" to row.reason,
                         "source" to row.source,"sequence" to row.sequence,"operation_started_ms" to row.started,
@@ -110,16 +121,21 @@ class Diagnostics(private val context: Context, private val dsn:String = context
                     stored
                 }.getOrDefault(false)
             }
-            if(!accepted)return
+            // A rejected routine row must not block later terminal outcomes.
+            if(!accepted)continue
+        }
+        synchronized(lock) {
+            if(enabled && epoch==generation)budget.suppressedSummaries(denied,journal.pending().map {it.id}.toSet())
         }
     }
     private fun log(name:String,fields:Map<String,Any>):Boolean {
         persisted.set(false)
+        admissionLane.set(DiagnosticBudget.lane(name,fields["outcome"] as? String))
         try {
             val attributes=fields+mapOf("emitted_at_ms" to System.currentTimeMillis(),"schema_version" to 1,"event_id" to UUID.randomUUID().toString(),"installation_id" to installation,"session_id" to session)
             Sentry.logger().log(SentryLogLevel.INFO,SentryLogParameters.create(SentryAttributes.fromMap(attributes)),name)
             return persisted.get()==true
-        } finally {persisted.remove()}
+        } finally {persisted.remove();admissionLane.remove()}
     }
     private fun observe(name:String, operation:String?, reason:String, source:String, attempt:String?, correlation:DiagnosticCorrelation?, observedAt:Long) {
         if(dev.distillpod.android.sync.SubscriptionCloudAccess.instrumentation)return
@@ -205,7 +221,7 @@ class Diagnostics(private val context: Context, private val dsn:String = context
             options.logs.setLoggerBatchProcessorFactory { opts,_ -> object:ILoggerBatchProcessor {
                 override fun add(event:SentryLogEvent) {
                     val envelope=SentryEnvelope(SentryId(),opts.sdkVersion,SentryEnvelopeItem.fromLogs(opts.serializer,SentryLogEvents(listOf(event))))
-                    persist(envelope,opts,epoch)
+                    persist(envelope,opts,epoch,admissionLane.get() ?: DiagnosticBudget.lane(event.body))
                 }
                 override fun flush(timeoutMillis:Long) {}
                 override fun close(isRestarting:Boolean) {}
@@ -225,20 +241,16 @@ class Diagnostics(private val context: Context, private val dsn:String = context
         event("app.started")
         schedule()
     }
-    private fun persist(envelope:SentryEnvelope,options:SentryOptions,epoch:Long) {
+    private fun persist(envelope:SentryEnvelope,options:SentryOptions,epoch:Long,logLane:DiagnosticBudget.Lane=DiagnosticBudget.Lane.ROUTINE) {
         try { synchronized(lock) {
             if(!collecting || generation!=epoch)return
-            val day=System.currentTimeMillis()/86_400_000L
-            if(prefs.getLong("budget_day",-1)!=day)prefs.edit().putLong("budget_day",day).putInt("sent",0).putInt("errors",0).apply()
-            val errorEnvelope=envelope.items.any {it.header.type==SentryItemType.Event}
-            val count=prefs.getInt("sent",0);val errors=prefs.getInt("errors",0)
-            if(!errorEnvelope && count>=1000 || errorEnvelope && errors>=30) {prefs.edit().putLong("dropped",prefs.getLong("dropped",0)+1).apply();return}
-            prefs.edit().putInt("sent",count+1).putInt("errors",errors+if(errorEnvelope)1 else 0).apply()
             val allowed=envelope.items.filter {it.header.type in setOf(SentryItemType.Event,SentryItemType.Log)}
             if(allowed.isEmpty())return
+            val lane=if(allowed.any {it.header.type==SentryItemType.Event})DiagnosticBudget.Lane.ERROR else logLane
+            if(!budget.admit(lane))return
             val safeEnvelope=SentryEnvelope(envelope.header,allowed)
             val bytes=ByteArrayOutputStream().also {options.serializer.serialize(safeEnvelope,it)}.toByteArray()
-            persisted.set(queue.append(bytes));status.value="Pending upload"
+            persisted.set(queue.append(bytes,priority=lane!=DiagnosticBudget.Lane.ROUTINE));status.value="Pending upload"
         };schedule() } catch(_:Exception) { /* Diagnostics must never break the app. */ }
     }
     private fun schedule() {

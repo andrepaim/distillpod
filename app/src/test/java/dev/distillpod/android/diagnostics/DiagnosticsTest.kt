@@ -30,6 +30,80 @@ class DiagnosticsTest {
             assertTrue(Regex("\"test_traffic\"\\s*:\\s*\\{[^}]*\"value\"\\s*:\\s*true").containsMatchIn(payload))
         } finally {d.consent(false);dev.distillpod.android.sync.SubscriptionCloudAccess.instrumentation=false}
     }
+    @Test fun `routine exhaustion preserves terminal outcomes and reporting gaps`() {
+        val d=Diagnostics(context,"https://abc123@o1.ingest.sentry.io/1")
+        d.consent(true);d.awaitIdle()
+        repeat(1005) { d.event("transcription.stage",reason="transcribing");d.awaitIdle() }
+        val job=java.util.UUID.randomUUID().toString()
+        d.event("transcription.started",job);d.awaitIdle()
+        d.event("transcription.completed",job);d.awaitIdle()
+        val payload=d.queue.files().joinToString {it.readText()}
+        assertTrue(Regex(""""routine_dropped"\s*:\s*\{[^}]*"value"\s*:\s*[1-9]""").containsMatchIn(payload))
+        assertTrue(d.queue.files().any {it.readText().let {text->text.contains("operation.summary") && text.contains(job) && text.contains("completed")}})
+        assertFalse(d.journal.pending().any {it.operation==job && it.state=="completed"})
+        assertTrue(d.journal.pending().any {it.operation==job && it.state=="running"})
+        d.consent(false)
+    }
+    @Test fun `terminal summaries replay after rollover and acknowledge once while offline`() {
+        val d=Diagnostics(context,"https://abc123@o1.ingest.sentry.io/1");d.consent(true);d.awaitIdle()
+        val prefs=context.getSharedPreferences("diagnostics",0)
+        prefs.edit().putInt("budget_critical",160).commit()
+        val job=java.util.UUID.randomUUID().toString()
+        d.event("distillation.started",job);d.event("distillation.finished",job,reason="succeeded");d.awaitIdle()
+        val row=d.journal.pending().single {it.operation==job && it.state=="completed"}
+        assertFalse(d.queue.files().any {it.readText().contains(row.id)})
+        prefs.edit().putLong("budget_day",-1).commit()
+        d.flushSummaries()
+        assertEquals(1,d.queue.files().count {it.name.contains("-priority-") && it.readText().contains(row.id)})
+        val count=prefs.getInt("sent",0)
+        d.flushSummaries()
+        assertEquals(count,prefs.getInt("sent",0))
+        assertEquals(1,d.queue.files().count {it.name.contains("-priority-") && it.readText().contains(row.id)})
+        d.consent(false)
+        assertTrue(d.queue.files().isEmpty());assertTrue(d.journal.pending().isEmpty())
+        assertEquals(count,prefs.getInt("sent",0))
+    }
+    @Test fun `offline routine pressure evicts routine before protected reports`() {
+        val directory=temporary.newFolder()
+        val q=DiagnosticQueue(directory)
+        q.append("terminal".toByteArray(),priority=true)
+        repeat(1005){q.append("routine".toByteArray())}
+        assertEquals(1000,q.files().size)
+        assertTrue(q.files().any {it.readText()=="terminal"})
+        assertTrue(DiagnosticQueue(directory).files().any {it.readText()=="terminal"})
+        q.clear();assertTrue(q.files().isEmpty())
+    }
+    @Test fun `repeated flush batches denied summary accounting without hiding terminal rows`() {
+        val d=Diagnostics(context,"https://abc123@o1.ingest.sentry.io/1");d.consent(true);d.awaitIdle()
+        val prefs=context.getSharedPreferences("diagnostics",0)
+        prefs.edit().putInt("budget_routine",800).commit()
+        val jobs=List(20){java.util.UUID.randomUUID().toString()}
+        jobs.forEach {d.journal.transition("transcription",it,"running")}
+        d.journal.transition("transcription",jobs.last(),"completed")
+        d.flushSummaries()
+        val dropped=prefs.getLong("routine_dropped",0)
+        assertEquals(20L,dropped)
+        repeat(10){d.flushSummaries()}
+        assertEquals(dropped,prefs.getLong("routine_dropped",0))
+        assertEquals(20,d.journal.pending().size)
+        assertTrue(d.queue.files().any {it.readText().contains(jobs.last())})
+        d.consent(false)
+        assertTrue(d.queue.files().isEmpty());assertTrue(d.journal.pending().isEmpty())
+        assertTrue(prefs.getStringSet("suppressed_summaries",emptySet()).orEmpty().isEmpty())
+    }
+    @Test fun `concurrent recovery and executor flush do not re-admit acknowledged summaries`() {
+        val d=Diagnostics(context,"https://abc123@o1.ingest.sentry.io/1");d.consent(true);d.awaitIdle()
+        repeat(30){d.journal.transition("transcription",java.util.UUID.randomUUID().toString(),"completed")}
+        val ids=d.journal.pending().map {it.id}
+        val start=java.util.concurrent.CountDownLatch(1)
+        val pool=java.util.concurrent.Executors.newFixedThreadPool(2)
+        try {
+            val tasks=List(2){pool.submit {start.await();d.flushSummaries()}}
+            start.countDown();tasks.forEach {it.get(10,java.util.concurrent.TimeUnit.SECONDS)}
+            ids.forEach {id->assertEquals(1,d.queue.files().count {it.readText().contains(id)})}
+            assertTrue(d.journal.pending().isEmpty())
+        } finally {pool.shutdownNow();d.consent(false)}
+    }
     @get:Rule val temporary=TemporaryFolder()
     private lateinit var context:Context
     @Before fun setup() {
