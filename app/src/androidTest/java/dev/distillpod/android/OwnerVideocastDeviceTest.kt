@@ -133,13 +133,17 @@ class OwnerVideocastDeviceTest {
                     graph.playback.pause(); graph.playback.speed(1.25f)
                     await { !it.isPlaying && it.playbackState == Player.STATE_READY }
                     val c = player()
-                    val position = withContext(Dispatchers.Main) { c.currentPosition }
+                    val initialPausePosition = withContext(Dispatchers.Main) { c.currentPosition }
                     context.startActivity(android.content.Intent(context, MainActivity::class.java)
                         .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP)
                         .putExtra("openPlayer", true))
                     val device = androidx.test.uiautomator.UiDevice.getInstance(instrumentation)
                     val chip = device.wait(androidx.test.uiautomator.Until.findObject(androidx.test.uiautomator.By.text("Video").enabled(true)), 15_000)
                     assertNotNull("Video control must be visible in the actual player", chip)
+                    // Controller pause state is optimistic. Sample the settled position at the
+                    // actual switch boundary, after the real player UI has become available.
+                    val position = withContext(Dispatchers.Main) { assertFalse(c.playWhenReady); c.currentPosition }
+                    receipt("pause_baseline", JSONObject().put("initialMs", initialPausePosition).put("beforeVideoMs", position))
                     chip!!.click()
                     await { C.TRACK_TYPE_VIDEO !in it.trackSelectionParameters.disabledTrackTypes && it.playbackState == Player.STATE_READY }
                     assertTrue(device.pressHome())
