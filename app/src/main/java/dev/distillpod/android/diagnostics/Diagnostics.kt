@@ -282,7 +282,7 @@ class Diagnostics(private val context: Context, private val dsn:String = context
         if(!enabled || !configured || dev.distillpod.android.sync.SubscriptionCloudAccess.instrumentation)return
         val execution=correlation?.executionId ?: return
         synchronized(lock) {
-            if(!enabled)return
+            if(!enabled || !acceptsCorrelation(correlation))return
             runCatching {
                 log("distillation.attempt_summary",summary.fields()+correlation.fields()+mapOf(
                     "summary_id" to execution,"operation_id" to (correlation.momentId ?: execution),

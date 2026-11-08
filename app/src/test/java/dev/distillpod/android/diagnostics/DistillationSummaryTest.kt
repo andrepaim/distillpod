@@ -170,6 +170,15 @@ class DistillationSummaryTest {
             assertNull(db.library().distillation(id)!!.insight)
         }
     }
+    @Test fun `revocation and reenable cannot resurrect an in flight attempt summary`() {
+        var revoke:suspend()->Unit={}
+        fixture({if(it==1){revoke();ready}else accepted}) {repo,db,d,id->
+            revoke={d.consent(false);d.consent(true)}
+            repo.run(id)
+            assertEquals("succeeded",db.library().distillation(id)!!.state)
+            assertTrue(summaries(d).isEmpty())
+        }
+    }
     @Test fun `consent off and revocation prevent stage envelopes`()=fixture({ready}) {repo,_,d,id->
         d.consent(false);repo.run(id);assertTrue(summaries(d).isEmpty())
     }
