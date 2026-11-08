@@ -5,8 +5,8 @@ import androidx.work.NetworkType
 import java.util.concurrent.TimeUnit
 
 /** Copy non-network restrictions using the public WorkManager API. */
-internal fun Constraints.withNetworkPolicy(wifiOnly: Boolean): Constraints = Constraints.Builder()
-    .setRequiredNetworkType(if (wifiOnly) NetworkType.UNMETERED else NetworkType.CONNECTED)
+internal fun Constraints.withNetworkType(network: NetworkType): Constraints = Constraints.Builder()
+    .setRequiredNetworkType(network)
     .setRequiresCharging(requiresCharging())
     .setRequiresDeviceIdle(requiresDeviceIdle())
     .setRequiresBatteryNotLow(requiresBatteryNotLow())

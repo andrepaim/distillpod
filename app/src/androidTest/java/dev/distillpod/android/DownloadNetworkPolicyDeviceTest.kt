@@ -73,17 +73,17 @@ class DownloadNetworkPolicyDeviceTest {
                 manager.enqueueUniqueWork(name, ExistingWorkPolicy.KEEP, request).result.get()
             }
             val local = File(graph.context.filesDir, "$prefix-local.audio").apply { writeText("local"); files += this }
-            for (kind in listOf("remote", "publisher", "local")) {
+            for (kind in listOf("remote", "publisher", "lookup", "local")) {
                 val id = "$prefix-$kind"
                 dao.putEpisode(EpisodeEntity(id, prefix, id, "Fixture", "https://example.test/audio",
                     localFile = if (kind == "remote") null else local.path))
                 dao.putTranscript(TranscriptEntity(id, "saved-revision", "fixture", "tiny", "en",
-                    source = if (kind == "publisher") "publisher" else "whisper", processedMs = 120000))
+                    source = if (kind == "publisher") "publisher" else "whisper", processedMs = 120000, lookupOnline = kind == "lookup"))
                 val request = OneTimeWorkRequestBuilder<TranscriptWorker>()
                     .setInputData(workDataOf("episode" to id, "revision" to "saved-revision")).addTag("transcript:$id")
                     .setInitialDelay(1, TimeUnit.DAYS)
                     .setConstraints(Constraints.Builder().setRequiresCharging(true).setRequiresBatteryNotLow(true)
-                        .setRequiredNetworkType(if (kind == "local") NetworkType.NOT_REQUIRED else NetworkType.UNMETERED).build()).build()
+                        .setRequiredNetworkType(if (kind in listOf("local", "lookup")) NetworkType.NOT_REQUIRED else NetworkType.UNMETERED).build()).build()
                 val name = "transcript:$id:saved-revision:0"; names += name
                 manager.enqueueUniqueWork(name, ExistingWorkPolicy.KEEP, request).result.get()
             }

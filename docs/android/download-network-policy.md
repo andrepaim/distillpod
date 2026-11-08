@@ -2,7 +2,9 @@
 
 Settings → Storage → **Wi-Fi / unmetered downloads only** applies to existing
 queued audio and transcription-model downloads, as well as new requests.
-Network-dependent queued transcript preparation follows the same setting.
+Network-dependent queued transcript preparation follows the same setting,
+including online lookup when the episode audio is already downloaded. Legacy
+lookup jobs missing a network constraint are corrected during reconciliation.
 Local-only transcript preparation retains its existing power constraints without
 acquiring a network requirement.
 

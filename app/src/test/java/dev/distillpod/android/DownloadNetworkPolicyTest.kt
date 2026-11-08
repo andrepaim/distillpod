@@ -112,15 +112,15 @@ class DownloadNetworkPolicyTest {
         fixture { graph, vm ->
             val local = File(graph.context.filesDir, "policy-local.audio").apply { writeText("downloaded") }
             val revisions = mutableMapOf<String, java.util.UUID>()
-            for (kind in listOf("remote", "publisher", "local")) {
+            for (kind in listOf("remote", "publisher", "lookup", "local")) {
                 val ep = episode(kind).copy(localFile = if (kind == "remote") null else local.path)
                 graph.db.library().putEpisode(ep)
                 graph.db.library().putTranscript(TranscriptEntity(kind, "saved-revision", ep.mediaFingerprint, "tiny", "en",
-                    source = if (kind == "publisher") "publisher" else "whisper", processedMs = 120000))
+                    source = if (kind == "publisher") "publisher" else "whisper", processedMs = 120000, lookupOnline = kind == "lookup"))
                 val request = OneTimeWorkRequestBuilder<TranscriptWorker>()
                     .setInputData(workDataOf("episode" to kind, "revision" to "saved-revision"))
                     .setConstraints(Constraints.Builder().setRequiresBatteryNotLow(true).setRequiresCharging(true)
-                        .setRequiredNetworkType(if (kind == "local") NetworkType.NOT_REQUIRED else NetworkType.UNMETERED).build())
+                        .setRequiredNetworkType(if (kind in listOf("local", "lookup")) NetworkType.NOT_REQUIRED else NetworkType.UNMETERED).build())
                     .addTag("transcript:$kind").build()
                 manager.enqueueUniqueWork("transcript:$kind:saved-revision:0", ExistingWorkPolicy.KEEP, request).result.get()
                 revisions[kind] = request.id
@@ -160,6 +160,29 @@ class DownloadNetworkPolicyTest {
             assertEquals(NetworkType.UNMETERED, active("model:tiny").constraints.requiredNetworkType)
             assertEquals(1, work("download:policy-audio").count { !it.state.isFinished })
             assertEquals(1, work("model:tiny").count { !it.state.isFinished })
+        }
+    }
+
+    @Test fun `recovery constrains online lookup even when its audio is already local`() = runBlocking {
+        fixture { graph, vm ->
+            val local = File(graph.context.filesDir, "lookup-local.audio").apply { writeText("local fixture") }
+            for (lookup in listOf(false, true)) {
+                val id = "lookup-$lookup"
+                val ep = episode(id).copy(localFile = local.path)
+                graph.db.library().putEpisode(ep)
+                graph.db.library().putTranscript(TranscriptEntity(id, "lookup-revision", ep.mediaFingerprint, "tiny", "en", lookupOnline = lookup))
+            }
+            graph.transcription.recover()
+            val name = "transcript:lookup-true:lookup-revision:0"
+            val original = active(name)
+            assertEquals(NetworkType.UNMETERED, original.constraints.requiredNetworkType)
+            assertEquals(NetworkType.NOT_REQUIRED, active("transcript:lookup-false:lookup-revision:0").constraints.requiredNetworkType)
+            for (enabled in listOf(false, true)) {
+                toggle(vm, enabled)
+                assertEquals(if (enabled) NetworkType.UNMETERED else NetworkType.CONNECTED, active(name).constraints.requiredNetworkType)
+                assertEquals(original.id, active(name).id)
+                assertTrue(graph.db.library().transcript("lookup-true")!!.lookupOnline)
+            }
         }
     }
 
