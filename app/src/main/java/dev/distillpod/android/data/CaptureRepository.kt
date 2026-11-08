@@ -207,21 +207,23 @@ class CaptureRepository(private val db: AppDatabase, private val ai: AiGateway, 
     }
 
     suspend fun run(id: String) {
-        val (saved,acquiredAttempt)=db.withTransaction {
+        val (saved,acquiredAttempt,claimedEvidence)=db.withTransaction {
             val current=dao.distillation(id)?.takeIf {it.state=="queued"} ?: return@withTransaction null
             val acquired=dao.momentAttempt(current.attempt)?.let { attempt ->
                 attempt.copy(run=UUID.randomUUID().toString(),contextJson=AttemptDiagnostics.executionContext(attempt)).also {dao.putMomentAttempt(it)}
             }
             dao.putDistillation(current.copy(state="running",error=null))
-            current to acquired
+            val observed=runCatching {acquired?.let {correlation(it)}}.getOrNull()
+            // Observe the attempted claim before releasing serialization. A suspended caller must
+            // not publish an old start after a later cancel/resume. No provider work occurs here.
+            runCatching {diagnostics?.event("distillation.started",current.id,attempt=acquired?.run,correlation=observed)}
+            Triple(current,acquired,observed)
         } ?: return
         var execution: String? = null
-        var evidence:DiagnosticCorrelation?=null
+        val evidence:DiagnosticCorrelation?=claimedEvidence
         try {
             var attempt=acquiredAttempt ?: error("Prepare the source again before generating")
             execution=attempt.run
-            evidence=correlation(attempt)
-            diagnostics?.event("distillation.started",saved.id,attempt=attempt.run,correlation=evidence)
             val context=MomentGeneration.context(attempt.contextJson)
             check(context.spans.isNotEmpty()) { "No usable source context" }
             if(valid(id,attempt)==null)return
