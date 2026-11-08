@@ -127,14 +127,16 @@ class AppViewModel(val graph: AppGraph, private val saved: SavedStateHandle) : V
     fun deleteCapture(id: String) = action("capture:$id") { graph.portableSync.deleteMoment(id) }
     fun prepareTranscript(id: String, local: Boolean = false) = action("transcript:$id") { graph.diagnostics.usage("transcription");graph.transcription.prepare(id, local); messages.send("Transcript preparation queued") }
     fun pauseTranscript(id: String) = action("transcript:$id") { graph.transcription.pause(id) }
-    fun captureMoment() = action("distill") {
+    fun captureMoment() = captureMoment(openSaved = true)
+    fun captureMomentInPlayer() = captureMoment(openSaved = false)
+    private fun captureMoment(openSaved: Boolean) = action("distill") {
         graph.diagnostics.event("capture.requested",source="phone")
         val (id, position, file) = graph.playback.captureSource()
         val ep = dao.episode(id) ?: error("Episode is unavailable")
         val saved = graph.captures.capture(id, position, file != null && file == ep.localFile)
         graph.diagnostics.event("capture.accepted",saved,source="phone")
         messages.send("Moment saved at ${timestamp(position)}")
-        open("capture:$saved")
+        if (openSaved) open("capture:$saved")
     }
     fun generateCapture(id: String, confirm: Boolean = false) = action("capture:$id") { graph.diagnostics.usage("distillation");graph.captures.generate(id, confirm) }
     fun improveCapture(id: String, expanded: Boolean = false) = action("capture:$id") { graph.captures.improve(id, expanded) }

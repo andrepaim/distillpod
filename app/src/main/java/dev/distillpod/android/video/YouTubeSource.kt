@@ -5,6 +5,9 @@ import com.yausername.youtubedl_android.YoutubeDL
 import com.yausername.youtubedl_android.YoutubeDLRequest
 import dev.distillpod.android.data.PodcastCandidate
 import dev.distillpod.core.*
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withTimeout
@@ -41,6 +44,9 @@ class AndroidYouTubeExtractor(private val context: Context,
                         .addOption("--socket-timeout", 12).addOption("--retries", 0).addOption("--extractor-retries", 0)
                     if (flat) request.addOption("--flat-playlist").addOption("--playlist-end", limit)
                     else request.addOption("--no-playlist")
+                        // Playback consumes direct HTTPS audio/H.264 formats only. Do not fetch
+                        // HLS/DASH manifests whose formats selectStreams will discard anyway.
+                        .addOption("--extractor-args", "youtube:skip=hls,dash")
                     val response = YoutubeDL.getInstance().execute(request, id, null)
                     require(response.out.length <= 10_000_000) { "YouTube response is too large" }
                     JSONObject(response.out)
@@ -90,34 +96,48 @@ private fun JSONObject.picture(): String? = optJSONArray("thumbnails")?.objects(
 
 data class YouTubeStreams(val audio: String, val video: String?)
 
+internal data class StreamClock(val elapsedNanos: () -> Long = System::nanoTime,
+    val wallMillis: () -> Long = System::currentTimeMillis)
+
 /** Network extraction is injectable; parsing and identity are shared by live and fixture tests. */
-class YouTubeSource(private val extractor: YouTubeExtractor) {
+class YouTubeSource internal constructor(private val extractor: YouTubeExtractor, private val clock: StreamClock) {
+    constructor(extractor: YouTubeExtractor) : this(extractor, StreamClock())
     var onStreamRefresh: () -> Unit = {}
     internal fun refreshed() { runCatching { onStreamRefresh() } }
     suspend fun search(query: String): List<PodcastCandidate> = withTimeoutOrNull(45_000) {
-        runInterruptible(Dispatchers.IO) {
-            val url = "https://www.youtube.com/results".toHttpUrl().newBuilder()
-                .addQueryParameter("search_query", query).addQueryParameter("sp", "EgIQAw%3D%3D").build()
-            val data = extractor.extract(url.toString(), true, 12)
-            data.optJSONArray("entries")?.objects().orEmpty().mapNotNull { item ->
-                val canonical = YouTubeUrl.playlistId(item.optString("url"))?.let(YouTubeUrl::list) ?: return@mapNotNull null
-                PodcastCandidate(item.optString("title"), item.optString("channel").ifBlank { item.optString("uploader") },
-                    canonical, item.picture(), "YouTube · videocast")
-            }.distinctBy { it.feedUrl }
+        coroutineScope {
+            val batches = listOf("EgIQAg==", "EgIQAw==").map { filter -> async {
+                try {
+                    runInterruptible(Dispatchers.IO) {
+                        val url = "https://www.youtube.com/results".toHttpUrl().newBuilder()
+                            .addQueryParameter("search_query", query).addQueryParameter("sp", filter).build()
+                        extractor.extract(url.toString(), true, 12).optJSONArray("entries")?.objects().orEmpty().mapNotNull { item ->
+                            val raw = item.optString("url")
+                            val channel = YouTubeUrl.channel(raw)
+                            val canonical = channel ?: YouTubeUrl.playlistId(raw)?.let(YouTubeUrl::list) ?: return@mapNotNull null
+                            PodcastCandidate(item.optString("title"), item.optString("channel").ifBlank { item.optString("uploader") },
+                                canonical, item.picture(), if (channel != null) "YouTube · channel" else "YouTube · playlist")
+                        }
+                    }
+                } catch (e: CancellationException) { throw e }
+                catch (_: Exception) { null }
+            } }.map { it.await() }
+            if (batches.all { it == null }) throw IOException("YouTube search is unavailable. Please retry.")
+            batches.filterNotNull().flatten().distinctBy { it.feedUrl }
         }
     } ?: throw IOException("YouTube search timed out. Try again later.")
 
     suspend fun feed(id: String, raw: String): Feed = withTimeout(60_000) {
         runInterruptible(Dispatchers.IO) {
-            val url = requireNotNull(YouTubeUrl.source(raw)) { "Use a public YouTube playlist or video link" }
-            val playlist = YouTubeUrl.playlistId(url) != null
+            val url = requireNotNull(YouTubeUrl.source(raw)) { "Use a public YouTube channel, playlist or video link" }
+            val playlist = YouTubeUrl.playlistId(url) != null || YouTubeUrl.channel(url) != null
             val data = extractor.extract(url, playlist, 200)
             val entries = if (playlist) data.optJSONArray("entries")?.objects().orEmpty() else listOf(data)
-            val episodes = entries.mapNotNull { item ->
+            val episodes = entries.mapIndexedNotNull { index, item ->
                 val videoId = YouTubeUrl.videoId(item.optString("url"))
-                    ?: item.optString("id").takeIf { Regex("[A-Za-z0-9_-]{11}").matches(it) } ?: return@mapNotNull null
+                    ?: item.optString("id").takeIf { Regex("[A-Za-z0-9_-]{11}").matches(it) } ?: return@mapIndexedNotNull null
                 if (item.optString("availability") in setOf("private", "premium_only", "subscriber_only", "needs_auth") ||
-                    item.optString("live_status") in setOf("is_live", "is_upcoming")) return@mapNotNull null
+                    item.optString("live_status") in setOf("is_live", "is_upcoming")) return@mapIndexedNotNull null
                 val watch = YouTubeUrl.watch(videoId)
                 val published = runCatching {
                     LocalDate.parse(item.getString("upload_date"), DateTimeFormatter.BASIC_ISO_DATE)
@@ -125,29 +145,36 @@ class YouTubeSource(private val extractor: YouTubeExtractor) {
                 }.getOrNull()
                 FeedEpisode(episodeId(id, videoId), videoId, item.optString("title"), watch,
                     item.optDouble("duration", 0.0).takeIf { it.isFinite() && it > 0 }?.let { (it * 1000).toLong() },
-                    null, published, item.optString("description"), item.picture(), "video/youtube", webpageUrl = watch)
+                    null, published, item.optString("description"), item.picture(), "video/youtube", webpageUrl = watch, sourceOrder = index)
             }.distinctBy { it.id }
             require(episodes.isNotEmpty()) { "This YouTube source has no available episodes" }
-            Feed(data.optString("title"), episodes, data.optString("channel").ifBlank { data.optString("uploader") },
+            val ordered = if (YouTubeUrl.channel(url) != null) episodes else episodes.sortedByDescending { it.publishedAt }
+            Feed(data.optString("title"), ordered.mapIndexed { index, episode -> episode.copy(sourceOrder = index) }, data.optString("channel").ifBlank { data.optString("uploader") },
                 data.optString("description"), data.picture(), url)
         }
     }
 
-    // Short-lived, memory-only cache. Re-resolve on later playback/download; never sync signed URLs.
+    // Memory-only cache, bounded by both signed URL expiry and a 30-minute cap; never sync CDN URLs.
     private val cache = linkedMapOf<String, Pair<Long, YouTubeStreams>>()
     private val inFlight = ConcurrentHashMap<String, FutureTask<YouTubeStreams>>()
     fun invalidate(raw: String) { YouTubeUrl.videoId(raw)?.let { synchronized(cache) { cache.remove(it) } } }
     fun streams(raw: String): YouTubeStreams {
         val id = requireNotNull(YouTubeUrl.videoId(raw)) { "Invalid YouTube episode" }
-        val now = System.nanoTime()
-        synchronized(cache) { cache[id]?.takeIf { now - it.first < 120_000_000_000L }?.let { return it.second } }
+        val now = clock.elapsedNanos()
+        synchronized(cache) { cache[id]?.takeIf { now < it.first }?.let { return it.second } }
         val created = FutureTask {
-            val cached = synchronized(cache) { cache[id]?.takeIf { System.nanoTime() - it.first < 120_000_000_000L }?.second }
+            val cached = synchronized(cache) { cache[id]?.takeIf { clock.elapsedNanos() < it.first }?.second }
             if (cached != null) return@FutureTask cached
             val parsed = selectStreams(extractor.extract(YouTubeUrl.watch(id), false, 1))
             synchronized(cache) {
                 if (cache.size >= 8) cache.remove(cache.keys.first())
-                cache[id] = System.nanoTime() to parsed
+                val lifetime = listOfNotNull(parsed.audio, parsed.video).map { signed ->
+                    val expiry = signed.toHttpUrl().queryParameter("expire")?.toLongOrNull()
+                    if (expiry == null || expiry > Long.MAX_VALUE / 1000) 120_000L
+                    else if (expiry <= 0) 0L
+                    else (expiry * 1000 - clock.wallMillis() - 60_000L).coerceIn(0L, 30 * 60_000L)
+                }.minOrNull() ?: 0L
+                cache[id] = clock.elapsedNanos() + lifetime * 1_000_000 to parsed
             }
             parsed
         }

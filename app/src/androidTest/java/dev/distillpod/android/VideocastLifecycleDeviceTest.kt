@@ -4,6 +4,8 @@ import android.os.Build
 import androidx.activity.compose.setContent
 import androidx.compose.material3.Surface
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.*
 import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -31,12 +33,21 @@ import java.util.UUID
 class VideocastLifecycleDeviceTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
 
+    @Test fun videoExposesAFullscreenAction() = exercise(pending = false, fullscreen = true)
+    @Test fun rotationAutomaticallyEntersAndExitsWithoutResettingPlayback() = exercise(pending = false, automatic = true)
     @Test fun backgroundingRestoresAudioWhileCompositionIsStopped() = exercise(pending = false)
     @Test fun backgroundingCancelsAPendingVideoRequestBeforeActivityResume() = exercise(pending = true)
 
-    private fun exercise(pending: Boolean) = runBlocking<Unit> {
+    private fun exercise(pending: Boolean, fullscreen: Boolean = false, automatic: Boolean = false) = runBlocking<Unit> {
         check(Build.HARDWARE.contains("ranchu") || Build.FINGERPRINT.contains("generic"))
         val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val oldRotation = android.provider.Settings.System.getInt(compose.activity.contentResolver, android.provider.Settings.System.ACCELEROMETER_ROTATION, 0)
+        val oldOrientation = compose.activity.requestedOrientation
+        fun rotationSetting(value: Int) {
+            instrumentation.uiAutomation.executeShellCommand("settings put system accelerometer_rotation $value").use {
+                android.os.ParcelFileDescriptor.AutoCloseInputStream(it).use { input -> input.readBytes() }
+            }
+        }
         val graph = compose.activity.applicationContext.appGraph
         graph.ready.await()
         val tag = "videocast-lifecycle-${UUID.randomUUID()}"
@@ -77,6 +88,49 @@ class VideocastLifecycleDeviceTest {
             compose.waitForIdle()
             if (pending) withTimeout(10_000) { requestStarted.await() }
             else awaitPlayer("video enabled in foreground") { C.TRACK_TYPE_VIDEO !in it.trackSelectionParameters.disabledTrackTypes }
+            if (automatic) {
+                rotationSetting(1)
+                withContext(Dispatchers.Main) { compose.activity.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE }
+                compose.waitUntil(10_000) { compose.onAllNodesWithContentDescription("Exit fullscreen").fetchSemanticsNodes().isNotEmpty() }
+                val device = androidx.test.uiautomator.UiDevice.getInstance(instrumentation)
+                device.wait(androidx.test.uiautomator.Until.findObject(androidx.test.uiautomator.By.text("Got it")), 1500)?.click()
+                device.pressBack()
+                compose.waitUntil(10_000) { compose.onAllNodesWithContentDescription("Enter fullscreen").fetchSemanticsNodes().isNotEmpty() }
+                compose.mainClock.advanceTimeBy(1000)
+                compose.onNodeWithContentDescription("Exit fullscreen").assertDoesNotExist()
+                withContext(Dispatchers.Main) { compose.activity.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT }
+                compose.waitUntil(10_000) { compose.activity.resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_PORTRAIT }
+                withContext(Dispatchers.Main) { compose.activity.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE }
+                compose.waitUntil(10_000) { compose.onAllNodesWithContentDescription("Exit fullscreen").fetchSemanticsNodes().isNotEmpty() }
+                withContext(Dispatchers.Main) { compose.activity.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT }
+                compose.waitUntil(10_000) { compose.onAllNodesWithContentDescription("Enter fullscreen").fetchSemanticsNodes().isNotEmpty() }
+                withContext(Dispatchers.Main) {
+                    assertEquals(position, player.currentPosition)
+                    assertEquals(1.25f, player.playbackParameters.speed, .001f)
+                    assertTrue(C.TRACK_TYPE_VIDEO !in player.trackSelectionParameters.disabledTrackTypes)
+                }
+            }
+            if (fullscreen) {
+                rotationSetting(0)
+                val activity = compose.activity
+                compose.onNodeWithContentDescription("Enter fullscreen").assertExists().performClick()
+                compose.waitUntil(10_000) { compose.activity.resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE }
+                compose.onNodeWithContentDescription("Exit fullscreen").assertExists()
+                assertSame("Rotation must retain the activity and composition", activity, compose.activity)
+                withContext(Dispatchers.Main) {
+                    assertFalse(player.playWhenReady)
+                    assertEquals(position, player.currentPosition)
+                    assertEquals(1.25f, player.playbackParameters.speed, 0.001f)
+                    assertTrue(C.TRACK_TYPE_VIDEO !in player.trackSelectionParameters.disabledTrackTypes)
+                }
+                val device = androidx.test.uiautomator.UiDevice.getInstance(instrumentation)
+                // Android's first immersive-mode tutorial consumes Back before app callbacks.
+                device.wait(androidx.test.uiautomator.Until.findObject(androidx.test.uiautomator.By.text("Got it")), 1500)?.click()
+                device.pressBack()
+                compose.waitUntil(10_000) { compose.onAllNodesWithContentDescription("Exit fullscreen").fetchSemanticsNodes().isEmpty() }
+                compose.onNodeWithContentDescription("Enter fullscreen").assertExists()
+                withContext(Dispatchers.Main) { assertEquals(position, player.currentPosition) }
+            }
             compose.activityRule.scenario.moveToState(Lifecycle.State.CREATED)
             // Do not use Compose's idling/frame synchronization while the host is stopped.
             withTimeout(10_000) { while (withContext(Dispatchers.Main) {
@@ -99,6 +153,8 @@ class VideocastLifecycleDeviceTest {
             delay(300); dao.deletePodcast(tag); file.delete()
             graph.settings.flag("transcribeOnPlayback", automatic)
             modeScope.cancel()
+            rotationSetting(oldRotation)
+            withContext(Dispatchers.Main) { compose.activity.requestedOrientation = oldOrientation }
         }
     }
 }

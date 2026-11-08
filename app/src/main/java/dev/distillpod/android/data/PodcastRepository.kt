@@ -203,7 +203,7 @@ class PodcastRepository(private val db: AppDatabase, private val http: OkHttpCli
             }
             val base = old ?: EpisodeEntity(item.id, podcastId, item.guid, item.title, item.audioUrl)
             base.copy(webpageUrl = item.webpageUrl ?: base.webpageUrl, title = item.title, audioUrl = item.audioUrl, description = item.description,
-                imageUrl = item.imageUrl, publishedAt = item.publishedAt?.let { runCatching { Instant.parse(it).toEpochMilli() }.getOrDefault(0) } ?: base.publishedAt,
+                imageUrl = item.imageUrl, sourceOrder = item.sourceOrder ?: base.sourceOrder, publishedAt = item.publishedAt?.let { runCatching { Instant.parse(it).toEpochMilli() }.getOrDefault(0) } ?: base.publishedAt,
                 durationMs = item.durationMs ?: base.durationMs, mimeType = item.mimeType, transcriptUrl = item.transcriptUrl, transcriptType = item.transcriptType,
                 localFile = if (changed) null else base.localFile, downloadState = if (changed) "none" else base.downloadState,
                 downloadedBytes = if (changed) 0 else base.downloadedBytes, totalBytes = if (changed) 0 else base.totalBytes,
@@ -211,7 +211,13 @@ class PodcastRepository(private val db: AppDatabase, private val http: OkHttpCli
                 error = if (changed) null else base.error,
                 mediaFingerprint = if (changed || base.mediaFingerprint.isBlank()) episodeId("enclosure", item.audioUrl) else base.mediaFingerprint)
         }
-        dao.putEpisodes(episodes)
+        // Entries outside a bounded refresh remain available, after the current snapshot.
+        // Never delete archived episodes or reset their listening/download state.
+        val present = items.map { it.guid }.toSet()
+        val retained = if (items.any { it.sourceOrder != null }) saved.values.filter { it.guid !in present }
+            .sortedWith(compareBy<EpisodeEntity> { it.sourceOrder ?: Int.MAX_VALUE }.thenBy { it.id })
+            .mapIndexed { index, episode -> episode.copy(sourceOrder = items.size + index) } else emptyList()
+        dao.putEpisodes(episodes + retained)
         val automation = db.automation().show(podcastId)
         if (automation != null) {
             if (automation.initialized) episodes.filter { it.guid !in saved && (it.publishedAt == 0L || it.publishedAt >= automation.enabledAt) }

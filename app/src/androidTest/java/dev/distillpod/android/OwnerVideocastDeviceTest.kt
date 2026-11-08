@@ -44,6 +44,7 @@ class OwnerVideocastDeviceTest {
         check(android.os.Build.MODEL == "SM-S908E") { "Owner acceptance is restricted to the authorized S22 model" }
         graph.ready.await()
         when (args.getString("videocastPhase")) {
+            "prepare_upgrade" -> { snapshot(); receipt("prepare_upgrade", JSONObject().put("ownerSessionSaved", true)) }
             "inventory" -> {
                 val db = graph.db.openHelper.readableDatabase
                 val inventory = JSONObject()
@@ -120,6 +121,74 @@ class OwnerVideocastDeviceTest {
                     graph.playback.video(next, true); graph.playback.leaveVideo(id); delay(300)
                     withContext(Dispatchers.Main) { assertFalse(C.TRACK_TYPE_VIDEO in c.trackSelectionParameters.disabledTrackTypes) }
                     receipt("queue", JSONObject().put("selectionPreserved", true).put("nextStartsInAudio", true).put("obsoleteCleanupIgnored", true))
+                } finally { restore() }
+            }
+            "experience" -> {
+                check(!context.getSystemService(android.app.KeyguardManager::class.java).isKeyguardLocked) {
+                    "Unlock the phone before foreground video acceptance"
+                }
+                unmetered(); snapshot()
+                try {
+                    val feed = graph.youtube.feed(id, "https://www.youtube.com/@portadosfundos/videos")
+                    assertEquals(0, feed.episodes.first().sourceOrder)
+                    fixture(feed.episodes.first())
+                    val ep = dao.episode(id)!!
+                    val duration = ep.durationMs.coerceAtLeast(120_000)
+                    // Synthetic, fixture-only context prevents transcript downloads or generation.
+                    // Streamed captures retain an unverified fingerprint and require source review.
+                    dao.putTranscript(TranscriptEntity(id, "video-ui-fixture", "validation", "fixture", "en", state = "ready", durationMs = duration, processedMs = duration))
+                    dao.putCoverage(CoverageEntity(id, "video-ui-fixture", 0, duration))
+                    dao.putSegments((0 until duration step 1000L).map { start ->
+                        SegmentEntity(id, "video-ui-fixture", start, start + 1000, "Synthetic video acceptance context.")
+                    })
+                    val c = player()
+                    withContext(Dispatchers.Main) { c.volume = 0f }
+                    graph.playback.play(id, 5_000); await { it.isPlaying }
+                    graph.playback.pause(); graph.playback.speed(1.25f)
+                    await { !it.playWhenReady && it.playbackState == Player.STATE_READY }
+                    context.startActivity(android.content.Intent(context, MainActivity::class.java)
+                        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                        .putExtra("openPlayer", true))
+                    val device = androidx.test.uiautomator.UiDevice.getInstance(instrumentation)
+                    fun clickDescription(description: String) {
+                        val node = device.wait(androidx.test.uiautomator.Until.findObject(androidx.test.uiautomator.By.desc(description)), 15_000)
+                        assertNotNull("Missing video action: $description", node); node!!.click()
+                    }
+                    val chip = device.wait(androidx.test.uiautomator.Until.findObject(androidx.test.uiautomator.By.text("Video").enabled(true)), 15_000)
+                    assertNotNull(chip); chip!!.click()
+                    await { C.TRACK_TYPE_VIDEO !in it.trackSelectionParameters.disabledTrackTypes && it.playbackState == Player.STATE_READY && it.videoSize.width > 0 }
+                    val position = withContext(Dispatchers.Main) { c.currentPosition }
+                    val uri = withContext(Dispatchers.Main) { c.currentMediaItem!!.localConfiguration!!.uri }
+                    clickDescription("Enter fullscreen")
+                    assertTrue(device.wait(androidx.test.uiautomator.Until.hasObject(androidx.test.uiautomator.By.desc("Exit fullscreen")), 15_000))
+                    withTimeout(10_000) { while (context.resources.configuration.orientation != android.content.res.Configuration.ORIENTATION_LANDSCAPE) delay(50) }
+                    device.wait(androidx.test.uiautomator.Until.findObject(androidx.test.uiautomator.By.text("Got it")), 1500)?.click()
+                    withContext(Dispatchers.Main) {
+                        assertFalse(c.playWhenReady); assertEquals(position, c.currentPosition)
+                        assertEquals(uri, c.currentMediaItem!!.localConfiguration!!.uri)
+                        assertEquals(1.25f, c.playbackParameters.speed, .001f)
+                    }
+                    clickDescription("Forward 30 seconds")
+                    await { it.currentPosition == (position + 30_000).coerceAtMost(duration) && it.playbackState == Player.STATE_READY }
+                    graph.playback.seek(position); await { it.currentPosition == position && it.playbackState == Player.STATE_READY }
+                    val capture = device.wait(androidx.test.uiautomator.Until.findObject(androidx.test.uiautomator.By.text("Distill").enabled(true)), 10_000)
+                    assertNotNull(capture); capture!!.click()
+                    withTimeout(15_000) { while (dao.distillations().none { it.episodeId == id }) delay(100) }
+                    val saved = dao.distillations().single { it.episodeId == id }
+                    assertEquals(position, saved.endMs)
+                    assertNotEquals("queued", saved.state)
+                    assertTrue("Capture stays in fullscreen", device.hasObject(androidx.test.uiautomator.By.desc("Exit fullscreen")))
+                    if (context.resources.getBoolean(R.bool.voice_enabled)) assertTrue(device.hasObject(androidx.test.uiautomator.By.text("Voice question")))
+                    clickDescription("Play video"); await { it.isPlaying }
+                    assertTrue(device.wait(androidx.test.uiautomator.Until.gone(androidx.test.uiautomator.By.desc("Pause video")), 15_000))
+                    device.click(device.displayWidth / 2, device.displayHeight / 2)
+                    clickDescription("Pause video"); await { !it.playWhenReady }
+                    assertTrue(device.pressBack())
+                    assertTrue(device.wait(androidx.test.uiautomator.Until.hasObject(androidx.test.uiautomator.By.desc("Enter fullscreen")), 15_000))
+                    await { C.TRACK_TYPE_VIDEO !in it.trackSelectionParameters.disabledTrackTypes }
+                    receipt("experience", JSONObject().put("portaVideoDecoded", true).put("landscapeFullscreen", true)
+                        .put("samePlaybackSource", true).put("seekCaptureAndOverlay", true).put("backExitsFullscreen", true)
+                        .put("paidVoiceRequest", false))
                 } finally { restore() }
             }
             "ui_background" -> {
@@ -227,7 +296,7 @@ class OwnerVideocastDeviceTest {
         val json = withContext(Dispatchers.Main) {
             JSONObject().put("queue", JSONArray((0 until c.mediaItemCount).map { c.getMediaItemAt(it).mediaId }))
                 .put("current", c.currentMediaItem?.mediaId ?: "").put("position", c.currentPosition.coerceAtLeast(0))
-                .put("speed", c.playbackParameters.speed.toDouble()).put("volume", c.volume.toDouble())
+                .put("speed", c.playbackParameters.speed.toDouble()).put("volume", c.volume.toDouble()).put("playing", c.playWhenReady)
                 .put("automatic", prefs.transcribeOnPlayback)
         }
         backup.parentFile!!.mkdirs()
@@ -306,6 +375,7 @@ class OwnerVideocastDeviceTest {
                 c.setMediaItems(episodes.map { mediaItem(it, podcasts[it.podcastId]) }, index, old.getLong("position")); c.prepare()
             }
             c.setPlaybackSpeed(old.getDouble("speed").toFloat()); c.volume = old.getDouble("volume").toFloat()
+            if (old.optBoolean("playing") && episodes.isNotEmpty()) c.play()
         }
         withTimeout(30_000) { while (dao.queue().map { it.episodeId } != ids || graph.activeFiles.busy(dao.episode(id)?.localFile.orEmpty())) delay(200) }
         graph.media.deleteDownload(id); dao.deletePodcast(id)

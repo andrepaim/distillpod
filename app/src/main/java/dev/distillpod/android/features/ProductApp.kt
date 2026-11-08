@@ -72,6 +72,8 @@ private fun date(ms: Long) = if (ms <= 0) "" else DateTimeFormatter.ofPattern("d
 @Composable fun ProductApp(vm: AppViewModel) {
     val stack by vm.backStack.collectAsStateWithLifecycle()
     val route = stack.last()
+    var videoFullscreen by remember { mutableStateOf(false) }
+    LaunchedEffect(route) { if (route != "player") videoFullscreen = false }
     val podcasts by vm.podcasts.collectAsStateWithLifecycle()
     val episodes by vm.episodes.collectAsStateWithLifecycle()
     val player by vm.player.collectAsStateWithLifecycle()
@@ -109,7 +111,7 @@ private fun date(ms: Long) = if (ms <= 0) "" else DateTimeFormatter.ofPattern("d
     DistillTheme {
         BackupDocumentLaunchers(vm)
         Scaffold(containerColor = ink, snackbarHost = { SnackbarHost(snackbar) }, topBar = {
-            TopAppBar(title = { Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold) },
+            if (!videoFullscreen) TopAppBar(title = { Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold) },
                 navigationIcon = { if (stack.size > 1) IconButton(onClick = vm::back) { Icon(Icons.Default.ArrowBack, "Back") } },
                 actions = {
                     if (route == "library" || route.startsWith("podcast:")) IconButton(onClick = { vm.refresh(if (route.startsWith("podcast:")) route.substringAfter(':') else null) }, enabled = "refresh" !in busy) { Icon(Icons.Default.Refresh, "Refresh feeds") }
@@ -130,8 +132,8 @@ private fun date(ms: Long) = if (ms <= 0) "" else DateTimeFormatter.ofPattern("d
                 }
             }
         }) { padding ->
-            Box(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)
-                .then(if (route == "player") Modifier.navigationBarsPadding() else Modifier)) {
+            Box(Modifier.fillMaxSize().then(if (videoFullscreen) Modifier else Modifier.padding(padding).consumeWindowInsets(padding))
+                .then(if (route == "player" && !videoFullscreen) Modifier.navigationBarsPadding() else Modifier)) {
                 screenState.SaveableStateProvider(route) {
                 when {
                     !loaded -> CircularProgressIndicator(Modifier.align(Alignment.Center))
@@ -144,7 +146,7 @@ private fun date(ms: Long) = if (ms <= 0) "" else DateTimeFormatter.ofPattern("d
                     route == "shows" -> ShowsPage(vm, podcasts)
                     route == "settings" || route.startsWith("settings:") -> SettingsPage(vm, preferences, account, models, episodes, route.substringAfter(':', "overview"))
                     route == "backup" -> BackupPage(vm)
-                    route == "player" -> PlayerPage(vm, episodes.firstOrNull { it.id == player.episodeId }, podcasts, player)
+                    route == "player" -> PlayerPage(vm, episodes.firstOrNull { it.id == player.episodeId }, podcasts, player) { videoFullscreen = it }
                     route.startsWith("episode:") -> EpisodePage(vm, episodes.firstOrNull { it.id == route.substringAfter(':') }, podcasts, player)
                     route.startsWith("capture:") -> CapturePage(vm, captures.firstOrNull { it.id == route.substringAfter(':') }, episodes)
                     route.startsWith("transcript:") -> TranscriptPage(vm, episodes.firstOrNull { it.id == route.substringAfter(':') })
@@ -175,7 +177,8 @@ private fun date(ms: Long) = if (ms <= 0) "" else DateTimeFormatter.ofPattern("d
     val subscribed = podcasts.filter { it.subscribed }
     val selected = podcasts.firstOrNull { it.id == podcastId }
     val library = episodes.filter { ep -> if (podcastId != null) ep.podcastId == podcastId else subscribed.any { it.id == ep.podcastId } || ep.localFile != null || ep.lastPlayedAt > 0 }
-    val visible = library.filter { ep -> when (filter) { "downloads" -> ep.localFile != null; "progress" -> ep.positionMs > 0 && !ep.completed; else -> true } }
+    val visible = library.filter { ep -> when (filter) { "downloads" -> ep.localFile != null; "progress" -> ep.positionMs > 0 && !ep.completed; else -> true } }.let { rows -> if (selected?.feedUrl?.let { dev.distillpod.core.YouTubeUrl.source(it) } != null)
+        rows.sortedBy { it.sourceOrder ?: Int.MAX_VALUE } else rows }
     val resume = library.firstOrNull { it.id == player.episodeId && !it.completed }
         ?: library.filter { it.positionMs > 0 && !it.completed }.maxByOrNull { it.lastPlayedAt }
     val showResume = podcastId == null && filter == "all" && resume != null
@@ -312,63 +315,74 @@ private fun date(ms: Long) = if (ms <= 0) "" else DateTimeFormatter.ofPattern("d
 }
 
 @OptIn(ExperimentalLayoutApi::class)
-@Composable private fun PlayerPage(vm: AppViewModel, ep: EpisodeEntity?, podcasts: List<PodcastEntity>, player: PlaybackState) {
+@Composable private fun PlayerPage(vm: AppViewModel, ep: EpisodeEntity?, podcasts: List<PodcastEntity>, player: PlaybackState, onFullscreen: (Boolean) -> Unit) {
     if (ep == null) { Empty("Pick an episode", "Choose something from your library to start listening.", "Open library", { vm.root("library") }); return }
     val podcast = podcasts.firstOrNull { it.id == ep.podcastId }
     var dragging by remember(ep.id) { mutableStateOf<Float?>(null) }
     val displayedPosition = dragging?.toLong() ?: player.positionMs
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        if (ep.mimeType?.startsWith("video/") == true) {
-            VideocastPlayer(vm.graph.playback, ep.id) { Cover(ep.imageUrl ?: podcast?.imageUrl, Modifier.size(196.dp)) }
-        } else Cover(ep.imageUrl ?: podcast?.imageUrl, Modifier.size(196.dp))
-        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-            Text(ep.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold, maxLines = 3, overflow = TextOverflow.Ellipsis)
-            Text(podcast?.title ?: "Podcast", color = MaterialTheme.colorScheme.secondary, style = MaterialTheme.typography.bodyMedium)
-        }
-        VoiceControls(vm)
-        PlayerAdControls(vm, ep)
-        val skipped by vm.graph.playbackEvents.lastSkipped.collectAsStateWithLifecycle()
-        if (skipped?.episodeId == ep.id) TextButton(onClick = vm::undoAdSkip) { Text("Ad skipped · Undo and replay") }
-        player.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        Column(Modifier.fillMaxWidth()) {
-            Slider(value = dragging ?: player.positionMs.toFloat().coerceIn(0f, player.durationMs.coerceAtLeast(1).toFloat()), onValueChange = { dragging = it },
-                onValueChangeFinished = { dragging?.let { vm.seek(it.toLong()) }; dragging = null }, valueRange = 0f..player.durationMs.coerceAtLeast(1).toFloat(), enabled = player.durationMs > 0,
-                modifier = Modifier.semantics { contentDescription = "Episode playback position"; stateDescription = "${timestamp(displayedPosition)} of ${timestamp(player.durationMs)}" })
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(timestamp(displayedPosition), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(timeRemaining(player.durationMs, displayedPosition), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = { vm.skip(-10000) }, modifier = Modifier.size(64.dp)) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) { Icon(Icons.Default.Replay, "Back 10 seconds", Modifier.size(28.dp)); Text("10 s", style = MaterialTheme.typography.labelSmall) }
-            }
-            FilledIconButton(onClick = vm::toggle, shape = androidx.compose.foundation.shape.CircleShape, modifier = Modifier.size(76.dp)) { Icon(if (player.playing) Icons.Default.Pause else Icons.Default.PlayArrow, if (player.playing) "Pause" else "Play", Modifier.size(40.dp)) }
-            IconButton(onClick = { vm.skip(30000) }, modifier = Modifier.size(64.dp)) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) { Icon(Icons.Default.Forward30, "Forward 30 seconds", Modifier.size(28.dp)); Text("30 s", style = MaterialTheme.typography.labelSmall) }
-            }
-        }
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(0.dp)) {
-            listOf(1f, 1.25f, 1.5f, 2f).forEach { speed -> FilterChip(selected = player.speed == speed, onClick = { vm.speed(speed) }, label = { Text("${speed.toString().removeSuffix(".0")}×") }) }
-        }
-        Button(onClick = vm::captureMoment, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp), shape = RoundedCornerShape(16.dp)) {
-            Icon(Icons.Default.AutoAwesome, null, Modifier.size(20.dp)); Spacer(Modifier.width(10.dp)); Text("Distill last 60 seconds")
-        }
-        Text("Save the moment now. Generate its insight when the source is ready.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        HorizontalDivider(Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.outline.copy(alpha = .35f))
-        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                Text("Go deeper", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                TranscriptTools(vm, ep)
-                EpisodeUnderstandingTools(vm, ep)
-                DownloadAction(vm, ep)
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = { vm.open("episode:${ep.id}") }) { Text("Episode details") }
-                    OutlinedButton(onClick = { vm.root("queue") }) { Text("Queue") }
+    var fullscreen by remember(ep.id) { mutableStateOf(false) }
+    val busy by vm.busy.collectAsStateWithLifecycle()
+    VoicePlayerHost(vm, showLastAnswer = !fullscreen) { voiceEnabled, voiceActive, ask ->
+        Column(Modifier.fillMaxSize().then(if (fullscreen) Modifier else Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 8.dp)), verticalArrangement = Arrangement.spacedBy(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            if (ep.mimeType?.startsWith("video/") == true) {
+                VideocastPlayer(vm.graph.playback, ep.id, title = ep.title,
+                    onFullscreen = { fullscreen = it; onFullscreen(it) },
+                    onCapture = vm::captureMomentInPlayer, captureBusy = "distill" in busy,
+                    onVoice = ask, onToggle = vm::toggle, onSeek = vm::seek, voiceEnabled = voiceEnabled, voiceActive = voiceActive) { Cover(ep.imageUrl ?: podcast?.imageUrl, Modifier.size(196.dp)) }
+            } else Cover(ep.imageUrl ?: podcast?.imageUrl, Modifier.size(196.dp))
+            if (!fullscreen) {
+                Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    Text(ep.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                    Text(podcast?.title ?: "Podcast", color = MaterialTheme.colorScheme.secondary, style = MaterialTheme.typography.bodyMedium)
                 }
+                if (voiceEnabled) Button(onClick = ask, enabled = !voiceActive, modifier = Modifier.fillMaxWidth()) {
+                    Icon(Icons.Default.Mic, null); Spacer(Modifier.width(8.dp)); Text("Ask about this")
+                }
+                PlayerAdControls(vm, ep)
+                val skipped by vm.graph.playbackEvents.lastSkipped.collectAsStateWithLifecycle()
+                if (skipped?.episodeId == ep.id) TextButton(onClick = vm::undoAdSkip) { Text("Ad skipped · Undo and replay") }
+                player.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                Column(Modifier.fillMaxWidth()) {
+                    Slider(value = dragging ?: player.positionMs.toFloat().coerceIn(0f, player.durationMs.coerceAtLeast(1).toFloat()), onValueChange = { dragging = it },
+                        onValueChangeFinished = { dragging?.let { vm.seek(it.toLong()) }; dragging = null }, valueRange = 0f..player.durationMs.coerceAtLeast(1).toFloat(), enabled = player.durationMs > 0,
+                        modifier = Modifier.semantics { contentDescription = "Episode playback position"; stateDescription = "${timestamp(displayedPosition)} of ${timestamp(player.durationMs)}" })
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text(timestamp(displayedPosition), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(timeRemaining(player.durationMs, displayedPosition), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = { vm.skip(-10000) }, modifier = Modifier.size(64.dp)) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) { Icon(Icons.Default.Replay, "Back 10 seconds", Modifier.size(28.dp)); Text("10 s", style = MaterialTheme.typography.labelSmall) }
+                    }
+                    FilledIconButton(onClick = vm::toggle, shape = androidx.compose.foundation.shape.CircleShape, modifier = Modifier.size(76.dp)) { Icon(if (player.playing) Icons.Default.Pause else Icons.Default.PlayArrow, if (player.playing) "Pause" else "Play", Modifier.size(40.dp)) }
+                    IconButton(onClick = { vm.skip(30000) }, modifier = Modifier.size(64.dp)) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) { Icon(Icons.Default.Forward30, "Forward 30 seconds", Modifier.size(28.dp)); Text("30 s", style = MaterialTheme.typography.labelSmall) }
+                    }
+                }
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(0.dp)) {
+                    listOf(1f, 1.25f, 1.5f, 2f).forEach { speed -> FilterChip(selected = player.speed == speed, onClick = { vm.speed(speed) }, label = { Text("${speed.toString().removeSuffix(".0")}×") }) }
+                }
+                Button(onClick = vm::captureMoment, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp), shape = RoundedCornerShape(16.dp)) {
+                    Icon(Icons.Default.AutoAwesome, null, Modifier.size(20.dp)); Spacer(Modifier.width(10.dp)); Text("Distill last 60 seconds")
+                }
+                Text("Save the moment now. Generate its insight when the source is ready.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                HorizontalDivider(Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.outline.copy(alpha = .35f))
+                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                        Text("Go deeper", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        TranscriptTools(vm, ep)
+                        EpisodeUnderstandingTools(vm, ep)
+                        DownloadAction(vm, ep)
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(onClick = { vm.open("episode:${ep.id}") }) { Text("Episode details") }
+                            OutlinedButton(onClick = { vm.root("queue") }) { Text("Queue") }
+                        }
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
             }
         }
-        Spacer(Modifier.height(12.dp))
     }
 }
 
