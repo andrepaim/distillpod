@@ -82,8 +82,7 @@ class AppJobs(private val context: Context) {
             .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()).build()) }
     private fun request(kind: String, id: String, prefs: Preferences, existing: WorkInfo? = null) = OneTimeWorkRequestBuilder<LibraryWorker>()
         .setInputData(workDataOf("kind" to kind, "id" to id))
-        .setConstraints(Constraints.Builder(existing?.constraints ?: Constraints.NONE)
-            .setRequiredNetworkType(if (prefs.wifiOnly) NetworkType.UNMETERED else NetworkType.CONNECTED).build())
+        .setConstraints((existing?.constraints ?: Constraints.NONE).withNetworkPolicy(prefs.wifiOnly))
         .apply { existing?.let { info ->
             setId(info.id)
             setInitialDelay(info.initialDelayMillis, TimeUnit.MILLISECONDS)

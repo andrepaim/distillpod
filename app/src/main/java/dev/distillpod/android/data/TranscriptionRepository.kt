@@ -8,6 +8,7 @@ import dev.distillpod.android.NativeWhisper
 import dev.distillpod.android.appGraph
 import dev.distillpod.android.work.workForeground
 import dev.distillpod.android.work.TranscriptionService
+import dev.distillpod.android.work.withNetworkPolicy
 import dev.distillpod.core.*
 import java.io.File
 import java.util.UUID
@@ -126,7 +127,7 @@ class TranscriptionRepository(private val graph: AppGraph,
                     info.constraints.requiredNetworkType == network) continue
                 val request = OneTimeWorkRequestBuilder<TranscriptWorker>().setId(info.id)
                     .setInputData(workDataOf("episode" to row.episodeId, "revision" to row.revision))
-                    .setConstraints(Constraints.Builder(info.constraints).setRequiredNetworkType(network).build())
+                    .setConstraints(info.constraints.withNetworkPolicy(prefs.wifiOnly))
                     .setInitialDelay(info.initialDelayMillis, java.util.concurrent.TimeUnit.MILLISECONDS)
                     .apply { info.tags.forEach { addTag(it) } }.build()
                 manager.updateWork(request).get()
