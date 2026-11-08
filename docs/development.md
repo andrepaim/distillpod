@@ -78,7 +78,28 @@ The [library sync guide](android/subscription-sync.md) documents optional client
 commits for personal data containers and unreviewed binary media. See
 [repository security](security.md) for local checks and asset-review requirements.
 
-`ci.yml` runs Kotlin tests, lint/APK assembly, release-tool guards, host native validation and emulator acceptance on main pushes and pull requests. Its reusable form also gates the release workflow. Actions are pinned to reviewed commit SHAs; Dependabot checks those pins and Gradle dependencies weekly.
+`ci.yml` runs Kotlin tests, lint/APK assembly, release-tool guards, host native validation and emulator acceptance on main pushes and pull requests. Its reusable form also gates the release workflow.
+
+Main pushes that change only Markdown, documentation screenshots/videos under
+`docs/`, historical JSON/JSONL/TXT reports under `docs/android/evidence/`, or
+the Manrope font license do not start Android CI. Mixed pushes still run when
+GitHub evaluates any non-documentation path. The filter deliberately does not
+ignore entire directories: Kotlin, Java, C++, scripts, HTML/CSS/JavaScript,
+workflow YAML, Gradle files, app resources, Firebase rules/configuration, and
+submodule changes remain eligible, including code added under `docs/`.
+Pull requests, manual dispatch and reusable calls are not path-filtered.
+The independent security workflow still scans documentation changes.
+
+**GitHub limitation:** native path filters evaluate at most 300 changed files.
+In a larger mixed push, a code file outside that set can be missed. Do not rely
+on this filter for that case: use manual Android CI dispatch or split the push.
+GitHub runs workflows unconditionally when a push has more than 1,000 commits
+or diff generation times out. See
+[GitHub path-filter limits](https://docs.github.com/en/actions/writing-workflows/workflow-syntax-for-github-actions#git-diff-comparisons).
+A full-diff gate job would avoid the file limit but would itself run on every
+push, including documentation-only pushes.
+
+Actions are pinned to reviewed commit SHAs; Dependabot checks those pins and Gradle dependencies weekly.
 
 `release.yml` accepts version tags from main history, requests the additional unsigned release build/lint, and signs only after all validation jobs pass. Signing secrets are available only in the protected alpha-release environment. The publishing job has repository-content write permission; test jobs have read permission. See [releases](releases.md).
 

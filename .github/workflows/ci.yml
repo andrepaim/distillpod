@@ -3,6 +3,15 @@ name: Android CI
 on:
   push:
     branches: [main]
+    # Documentation only; do not ignore entire directories or code/config formats.
+    paths-ignore:
+      - '**.md'
+      - 'docs/**/*.png'
+      - 'docs/**/*.mp4'
+      - 'docs/android/evidence/**/*.json'
+      - 'docs/android/evidence/**/*.jsonl'
+      - 'docs/android/evidence/**/*.txt'
+      - 'design/icon-proposal/assets/Manrope-OFL.txt'
   pull_request:
     branches: [main]
   workflow_dispatch:
