@@ -45,3 +45,34 @@ successful platform-controller capture. Its 900 ms inter-press delay exceeds the
 750 ms duplicate filter. This does not prove the system selected this session;
 session-routing evidence or a reproduced failure is needed before a targeted fix.
 No headphone assertions or production behavior were changed.
+
+## Isolated physical probe
+
+The opt-in source under app/src/validationTest/java adds three real Android
+Room/coroutine tests. It requires exactly
+dev.distillpod.android.validation.pauserace before opening the graph. Each case
+creates synthetic UUID-scoped rows, saved text and coverage, then removes only its
+own fixture. It does not play audio, access an account, download models, change
+global device settings, or touch the owner's application.
+
+Use the dedicated-package init-script procedure in
+[download network policy](download-network-policy.md), with application ID
+dev.distillpod.android.validation.pauserace, test ID
+dev.distillpod.android.validation.pauserace.test, and add
+android.sourceSets.androidTest.java.srcDir('src/validationTest/java')
+inside the app configuration.
+
+Build debug and instrumentation APKs with that temporary init script. Verify both
+IDs in the built manifests and confirm both packages are absent on the selected
+phone before installing. Run only
+dev.distillpod.android.TranscriptionPauseDeviceTest through IsolatedTestRunner,
+verify its log with scripts/device_result.py, and remove only these two temporary
+packages afterward. Coordinate an exclusive device window before installation or
+execution; never bypass the existing emulator-only playback fixture guard.
+
+The probe verifies stale paused/superseded/terminal protection, real in-flight
+cancellation, automatic preparation retaining pause, and preservation of current
+progress, saved segments and coverage. It does not validate real headset routing,
+playback UI, native inference, battery behavior, or release-signed owner upgrades.
+Record tested revision, APK hashes and device results separately; preparing or
+compiling this probe is not physical-device acceptance.
