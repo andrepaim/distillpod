@@ -27,6 +27,8 @@ class CaptureContextEvidenceTest {
         File(context.noBackupFilesDir,"reliability").deleteRecursively()
         WorkManagerTestInitHelper.initializeTestWorkManager(context)
         val diagnostics=Diagnostics(context,"https://abc123@o1.ingest.sentry.io/1")
+        diagnostics.contextSummary(UUID.randomUUID().toString(),ContextPreparationEvidence(),0,null)
+        assertTrue(diagnostics.queue.files().isEmpty())
         val db=Room.inMemoryDatabaseBuilder(context,AppDatabase::class.java).build()
         val dao=db.library()
         val revision=UUID.randomUUID().toString()
@@ -36,7 +38,7 @@ class CaptureContextEvidenceTest {
                 durationMs=if(kind=="unknown")0 else 300000,mediaFingerprint="private-content-hash"))
             dao.putTranscript(TranscriptEntity("ep",revision,"private-content-hash","tiny","en",
                 state="ready",durationMs=if(kind=="unknown")0 else 300000,processedMs=300000))
-            if(kind!="missing")dao.putCoverage(CoverageEntity("ep",revision,0,if(kind=="partial")100000 else 300000))
+            if(kind !in setOf("missing","cancelled","exception"))dao.putCoverage(CoverageEntity("ep",revision,0,if(kind=="partial")100000 else 300000))
             val segments=when(kind) {
                 "empty" -> listOf(SegmentEntity("ep",revision,140000,200000,"  "))
                 "crossing" -> listOf(SegmentEntity("ep",revision,70000,150000,"left private"),
@@ -54,13 +56,18 @@ class CaptureContextEvidenceTest {
             val repo=CaptureRepository(db,ai,{
                 if(kind=="revision")runBlocking {dao.putTranscript(dao.transcript("ep")!!.copy(revision=UUID.randomUUID().toString()))}
                 true
-            },{}, {},diagnostics=diagnostics)
+            },{
+                if(kind=="cancelled")throw kotlinx.coroutines.CancellationException(secret)
+                if(kind=="exception")throw IllegalStateException(secret)
+            }, {},diagnostics=diagnostics)
             val id=repo.save("ep",200000,kind!="source")
             if(kind=="invalid")dao.putDistillation(dao.distillation(id)!!.copy(startMs=-1))
             if(kind=="invalid_range")dao.putDistillation(dao.distillation(id)!!.copy(endMs=-1))
             diagnostics.consent(true);diagnostics.awaitIdle()
-            if(kind=="invalid_range") {
-                try {repo.prepareSaved(id);fail("Invalid range accepted")}catch(_:IllegalArgumentException) {}
+            if(kind=="budget")context.getSharedPreferences("diagnostics",0).edit()
+                .putInt("budget_routine",800).putInt("sent",800).commit()
+            if(kind in setOf("invalid_range","cancelled","exception")) {
+                try {repo.prepareSaved(id);fail("Expected preparation failure")}catch(_:Exception) {}
             } else repo.prepareSaved(id)
             diagnostics.awaitIdle()
             val payloads=diagnostics.queue.files().map {it.readText()}.filter {it.contains("capture.context_summary")}
@@ -85,6 +92,11 @@ class CaptureContextEvidenceTest {
             }
             fields
         } finally {diagnostics.consent(false);db.close()}
+    }
+    @Test fun `cancelled and exceptional exits redact messages and routine exhaustion preserves summary`() {
+        assertEquals("cancelled",scenario("cancelled")["context_reason"])
+        assertEquals("internal",scenario("exception")["context_reason"])
+        assertEquals("ready",scenario("budget")["context_reason"])
     }
     @Test fun `missing and partial source coverage are truthful waits`() {
         val missing=scenario("missing")
