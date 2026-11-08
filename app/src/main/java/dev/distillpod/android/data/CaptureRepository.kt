@@ -328,15 +328,9 @@ class CaptureRepository(private val db: AppDatabase, private val ai: AiGateway, 
             diagnostics?.event("distillation.finished",saved.id,reason=outcome,correlation=evidence?.copy(modelChanged=correlation(attempt).modelChanged))
             onPortableChanged()
         } catch(error: Exception) {
-            val owned=withContext(NonCancellable) { db.withTransaction {
-                val current=dao.distillation(id)
-                if(current==null || current.attempt!=saved.attempt || current.state !in setOf("running","reviewing") || dao.momentAttempt(saved.attempt)?.run!=execution)return@withTransaction false
-                dao.putDistillation(current.copy(
-                    state=when(error) {is QuotaExceeded -> "waiting_quota";is ReauthorizationRequired -> "waiting_auth";else -> "failed"},
-                    error=if(error is CancellationException)"Generation was interrupted. Your source and any completed candidate are saved." else safeFailure(error)))
-                true
-            } }
-            if(owned && !terminalRecorded) {
+            val alreadyTerminal=terminalRecorded
+            // Preserve observed failure even if the ownership-storage check itself fails.
+            if(!terminalRecorded) {
                 if(error is ObsoleteMomentSource)summary.discarded() else summary.fail(when {
                     error is CancellationException -> "interrupted"
                     error is QuotaExceeded -> "quota"
@@ -347,6 +341,15 @@ class CaptureRepository(private val db: AppDatabase, private val ai: AiGateway, 
                 })
                 terminalRecorded=true
             }
+            val owned=withContext(NonCancellable) { db.withTransaction {
+                val current=dao.distillation(id)
+                if(current==null || current.attempt!=saved.attempt || current.state !in setOf("running","reviewing") || dao.momentAttempt(saved.attempt)?.run!=execution)return@withTransaction false
+                dao.putDistillation(current.copy(
+                    state=when(error) {is QuotaExceeded -> "waiting_quota";is ReauthorizationRequired -> "waiting_auth";else -> "failed"},
+                    error=if(error is CancellationException)"Generation was interrupted. Your source and any completed candidate are saved." else safeFailure(error)))
+                true
+            } }
+            if(!owned && !alreadyTerminal)summary.discarded()
             if(owned) {
                 diagnostics?.failure("distillation",error,saved.id,correlation=evidence)
                 if(error is QuotaExceeded || error is ReauthorizationRequired)diagnostics?.event("distillation.queued",saved.id,
