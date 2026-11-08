@@ -75,6 +75,29 @@ class OwnerVideocastDeviceTest {
                     receipt("download", JSONObject().put("bytes", file.length()).put("durationMs", duration))
                 } catch (e: Exception) { restore(); throw e }
             }
+            "queue" -> {
+                unmetered(); snapshot()
+                try {
+                    val episode = graph.youtube.feed(id, playlist).episodes.first()
+                    fixture(episode)
+                    val next = "$id-next"
+                    dao.putEpisode(EpisodeEntity(next, id, next, "Public queue acceptance", episode.audioUrl,
+                        durationMs = episode.durationMs ?: 0, mimeType = "video/youtube", mediaFingerprint = "validation"))
+                    graph.playback.play(id, 5_000); await { it.isPlaying }
+                    graph.playback.video(id, true)
+                    graph.playback.enqueue(next, next = true)
+                    await { it.currentMediaItem?.mediaId == id && it.currentMediaItem?.localConfiguration?.uri?.getQueryParameter("distillpod_video") == "1" }
+                    val c = player()
+                    withContext(Dispatchers.Main) {
+                        assertEquals(next, c.getMediaItemAt(c.currentMediaItemIndex + 1).mediaId)
+                        c.seekToNextMediaItem()
+                    }
+                    await { it.currentMediaItem?.mediaId == next && C.TRACK_TYPE_VIDEO in it.trackSelectionParameters.disabledTrackTypes && it.playbackState == Player.STATE_READY }
+                    graph.playback.video(next, true); graph.playback.leaveVideo(id); delay(300)
+                    withContext(Dispatchers.Main) { assertFalse(C.TRACK_TYPE_VIDEO in c.trackSelectionParameters.disabledTrackTypes) }
+                    receipt("queue", JSONObject().put("selectionPreserved", true).put("nextStartsInAudio", true).put("obsoleteCleanupIgnored", true))
+                } finally { restore() }
+            }
             "offline" -> {
                 check(backup.isFile)
                 check(context.getSystemService(ConnectivityManager::class.java).activeNetwork == null) { "Host must disconnect networking for offline acceptance" }
@@ -95,8 +118,19 @@ class OwnerVideocastDeviceTest {
                 val transcript = dao.transcript(id)!!
                 assertEquals(transcript.error, "ready", transcript.state)
                 assertEquals("whisper", transcript.source)
+                assertTrue(transcript.durationMs > 60_000)
+                assertEquals(transcript.durationMs, transcript.processedMs)
                 assertTrue(dao.segments(id, transcript.revision).isNotEmpty())
                 receipt("transcribe", JSONObject().put("ready", true).put("segments", dao.segments(id, transcript.revision).size))
+            }
+            "verify_transcript" -> {
+                check(backup.isFile)
+                val transcript = requireNotNull(dao.transcript(id))
+                assertEquals("ready", transcript.state); assertEquals("whisper", transcript.source)
+                assertTrue(transcript.durationMs > 60_000); assertEquals(transcript.durationMs, transcript.processedMs)
+                val covered = dao.coverage(id, transcript.revision).sumOf { it.endMs - it.startMs }
+                assertTrue("Whole-episode coverage is required", covered >= transcript.durationMs - 1_000)
+                receipt("verify_transcript", JSONObject().put("durationMs", transcript.durationMs).put("processedMs", transcript.processedMs).put("coveredMs", covered))
             }
             "restore" -> { restore(); receipt("restore", JSONObject().put("restored", true)) }
             else -> error("Select an explicit videocast phase")

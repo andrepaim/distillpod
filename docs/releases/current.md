@@ -10,4 +10,4 @@ Install as an update without uninstalling. Version code **36** supersedes code 3
 
 This personal-alpha import loads at most the first 200 playlist entries. Unknown dates remain unknown. Private/restricted/live content is unsupported, and YouTube availability can change by device/network. Audio fallback requests cannot prove audible output. Bluetooth/head-unit behavior requires separate hardware evidence.
 
-Validation and publication gates are still in progress. Final results will be recorded in the [delivery receipt](https://github.com/andrepaim/distillpod/blob/v0.19.0-alpha.1/docs/android/evidence/videocast-delivery.md) before publication.
+Validation coverage and limitations are recorded in the [delivery receipt](https://github.com/andrepaim/distillpod/blob/v0.19.0-alpha.1/docs/android/evidence/videocast-delivery.md) and [PR #16](https://github.com/andrepaim/distillpod/pull/16), including the final physical-device and publication gates. Native Whisper crash collection remains a separate follow-up.

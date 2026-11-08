@@ -58,7 +58,12 @@ def package(root, destination, version):
             name = component["repository"].replace("/", "-") + "-" + component["version"] + "-source.tar.gz"
             file = Path(scratch) / name
             verified_download(component, file)
-            archive.add(file, arcname=prefix + "third-party-sources/" + name, recursive=False)
+            def anonymous(member):
+                member.uid = member.gid = 0
+                member.uname = member.gname = ""
+                member.mtime = 0
+                return member
+            archive.add(file, arcname=prefix + "third-party-sources/" + name, recursive=False, filter=anonymous)
     print("Created source distribution from committed sources and verified upstream archives")
 
 
