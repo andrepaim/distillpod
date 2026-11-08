@@ -46,8 +46,9 @@ internal class PodcastSearch(private val scope: CoroutineScope, private val find
                     synchronized(providerRows) {
                         if (current == request) {
                             providerRows[result.provider] = result.results
-                            val rows = providers.flatMap { providerRows[it].orEmpty() }.distinctBy { it.feedUrl }
-                                .sortedByDescending { it.title.equals(term, true) }
+                            val available = providerRows.values.flatten().associateBy { it.feedUrl }
+                            val rows = (mutable.value.results.mapNotNull { available[it.feedUrl] } +
+                                result.results.sortedByDescending { it.title.equals(term, true) }).distinctBy { it.feedUrl }
                             mutable.update { state ->
                                 val pending = state.loadingProviders - result.provider
                                 val failed = if (result.failed) state.failedProviders + result.provider else state.failedProviders - result.provider
