@@ -50,3 +50,62 @@ stale analysis, interval persistence/validation, and upgrades from schemas 1–9
 Run the checks in [development](../development.md). Emulator and physical-device
 background/battery behavior require separate evidence; no owner-device or live
 account actions are part of this change.
+
+## Device acceptance — November 8, 2026
+
+Source revision `c613a42` (implementation `5f34344`) passed **14 tests on an
+Android 16 x86_64 emulator** and **13 tests on the USB-connected Samsung S22 Ultra
+(SM-S908E), Android 16**. Separate stage → force-stop → verify invocations each
+passed on both devices. The [machine-readable receipt](evidence/show-automation-device-validation.json)
+records APK hashes, counts, timings, coverage, cleanup and limitations.
+
+Both devices used the separate `dev.distillpod.android.validation` application and
+`dev.distillpod.android.validation.test` instrumentation packages. The owner's
+installation was not replaced or accessed. Both temporary packages were removed;
+the owner's application code path, version and update time remained unchanged.
+No global phone settings were changed. Initial phone UI checks could not find a
+Compose hierarchy while the phone was dozing behind its lock screen; after the
+owner unlocked it, both UI tests and the final complete suite passed.
+
+The feature test exercises a loopback feed, actual WorkManager download, publisher
+transcript processing, injected fake-AI summary/chapters/ads, actual skipping of
+silent fixture audio, disabling skipping, activity recreation, and interval updates.
+Both architectures also decode an MP3 and recognize real public speech with local
+Whisper. The emulator additionally exercises streaming playback with automatic
+local transcription. Explicit process restart phases retain queued automation intent,
+complete transcript and interval without sending a live AI request.
+
+These checks do **not** establish six hours of unattended periodic execution,
+deep-Doze delivery, unplugged battery consumption, live AI access, or release-signed
+in-place migration of the owner's installation. The complete automatic workflow
+used a publisher transcript; real local Whisper was validated separately.
+
+For isolated reproduction, use a temporary Gradle init script:
+
+```groovy
+allprojects {
+    afterEvaluate {
+        if (path == ':app') {
+            android.defaultConfig.applicationId = 'dev.distillpod.android.validation'
+            android.defaultConfig.testApplicationId = 'dev.distillpod.android.validation.test'
+        }
+    }
+}
+```
+
+Build `:app:assembleDebug :app:assembleDebugAndroidTest :app:lintDebug` with
+`-I /path/to/validation.init.gradle` and
+`-PdistillpodFixtureDir=/path/to/verified/fixtures`. Follow the development guide to
+prepare fixtures. Install both APKs only after confirming these validation package
+names are unused. Run `ShowAutomationDeviceTest`, `DatabaseUpgradeDeviceTest`, and
+`AudioClipDecoderTest#mp3DecodesAndTranscribesRealSpeech` through `IsolatedTestRunner`.
+The emulator-only additional case is
+`AutomaticTranscriptionDeviceTest#streamingPlaybackDownloadsAndTranscribesLocallyWithoutReplacingTheActiveRevision`.
+
+For a true process restart, invoke
+`ShowAutomationDeviceTest#durableIntentSurvivesProcessRestart` with instrumentation
+argument `automationPhase=stage`, force-stop **only** the validation app, then invoke
+it with `automationPhase=verify`. Verify each log with `scripts/device_result.py`.
+The normal suite runs this method as an activity-recreation check without a phase
+argument. Physical UI testing requires the owner to unlock the device. Remove the
+two validation packages afterward; never clear or uninstall the owner's package.
