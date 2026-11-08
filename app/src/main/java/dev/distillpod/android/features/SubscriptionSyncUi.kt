@@ -12,7 +12,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
 import dev.distillpod.android.sync.SubscriptionSyncStore
 
-@Composable internal fun SubscriptionSyncSettings(vm:AppViewModel) {
+@Composable internal fun SubscriptionSyncSettings(vm:AppViewModel, onOpenBackup: () -> Unit) {
     val account=vm.graph.syncAccount
     val state by account.state.collectAsStateWithLifecycle()
     val binding by account.store.binding.collectAsStateWithLifecycle(initialValue=null)
@@ -37,7 +37,7 @@ import dev.distillpod.android.sync.SubscriptionSyncStore
     }
     if(upgradeMoments) AlertDialog(onDismissRequest={upgradeMoments=false},
         title={Text("Upgrade saved-moment sync?")},
-        text={Text("Update DistillPod on your other phones first. Older app versions will stop syncing after this account upgrade. Selected passages and takeaways will sync; full transcripts stay on each phone.")},
+        text={Text("Update DistillPod on your other phones first. Older app versions will stop syncing after this account upgrade. Selected passages and takeaways will sync; full transcripts use the separate finished-content scope when available, or file backup.")},
         confirmButton={TextButton(onClick={upgradeMoments=false;vm.action("moment-sync-upgrade"){account.enableContextualMoments()}}){Text("Upgrade sync")}},
         dismissButton={TextButton(onClick={upgradeMoments=false}){Text("Not now")}})
     if(reviewing) {
@@ -50,8 +50,9 @@ import dev.distillpod.android.sync.SubscriptionSyncStore
     }
     Column(verticalArrangement=Arrangement.spacedBy(10.dp)) {
         Text("Library sync",style=MaterialTheme.typography.titleLarge)
-        Text(if(fullScope==null)"Connect Google to sync public podcast subscriptions, listening progress, completion and saved moments between your phones. Transcripts and other library data still use Backup & Restore." else "Your approved public subscriptions, listening data, queue and portable preferences sync between your phones. Transcripts, other finished text, downloads and models stay on this phone.",style=MaterialTheme.typography.bodySmall)
-        Text("Your library works offline. Only approved public sources and their portable listening data sync. Other feeds, downloads and credentials stay on this phone.",style=MaterialTheme.typography.bodySmall)
+        DataProtectionInfo(state.configured, account.contentConfigured, fullScope != null, false, onOpenBackup)
+        Text("Your library works offline. On a new phone, connect the same Google account for supported synced records; restore your backup file for other library text.", style=MaterialTheme.typography.bodySmall)
+        Text(DataProtectionGuidance.binding, style=MaterialTheme.typography.bodySmall)
         if(!state.configured) {
             Text("Cloud sync is unavailable in this build.",color=MaterialTheme.colorScheme.onSurfaceVariant)
         } else {
@@ -90,10 +91,12 @@ import dev.distillpod.android.sync.SubscriptionSyncStore
                 }
                 if(contextual==null) OutlinedButton(onClick={upgradeMoments=true},enabled=binding?.enabled==true) { Text("Upgrade saved-moment sync") }
                 if(fullScope==null) {
-                    Text("You can also sync your queue and portable preferences using the free plan.",style=MaterialTheme.typography.bodySmall)
+                    Text("Optional: sync queue and " + DataProtectionGuidance.preferences + ".",style=MaterialTheme.typography.bodySmall)
+                    Text(DataProtectionGuidance.expanded,style=MaterialTheme.typography.bodySmall)
                     OutlinedButton(onClick={vm.action("full-library-sync"){account.enableFullScope()}},enabled=binding?.enabled==true){Text("Sync queue & preferences")}
                     if(!account.contentConfigured)Text("Transcripts and other finished text stay local. Use Backup & Restore to transfer them.",style=MaterialTheme.typography.bodySmall)
                 }
+                if(fullScope!=null) Text(DataProtectionGuidance.expanded,style=MaterialTheme.typography.bodySmall)
                 TextButton(onClick={vm.action("sync-signout"){account.disconnect()}}){Text("Sign out of sync")}
             }
             conflicts.forEach { conflict ->

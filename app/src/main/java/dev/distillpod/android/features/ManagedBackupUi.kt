@@ -48,12 +48,17 @@ internal class BackupFilePicker(private val initial: () -> Uri?) : ActivityResul
 }
 private fun savedDate(at: Long) = DateTimeFormatter.ofPattern("d MMM yyyy · HH:mm:ss", Locale.getDefault()).withZone(ZoneId.systemDefault()).format(Instant.ofEpochMilli(at))
 
-@Composable internal fun ManagedBackupScreen(backups: ManagedBackups, transfers: BackupDocuments) {
+@Composable internal fun ManagedBackupScreen(backups: ManagedBackups, transfers: BackupDocuments, syncConfigured: Boolean = false, contentConfigured: Boolean = false, expandedScope: Boolean = false, onOpenSync: () -> Unit = {}) {
     val state by backups.state.collectAsStateWithLifecycle()
     val transfer by transfers.state.collectAsStateWithLifecycle()
     val picker = remember { BackupFilePicker { backups.state.value.location?.uri } }
     val connect = rememberLauncherForActivityResult(picker, backups::connect)
     val older = rememberLauncherForActivityResult(picker, transfers::preview)
+    var now by remember { mutableStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) {
+        while (true) { now = System.currentTimeMillis(); kotlinx.coroutines.delay(60_000) }
+    }
+    val latestBackup = state.history.maxByOrNull { it.at }
     val busy = state.working || state.awaitingDestination || transfer.working || transfer.preview != null
     LaunchedEffect(backups) { if (transfer.preview == null) backups.refresh() }
     fun managed(action: () -> Unit) { transfers.dismissPreview(); action() }
@@ -63,10 +68,14 @@ private fun savedDate(at: Long) = DateTimeFormatter.ofPattern("d MMM yyyy · HH:
         Text("Connect a backup file once. DistillPod remembers it for your next backup and restore.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(if (state.location == null) "Set up Drive backup" else "Connected backup file", style = MaterialTheme.typography.titleLarge)
+                Text(if (state.location == null) "Set up file backup" else "Connected backup file", style = MaterialTheme.typography.titleLarge)
+                Text("Manual only: backups do not run on a schedule.", style = MaterialTheme.typography.bodyMedium)
+                Text(DataProtectionGuidance.backupAge(latestBackup?.at, now), style = MaterialTheme.typography.bodySmall)
+                if (latestBackup?.local == true) Text("Recovery copy on this phone; provider file is unavailable.", style = MaterialTheme.typography.bodySmall)
+                Text("The file provider handles cloud upload. A saved and checked file does not verify cloud upload.", style = MaterialTheme.typography.bodySmall)
                 state.location?.let {
                     Text(it.name, color = MaterialTheme.colorScheme.primary)
-                    Text("Future backups use this file automatically. No folder browsing or file naming.", style = MaterialTheme.typography.bodyMedium)
+                    Text("Each time you tap Back up now, this file is updated. No folder browsing or file naming.", style = MaterialTheme.typography.bodyMedium)
                     Button(onClick = { managed(backups::backup) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
                         Icon(Icons.Default.CloudUpload, null); Spacer(Modifier.width(8.dp)); Text("Back up now")
                     }
@@ -74,7 +83,7 @@ private fun savedDate(at: Long) = DateTimeFormatter.ofPattern("d MMM yyyy · HH:
                         Icon(Icons.Default.Restore, null); Spacer(Modifier.width(8.dp)); Text("Restore a backup")
                     }
                 } ?: run {
-                    Text("Choose Drive → My Drive and save the suggested file. This is the only setup step; the file keeps your dated backup history.")
+                    Text("Choose Drive, device storage or another provider in Android’s file picker. Select the account and folder there, separately from Library sync sign-in. The file keeps dated backup history.")
                     Button(onClick = { managed(backups::create) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Create backup file") }
                     OutlinedButton(onClick = { managed { connect.launch(arrayOf("*/*")) } }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Connect existing backup") }
                 }
@@ -88,7 +97,7 @@ private fun savedDate(at: Long) = DateTimeFormatter.ofPattern("d MMM yyyy · HH:
                 Text(message)
             }
         }
-        state.history.firstOrNull()?.let { latest ->
+        latestBackup?.let { latest ->
             Text("Latest available backup", style = MaterialTheme.typography.titleMedium)
             Text(savedDate(latest.at), color = MaterialTheme.colorScheme.secondary)
             Text("${latest.shows} shows · ${latest.episodes} episodes · ${latest.moments} moments", color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -102,12 +111,14 @@ private fun savedDate(at: Long) = DateTimeFormatter.ofPattern("d MMM yyyy · HH:
             TextButton(onClick = { managed(backups::disconnect) }, enabled = !busy) { Text("Forget backup connection") }
         }
         HorizontalDivider()
+        Text("On a new phone, connect this same file, choose a dated backup and review the restore preview before merging. Google sync sign-in does not connect your backup file. For Drive, use the account that owns the file.", style = MaterialTheme.typography.bodySmall)
+        DataProtectionInfo(syncConfigured, contentConfigured, expandedScope, true, onOpenSync, !busy)
         Text("Have an older export?", style = MaterialTheme.typography.titleMedium)
         Text("Import a standalone DistillPod JSON backup. All file types are shown so Drive cannot hide it because of its file type.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         OutlinedButton(onClick = { older.launch(arrayOf("*/*")) }, enabled = !busy) { Text("Import older backup") }
         TextButton(onClick = transfers::prepare, enabled = !busy) { Text("Export a standalone JSON copy") }
-        Text("Reconnect the file once after reinstalling or on a new phone. Saving is one tap; backups do not run on a schedule. Drive manages upload and sync.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text("Backups include library text, progress, queue, transcripts and preferences. Audio, model files and sign-in credentials are excluded. Backup files are readable; keep them private.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("Reconnect the file once after reinstalling or on a new phone. Saving is one tap; backups do not run on a schedule. The selected file provider handles any cloud upload and sync.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("Backup files are readable; keep them private. Restore previews and merge choices let you review what will be recovered.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
     if (state.chooseBackup) AlertDialog(onDismissRequest = backups::dismissChoices, title = { Text("Choose a backup") }, text = {
         Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {

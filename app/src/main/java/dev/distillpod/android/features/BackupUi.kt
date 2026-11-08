@@ -42,7 +42,11 @@ private fun backupDate(at: Long): String = if (at <= 0) "Date unavailable" else 
     .ofPattern("d MMM yyyy · HH:mm", Locale.getDefault()).withZone(ZoneId.systemDefault()).format(Instant.ofEpochMilli(at))
 private fun backupSize(bytes: Long): String = if (bytes < 1_000_000) "%.1f KB".format(bytes / 1000.0) else "%.1f MB".format(bytes / 1_000_000.0)
 
-@Composable internal fun BackupPage(vm: AppViewModel) = ManagedBackupScreen(vm.managedBackups, vm.backupDocuments)
+@Composable internal fun BackupPage(vm: AppViewModel, onOpenSync: () -> Unit) {
+    val sync by vm.graph.syncAccount.state.collectAsStateWithLifecycle()
+    val fullScope by vm.graph.syncAccount.fullScope.collectAsStateWithLifecycle(initialValue = null)
+    ManagedBackupScreen(vm.managedBackups, vm.backupDocuments, sync.configured, vm.graph.syncAccount.contentConfigured, fullScope != null, onOpenSync)
+}
 
 @Composable internal fun BackupScreen(documents: dev.distillpod.android.data.BackupDocuments) {
     val state by documents.state.collectAsStateWithLifecycle()
