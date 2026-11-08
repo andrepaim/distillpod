@@ -37,12 +37,15 @@ class NotificationAccessDeviceTest {
     }
     private suspend fun await(check: () -> Boolean) = withTimeout(15000) { while (!check()) delay(50) }
     private fun enabled() = NotificationManagerCompat.from(context).areNotificationsEnabled()
-    private suspend fun setup(blocked: Boolean = false) {
+    private fun guard() {
         check(Build.VERSION.SDK_INT >= 33)
         check(Build.HARDWARE.contains("ranchu") || Build.FINGERPRINT.contains("generic") ||
             packageName == "dev.distillpod.android.validation.issue20")
+    }
+    private suspend fun setup(blocked: Boolean = false) {
+        guard()
         context.applicationContext.appGraph.ready.await()
-        instrumentation.uiAutomation.revokeRuntimePermission(packageName, Manifest.permission.POST_NOTIFICATIONS)
+        check(androidx.core.content.ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) { "Use a fresh validation installation with notification permission initially denied" }
         shell("pm clear-permission-flags $packageName ${Manifest.permission.POST_NOTIFICATIONS} user-set user-fixed")
         if (blocked) shell("pm set-permission-flags $packageName ${Manifest.permission.POST_NOTIFICATIONS} user-set user-fixed")
         context.getSharedPreferences("notification_access", Context.MODE_PRIVATE).edit().clear().commit()
@@ -56,37 +59,30 @@ class NotificationAccessDeviceTest {
     private fun dialogButton(id: String) = device.wait(Until.findObject(By.res(Pattern.compile(".*:id/$id"))), 10000)
         ?: error("Permission dialog button $id not found")
     private fun cleanup() {
-        instrumentation.uiAutomation.revokeRuntimePermission(packageName, Manifest.permission.POST_NOTIFICATIONS)
+        shell("appops set $packageName POST_NOTIFICATION allow")
         shell("pm clear-permission-flags $packageName ${Manifest.permission.POST_NOTIFICATIONS} user-set user-fixed")
     }
     private suspend fun grantInSettingsAndReturn() {
         compose.onNodeWithText("Open notification settings").performScrollTo().performClick()
         check(device.wait(Until.hasObject(By.pkg("com.android.settings")), 10000))
-        instrumentation.uiAutomation.grantRuntimePermission(packageName, Manifest.permission.POST_NOTIFICATIONS)
+        shell("appops set $packageName POST_NOTIFICATION allow")
         await { enabled() }
         device.pressBack()
         compose.waitUntil(10000) { compose.onAllNodesWithText("Notifications are enabled", substring = true).fetchSemanticsNodes().isNotEmpty() }
     }
 
-    @Test fun initialGrantAndExternalRevocationRefreshTheRetainedScreen() = runBlocking {
-        setup()
-        try {
-            enableClick(); dialogButton("permission_allow_button").click()
-            await { enabled() }
-            enabledText().assertExists()
-            compose.activityRule.scenario.recreate()
-            enabledText().assertExists()
-            compose.runOnUiThread { context.startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, packageName)) }
-            check(device.wait(Until.hasObject(By.pkg("com.android.settings")), 10000))
-            instrumentation.uiAutomation.revokeRuntimePermission(packageName, Manifest.permission.POST_NOTIFICATIONS)
-            await { !enabled() }
-            device.pressBack()
-            compose.onNodeWithText("Open notification settings").performScrollTo().assertIsDisplayed()
+    @Test fun denialBlockedRecoveryRuntimeGrantAndSettingsReturn() = runBlocking {
+        if (InstrumentationRegistry.getArguments().getString("notificationPhase") == "verifyRevoked") {
+            guard(); context.applicationContext.appGraph.ready.await()
+            compose.runOnUiThread {
+                ViewModelProvider(context, AppViewModel.factory(context.applicationContext.appGraph))[AppViewModel::class.java].open("settings:library")
+            }
+            assertFalse(enabled())
             enabledText().assertDoesNotExist()
-        } finally { cleanup() }
-    }
-
-    @Test fun denialPersistsASettingsRecoveryPathAcrossRecreation() = runBlocking {
+            compose.onNodeWithText("Open notification settings").performScrollTo().assertIsDisplayed()
+            compose.onNodeWithText("Enable notifications").assertDoesNotExist()
+            return@runBlocking
+        }
         setup()
         try {
             enableClick(); dialogButton("permission_deny_button").click()
@@ -94,18 +90,35 @@ class NotificationAccessDeviceTest {
             compose.onNodeWithText("Enable notifications").assertDoesNotExist()
             compose.activityRule.scenario.recreate()
             compose.onNodeWithText("Enable notifications").assertDoesNotExist()
-            grantInSettingsAndReturn()
-        } finally { cleanup() }
-    }
 
-    @Test fun legacyBlockedPermissionStillOffersSettingsAndRecoversOnReturn() = runBlocking {
-        setup(blocked = true)
-        try {
-            // An older installation has no local attempt marker. Settings is still offered.
+            // Reproduce a blocked older installation without the local attempt marker.
+            shell("pm set-permission-flags $packageName ${Manifest.permission.POST_NOTIFICATIONS} user-set user-fixed")
+            context.getSharedPreferences("notification_access", Context.MODE_PRIVATE).edit().clear().commit()
+            compose.activityRule.scenario.recreate()
             compose.onNodeWithText("Open notification settings").performScrollTo().assertIsDisplayed()
             enableClick()
             compose.waitUntil(10000) { compose.onAllNodesWithText("Enable notifications").fetchSemanticsNodes().isEmpty() }
             assertFalse(enabled())
+
+            // Restore eligibility while still denied, then exercise a real runtime grant.
+            shell("pm clear-permission-flags $packageName ${Manifest.permission.POST_NOTIFICATIONS} user-set user-fixed")
+            context.getSharedPreferences("notification_access", Context.MODE_PRIVATE).edit().clear().commit()
+            compose.activityRule.scenario.recreate()
+            enableClick(); dialogButton("permission_allow_button").click()
+            await { enabled() }
+            enabledText().assertExists()
+            compose.activityRule.scenario.recreate()
+            enabledText().assertExists()
+
+            compose.runOnUiThread { context.startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, packageName)) }
+            check(device.wait(Until.hasObject(By.pkg("com.android.settings")), 10000))
+            // Actual runtime revocation kills the instrumentation process on Android 16.
+            // AppOps models external notification disablement without terminating this check.
+            shell("appops set $packageName POST_NOTIFICATION ignore")
+            await { !enabled() }
+            device.pressBack()
+            compose.onNodeWithText("Open notification settings").performScrollTo().assertIsDisplayed()
+            enabledText().assertDoesNotExist()
             grantInSettingsAndReturn()
         } finally { cleanup() }
     }
