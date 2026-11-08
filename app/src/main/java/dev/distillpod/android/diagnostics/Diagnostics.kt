@@ -81,12 +81,12 @@ class Diagnostics(private val context: Context, private val dsn:String = context
     }
     /** Runs on the IO startup path, after reading authoritative application state. */
     internal fun reconcile(states:Map<Pair<String,String>,String>):Unit = synchronized(lock) {
-        if(!enabled)return
+        if(!enabled || dev.distillpod.android.sync.SubscriptionCloudAccess.instrumentation)return
         runCatching {journal.recover {kind,id->states[kind to id]};executor.execute {flushSummaries()}}
     }
     internal fun flushSummaries() {
         val epoch=generation
-        if(!enabled || !configured)return
+        if(!enabled || !configured || dev.distillpod.android.sync.SubscriptionCloudAccess.instrumentation)return
         synchronized(lock) {
             if(!enabled || epoch!=generation)return
             runCatching {
@@ -122,6 +122,7 @@ class Diagnostics(private val context: Context, private val dsn:String = context
         } finally {persisted.remove()}
     }
     private fun observe(name:String, operation:String?, reason:String, source:String, attempt:String?) {
+        if(dev.distillpod.android.sync.SubscriptionCloudAccess.instrumentation)return
         val kind=name.substringBefore('.')
         if(kind !in OperationJournal.KINDS)return
         if(name=="voice.started") {voiceOperation=UUID.randomUUID().toString()}
@@ -263,7 +264,7 @@ class Diagnostics(private val context: Context, private val dsn:String = context
             // Categorical fields only. IDs must be random UUIDs, never hashes of content or URLs.
             if(name !in EVENT_NAMES)return
             if(reason !in REASONS || source !in setOf("background","phone","headphones","car"))return
-            val attributes=mutableMapOf<String,Any>("event_id" to UUID.randomUUID().toString(),"session_id" to session,"installation_id" to installation,"schema_version" to 1,"test_traffic" to name.startsWith("diagnostics."),"reason" to reason,"source" to source,"android_api" to Build.VERSION.SDK_INT)
+            val attributes=mutableMapOf<String,Any>("event_id" to UUID.randomUUID().toString(),"session_id" to session,"installation_id" to installation,"schema_version" to 1,"test_traffic" to (name.startsWith("diagnostics.") || dev.distillpod.android.sync.SubscriptionCloudAccess.instrumentation),"reason" to reason,"source" to source,"android_api" to Build.VERSION.SDK_INT)
             synchronized(lock) {
                 val tick=observedTick
                 if(name in setOf("voice.started","playback.buffering","playback.service_started"))timings[name]=tick
@@ -303,7 +304,7 @@ class Diagnostics(private val context: Context, private val dsn:String = context
             Sentry.captureException(safe) { scope ->
                 scope.setTag("stage",stage)
                 scope.setTag("source",source.takeIf {it in OperationJournal.SOURCES} ?: "background")
-                scope.setTag("test_traffic",(stage=="diagnostics").toString())
+                scope.setTag("test_traffic",(stage=="diagnostics" || dev.distillpod.android.sync.SubscriptionCloudAccess.instrumentation).toString())
                 scope.setTag("reason",reason(error))
                 scope.setTag("exception_type",error.javaClass.name.take(160))
                 operation?.takeIf {runCatching {UUID.fromString(it)}.isSuccess}?.let {scope.setTag("operation_id",it)}
@@ -312,12 +313,12 @@ class Diagnostics(private val context: Context, private val dsn:String = context
     }
     internal fun uploaded() { prefs.edit().putString("last_upload",java.time.Instant.now().toString()).apply();status.value="Last upload: ${java.text.DateFormat.getDateTimeInstance().format(java.util.Date())}" }
     companion object {
-        private val EVENT_NAMES=setOf("transcription.quality","diagnostics.health","operation.summary","usage.feature","transcription.partial","transcription.paused","transcription.cancelled","distillation.cancelled","voice.recording","voice.text","voice.audio","voice.resumed","voice.resume_failed","playback.buffering","playback.ready","playback.focus","playback.route","app.started","diagnostics.test","diagnostics.failed","headphone.received","headphone.rejected","headphone.previous","headphone.next",
+        private val EVENT_NAMES=setOf("youtube.extraction_started","youtube.extraction_completed","youtube.extraction_failed","youtube.extraction_retry","youtube.stream_refreshed","videocast.video_requested","videocast.audio_restored","videocast.first_frame","videocast.failed","videocast.download_validated","transcription.quality","diagnostics.health","operation.summary","usage.feature","transcription.partial","transcription.paused","transcription.cancelled","distillation.cancelled","voice.recording","voice.text","voice.audio","voice.resumed","voice.resume_failed","playback.buffering","playback.ready","playback.focus","playback.route","app.started","diagnostics.test","diagnostics.failed","headphone.received","headphone.rejected","headphone.previous","headphone.next",
             "capture.started","capture.completed","capture.requested","capture.accepted","capture.saved","capture.waiting","capture.transcript_link","capture.prepared","capture.failed",
             "transcription.dependency","transcription.started","transcription.stage","transcription.queued","transcription.completed","transcription.failed",
             "distillation.queued","distillation.started","distillation.finished","distillation.failed","playback.service_started","playback.service_stopped","playback.state","playback.failed",
             "voice.started","voice.finished","voice.failed","sync.finished","sync.failed","worker.failed")
-        private val REASONS=setOf("partial","superseded","reconciled","process_interrupted","buffering","ended","resume_succeeded","resume_failed","none","created","deduplicated","transcript_required","waiting","waiting_auth","waiting_quota","waiting_transcript","queued","unknown",
+        private val REASONS=setOf("restricted","throttled","formats","busy","partial","superseded","reconciled","process_interrupted","buffering","ended","resume_succeeded","resume_failed","none","created","deduplicated","transcript_required","waiting","waiting_auth","waiting_quota","waiting_transcript","queued","unknown",
             "no_speech","needs_context","review_source","unclear_source","succeeded","failed","ready","rejected","disabled","accepted","duplicate","cancelled","repeat","untrusted",
             "charging_required","battery_low","offline","wifi_required","scheduled","online","publisher","downloading","checking_model","decoding","starting","transcribing","saving",
             "playing","paused","phone","car","headphones","resume_requested","resume_cancelled","dns","timeout","permission","auth_expired","quota","network_or_storage","invalid_data","internal")

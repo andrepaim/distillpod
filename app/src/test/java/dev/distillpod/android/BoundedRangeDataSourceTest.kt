@@ -17,6 +17,18 @@ import org.robolectric.annotation.Config
 @Config(sdk = [34])
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 class BoundedRangeDataSourceTest {
+    @Test fun `same length representation changes fail before splicing chunks`() = runBlocking(Dispatchers.IO) {
+        MockWebServer().use { server ->
+            server.enqueue(MockResponse().setResponseCode(206).setHeader("Content-Range", "bytes 0-3/8").setHeader("ETag", "first").setBody("abcd"))
+            server.enqueue(MockResponse().setResponseCode(206).setHeader("Content-Range", "bytes 4-7/8").setHeader("ETag", "second").setBody("WXYZ"))
+            val source = BoundedRangeDataSource(DefaultHttpDataSource.Factory().createDataSource(), 4)
+            try {
+                source.open(DataSpec.Builder().setUri(server.url("/audio").toString()).build())
+                val bytes = ByteArray(4); assertEquals(4, source.read(bytes, 0, 4))
+                assertTrue(runCatching { source.read(bytes, 0, 4) }.isFailure)
+            } finally { source.close() }
+        }
+    }
     @Test fun `default requests satisfy a CDN that rejects ranges larger than one MiB`() = runBlocking(Dispatchers.IO) {
         MockWebServer().use { server ->
             server.dispatcher = object : okhttp3.mockwebserver.Dispatcher() {

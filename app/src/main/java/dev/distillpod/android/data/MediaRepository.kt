@@ -32,7 +32,8 @@ class ActiveFiles {
 
 class MediaRepository(context: Context, private val db: AppDatabase, private val settings: AppSettings,
     private val downloader: ResumableDownloader, val active: ActiveFiles,
-    private val resolveAudio: (String) -> String = { it }) {
+    private val resolveAudio: (String) -> String = { it },
+    private val onValidated: () -> Unit = {}) {
     private val dao = db.library()
     val directory = File(context.filesDir, "media").apply { mkdirs() }
     val modelsDirectory = File(context.filesDir, "models").apply { mkdirs() }
@@ -77,6 +78,7 @@ class MediaRepository(context: Context, private val db: AppDatabase, private val
                     dao.analysis(id)?.let { dao.putAnalysis(it.copy(state = "stale", error = "Audio changed. Analyze the new transcript.")) }
                 }
             }
+            if (youtube) runCatching { onValidated() }
             target
         } catch (error: Exception) {
             withContext(NonCancellable) {

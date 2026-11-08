@@ -14,6 +14,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
 import java.util.UUID
+import dev.distillpod.android.playback.swapCurrentSource
 
 /** Synthetic audio validates service/controller mode changes, not video decoding or YouTube. */
 @RunWith(AndroidJUnit4::class)
@@ -43,6 +44,22 @@ class VideocastPlaybackDeviceTest {
             graph.playback.pause(); graph.playback.speed(1.25f)
             awaitPlayer { !it.isPlaying && it.playbackState == Player.STATE_READY }
             val position = withContext(Dispatchers.Main) { player.currentPosition }
+            // Exercise real controller/source replacement while earlier preparation is pending.
+            // The plain mode toggle below does not replace this local fixture's media source.
+            withContext(Dispatchers.Main) {
+                val original = player.currentMediaItem!!
+                repeat(4) { pass ->
+                    val alternate = original.buildUpon().setUri(android.net.Uri.fromFile(file).buildUpon().appendQueryParameter("source", pass.toString()).build()).build()
+                    swapCurrentSource(player, alternate, position)
+                    swapCurrentSource(player, original, position)
+                }
+            }
+            awaitPlayer { it.playbackState == Player.STATE_READY && !it.isPlaying }
+            delay(300)
+            withContext(Dispatchers.Main) {
+                assertEquals(position, player.currentPosition)
+                assertEquals(listOf("$tag-a", "$tag-b"), (0 until player.mediaItemCount).map { player.getMediaItemAt(it).mediaId })
+            }
             graph.playback.video("$tag-a", true)
             awaitPlayer { C.TRACK_TYPE_VIDEO !in it.trackSelectionParameters.disabledTrackTypes }
             withContext(Dispatchers.Main) {

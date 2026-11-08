@@ -605,6 +605,7 @@ private fun captureState(state: String) = when (state) { "waiting_transcript" ->
         }
         if(section=="about") {
         Text("DistillPod · $version", style = MaterialTheme.typography.labelLarge)
+        LicenseAndSources(version)
         TextButton(onClick = { context.startActivity(Intent(context, DiagnosticsActivity::class.java)) }) { Text("Developer checks") }
         }
     }

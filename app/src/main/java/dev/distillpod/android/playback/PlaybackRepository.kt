@@ -21,8 +21,20 @@ data class PlaybackState(val episodeId: String? = null, val title: String = "", 
     val queue: List<String> = emptyList(), val error: String? = null)
 class PlaybackEvents {
     val lastSkipped = MutableStateFlow<SkippedMoment?>(null)
+    val videoFailure = MutableStateFlow<Pair<String, String>?>(null)
 }
 data class SkippedMoment(val episodeId: String, val positionMs: Long, val endMs: Long)
+
+/** Replace source and starting position in one command, even while a timeline is preparing. */
+internal fun swapCurrentSource(player: Player, desired: MediaItem, position: Long = player.currentPosition.coerceAtLeast(0),
+    resume: Boolean = player.playWhenReady) {
+    val index = player.currentMediaItemIndex
+    if (index !in 0 until player.mediaItemCount || player.currentMediaItem?.mediaId != desired.mediaId) return
+    val items = (0 until player.mediaItemCount).map { if (it == index) desired else player.getMediaItemAt(it) }
+    player.setMediaItems(items, index, position)
+    player.prepare()
+    player.playWhenReady = resume
+}
 
 /** Media3 can deliver an initial no-op AUTO_TRANSITION after connecting a controller. */
 internal fun voicePositionChanged(reason: Int, oldId: String?, newId: String?, oldMs: Long, newMs: Long) =
@@ -74,6 +86,7 @@ class PlaybackRepository(private val context: Context, private val db: AppDataba
     }
     private suspend fun controller() = withContext(Dispatchers.IO) { future.get(10, TimeUnit.SECONDS) }
     suspend fun sessionPlayer(): Player = controller()
+    val videoFailure get() = (context.applicationContext as dev.distillpod.android.DistillPodApplication).graph.playbackEvents.videoFailure
     fun leaveVideo(episodeId: String) { scope.launch { runCatching { video(episodeId, false) } } }
 
     /** Swap the same episode at the same position; offline audio remains the default. */
@@ -90,15 +103,16 @@ class PlaybackRepository(private val context: Context, private val db: AppDataba
         val podcast = db.library().podcast(ep.podcastId)
         withContext(Dispatchers.Main) {
             if (c.currentMediaItem?.mediaId != id) return@withContext
+            val position = c.currentPosition.coerceAtLeast(0)
+            if (enabled) videoFailure.value = null
+            (context.applicationContext as dev.distillpod.android.DistillPodApplication).graph.diagnostics.event(
+                if (enabled) "videocast.video_requested" else "videocast.audio_restored", reason = if (enabled) "accepted" else "ready", source = "phone")
             c.trackSelectionParameters = c.trackSelectionParameters.buildUpon()
                 .setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_VIDEO, !enabled).build()
             if (youtube) {
                 val desired = videocastMediaItem(ep, podcast, enabled)
                 if (c.currentMediaItem?.localConfiguration?.uri != desired.localConfiguration?.uri) {
-                    val position = c.currentPosition.coerceAtLeast(0)
-                    c.replaceMediaItem(c.currentMediaItemIndex, desired)
-                    c.seekTo(position)
-                    c.prepare()
+                    swapCurrentSource(c, desired, position)
                 }
             }
         }
@@ -113,8 +127,7 @@ class PlaybackRepository(private val context: Context, private val db: AppDataba
                 val desired = preserveVideoItem(ep, podcasts[ep.podcastId], controller.currentMediaItem)
                 if (controller.currentMediaItem?.localConfiguration?.uri != desired.localConfiguration?.uri) {
                     val position = positionMs ?: controller.currentPosition.coerceAtLeast(0)
-                    controller.replaceMediaItem(controller.currentMediaItemIndex, desired)
-                    controller.seekTo(position)
+                    swapCurrentSource(controller, desired, position)
                 }
                 if (positionMs != null) controller.seekTo(positionMs)
                 else if (controller.playbackState == Player.STATE_ENDED) controller.seekTo(0)

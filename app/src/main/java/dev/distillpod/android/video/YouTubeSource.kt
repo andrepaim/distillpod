@@ -16,25 +16,71 @@ import java.io.IOException
 import java.time.LocalDate
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ExecutionException
+import java.util.concurrent.FutureTask
 
 fun interface YouTubeExtractor {
     fun extract(url: String, flat: Boolean, limit: Int): JSONObject
 }
 
 /** No account, cookies, API key, remote service or runtime code update. */
-class AndroidYouTubeExtractor(private val context: Context) : YouTubeExtractor {
+class AndroidYouTubeExtractor(private val context: Context,
+    private val signal: (String, String, Long, String) -> Unit = { _, _, _, _ -> }) : YouTubeExtractor {
     override fun extract(url: String, flat: Boolean, limit: Int): JSONObject {
+        val started = System.nanoTime()
+        val operation = java.util.UUID.randomUUID().toString()
+        fun report(name: String, reason: String, elapsed: Long) { runCatching { signal(name, reason, elapsed, operation) } }
+        report("youtube.extraction_started", "starting", 0)
+        repeat(2) { attempt ->
+            try {
+                val data = ExtractionCall(execute = { id ->
+                    initializeRuntime()
+                    val request = YoutubeDLRequest(url).addOption("--ignore-config").addOption("--no-update")
+                        .addOption("--skip-download").addOption("--dump-single-json")
+                        .addOption("--socket-timeout", 12).addOption("--retries", 0).addOption("--extractor-retries", 0)
+                    if (flat) request.addOption("--flat-playlist").addOption("--playlist-end", limit)
+                    else request.addOption("--no-playlist")
+                    val response = YoutubeDL.getInstance().execute(request, id, null)
+                    require(response.out.length <= 10_000_000) { "YouTube response is too large" }
+                    JSONObject(response.out)
+                }, destroy = { YoutubeDL.getInstance().destroyProcessById(it) },
+                    timeoutMs = (40_000 - (System.nanoTime() - started) / 1_000_000).coerceAtLeast(1)).run()
+                report("youtube.extraction_completed", "succeeded", (System.nanoTime() - started) / 1_000_000)
+                return data
+            } catch (e: InterruptedException) {
+                report("youtube.extraction_failed", "cancelled", (System.nanoTime() - started) / 1_000_000)
+                throw e
+            } catch (e: YouTubeFailure) {
+                if (attempt == 0 && e.retryable && (System.nanoTime() - started) / 1_000_000 < 39_000) {
+                    report("youtube.extraction_retry", e.category, (System.nanoTime() - started) / 1_000_000)
+                    Thread.sleep(400)
+                } else {
+                    report("youtube.extraction_failed", e.category, (System.nanoTime() - started) / 1_000_000)
+                    throw e
+                }
+            }
+        }
+        error("Unreachable extraction state")
+    }
+
+    private fun initializeRuntime() = synchronized(runtimeLock) {
+        if (runtimeReady) return@synchronized
         YoutubeDL.getInstance().init(context)
-        val request = YoutubeDLRequest(url).addOption("--ignore-config").addOption("--no-update")
-            .addOption("--skip-download").addOption("--dump-single-json")
-            .addOption("--socket-timeout", 15).addOption("--retries", 1).addOption("--extractor-retries", 1)
-        if (flat) request.addOption("--flat-playlist").addOption("--playlist-end", limit)
-        else request.addOption("--no-playlist")
-        val response = try { YoutubeDL.getInstance().execute(request, null, null) }
-        catch (e: InterruptedException) { throw e }
-        catch (_: Exception) { throw IOException("YouTube is unavailable. Try again later.") }
-        require(response.out.length <= 10_000_000) { "YouTube response is too large" }
-        return JSONObject(response.out)
+        // The wrapper preserves its extracted script across APK updates. Replace it atomically
+        // with the build-pinned raw resource before allowing any extraction in this process.
+        val file = java.io.File(context.noBackupFilesDir, "${YoutubeDL.baseName}/${YoutubeDL.ytdlpDirName}/${YoutubeDL.ytdlpBin}")
+        val atomic = android.util.AtomicFile(file)
+        val output = atomic.startWrite()
+        try {
+            context.resources.openRawResource(dev.distillpod.android.R.raw.ytdlp).use { it.copyTo(output) }
+            atomic.finishWrite(output)
+        } catch (e: Exception) { atomic.failWrite(output); throw e }
+        runtimeReady = true
+    }
+    companion object {
+        private val runtimeLock = Any()
+        private var runtimeReady = false
     }
 }
 
@@ -46,6 +92,8 @@ data class YouTubeStreams(val audio: String, val video: String?)
 
 /** Network extraction is injectable; parsing and identity are shared by live and fixture tests. */
 class YouTubeSource(private val extractor: YouTubeExtractor) {
+    var onStreamRefresh: () -> Unit = {}
+    internal fun refreshed() { runCatching { onStreamRefresh() } }
     suspend fun search(query: String): List<PodcastCandidate> = withTimeoutOrNull(45_000) {
         runInterruptible(Dispatchers.IO) {
             val url = "https://www.youtube.com/results".toHttpUrl().newBuilder()
@@ -87,14 +135,27 @@ class YouTubeSource(private val extractor: YouTubeExtractor) {
 
     // Short-lived, memory-only cache. Re-resolve on later playback/download; never sync signed URLs.
     private val cache = linkedMapOf<String, Pair<Long, YouTubeStreams>>()
-    @Synchronized fun streams(raw: String): YouTubeStreams {
+    private val inFlight = ConcurrentHashMap<String, FutureTask<YouTubeStreams>>()
+    fun invalidate(raw: String) { YouTubeUrl.videoId(raw)?.let { synchronized(cache) { cache.remove(it) } } }
+    fun streams(raw: String): YouTubeStreams {
         val id = requireNotNull(YouTubeUrl.videoId(raw)) { "Invalid YouTube episode" }
         val now = System.nanoTime()
-        cache[id]?.takeIf { now - it.first < 120_000_000_000L }?.let { return it.second }
-        val parsed = selectStreams(extractor.extract(YouTubeUrl.watch(id), false, 1))
-        if (cache.size >= 8) cache.remove(cache.keys.first())
-        cache[id] = System.nanoTime() to parsed
-        return parsed
+        synchronized(cache) { cache[id]?.takeIf { now - it.first < 120_000_000_000L }?.let { return it.second } }
+        val created = FutureTask {
+            val cached = synchronized(cache) { cache[id]?.takeIf { System.nanoTime() - it.first < 120_000_000_000L }?.second }
+            if (cached != null) return@FutureTask cached
+            val parsed = selectStreams(extractor.extract(YouTubeUrl.watch(id), false, 1))
+            synchronized(cache) {
+                if (cache.size >= 8) cache.remove(cache.keys.first())
+                cache[id] = System.nanoTime() to parsed
+            }
+            parsed
+        }
+        val task = inFlight.putIfAbsent(id, created) ?: created
+        if (task === created) created.run()
+        try { return task.get() }
+        catch (e: ExecutionException) { throw (e.cause ?: e) }
+        finally { if (task.isDone) inFlight.remove(id, task) }
     }
 }
 

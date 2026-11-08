@@ -20,6 +20,29 @@ import java.io.IOException
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
 class YouTubeSourceTest {
+    @Test fun `one slow video does not serialize extraction of another video`() {
+        val entered = java.util.concurrent.CountDownLatch(1)
+        val release = java.util.concurrent.CountDownLatch(1)
+        val pool = java.util.concurrent.Executors.newFixedThreadPool(3)
+        val calls = java.util.concurrent.atomic.AtomicInteger()
+        val source = YouTubeSource { url, _, _ ->
+            calls.incrementAndGet()
+            if (url.contains("heoWstJTwu4")) { entered.countDown(); release.await(5, java.util.concurrent.TimeUnit.SECONDS) }
+            JSONObject("""{"formats":[{"protocol":"https","url":"https://a.googlevideo.com/audio","vcodec":"none","acodec":"aac"}]}""")
+        }
+        try {
+            val first = pool.submit<YouTubeStreams> { source.streams("https://youtu.be/heoWstJTwu4") }
+            assertTrue(entered.await(2, java.util.concurrent.TimeUnit.SECONDS))
+            val other = pool.submit<YouTubeStreams> { source.streams("https://youtu.be/abcdefghijk") }
+            assertNotNull(other.get(2, java.util.concurrent.TimeUnit.SECONDS))
+            val same = pool.submit<YouTubeStreams> { source.streams("https://www.youtube.com/watch?v=heoWstJTwu4") }
+            release.countDown()
+            assertEquals(first.get(2, java.util.concurrent.TimeUnit.SECONDS), same.get(2, java.util.concurrent.TimeUnit.SECONDS))
+            assertEquals(2, calls.get())
+            source.invalidate("https://youtu.be/heoWstJTwu4"); source.streams("https://youtu.be/heoWstJTwu4")
+            assertEquals(3, calls.get())
+        } finally { release.countDown(); pool.shutdownNow() }
+    }
     private val playlist = "https://www.youtube.com/playlist?list=PLaE_mZALZ0V3lAEAvIfZC-aKf2ATIY3uy"
     private val video = "https://www.youtube.com/watch?v=heoWstJTwu4"
     private fun source() = YouTubeSource { url, _, _ ->

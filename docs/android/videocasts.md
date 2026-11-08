@@ -1,6 +1,6 @@
 # YouTube sources and videocasts
 
-Search combines Apple's podcast directory with public YouTube playlist results. Results identify
+Search publishes Apple podcast results and public YouTube playlist results independently, with provider-specific loading, failures and retries. Results identify
 the playlist owner and are labelled **YouTube · videocast**. It does not hardcode a show, scrape
 Spotify, require a paid directory, or create an RSS feed that points to HTML pages.
 
@@ -34,10 +34,10 @@ transcription pipeline consumes the resulting local audio file.
 ## Dependency and limitations
 
 `io.github.junkfood02.youtubedl-android:library:0.18.1` packages the extraction runtime locally
-(including yt-dlp 2025.11.12). It increases APK/install size and requires extracted native
+(Python 3.12 and QuickJS); the APK overlays the checksum-pinned yt-dlp 2026.10.26 executable and its EJS 0.8.0 scripts. It increases APK/install size and requires extracted native
 libraries. No account cookies, tokens, backend or automatic runtime code updates are used.
 See [third-party notices](../../THIRD_PARTY_NOTICES.md) for the GPL dependency and distribution
-requirements; this change does not authorize an APK publication or relicense repository code.
+requirements; the Android app and shared core are distributed under GPL-3.0-only. Releases include matching project/Whisper source, verified wrapper/yt-dlp/EJS source archives and a source manifest. Independent legacy/web code retains its existing terms.
 
 YouTube can change extraction or reject requests by network/device. Restricted/DRM content
 and live streams are unsupported. There is no claim that a search result guarantees playback.
@@ -47,7 +47,15 @@ not change that protocol or the deployed Firebase rules. Local backups and OPML 
 canonical URLs; restoring YouTube sources requires a build with this feature. RSS sync keeps
 its existing behavior.
 
+## Reliability improvements
+
+Extraction has a 40-second total deadline including its single transient retry, bounded subprocess concurrency and request-specific cancellation. Cache locks cover memory operations only; requests for the same video share in-flight work. A rejected initial CDN URL triggers one cache invalidation and fresh resolution. Repeated rejection remains an error. Audio/video source changes carry the queue and starting position in one controller command, including changes while an earlier timeline is preparing. Video failures request an audio fallback once; audio failure remains visible.
+
+Sanitized extraction and mode/output events use the existing opt-in diagnostics. Extraction events have random operation identifiers, categorical reasons and elapsed time; no video identifiers, titles, URLs or extractor output are uploaded. Instrumented acceptance emits marked test logs and does not replace real operation history. Dashboard counts describe observed events, including retries, rather than success-rate denominators.
+
 ## Validation
+
+The historical results below describe the initial implementation. Current integration and S22 delivery evidence is recorded in [videocast delivery](evidence/videocast-delivery.md).
 
 Deterministic tests cover canonical URLs, lookalike-host and invalid-path rejection, a Falha
 fixture absent from Apple, subscription/refresh identity and progress, offline re-follow,

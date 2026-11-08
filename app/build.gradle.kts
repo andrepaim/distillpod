@@ -1,4 +1,7 @@
 import groovy.json.JsonSlurper
+import java.io.File
+import java.net.URI
+import java.security.MessageDigest
 
 plugins {
     id("com.android.application")
@@ -24,6 +27,32 @@ fun clientString(key: String): String = when(key) {
     else -> ""
 }
 ksp { arg("room.schemaLocation", "$projectDir/schemas") }
+// Immutable build input, verified before packaging. Never update executable code on the phone.
+val youtubeExtractorVersion = "2026.10.26"
+val youtubeExtractorSha256 = "e51e69e89489f199530f13d32a4342da3ddb2cf34842f364603a066db05afbf3"
+val youtubeResources = layout.buildDirectory.dir("generated/youtube/res")
+val prepareYoutubeExtractor by tasks.registering {
+    inputs.property("version", youtubeExtractorVersion)
+    inputs.property("sha256", youtubeExtractorSha256)
+    val output = youtubeResources.map { it.file("raw/ytdlp.bin") }
+    outputs.file(output)
+    doLast {
+        val destination = output.get().asFile
+        destination.parentFile.mkdirs()
+        val temporary = File(destination.parentFile, "ytdlp.download")
+        try {
+            val connection = URI("https://api.github.com/repos/yt-dlp/yt-dlp/releases/assets/679669627").toURL().openConnection()
+            connection.setRequestProperty("Accept", "application/octet-stream")
+            connection.setRequestProperty("User-Agent", "DistillPodBuild/1.0")
+            connection.connectTimeout = 30_000; connection.readTimeout = 60_000
+            connection.getInputStream().use { input -> temporary.outputStream().use { input.copyTo(it) } }
+            val digest = MessageDigest.getInstance("SHA-256").digest(temporary.readBytes()).joinToString("") { "%02x".format(it) }
+            check(digest == youtubeExtractorSha256) { "YouTube extractor checksum mismatch" }
+            check(temporary.renameTo(destination)) { "Cannot finalize the pinned extractor" }
+        } finally { temporary.delete() }
+    }
+}
+tasks.named("preBuild").configure { dependsOn(prepareYoutubeExtractor) }
 android {
     namespace = "dev.distillpod.android"
     compileSdk = 35
@@ -51,6 +80,7 @@ android {
         testInstrumentationRunner = "dev.distillpod.android.IsolatedTestRunner"
         versionCode = providers.gradleProperty("distillpodVersionCode").get().toInt()
         versionName = providers.gradleProperty("distillpodVersionName").get()
+        resValue("string", "youtube_extractor_version", youtubeExtractorVersion)
         ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
     }
     buildTypes.getByName("release") { isDebuggable = false }
@@ -63,6 +93,7 @@ android {
     sourceSets.getByName("androidTest").assets.srcDir("schemas")
     sourceSets.getByName("androidTest").assets.srcDir("src/test/resources")
     sourceSets.getByName("test").resources.srcDir("schemas")
+    sourceSets.getByName("main").res.srcDir(youtubeResources)
     buildFeatures { compose = true }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }

@@ -46,6 +46,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          submodules: recursive
       - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: temurin
@@ -85,12 +86,19 @@ jobs:
           "$tools/zipalign" -c -P 16 4 "$apk"
           python3 scripts/release_metadata.py --tag "$GITHUB_REF_NAME" --apk "$apk" --build-tools "$tools" --verify-signature > dist/build-info.json
           python3 -c 'import json,os,pathlib;p=pathlib.Path("dist/build-info.json");d=json.loads(p.read_text());d["commit"]=os.environ["GITHUB_SHA"];d["workflowRun"]=os.environ["GITHUB_SERVER_URL"]+"/"+os.environ["GITHUB_REPOSITORY"]+"/actions/runs/"+os.environ["GITHUB_RUN_ID"];p.write_text(json.dumps(d,indent=2)+"\n")'
-          (cd dist && sha256sum *.apk build-info.json > SHA256SUMS)
+      - name: Package corresponding sources and notices
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/source_distribution.py --version "${GITHUB_REF_NAME#v}" --output "dist/distillpod-${GITHUB_REF_NAME#v}-source.tar.gz"
+          cp THIRD_PARTY_NOTICES.md dist/THIRD_PARTY_NOTICES.md
+          cp app/src/main/assets/licenses/source-manifest.json dist/source-manifest.json
+          (cd dist && sha256sum *.apk *.tar.gz build-info.json THIRD_PARTY_NOTICES.md source-manifest.json > SHA256SUMS)
       - name: Publish prerelease with verified assets
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          gh release create "$GITHUB_REF_NAME" --verify-tag --title "DistillPod $GITHUB_REF_NAME" --notes-file docs/releases/current.md --prerelease --draft dist/*.apk dist/SHA256SUMS dist/build-info.json
+          gh release create "$GITHUB_REF_NAME" --verify-tag --title "DistillPod $GITHUB_REF_NAME" --notes-file docs/releases/current.md --prerelease --draft dist/*.apk dist/*.tar.gz dist/SHA256SUMS dist/build-info.json dist/THIRD_PARTY_NOTICES.md dist/source-manifest.json
           gh release edit "$GITHUB_REF_NAME" --draft=false

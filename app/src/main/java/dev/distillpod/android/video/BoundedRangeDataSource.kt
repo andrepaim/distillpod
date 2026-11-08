@@ -25,6 +25,7 @@ internal class BoundedRangeDataSource(
     private var total: Long? = null
     private var chunkRemaining = 0L
     private var opened = false
+    private var validator: String? = null
 
     override fun addTransferListener(listener: TransferListener) = upstream.addTransferListener(listener)
     override fun getUri(): Uri? = upstream.uri
@@ -35,6 +36,7 @@ internal class BoundedRangeDataSource(
         position = dataSpec.position
         remaining = dataSpec.length
         total = null
+        validator = null
         openChunk()
         val available = total?.let { (it - position).coerceAtLeast(0) }
         return if (remaining == C.LENGTH_UNSET.toLong()) available ?: C.LENGTH_UNSET.toLong()
@@ -48,6 +50,9 @@ internal class BoundedRangeDataSource(
         opened = true
         upstream.open(checkNotNull(spec).buildUpon().setPosition(position).setLength(length).build())
         fun header(name: String) = upstream.responseHeaders.entries.firstOrNull { it.key.equals(name, true) }?.value?.firstOrNull()
+        val nextValidator = header("ETag")?.takeUnless { it.startsWith("W/") } ?: header("Last-Modified")
+        if (validator != null && validator != nextValidator) throw IOException("Media server changed its representation")
+        validator = nextValidator
         if (upstream.responseCode == 206) {
             val range = header("Content-Range")?.let { Regex("bytes (\\d+)-(\\d+)/(\\d+)").matchEntire(it) }
                 ?: throw IOException("Media server returned an invalid byte range")
@@ -58,7 +63,10 @@ internal class BoundedRangeDataSource(
             chunkRemaining = end - start + 1
         } else {
             // A server which ignores Range still gets read at the correct offset by Media3.
-            header("Content-Length")?.toLongOrNull()?.let { total = it }
+            header("Content-Length")?.toLongOrNull()?.let {
+                if (total != null && total != it) throw IOException("Media server changed its length")
+                total = it
+            }
             chunkRemaining = minOf(length, total?.let { (it - position).coerceAtLeast(0) } ?: length)
         }
     }

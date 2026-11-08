@@ -69,6 +69,7 @@ elif cmd[:3]==['shell','am','instrument']:print('INSTRUMENTATION_STATUS_CODE: 0\
         self.assertIn("dev.distillpod.android.DocumentationMediaDeviceTest", excluded)
         self.assertIn("dev.distillpod.android.HeadphoneVoiceDeviceTest", excluded)
         self.assertIn("dev.distillpod.android.YouTubeAcceptanceDeviceTest", excluded)
+        self.assertIn("dev.distillpod.android.OwnerVideocastDeviceTest", excluded)
         phases=[call for call in calls if call[:3]==["shell","am","instrument"]]
         self.assertEqual(4,len(phases))
         self.assertIn("AutoBrowserDeviceTest"," ".join(phases[1]))

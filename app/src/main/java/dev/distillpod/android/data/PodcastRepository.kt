@@ -7,9 +7,11 @@ import dev.distillpod.core.parseFeedStream
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.async
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 import dev.distillpod.core.YouTubeUrl
 import dev.distillpod.android.video.YouTubeSource
 import okhttp3.HttpUrl
@@ -20,6 +22,7 @@ import org.json.JSONObject
 import java.time.Instant
 
 data class PodcastCandidate(val title: String, val author: String, val feedUrl: String, val imageUrl: String?, val category: String = "")
+data class ProviderSearchResult(val provider: String, val results: List<PodcastCandidate> = emptyList(), val failed: Boolean = false)
 
 fun publicHttpUrl(raw: String): HttpUrl = raw.trim().toHttpUrl().newBuilder().fragment(null).build().also {
     require(it.username.isEmpty() && it.password.isEmpty()) { "Feed URLs with embedded passwords are not supported" }
@@ -43,17 +46,34 @@ class PodcastRepository(private val db: AppDatabase, private val http: OkHttpCli
     suspend fun search(query: String): List<PodcastCandidate> = withContext(Dispatchers.IO) {
         require(query.trim().length in 2..200) { "Enter at least two characters" }
         if (youtube == null) return@withContext searchDirectory(query)
+        val received = java.util.concurrent.CopyOnWriteArrayList<ProviderSearchResult>()
+        searchProviders(query, publish = { received.add(it) })
+        val results = received.flatMap { it.results }.distinctBy { it.feedUrl }
+            .sortedByDescending { it.title.equals(query.trim(), ignoreCase = true) }
+        if (results.isEmpty() && received.any { it.failed }) throw java.io.IOException("Search could not finish. Please retry.")
+        results
+    }
+
+    val searchProviderNames get() = if (youtube == null) setOf("apple") else setOf("apple", "youtube")
+
+    /** Each provider publishes immediately; a slow or failed peer cannot hide its results. */
+    suspend fun searchProviders(query: String, only: String? = null, publish: (ProviderSearchResult) -> Unit) = withContext(Dispatchers.IO) {
+        require(query.trim().length in 2..200) { "Enter at least two characters" }
+        require(only == null || only in searchProviderNames)
         coroutineScope {
-            suspend fun attempt(block: suspend () -> List<PodcastCandidate>) = try { Result.success(block()) }
-                catch (e: CancellationException) { throw e } catch (e: Exception) { Result.failure(e) }
-            val audio = async { attempt { searchDirectory(query) } }
-            val video = async { attempt { youtube.search(query.trim()) } }
-            val results = listOf(audio.await(), video.await())
-            if (results.all { it.isFailure }) throw results.first().exceptionOrNull()!!
-            if (results.any { it.isFailure } && results.all { it.getOrDefault(emptyList()).isEmpty() })
-                throw results.first { it.isFailure }.exceptionOrNull()!!
-            results.flatMap { it.getOrDefault(emptyList()) }.distinctBy { it.feedUrl }
-                .sortedByDescending { it.title.equals(query.trim(), ignoreCase = true) }
+            searchProviderNames.filter { only == null || it == only }.forEach { provider -> launch {
+                val result = try {
+                    val rows = withTimeout(if (provider == "apple") 30_000L else 45_000L) {
+                        if (provider == "apple") searchDirectory(query) else youtube!!.search(query.trim())
+                    }
+                    ProviderSearchResult(provider, rows)
+                } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+                    kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                    ProviderSearchResult(provider, failed = true)
+                } catch (e: CancellationException) { throw e }
+                catch (_: Exception) { ProviderSearchResult(provider, failed = true) }
+                publish(result)
+            } }
         }
     }
 

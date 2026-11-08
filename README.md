@@ -15,6 +15,10 @@ DistillPod is an Android podcast player for people who listen to learn. Capture 
 
 ## Highlights
 
+### Listen to videocasts your way
+
+Find public YouTube playlists alongside podcast search results, or add a playlist/video link directly. Episodes start in audio mode; choose **Video** in the player to watch, then return to audio at the same position. Downloads retain audio for offline listening and local transcription. YouTube availability depends on the provider, and these sources remain local to this app version. [Videocast guide →](docs/android/videocasts.md)
+
 ### Save the idea and keep listening
 
 Tap **Distill last 60 seconds** when something catches your attention. DistillPod saves the source moment immediately, then uses its surrounding context to prepare a concise takeaway and, when the source supports one, a quote. Playback continues, and the capture stays saved even if preparation or AI generation needs a retry.
@@ -110,3 +114,9 @@ Ordinary source/debug builds keep voice disabled; add `-PdistillpodVoiceEnabled=
 - [Repository history and web archive](docs/legacy-web.md)
 
 This repository contains the native Android app. The earlier web app is archived on [`legacy/web`](https://github.com/andrepaim/distillpod/tree/legacy/web), with its final source tagged [`web-legacy-final`](https://github.com/andrepaim/distillpod/tree/web-legacy-final).
+
+## License and source
+
+The original Android app, shared core and their original build/release scripts are distributed under **GNU GPL version 3 only**. See [app/LICENSE](app/LICENSE), [core/LICENSE](core/LICENSE) and [third-party notices](THIRD_PARTY_NOTICES.md). Independent legacy/web code, publisher content, model weights and personal data retain their own terms.
+
+APK releases include a matching source archive with the pinned Whisper source and checksum-verified upstream source archives, plus a component source manifest and notices. The app also provides license/source links in **Settings → About DistillPod**.

@@ -20,15 +20,8 @@ import java.io.IOException
 class VideocastMediaSourceFactory(context: Context, youtube: YouTubeSource) : MediaSource.Factory {
     private val network = DefaultHttpDataSource.Factory().setConnectTimeoutMs(20_000).setReadTimeoutMs(30_000)
     private val normal = DefaultMediaSourceFactory(context)
-    private val youtubeData = ResolvingDataSource.Factory(DataSource.Factory {
-        BoundedRangeDataSource(network.createDataSource())
-    }) { spec ->
-        if (YouTubeUrl.videoId(spec.uri.toString()) == null) spec else {
-            val streams = youtube.streams(spec.uri.toString())
-            val url = if (spec.uri.getQueryParameter("distillpod_track") == "video")
-                streams.video ?: throw IOException("No compatible YouTube video stream is available") else streams.audio
-            spec.withUri(Uri.parse(url))
-        }
+    private val youtubeData = DataSource.Factory {
+        RefreshingYouTubeDataSource(youtube, network)
     }
     override fun createMediaSource(mediaItem: MediaItem): MediaSource {
         val uri = mediaItem.localConfiguration?.uri ?: return normal.createMediaSource(mediaItem)

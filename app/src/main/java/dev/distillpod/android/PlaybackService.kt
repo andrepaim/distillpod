@@ -15,6 +15,7 @@ import dev.distillpod.android.auto.AutoLibraryCallback
 import androidx.room.withTransaction
 import dev.distillpod.android.data.*
 import dev.distillpod.android.playback.mediaItem
+import dev.distillpod.android.playback.swapCurrentSource
 import java.io.File
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
@@ -147,7 +148,27 @@ class PlaybackService : MediaLibraryService() {
                 }
             }
             private var videoEpisodeId: String? = null
-            override fun onPlayerError(error: androidx.media3.common.PlaybackException) {graph.diagnostics.failure("playback",error)}
+            override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                graph.diagnostics.failure("playback",error)
+                val item = player.currentMediaItem ?: return
+                if (C.TRACK_TYPE_VIDEO in player.trackSelectionParameters.disabledTrackTypes) return
+                val id = item.mediaId
+                val position = player.currentPosition.coerceAtLeast(0)
+                val resume = player.playWhenReady
+                // Disable before recovery so an audio failure cannot loop through video fallback.
+                player.trackSelectionParameters = player.trackSelectionParameters.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, true).build()
+                graph.playbackEvents.videoFailure.value = id to "Video is unavailable. Returning to audio."
+                graph.diagnostics.event("videocast.failed", reason = "failed")
+                scope.launch {
+                    val pair = withContext(Dispatchers.IO) {
+                        dao.episode(id)?.let { it to dao.podcast(it.podcastId) }
+                    } ?: return@launch
+                    if (player.currentMediaItem?.mediaId != id || C.TRACK_TYPE_VIDEO !in player.trackSelectionParameters.disabledTrackTypes) return@launch
+                    swapCurrentSource(player, mediaItem(pair.first, pair.second), position, resume)
+                    graph.diagnostics.event("videocast.audio_restored", reason = "resume_requested")
+                }
+            }
+            override fun onRenderedFirstFrame() { graph.diagnostics.event("videocast.first_frame", reason = "ready") }
             override fun onIsPlayingChanged(isPlaying:Boolean) {graph.diagnostics.event("playback.state",reason=if(isPlaying) "playing" else "paused")}
             override fun onTimelineChanged(timeline:androidx.media3.common.Timeline,reason:Int) {
                 if(reason==Player.TIMELINE_CHANGE_REASON_PLAYLIST_CHANGED)snapshot(queueBoundary=true)
@@ -247,9 +268,7 @@ class PlaybackService : MediaLibraryService() {
                 if (current.localConfiguration?.uri != uri && !restoring) {
                     val podcast = withContext(Dispatchers.IO) { dao.podcast(ep.podcastId) }
                     val position = player.currentPosition.coerceAtLeast(0)
-                    val playing = player.playWhenReady
-                    player.replaceMediaItem(player.currentMediaItemIndex, mediaItem(ep, podcast))
-                    player.seekTo(position); player.prepare(); player.playWhenReady = playing
+                    swapCurrentSource(player, mediaItem(ep, podcast), position)
                 }
             }
         }
