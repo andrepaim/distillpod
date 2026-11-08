@@ -195,9 +195,11 @@ class DistillationSummaryTest {
         }
     }
     @Test fun `failed ownership storage check is not mislabeled as a stale provider result`() {
-        var close:()->Unit={}
-        fixture({close();ready}) {repo,db,d,id->
-            close={db.close()}
+        var breakStorage:()->Unit={}
+        fixture({breakStorage();ready}) {repo,db,d,id->
+            // Closing Room reopens a fresh in-memory database, which is legitimately stale.
+            // Remove this synthetic fixture's table to make both ownership queries actually fail.
+            breakStorage={db.openHelper.writableDatabase.execSQL("DROP TABLE distillations")}
             runCatching {repo.run(id)}
             assertEquals("internal_failure",fields(summaries(d).single())["stage_outcome"])
         }
