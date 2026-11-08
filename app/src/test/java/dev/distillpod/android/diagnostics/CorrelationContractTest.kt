@@ -69,6 +69,22 @@ class CorrelationContractTest {
         journal.transition("distillation",c.momentId,"waiting",correlation=c.copy(generationAttemptId=id(),executionId=id(),previousAttemptId=c.generationAttemptId))
         assertEquals("waiting",journal.latest().single().state)
     }
+    @Test fun `version one journal rows remain readable and explicitly unlinked`() {
+        val file=File(folder.root,"legacy")
+        val operation=id()
+        java.io.DataOutputStream(file.outputStream()).use {out->
+            out.writeInt(1);out.writeLong(0);out.writeInt(1)
+            listOf(id(),"distillation",operation,id(),"failed","timeout","phone").forEach(out::writeUTF)
+            out.writeLong(1000);out.writeLong(1200);out.writeLong(200)
+            out.writeInt(7);out.writeUTF("legacy");out.writeBoolean(false)
+        }
+        val journal=OperationJournal(file,{2000})
+        val row=journal.pending().single()
+        assertNull(row.correlation)
+        assertEquals(operation,row.operation);assertEquals(7,row.sequence)
+        journal.acknowledge(row.id)
+        assertNull(OperationJournal(file,{3000}).latest().single().correlation)
+    }
     @Test fun `legacy identity never becomes a fabricated generation link`() {
         val journal=OperationJournal(File(folder.root,"journal"))
         journal.transition("distillation",id(),"running")

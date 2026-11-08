@@ -30,6 +30,33 @@ class LibraryBackupTest {
         dao.putPlayerSession(PlayerSessionEntity(episodeId = "episode", speed = 1.5f))
         dao.putModel(ModelEntity("tiny", "ready", 77691713))
     }
+    @Test fun `backup export and import strip installation local correlation provenance`()=runBlocking {
+        val source=database();val target=database()
+        try {
+            seed(source)
+            val attemptId=java.util.UUID.randomUUID().toString()
+            val request=java.util.UUID.randomUUID().toString()
+            val context=JSONObject().put("expanded",false).put("_diagnostics",
+                JSONObject().put("capture_request_id",request).put("retry_trigger","initial"))
+            source.library().putMomentAttempt(MomentAttemptEntity(attemptId,"moment",context.toString()))
+            source.library().putDistillation(source.library().distillation("moment")!!.copy(attempt=attemptId))
+            val bytes=LibraryBackup(source).export()
+            assertFalse(bytes.toString(Charsets.UTF_8).contains("_diagnostics"))
+            assertFalse(bytes.toString(Charsets.UTF_8).contains(request))
+            // Even an older writer that exported local metadata must not restore its lineage.
+            val envelope=JSONObject(bytes.toString(Charsets.UTF_8))
+            val tables=JSONObject(envelope.getString("payload"))
+            tables.getJSONArray("moment_attempts").getJSONObject(0).put("contextJson",context.toString())
+            val payload=tables.toString()
+            envelope.put("payload",payload).put("sha256",MessageDigest.getInstance("SHA-256").digest(payload.toByteArray()).joinToString("") {"%02x".format(it)})
+            val backup=LibraryBackup(target)
+            backup.merge(backup.preview(envelope.toString().byteInputStream()))
+            val restored=target.library().momentAttempt(attemptId)!!
+            assertFalse(JSONObject(restored.contextJson).has("_diagnostics"))
+            assertNull(AttemptDiagnostics.correlation(restored).captureRequestId)
+            assertEquals("unknown",AttemptDiagnostics.correlation(restored).retryTrigger)
+        } finally {source.close();target.close()}
+    }
     @Test fun `round trip restores source relationships and playback while excluding device files`() = runBlocking {
         val source = database(); val target = database()
         try {
