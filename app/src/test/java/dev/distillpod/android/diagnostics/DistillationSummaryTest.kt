@@ -44,7 +44,19 @@ class DistillationSummaryTest {
             test(repo,db,d,id)
         } finally {d.consent(false);db.close();io.sentry.Sentry.close()}
     }
-    private fun summaries(d:Diagnostics):List<String> {d.awaitIdle();return d.queue.files().map {it.readText()}.filter {it.contains("distillation.attempt_summary")}}
+    private fun summaries(d:Diagnostics):List<String> {
+        d.awaitIdle()
+        return d.queue.files().map {it.readText()}.filter {it.contains("distillation.attempt_summary")}.also {rows->
+            // Explicit opt-in export for offline consumer contract tests. These fixtures use only synthetic data.
+            System.getenv("DISTILLPOD_SYNTHETIC_SUMMARY_DIR")?.takeIf {it.isNotBlank()}?.let {path->
+                val directory=java.io.File(path).also {it.mkdirs()}
+                rows.forEach {row->
+                    val attributes=fields(row)
+                    java.io.File(directory,"${attributes.getValue("stage_outcome")}-${attributes.getValue("summary_id")}.jsonl").writeText(row)
+                }
+            }
+        }
+    }
     private fun fields(payload:String):Map<String,Any> {
         fun find(value:Any):org.json.JSONObject? {
             if(value is org.json.JSONObject) {
