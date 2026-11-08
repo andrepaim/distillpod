@@ -103,6 +103,9 @@ class NotificationAccessDeviceTest {
             compose.activityRule.scenario.recreate()
             compose.onNodeWithText("Open notification settings").performScrollTo().assertIsDisplayed()
             enableClick()
+            // Some OEMs still show a dialog after the synthetic USER_FIXED setup.
+            device.wait(Until.findObject(By.res(Pattern.compile(".*:id/permission_deny_button"))), 1500)?.click()
+            check(device.wait(Until.hasObject(By.pkg(packageName)), 10000))
             compose.waitUntil(10000) { compose.onAllNodesWithText("Enable notifications").fetchSemanticsNodes().isEmpty() }
             assertFalse(enabled())
 
