@@ -129,7 +129,11 @@ class OwnerVideocastDeviceTest {
                 }
                 unmetered(); snapshot()
                 try {
-                    val feed = graph.youtube.feed(id, "https://www.youtube.com/@portadosfundos/videos")
+                    val channel = graph.youtube.search("Porta dos Fundos").firstOrNull {
+                        it.title.equals("Porta dos Fundos", true) && dev.distillpod.core.YouTubeUrl.channel(it.feedUrl) != null
+                    }
+                    assertNotNull("Find the real channel through search", channel)
+                    val feed = graph.youtube.feed(id, channel!!.feedUrl)
                     assertEquals(0, feed.episodes.first().sourceOrder)
                     fixture(feed.episodes.first())
                     val ep = dao.episode(id)!!
@@ -192,7 +196,7 @@ class OwnerVideocastDeviceTest {
                                     androidx.lifecycle.ViewModelProvider(it, dev.distillpod.android.features.AppViewModel.factory(graph))[dev.distillpod.android.features.AppViewModel::class.java].backStack.value.last().substringBefore(':')
                                 } ?: "not_resumed"
                         }
-                        receipt("back_failure", JSONObject().put("route", route))
+                        receipt("back_failure", JSONObject().put("route", route).put("landscape", context.resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE))
                     }
                     assertTrue("Back must return to the inline player", inline)
                     await { C.TRACK_TYPE_VIDEO !in it.trackSelectionParameters.disabledTrackTypes }

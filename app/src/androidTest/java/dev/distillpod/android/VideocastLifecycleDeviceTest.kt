@@ -54,7 +54,7 @@ class VideocastLifecycleDeviceTest {
         val file = File(graph.context.cacheDir, "$tag.wav")
         instrumentation.context.assets.open("jfk.wav").use { input -> file.outputStream().use(input::copyTo) }
         val dao = graph.db.library()
-        val automatic = graph.settings.flow.first().transcribeOnPlayback
+        val automaticTranscription = graph.settings.flow.first().transcribeOnPlayback
         graph.settings.flag("transcribeOnPlayback", false)
         val modeScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
         val requestStarted = CompletableDeferred<Unit>()
@@ -82,6 +82,8 @@ class VideocastLifecycleDeviceTest {
             val position = withContext(Dispatchers.Main) { player.currentPosition }
             withContext(Dispatchers.Main) {
                 if (fullscreen) {
+                    rotationSetting(0)
+                    compose.activity.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
                     // Exercise the application's navigation BackHandler as well as the player.
                     androidx.lifecycle.ViewModelProvider(compose.activity, AppViewModel.factory(graph))[AppViewModel::class.java].open("player")
                 } else compose.activity.setContent {
@@ -89,6 +91,7 @@ class VideocastLifecycleDeviceTest {
                 }
             }
             compose.waitUntil(10_000) { compose.onAllNodesWithText("Video", useUnmergedTree = true).fetchSemanticsNodes().size == 1 }
+            if (fullscreen) compose.onNodeWithText("Video", useUnmergedTree = true).performScrollTo()
             compose.onNodeWithText("Video", useUnmergedTree = true).performClick()
             compose.waitForIdle()
             if (pending) withTimeout(10_000) { requestStarted.await() }
@@ -103,6 +106,7 @@ class VideocastLifecycleDeviceTest {
                 compose.waitUntil(10_000) { compose.onAllNodesWithContentDescription("Enter fullscreen").fetchSemanticsNodes().isNotEmpty() }
                 compose.mainClock.advanceTimeBy(1000)
                 compose.onNodeWithContentDescription("Exit fullscreen").assertDoesNotExist()
+                compose.onNodeWithContentDescription("Enter fullscreen").assertIsDisplayed()
                 withContext(Dispatchers.Main) { compose.activity.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT }
                 compose.waitUntil(10_000) { compose.activity.resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_PORTRAIT }
                 withContext(Dispatchers.Main) { compose.activity.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE }
@@ -118,8 +122,9 @@ class VideocastLifecycleDeviceTest {
             if (fullscreen) {
                 rotationSetting(0)
                 val activity = compose.activity
-                compose.onNodeWithContentDescription("Enter fullscreen").assertExists().performClick()
-                compose.waitUntil(10_000) { compose.activity.resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE }
+                compose.onNodeWithContentDescription("Enter fullscreen").assertIsDisplayed().performClick()
+                compose.waitUntil(10_000) { compose.activity.resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE &&
+                    compose.onAllNodesWithContentDescription("Exit fullscreen").fetchSemanticsNodes().isNotEmpty() }
                 compose.onNodeWithContentDescription("Exit fullscreen").assertExists()
                 assertSame("Rotation must retain the activity and composition", activity, compose.activity)
                 withContext(Dispatchers.Main) {
@@ -133,7 +138,7 @@ class VideocastLifecycleDeviceTest {
                 device.wait(androidx.test.uiautomator.Until.findObject(androidx.test.uiautomator.By.text("Got it")), 1500)?.click()
                 device.pressBack()
                 compose.waitUntil(10_000) { compose.onAllNodesWithContentDescription("Exit fullscreen").fetchSemanticsNodes().isEmpty() }
-                compose.onNodeWithContentDescription("Enter fullscreen").assertExists()
+                compose.onNodeWithContentDescription("Enter fullscreen").assertIsDisplayed()
                 withContext(Dispatchers.Main) { assertEquals(position, player.currentPosition) }
             }
             compose.activityRule.scenario.moveToState(Lifecycle.State.CREATED)
@@ -156,7 +161,7 @@ class VideocastLifecycleDeviceTest {
             graph.playback.pause(); graph.playback.clear(); graph.playback.speed(1f)
             withTimeout(10_000) { graph.playback.state.first { it.queue.isEmpty() } }
             delay(300); dao.deletePodcast(tag); file.delete()
-            graph.settings.flag("transcribeOnPlayback", automatic)
+            graph.settings.flag("transcribeOnPlayback", automaticTranscription)
             modeScope.cancel()
             rotationSetting(oldRotation)
             withContext(Dispatchers.Main) { compose.activity.requestedOrientation = oldOrientation }

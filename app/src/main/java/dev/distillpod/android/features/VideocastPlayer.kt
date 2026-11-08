@@ -70,7 +70,9 @@ private tailrec fun Context.activity(): Activity? = when (this) {
     SideEffect { notifyFullscreen(fullscreen) }
     DisposableEffect(episodeId) { onDispose { notifyFullscreen(false) } }
     val context = LocalContext.current
-    val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val configuration = LocalConfiguration.current
+    val landscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
     fun autoRotate() = Settings.System.getInt(context.contentResolver, Settings.System.ACCELEROMETER_ROTATION, 0) == 1
     LaunchedEffect(video, landscape) {
         if (!video) presentation = VideoPresentation()
@@ -81,7 +83,7 @@ private tailrec fun Context.activity(): Activity? = when (this) {
         // release the explicit landscape request once the owner actually turns the phone.
         if (presentation.forcedLandscape) presentation = presentation.orientation(horizontal, autoRotate())
     })
-    DisposableEffect(context, video) {
+    DisposableEffect(context, video, presentation.forcedLandscape, lifecycle) {
         val sensor = object : OrientationEventListener(context) {
             override fun onOrientationChanged(angle: Int) {
                 when (angle) {
@@ -90,8 +92,14 @@ private tailrec fun Context.activity(): Activity? = when (this) {
                 }
             }
         }
-        if (video && sensor.canDetectOrientation()) sensor.enable()
-        onDispose { sensor.disable() }
+        val needed = video && presentation.forcedLandscape && sensor.canDetectOrientation()
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_STOP) sensor.disable()
+            else if (event == Lifecycle.Event.ON_START && needed) sensor.enable()
+        }
+        lifecycle.addObserver(observer)
+        if (needed && lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) sensor.enable()
+        onDispose { sensor.disable(); lifecycle.removeObserver(observer) }
     }
     VideoWindow(fullscreen, presentation.forcedLandscape)
     BackHandler(fullscreen) { presentation = presentation.exit() }
@@ -121,7 +129,6 @@ private tailrec fun Context.activity(): Activity? = when (this) {
         catch (_: Exception) { video = false; error = "Video is unavailable. Switched to audio mode." }
         finally { modeRequest.compareAndSet(request, null); loading = false }
     }
-    val lifecycle = LocalLifecycleOwner.current.lifecycle
     DisposableEffect(lifecycle, playback, episodeId) {
         val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_STOP) {
             video = false
@@ -134,7 +141,9 @@ private tailrec fun Context.activity(): Activity? = when (this) {
     }
     DisposableEffect(playback, episodeId) { onDispose { playback.leaveVideo(episodeId) } }
     Column(if (fullscreen) Modifier.fillMaxSize() else Modifier.fillMaxWidth()) {
-        if (video) Box(if (fullscreen) Modifier.fillMaxSize() else Modifier.fillMaxWidth().aspectRatio(16f / 9f), contentAlignment = Alignment.Center) {
+        val inline = Modifier.fillMaxWidth().then(if (landscape)
+            Modifier.height((configuration.screenHeightDp * .55f).dp) else Modifier.aspectRatio(16f / 9f))
+        if (video) Box(if (fullscreen) Modifier.fillMaxSize() else inline, contentAlignment = Alignment.Center) {
             // Keep the same Android view, surface and MediaController across fullscreen changes.
             AndroidView(factory = { viewContext -> PlayerView(viewContext).apply { useController = false } },
                 update = { it.player = player; it.keepScreenOn = state.playing },
@@ -145,7 +154,7 @@ private tailrec fun Context.activity(): Activity? = when (this) {
                 onSeek = onSeek ?: { player?.seekTo(it); Unit }, onCapture = onCapture, onVoice = onVoice,
                 onExit = { presentation = presentation.exit() })
             else IconButton(onClick = { presentation = presentation.enter() },
-                modifier = Modifier.align(Alignment.BottomEnd).background(Color.Black.copy(alpha = .65f))) {
+                modifier = Modifier.align(Alignment.TopEnd).background(Color.Black.copy(alpha = .65f))) {
                 Icon(Icons.Default.Fullscreen, "Enter fullscreen", tint = Color.White)
             }
         } else audioOnlyArtwork()
