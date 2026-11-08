@@ -107,7 +107,7 @@ class PodcastRepository(private val db: AppDatabase, private val http: OkHttpCli
                 podcast.lastModified?.let { header("If-Modified-Since", it) }
             }.build()
             http.newCall(request).execute().use { response ->
-                if (response.code == 304) { dao.putPodcast(podcast.copy(refreshedAt = System.currentTimeMillis(), error = null)); return@use }
+                if (response.code == 304) { initializeAutomation(id); dao.putPodcast(podcast.copy(refreshedAt = System.currentTimeMillis(), error = null)); return@use }
                 check(response.isSuccessful) { "Feed refresh failed" }
                 val feed = response.body!!.byteStream().use { parseFeedStream(id, it, response.request.url.toString()) }
                 db.withTransaction {
@@ -146,8 +146,17 @@ class PodcastRepository(private val db: AppDatabase, private val http: OkHttpCli
                 mediaFingerprint = if (changed || base.mediaFingerprint.isBlank()) episodeId("enclosure", item.audioUrl) else base.mediaFingerprint)
         }
         dao.putEpisodes(episodes)
+        val automation = db.automation().show(podcastId)
+        if (automation != null) {
+            if (automation.initialized) episodes.filter { it.guid !in saved && (it.publishedAt == 0L || it.publishedAt >= automation.enabledAt) }
+                .forEach { db.automation().insertJob(EpisodeAutomationEntity(it.id, podcastId)) }
+            initializeAutomation(podcastId)
+        }
     }
 
+    private suspend fun initializeAutomation(id: String) {
+        db.automation().initialize(id)
+    }
     suspend fun unsubscribe(id: String) { dao.podcast(id)?.let { subscriptionSync.follow(it.copy(subscribed = false)); onSubscriptionChanged() } }
     suspend fun exportOpml(): String = dev.distillpod.core.writeOpml(dao.podcasts().filter { it.subscribed }.map { dev.distillpod.core.OpmlFeed(it.title, it.feedUrl) })
     suspend fun importOpml(xml: String): Int {
