@@ -314,6 +314,7 @@ class Diagnostics(private val context: Context, private val dsn:String = context
             val safe=RuntimeException("Diagnostic failure: ${reason(error)}").also {it.stackTrace=error.stackTrace}
             Sentry.captureException(safe) { scope ->
                 scope.setTag("stage",stage)
+                (correlation ?: DiagnosticCorrelation()).fields().forEach { (key,value) -> scope.setTag(key,value.toString()) }
                 scope.setTag("source",source.takeIf {it in OperationJournal.SOURCES} ?: "background")
                 scope.setTag("test_traffic",(stage=="diagnostics" || dev.distillpod.android.sync.SubscriptionCloudAccess.instrumentation).toString())
                 scope.setTag("reason",reason(error))
