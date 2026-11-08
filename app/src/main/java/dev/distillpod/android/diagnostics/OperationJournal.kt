@@ -42,6 +42,7 @@ internal class OperationJournal(private val file: File, private val now: () -> L
     }
     @Synchronized fun pending():List<Row> {prune();return rows.filterNot {it.delivered}.toList()}
     @Synchronized fun latest():List<Row> = rows.groupBy {it.kind to it.operation}.values.map {it.last()}
+    @Synchronized fun isPending(id:String):Boolean = rows.any {it.id==id && !it.delivered}
     @Synchronized fun acknowledge(id:String) {val i=rows.indexOfFirst {it.id==id};if(i>=0){rows[i]=rows[i].copy(delivered=true);save()}}
     @Synchronized fun clear() {rows.clear();clocks.clear();dropped=0;runCatching {save()}.onFailure {file.delete()}}
     @Synchronized fun recover(resolve:(String,String)->String?) {
