@@ -48,3 +48,9 @@ Keep the organization on free Developer with billing disabled. Current Logs docu
 ## Validation
 
 Automated coverage includes retry identity, duplicate callbacks, stable replay, recovery/unknown outcomes, missing timing, backward wall-clock changes, journal bounds, independent consent, revocation, content rejection and report denominators. Existing delivery, privacy, migration, backup, sync and voice regressions remain required. Physical-device evidence is recorded separately in the delivery receipt; synthetic fixture outcomes are explicitly excluded from production aggregates.
+
+## Distillation incident investigations
+
+For bounded, private, read-only reconstruction using stage/context/retry evidence, see
+[cloud-only distillation investigation](distillation-investigation.md). The investigation
+export preserves incomplete-read status and never computes a success/failure rate.

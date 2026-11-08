@@ -1,0 +1,1984 @@
+[
+  {
+    "body": "app.started",
+    "attributes": {
+      "correlation_complete": {
+        "type": "boolean",
+        "value": false
+      },
+      "reason": {
+        "type": "string",
+        "value": "none"
+      },
+      "emitted_at_ms": {
+        "type": "integer",
+        "value": 1794181207897
+      },
+      "installation_id": {
+        "type": "string",
+        "value": "5c855f49-c282-460b-bf0a-26d74ecc16dc"
+      },
+      "source": {
+        "type": "string",
+        "value": "background"
+      },
+      "correlation_version": {
+        "type": "integer",
+        "value": 1
+      },
+      "schema_version": {
+        "type": "integer",
+        "value": 1
+      },
+      "observed_at_ms": {
+        "type": "integer",
+        "value": 1794181207885
+      },
+      "event_id": {
+        "type": "string",
+        "value": "d2003b3c-ed5f-45b9-a51e-e0a874f56923"
+      },
+      "test_traffic": {
+        "type": "boolean",
+        "value": false
+      },
+      "retry_trigger": {
+        "type": "string",
+        "value": "unknown"
+      }
+    }
+  },
+  {
+    "body": "diagnostics.health",
+    "attributes": {
+      "pending_envelopes": {
+        "type": "integer",
+        "value": 1
+      },
+      "errors_dropped": {
+        "type": "integer",
+        "value": 0
+      },
+      "budget_day": {
+        "type": "integer",
+        "value": 20765
+      },
+      "emitted_at_ms": {
+        "type": "integer",
+        "value": 1794181207924
+      },
+      "installation_id": {
+        "type": "string",
+        "value": "5c855f49-c282-460b-bf0a-26d74ecc16dc"
+      },
+      "health_used": {
+        "type": "integer",
+        "value": 0
+      },
+      "schema_version": {
+        "type": "integer",
+        "value": 1
+      },
+      "errors_used": {
+        "type": "integer",
+        "value": 0
+      },
+      "dropped_reports": {
+        "type": "integer",
+        "value": 0
+      },
+      "routine_limit": {
+        "type": "integer",
+        "value": 800
+      },
+      "daily_limit": {
+        "type": "integer",
+        "value": 1000
+      },
+      "health_dropped": {
+        "type": "integer",
+        "value": 0
+      },
+      "critical_used": {
+        "type": "integer",
+        "value": 0
+      },
+      "errors_limit": {
+        "type": "integer",
+        "value": 30
+      },
+      "budget_policy_version": {
+        "type": "integer",
+        "value": 2
+      },
+      "critical_dropped": {
+        "type": "integer",
+        "value": 0
+      },
+      "health_limit": {
+        "type": "integer",
+        "value": 10
+      },
+      "routine_dropped": {
+        "type": "integer",
+        "value": 0
+      },
+      "event_id": {
+        "type": "string",
+        "value": "0378d8e4-c83c-4f7c-bc72-eeaac8a64519"
+      },
+      "routine_used": {
+        "type": "integer",
+        "value": 1
+      },
+      "test_traffic": {
+        "type": "boolean",
+        "value": false
+      },
+      "critical_limit": {
+        "type": "integer",
+        "value": 160
+      }
+    }
+  },
+  {
+    "body": "capture.started",
+    "attributes": {
+      "correlation_complete": {
+        "type": "boolean",
+        "value": false
+      },
+      "reason": {
+        "type": "string",
+        "value": "none"
+      },
+      "capture_request_id": {
+        "type": "string",
+        "value": "5672dade-2448-493a-a339-5dff4f3b47e3"
+      },
+      "emitted_at_ms": {
+        "type": "integer",
+        "value": 1794181207952
+      },
+      "installation_id": {
+        "type": "string",
+        "value": "5c855f49-c282-460b-bf0a-26d74ecc16dc"
+      },
+      "source": {
+        "type": "string",
+        "value": "phone"
+      },
+      "correlation_version": {
+        "type": "integer",
+        "value": 1
+      },
+      "schema_version": {
+        "type": "integer",
+        "value": 1
+      },
+      "operation_id": {
+        "type": "string",
+        "value": "5672dade-2448-493a-a339-5dff4f3b47e3"
+      },
+      "retry_trigger": {
+        "type": "string",
+        "value": "unknown"
+      },
+      "observed_at_ms": {
+        "type": "integer",
+        "value": 1794181207948
+      },
+      "event_id": {
+        "type": "string",
+        "value": "9b557f95-d356-4832-8c24-f4739afc2564"
+      },
+      "test_traffic": {
+        "type": "boolean",
+        "value": false
+      }
+    }
+  },
+  {
+    "body": "operation.summary",
+    "attributes": {
+      "correlation_complete": {
+        "type": "boolean",
+        "value": false
+      },
+      "reason": {
+        "type": "string",
+        "value": "none"
+      },
+      "capture_request_id": {
+        "type": "string",
+        "value": "5672dade-2448-493a-a339-5dff4f3b47e3"
+      },
+      "emitted_at_ms": {
+        "type": "integer",
+        "value": 1794181207961
+      },
+      "installation_id": {
+        "type": "string",
+        "value": "5c855f49-c282-460b-bf0a-26d74ecc16dc"
+      },
+      "source": {
+        "type": "string",
+        "value": "phone"
+      },
+      "correlation_version": {
+        "type": "integer",
+        "value": 1
+      },
+      "schema_version": {
+        "type": "integer",
+        "value": 1
+      },
+      "feature": {
+        "type": "string",
+        "value": "capture"
+      },
+      "elapsed_ms": {
+        "type": "integer",
+        "value": 0
+      },
+      "operation_id": {
+        "type": "string",
+        "value": "5672dade-2448-493a-a339-5dff4f3b47e3"
+      },
+      "outcome": {
+        "type": "string",
+        "value": "running"
+      },
+      "retry_trigger": {
+        "type": "string",
+        "value": "unknown"
+      },
+      "operation_release": {
+        "type": "string",
+        "value": "0.20.0-alpha.1"
+      },
+      "operation_started_ms": {
+        "type": "integer",
+        "value": 1794181207948
+      },
+      "summary_id": {
+        "type": "string",
+        "value": "ae366a48-6ecb-491f-80b3-757c861277f6"
+      },
+      "sequence": {
+        "type": "integer",
+        "value": 1
+      },
+      "observed_at_ms": {
+        "type": "integer",
+        "value": 1794181207948
+      },
+      "event_id": {
+        "type": "string",
+        "value": "ff73c5c1-85f4-4b87-9682-613378228bd5"
+      },
+      "test_traffic": {
+        "type": "boolean",
+        "value": false
+      }
+    }
+  },
+  {
+    "body": "capture.completed",
+    "attributes": {
+      "correlation_complete": {
+        "type": "boolean",
+        "value": false
+      },
+      "reason": {
+        "type": "string",
+        "value": "none"
+      },
+      "capture_request_id": {
+        "type": "string",
+        "value": "5672dade-2448-493a-a339-5dff4f3b47e3"
+      },
+      "emitted_at_ms": {
+        "type": "integer",
+        "value": 1794181207980
+      },
+      "installation_id": {
+        "type": "string",
+        "value": "5c855f49-c282-460b-bf0a-26d74ecc16dc"
+      },
+      "candidate_reused": {
+        "type": "boolean",
+        "value": false
+      },
+      "source": {
+        "type": "string",
+        "value": "phone"
+      },
+      "correlation_version": {
+        "type": "integer",
+        "value": 1
+      },
+      "schema_version": {
+        "type": "integer",
+        "value": 1
+      },
+      "moment_id": {
+        "type": "string",
+        "value": "c86562b9-6629-48aa-a9b5-dca2c9537dbb"
+      },
+      "context_expanded": {
+        "type": "boolean",
+        "value": false
+      },
+      "execution_id": {
+        "type": "string",
+        "value": "c07e14b8-2c59-46de-b38e-e78b22699bd5"
+      },
+      "generation_attempt_id": {
+        "type": "string",
+        "value": "e3b744e8-a6f2-4b4e-b0cc-ac82c9bedd32"
+      },
+      "operation_id": {
+        "type": "string",
+        "value": "5672dade-2448-493a-a339-5dff4f3b47e3"
+      },
+      "retry_trigger": {
+        "type": "string",
+        "value": "initial"
+      },
+      "observed_at_ms": {
+        "type": "integer",
+        "value": 1794181207976
+      },
+      "event_id": {
+        "type": "string",
+        "value": "08b56646-e941-4b5c-b5a8-477aad67c065"
+      },
+      "test_traffic": {
+        "type": "boolean",
+        "value": false
+      }
+    }
+  },
+  {
+    "body": "operation.summary",
+    "attributes": {
+      "correlation_complete": {
+        "type": "boolean",
+        "value": false
+      },
+      "reason": {
+        "type": "string",
+        "value": "none"
+      },
+      "capture_request_id": {
+        "type": "string",
+        "value": "5672dade-2448-493a-a339-5dff4f3b47e3"
+      },
+      "emitted_at_ms": {
+        "type": "integer",
+        "value": 1794181207988
+      },
+      "candidate_reused": {
+        "type": "boolean",
+        "value": false
+      },
+      "installation_id": {
+        "type": "string",
+        "value": "5c855f49-c282-460b-bf0a-26d74ecc16dc"
+      },
+      "source": {
+        "type": "string",
+        "value": "phone"
+      },
+      "correlation_version": {
+        "type": "integer",
+        "value": 1
+      },
+      "moment_id": {
+        "type": "string",
+        "value": "c86562b9-6629-48aa-a9b5-dca2c9537dbb"
+      },
+      "context_expanded": {
+        "type": "boolean",
+        "value": false
+      },
+      "schema_version": {
+        "type": "integer",
+        "value": 1
+      },
+      "execution_id": {
+        "type": "string",
+        "value": "c07e14b8-2c59-46de-b38e-e78b22699bd5"
+      },
+      "feature": {
+        "type": "string",
+        "value": "capture"
+      },
+      "elapsed_ms": {
+        "type": "integer",
+        "value": 26
+      },
+      "operation_id": {
+        "type": "string",
+        "value": "5672dade-2448-493a-a339-5dff4f3b47e3"
+      },
+      "generation_attempt_id": {
+        "type": "string",
+        "value": "e3b744e8-a6f2-4b4e-b0cc-ac82c9bedd32"
+      },
+      "outcome": {
+        "type": "string",
+        "value": "completed"
+      },
+      "retry_trigger": {
+        "type": "string",
+        "value": "initial"
+      },
+      "operation_release": {
+        "type": "string",
+        "value": "0.20.0-alpha.1"
+      },
+      "operation_started_ms": {
+        "type": "integer",
+        "value": 1794181207948
+      },
+      "summary_id": {
+        "type": "string",
+        "value": "3180783a-5ae9-45f9-8d28-76827d27204c"
+      },
+      "sequence": {
+        "type": "integer",
+        "value": 2
+      },
+      "observed_at_ms": {
+        "type": "integer",
+        "value": 1794181207976
+      },
+      "event_id": {
+        "type": "string",
+        "value": "40fe870e-3fe5-4c05-b178-6f31ce69e37a"
+      },
+      "test_traffic": {
+        "type": "boolean",
+        "value": false
+      }
+    }
+  },
+  {
+    "body": "operation.summary",
+    "attributes": {
+      "correlation_complete": {
+        "type": "boolean",
+        "value": false
+      },
+      "reason": {
+        "type": "string",
+        "value": "transcript_required"
+      },
+      "capture_request_id": {
+        "type": "string",
+        "value": "5672dade-2448-493a-a339-5dff4f3b47e3"
+      },
+      "emitted_at_ms": {
+        "type": "integer",
+        "value": 1794181207998
+      },
+      "candidate_reused": {
+        "type": "boolean",
+        "value": false
+      },
+      "installation_id": {
+        "type": "string",
+        "value": "5c855f49-c282-460b-bf0a-26d74ecc16dc"
+      },
+      "source": {
+        "type": "string",
+        "value": "phone"
+      },
+      "correlation_version": {
+        "type": "integer",
+        "value": 1
+      },
+      "moment_id": {
+        "type": "string",
+        "value": "c86562b9-6629-48aa-a9b5-dca2c9537dbb"
+      },
+      "context_expanded": {
+        "type": "boolean",
+        "value": false
+      },
+      "schema_version": {
+        "type": "integer",
+        "value": 1
+      },
+      "execution_id": {
+        "type": "string",
+        "value": "c07e14b8-2c59-46de-b38e-e78b22699bd5"
+      },
+      "feature": {
+        "type": "string",
+        "value": "distillation"
+      },
+      "elapsed_ms": {
+        "type": "integer",
+        "value": 0
+      },
+      "operation_id": {
+        "type": "string",
+        "value": "c86562b9-6629-48aa-a9b5-dca2c9537dbb"
+      },
+      "generation_attempt_id": {
+        "type": "string",
+        "value": "e3b744e8-a6f2-4b4e-b0cc-ac82c9bedd32"
+      },
+      "outcome": {
+        "type": "string",
+        "value": "waiting"
+      },
+      "retry_trigger": {
+        "type": "string",
+        "value": "initial"
+      },
+      "operation_release": {
+        "type": "string",
+        "value": "0.20.0-alpha.1"
+      },
+      "operation_started_ms": {
+        "type": "integer",
+        "value": 1794181207978
+      },
+      "summary_id": {
+        "type": "string",
+        "value": "bc9c0226-69fe-4b2f-99ba-0d9124da7f37"
+      },
+      "sequence": {
+        "type": "integer",
+        "value": 3
+      },
+      "observed_at_ms": {
+        "type": "integer",
+        "value": 1794181207978
+      },
+      "event_id": {
+        "type": "string",
+        "value": "3babe82e-1f8d-4fe4-a551-1af0606aafeb"
+      },
+      "test_traffic": {
+        "type": "boolean",
+        "value": false
+      }
+    }
+  },
+  {
+    "body": "capture.saved",
+    "attributes": {
+      "correlation_complete": {
+        "type": "boolean",
+        "value": false
+      },
+      "reason": {
+        "type": "string",
+        "value": "created"
+      },
+      "capture_request_id": {
+        "type": "string",
+        "value": "5672dade-2448-493a-a339-5dff4f3b47e3"
+      },
+      "emitted_at_ms": {
+        "type": "integer",
+        "value": 1794181208012
+      },
+      "installation_id": {
+        "type": "string",
+        "value": "5c855f49-c282-460b-bf0a-26d74ecc16dc"
+      },
+      "candidate_reused": {
+        "type": "boolean",
+        "value": false
+      },
+      "source": {
+        "type": "string",
+        "value": "phone"
+      },
+      "correlation_version": {
+        "type": "integer",
+        "value": 1
+      },
+      "schema_version": {
+        "type": "integer",
+        "value": 1
+      },
+      "moment_id": {
+        "type": "string",
+        "value": "c86562b9-6629-48aa-a9b5-dca2c9537dbb"
+      },
+      "context_expanded": {
+        "type": "boolean",
+        "value": false
+      },
+      "execution_id": {
+        "type": "string",
+        "value": "c07e14b8-2c59-46de-b38e-e78b22699bd5"
+      },
+      "generation_attempt_id": {
+        "type": "string",
+        "value": "e3b744e8-a6f2-4b4e-b0cc-ac82c9bedd32"
+      },
+      "operation_id": {
+        "type": "string",
+        "value": "c86562b9-6629-48aa-a9b5-dca2c9537dbb"
+      },
+      "retry_trigger": {
+        "type": "string",
+        "value": "initial"
+      },
+      "observed_at_ms": {
+        "type": "integer",
+        "value": 1794181207978
+      },
+      "event_id": {
+        "type": "string",
+        "value": "13b2cac5-5b7e-4ce5-9261-c0b5106b6211"
+      },
+      "test_traffic": {
+        "type": "boolean",
+        "value": false
+      }
+    }
+  },
+  {
+    "body": "operation.summary",
+    "attributes": {
+      "correlation_complete": {
+        "type": "boolean",
+        "value": true
+      },
+      "reason": {
+        "type": "string",
+        "value": "ready"
+      },
+      "capture_request_id": {
+        "type": "string",
+        "value": "5672dade-2448-493a-a339-5dff4f3b47e3"
+      },
+      "emitted_at_ms": {
+        "type": "integer",
+        "value": 1794181208024
+      },
+      "candidate_reused": {
+        "type": "boolean",
+        "value": false
+      },
+      "installation_id": {
+        "type": "string",
+        "value": "5c855f49-c282-460b-bf0a-26d74ecc16dc"
+      },
+      "source": {
+        "type": "string",
+        "value": "phone"
+      },
+      "correlation_version": {
+        "type": "integer",
+        "value": 1
+      },
+      "moment_id": {
+        "type": "string",
+        "value": "c86562b9-6629-48aa-a9b5-dca2c9537dbb"
+      },
+      "context_expanded": {
+        "type": "boolean",
+        "value": false
+      },
+      "schema_version": {
+        "type": "integer",
+        "value": 1
+      },
+      "execution_id": {
+        "type": "string",
+        "value": "c07e14b8-2c59-46de-b38e-e78b22699bd5"
+      },
+      "feature": {
+        "type": "string",
+        "value": "distillation"
+      },
+      "elapsed_ms": {
+        "type": "integer",
+        "value": 30
+      },
+      "operation_id": {
+        "type": "string",
+        "value": "c86562b9-6629-48aa-a9b5-dca2c9537dbb"
+      },
+      "generation_attempt_id": {
+        "type": "string",
+        "value": "e3b744e8-a6f2-4b4e-b0cc-ac82c9bedd32"
+      },
+      "outcome": {
+        "type": "string",
+        "value": "waiting"
+      },
+      "retry_trigger": {
+        "type": "string",
+        "value": "initial"
+      },
+      "operation_release": {
+        "type": "string",
+        "value": "0.20.0-alpha.1"
+      },
+      "operation_started_ms": {
+        "type": "integer",
+        "value": 1794181207978
+      },
+      "summary_id": {
+        "type": "string",
+        "value": "b0f9a955-3003-4144-ba7c-a89827ee47f5"
+      },
+      "transcript_revision_id": {
+        "type": "string",
+        "value": "be8f1ac3-57a0-4dc1-b043-5f36645443ba"
+      },
+      "sequence": {
+        "type": "integer",
+        "value": 4
+      },
+      "observed_at_ms": {
+        "type": "integer",
+        "value": 1794181208003
+      },
+      "event_id": {
+        "type": "string",
+        "value": "b2d40d0d-0467-4470-8260-89a9f1b6b011"
+      },
+      "test_traffic": {
+        "type": "boolean",
+        "value": false
+      }
+    }
+  },
+  {
+    "body": "operation.summary",
+    "attributes": {
+      "correlation_complete": {
+        "type": "boolean",
+        "value": true
+      },
+      "reason": {
+        "type": "string",
+        "value": "queued"
+      },
+      "capture_request_id": {
+        "type": "string",
+        "value": "5672dade-2448-493a-a339-5dff4f3b47e3"
+      },
+      "emitted_at_ms": {
+        "type": "integer",
+        "value": 1794181208037
+      },
+      "candidate_reused": {
+        "type": "boolean",
+        "value": false
+      },
+      "installation_id": {
+        "type": "string",
+        "value": "5c855f49-c282-460b-bf0a-26d74ecc16dc"
+      },
+      "source": {
+        "type": "string",
+        "value": "phone"
+      },
+      "correlation_version": {
+        "type": "integer",
+        "value": 1
+      },
+      "moment_id": {
+        "type": "string",
+        "value": "c86562b9-6629-48aa-a9b5-dca2c9537dbb"
+      },
+      "context_expanded": {
+        "type": "boolean",
+        "value": false
+      },
+      "schema_version": {
+        "type": "integer",
+        "value": 1
+      },
+      "execution_id": {
+        "type": "string",
+        "value": "c07e14b8-2c59-46de-b38e-e78b22699bd5"
+      },
+      "feature": {
+        "type": "string",
+        "value": "distillation"
+      },
+      "elapsed_ms": {
+        "type": "integer",
+        "value": 42
+      },
+      "operation_id": {
+        "type": "string",
+        "value": "c86562b9-6629-48aa-a9b5-dca2c9537dbb"
+      },
+      "generation_attempt_id": {
+        "type": "string",
+        "value": "e3b744e8-a6f2-4b4e-b0cc-ac82c9bedd32"
+      },
+      "outcome": {
+        "type": "string",
+        "value": "queued"
+      },
+      "retry_trigger": {
+        "type": "string",
+        "value": "initial"
+      },
+      "operation_release": {
+        "type": "string",
+        "value": "0.20.0-alpha.1"
+      },
+      "operation_started_ms": {
+        "type": "integer",
+        "value": 1794181207978
+      },
+      "summary_id": {
+        "type": "string",
+        "value": "f9824185-bc46-4f0a-af39-d0b407f4fc59"
+      },
+      "transcript_revision_id": {
+        "type": "string",
+        "value": "be8f1ac3-57a0-4dc1-b043-5f36645443ba"
+      },
+      "sequence": {
+        "type": "integer",
+        "value": 5
+      },
+      "observed_at_ms": {
+        "type": "integer",
+        "value": 1794181208012
+      },
+      "event_id": {
+        "type": "string",
+        "value": "6dfe7d9f-ea66-4cb6-b31d-11a350db4543"
+      },
+      "test_traffic": {
+        "type": "boolean",
+        "value": false
+      }
+    }
+  },
+  {
+    "body": "capture.transcript_link",
+    "attributes": {
+      "correlation_complete": {
+        "type": "boolean",
+        "value": true
+      },
+      "reason": {
+        "type": "string",
+        "value": "ready"
+      },
+      "capture_request_id": {
+        "type": "string",
+        "value": "5672dade-2448-493a-a339-5dff4f3b47e3"
+      },
+      "emitted_at_ms": {
+        "type": "integer",
+        "value": 1794181208051
+      },
+      "installation_id": {
+        "type": "string",
+        "value": "5c855f49-c282-460b-bf0a-26d74ecc16dc"
+      },
+      "candidate_reused": {
+        "type": "boolean",
+        "value": false
+      },
+      "source": {
+        "type": "string",
+        "value": "background"
+      },
+      "correlation_version": {
+        "type": "integer",
+        "value": 1
+      },
+      "schema_version": {
+        "type": "integer",
+        "value": 1
+      },
+      "moment_id": {
+        "type": "string",
+        "value": "c86562b9-6629-48aa-a9b5-dca2c9537dbb"
+      },
+      "context_expanded": {
+        "type": "boolean",
+        "value": false
+      },
+      "execution_id": {
+        "type": "string",
+        "value": "c07e14b8-2c59-46de-b38e-e78b22699bd5"
+      },
+      "transcript_id": {
+        "type": "string",
+        "value": "be8f1ac3-57a0-4dc1-b043-5f36645443ba"
+      },
+      "generation_attempt_id": {
+        "type": "string",
+        "value": "e3b744e8-a6f2-4b4e-b0cc-ac82c9bedd32"
+      },
+      "operation_id": {
+        "type": "string",
+        "value": "c86562b9-6629-48aa-a9b5-dca2c9537dbb"
+      },
+      "retry_trigger": {
+        "type": "string",
+        "value": "initial"
+      },
+      "transcript_revision_id": {
+        "type": "string",
+        "value": "be8f1ac3-57a0-4dc1-b043-5f36645443ba"
+      },
+      "observed_at_ms": {
+        "type": "integer",
+        "value": 1794181208003
+      },
+      "event_id": {
+        "type": "string",
+        "value": "da93d62c-076f-4fb6-a163-01f06fae335d"
+      },
+      "test_traffic": {
+        "type": "boolean",
+        "value": false
+      }
+    }
+  },
+  {
+    "body": "operation.summary",
+    "attributes": {
+      "correlation_complete": {
+        "type": "boolean",
+        "value": true
+      },
+      "reason": {
+        "type": "string",
+        "value": "none"
+      },
+      "capture_request_id": {
+        "type": "string",
+        "value": "5672dade-2448-493a-a339-5dff4f3b47e3"
+      },
+      "emitted_at_ms": {
+        "type": "integer",
+        "value": 1794181208059
+      },
+      "candidate_reused": {
+        "type": "boolean",
+        "value": false
+      },
+      "installation_id": {
+        "type": "string",
+        "value": "5c855f49-c282-460b-bf0a-26d74ecc16dc"
+      },
+      "source": {
+        "type": "string",
+        "value": "phone"
+      },
+      "correlation_version": {
+        "type": "integer",
+        "value": 1
+      },
+      "moment_id": {
+        "type": "string",
+        "value": "c86562b9-6629-48aa-a9b5-dca2c9537dbb"
+      },
+      "context_expanded": {
+        "type": "boolean",
+        "value": false
+      },
+      "schema_version": {
+        "type": "integer",
+        "value": 1
+      },
+      "execution_id": {
+        "type": "string",
+        "value": "b57a0409-4b19-42d7-9b8b-4ad45e3fcd96"
+      },
+      "feature": {
+        "type": "string",
+        "value": "distillation"
+      },
+      "elapsed_ms": {
+        "type": "integer",
+        "value": 0
+      },
+      "operation_id": {
+        "type": "string",
+        "value": "c86562b9-6629-48aa-a9b5-dca2c9537dbb"
+      },
+      "generation_attempt_id": {
+        "type": "string",
+        "value": "e3b744e8-a6f2-4b4e-b0cc-ac82c9bedd32"
+      },
+      "outcome": {
+        "type": "string",
+        "value": "running"
+      },
+      "retry_trigger": {
+        "type": "string",
+        "value": "initial"
+      },
+      "operation_release": {
+        "type": "string",
+        "value": "0.20.0-alpha.1"
+      },
+      "operation_started_ms": {
+        "type": "integer",
+        "value": 1794181207978
+      },
+      "summary_id": {
+        "type": "string",
+        "value": "23d7116a-5064-456d-b5b2-b6454597bf3b"
+      },
+      "transcript_revision_id": {
+        "type": "string",
+        "value": "be8f1ac3-57a0-4dc1-b043-5f36645443ba"
+      },
+      "sequence": {
+        "type": "integer",
+        "value": 6
+      },
+      "observed_at_ms": {
+        "type": "integer",
+        "value": 1794181208036
+      },
+      "event_id": {
+        "type": "string",
+        "value": "723cfb12-aea7-4aad-a079-3bcd0d655271"
+      },
+      "test_traffic": {
+        "type": "boolean",
+        "value": false
+      }
+    }
+  },
+  {
+    "body": "capture.prepared",
+    "attributes": {
+      "correlation_complete": {
+        "type": "boolean",
+        "value": true
+      },
+      "reason": {
+        "type": "string",
+        "value": "queued"
+      },
+      "capture_request_id": {
+        "type": "string",
+        "value": "5672dade-2448-493a-a339-5dff4f3b47e3"
+      },
+      "emitted_at_ms": {
+        "type": "integer",
+        "value": 1794181208073
+      },
+      "installation_id": {
+        "type": "string",
+        "value": "5c855f49-c282-460b-bf0a-26d74ecc16dc"
+      },
+      "candidate_reused": {
+        "type": "boolean",
+        "value": false
+      },
+      "source": {
+        "type": "string",
+        "value": "background"
+      },
+      "correlation_version": {
+        "type": "integer",
+        "value": 1
+      },
+      "schema_version": {
+        "type": "integer",
+        "value": 1
+      },
+      "moment_id": {
+        "type": "string",
+        "value": "c86562b9-6629-48aa-a9b5-dca2c9537dbb"
+      },
+      "context_expanded": {
+        "type": "boolean",
+        "value": false
+      },
+      "execution_id": {
+        "type": "string",
+        "value": "c07e14b8-2c59-46de-b38e-e78b22699bd5"
+      },
+      "generation_attempt_id": {
+        "type": "string",
+        "value": "e3b744e8-a6f2-4b4e-b0cc-ac82c9bedd32"
+      },
+      "operation_id": {
+        "type": "string",
+        "value": "c86562b9-6629-48aa-a9b5-dca2c9537dbb"
+      },
+      "retry_trigger": {
+        "type": "string",
+        "value": "initial"
+      },
+      "transcript_revision_id": {
+        "type": "string",
+        "value": "be8f1ac3-57a0-4dc1-b043-5f36645443ba"
+      },
+      "observed_at_ms": {
+        "type": "integer",
+        "value": 1794181208012
+      },
+      "event_id": {
+        "type": "string",
+        "value": "047ff25c-e369-4078-87b0-1efc6c5deda3"
+      },
+      "test_traffic": {
+        "type": "boolean",
+        "value": false
+      }
+    }
+  },
+  {
+    "body": "operation.summary",
+    "attributes": {
+      "correlation_complete": {
+        "type": "boolean",
+        "value": true
+      },
+      "reason": {
+        "type": "string",
+        "value": "cancelled"
+      },
+      "capture_request_id": {
+        "type": "string",
+        "value": "5672dade-2448-493a-a339-5dff4f3b47e3"
+      },
+      "emitted_at_ms": {
+        "type": "integer",
+        "value": 1794181208082
+      },
+      "candidate_reused": {
+        "type": "boolean",
+        "value": false
+      },
+      "installation_id": {
+        "type": "string",
+        "value": "5c855f49-c282-460b-bf0a-26d74ecc16dc"
+      },
+      "source": {
+        "type": "string",
+        "value": "phone"
+      },
+      "correlation_version": {
+        "type": "integer",
+        "value": 1
+      },
+      "moment_id": {
+        "type": "string",
+        "value": "c86562b9-6629-48aa-a9b5-dca2c9537dbb"
+      },
+      "context_expanded": {
+        "type": "boolean",
+        "value": false
+      },
+      "schema_version": {
+        "type": "integer",
+        "value": 1
+      },
+      "execution_id": {
+        "type": "string",
+        "value": "b57a0409-4b19-42d7-9b8b-4ad45e3fcd96"
+      },
+      "feature": {
+        "type": "string",
+        "value": "distillation"
+      },
+      "elapsed_ms": {
+        "type": "integer",
+        "value": 22
+      },
+      "operation_id": {
+        "type": "string",
+        "value": "c86562b9-6629-48aa-a9b5-dca2c9537dbb"
+      },
+      "generation_attempt_id": {
+        "type": "string",
+        "value": "e3b744e8-a6f2-4b4e-b0cc-ac82c9bedd32"
+      },
+      "outcome": {
+        "type": "string",
+        "value": "cancelled"
+      },
+      "retry_trigger": {
+        "type": "string",
+        "value": "initial"
+      },
+      "operation_release": {
+        "type": "string",
+        "value": "0.20.0-alpha.1"
+      },
+      "operation_started_ms": {
+        "type": "integer",
+        "value": 1794181207978
+      },
+      "summary_id": {
+        "type": "string",
+        "value": "1fcebc74-e5e1-4a8a-8e47-f75dc64f6437"
+      },
+      "transcript_revision_id": {
+        "type": "string",
+        "value": "be8f1ac3-57a0-4dc1-b043-5f36645443ba"
+      },
+      "sequence": {
+        "type": "integer",
+        "value": 7
+      },
+      "observed_at_ms": {
+        "type": "integer",
+        "value": 1794181208061
+      },
+      "event_id": {
+        "type": "string",
+        "value": "4248ef5c-d950-4837-9b70-8ed5707c7677"
+      },
+      "test_traffic": {
+        "type": "boolean",
+        "value": false
+      }
+    }
+  },
+  {
+    "body": "distillation.started",
+    "attributes": {
+      "correlation_complete": {
+        "type": "boolean",
+        "value": true
+      },
+      "reason": {
+        "type": "string",
+        "value": "none"
+      },
+      "capture_request_id": {
+        "type": "string",
+        "value": "5672dade-2448-493a-a339-5dff4f3b47e3"
+      },
+      "emitted_at_ms": {
+        "type": "integer",
+        "value": 1794181208094
+      },
+      "installation_id": {
+        "type": "string",
+        "value": "5c855f49-c282-460b-bf0a-26d74ecc16dc"
+      },
+      "candidate_reused": {
+        "type": "boolean",
+        "value": false
+      },
+      "source": {
+        "type": "string",
+        "value": "background"
+      },
+      "correlation_version": {
+        "type": "integer",
+        "value": 1
+      },
+      "schema_version": {
+        "type": "integer",
+        "value": 1
+      },
+      "moment_id": {
+        "type": "string",
+        "value": "c86562b9-6629-48aa-a9b5-dca2c9537dbb"
+      },
+      "context_expanded": {
+        "type": "boolean",
+        "value": false
+      },
+      "execution_id": {
+        "type": "string",
+        "value": "b57a0409-4b19-42d7-9b8b-4ad45e3fcd96"
+      },
+      "generation_attempt_id": {
+        "type": "string",
+        "value": "e3b744e8-a6f2-4b4e-b0cc-ac82c9bedd32"
+      },
+      "operation_id": {
+        "type": "string",
+        "value": "c86562b9-6629-48aa-a9b5-dca2c9537dbb"
+      },
+      "retry_trigger": {
+        "type": "string",
+        "value": "initial"
+      },
+      "transcript_revision_id": {
+        "type": "string",
+        "value": "be8f1ac3-57a0-4dc1-b043-5f36645443ba"
+      },
+      "observed_at_ms": {
+        "type": "integer",
+        "value": 1794181208036
+      },
+      "event_id": {
+        "type": "string",
+        "value": "1206f354-0bb8-456e-a434-295e32664670"
+      },
+      "test_traffic": {
+        "type": "boolean",
+        "value": false
+      }
+    }
+  },
+  {
+    "body": "operation.summary",
+    "attributes": {
+      "correlation_complete": {
+        "type": "boolean",
+        "value": true
+      },
+      "reason": {
+        "type": "string",
+        "value": "queued"
+      },
+      "capture_request_id": {
+        "type": "string",
+        "value": "5672dade-2448-493a-a339-5dff4f3b47e3"
+      },
+      "emitted_at_ms": {
+        "type": "integer",
+        "value": 1794181208105
+      },
+      "candidate_reused": {
+        "type": "boolean",
+        "value": false
+      },
+      "installation_id": {
+        "type": "string",
+        "value": "5c855f49-c282-460b-bf0a-26d74ecc16dc"
+      },
+      "source": {
+        "type": "string",
+        "value": "phone"
+      },
+      "correlation_version": {
+        "type": "integer",
+        "value": 1
+      },
+      "moment_id": {
+        "type": "string",
+        "value": "c86562b9-6629-48aa-a9b5-dca2c9537dbb"
+      },
+      "context_expanded": {
+        "type": "boolean",
+        "value": false
+      },
+      "schema_version": {
+        "type": "integer",
+        "value": 1
+      },
+      "execution_id": {
+        "type": "string",
+        "value": "29a8f684-e6f8-4274-ac2e-225f0051aa67"
+      },
+      "feature": {
+        "type": "string",
+        "value": "distillation"
+      },
+      "elapsed_ms": {
+        "type": "integer",
+        "value": 0
+      },
+      "operation_id": {
+        "type": "string",
+        "value": "c86562b9-6629-48aa-a9b5-dca2c9537dbb"
+      },
+      "generation_attempt_id": {
+        "type": "string",
+        "value": "e3b744e8-a6f2-4b4e-b0cc-ac82c9bedd32"
+      },
+      "outcome": {
+        "type": "string",
+        "value": "queued"
+      },
+      "retry_trigger": {
+        "type": "string",
+        "value": "explicit_retry"
+      },
+      "operation_release": {
+        "type": "string",
+        "value": "0.20.0-alpha.1"
+      },
+      "operation_started_ms": {
+        "type": "integer",
+        "value": 1794181207978
+      },
+      "summary_id": {
+        "type": "string",
+        "value": "b8cd333d-d0c2-44f5-9936-85b4cc940891"
+      },
+      "transcript_revision_id": {
+        "type": "string",
+        "value": "be8f1ac3-57a0-4dc1-b043-5f36645443ba"
+      },
+      "sequence": {
+        "type": "integer",
+        "value": 8
+      },
+      "observed_at_ms": {
+        "type": "integer",
+        "value": 1794181208085
+      },
+      "event_id": {
+        "type": "string",
+        "value": "67544cde-fe25-4fbf-8a2b-ed29d895d199"
+      },
+      "test_traffic": {
+        "type": "boolean",
+        "value": false
+      }
+    }
+  },
+  {
+    "body": "distillation.cancelled",
+    "attributes": {
+      "correlation_complete": {
+        "type": "boolean",
+        "value": true
+      },
+      "reason": {
+        "type": "string",
+        "value": "cancelled"
+      },
+      "capture_request_id": {
+        "type": "string",
+        "value": "5672dade-2448-493a-a339-5dff4f3b47e3"
+      },
+      "emitted_at_ms": {
+        "type": "integer",
+        "value": 1794181208116
+      },
+      "installation_id": {
+        "type": "string",
+        "value": "5c855f49-c282-460b-bf0a-26d74ecc16dc"
+      },
+      "candidate_reused": {
+        "type": "boolean",
+        "value": false
+      },
+      "source": {
+        "type": "string",
+        "value": "background"
+      },
+      "correlation_version": {
+        "type": "integer",
+        "value": 1
+      },
+      "schema_version": {
+        "type": "integer",
+        "value": 1
+      },
+      "moment_id": {
+        "type": "string",
+        "value": "c86562b9-6629-48aa-a9b5-dca2c9537dbb"
+      },
+      "context_expanded": {
+        "type": "boolean",
+        "value": false
+      },
+      "execution_id": {
+        "type": "string",
+        "value": "b57a0409-4b19-42d7-9b8b-4ad45e3fcd96"
+      },
+      "generation_attempt_id": {
+        "type": "string",
+        "value": "e3b744e8-a6f2-4b4e-b0cc-ac82c9bedd32"
+      },
+      "operation_id": {
+        "type": "string",
+        "value": "c86562b9-6629-48aa-a9b5-dca2c9537dbb"
+      },
+      "retry_trigger": {
+        "type": "string",
+        "value": "initial"
+      },
+      "transcript_revision_id": {
+        "type": "string",
+        "value": "be8f1ac3-57a0-4dc1-b043-5f36645443ba"
+      },
+      "observed_at_ms": {
+        "type": "integer",
+        "value": 1794181208061
+      },
+      "event_id": {
+        "type": "string",
+        "value": "49c1a106-a208-4b9b-af4b-6be0309d1156"
+      },
+      "test_traffic": {
+        "type": "boolean",
+        "value": false
+      }
+    }
+  },
+  {
+    "body": "operation.summary",
+    "attributes": {
+      "correlation_complete": {
+        "type": "boolean",
+        "value": true
+      },
+      "reason": {
+        "type": "string",
+        "value": "none"
+      },
+      "capture_request_id": {
+        "type": "string",
+        "value": "5672dade-2448-493a-a339-5dff4f3b47e3"
+      },
+      "emitted_at_ms": {
+        "type": "integer",
+        "value": 1794181208126
+      },
+      "candidate_reused": {
+        "type": "boolean",
+        "value": false
+      },
+      "installation_id": {
+        "type": "string",
+        "value": "5c855f49-c282-460b-bf0a-26d74ecc16dc"
+      },
+      "source": {
+        "type": "string",
+        "value": "phone"
+      },
+      "correlation_version": {
+        "type": "integer",
+        "value": 1
+      },
+      "moment_id": {
+        "type": "string",
+        "value": "c86562b9-6629-48aa-a9b5-dca2c9537dbb"
+      },
+      "context_expanded": {
+        "type": "boolean",
+        "value": false
+      },
+      "schema_version": {
+        "type": "integer",
+        "value": 1
+      },
+      "execution_id": {
+        "type": "string",
+        "value": "3c9e282f-c646-422b-8505-ffcdc6a343a3"
+      },
+      "feature": {
+        "type": "string",
+        "value": "distillation"
+      },
+      "elapsed_ms": {
+        "type": "integer",
+        "value": 0
+      },
+      "operation_id": {
+        "type": "string",
+        "value": "c86562b9-6629-48aa-a9b5-dca2c9537dbb"
+      },
+      "generation_attempt_id": {
+        "type": "string",
+        "value": "e3b744e8-a6f2-4b4e-b0cc-ac82c9bedd32"
+      },
+      "outcome": {
+        "type": "string",
+        "value": "running"
+      },
+      "retry_trigger": {
+        "type": "string",
+        "value": "explicit_retry"
+      },
+      "operation_release": {
+        "type": "string",
+        "value": "0.20.0-alpha.1"
+      },
+      "operation_started_ms": {
+        "type": "integer",
+        "value": 1794181207978
+      },
+      "summary_id": {
+        "type": "string",
+        "value": "7d8387bc-dce0-45b8-bb2c-bcb6cbad382c"
+      },
+      "transcript_revision_id": {
+        "type": "string",
+        "value": "be8f1ac3-57a0-4dc1-b043-5f36645443ba"
+      },
+      "sequence": {
+        "type": "integer",
+        "value": 9
+      },
+      "observed_at_ms": {
+        "type": "integer",
+        "value": 1794181208102
+      },
+      "event_id": {
+        "type": "string",
+        "value": "77a872ff-1c34-4287-a11d-f9a78c5baffe"
+      },
+      "test_traffic": {
+        "type": "boolean",
+        "value": false
+      }
+    }
+  },
+  {
+    "body": "distillation.queued",
+    "attributes": {
+      "correlation_complete": {
+        "type": "boolean",
+        "value": true
+      },
+      "reason": {
+        "type": "string",
+        "value": "queued"
+      },
+      "capture_request_id": {
+        "type": "string",
+        "value": "5672dade-2448-493a-a339-5dff4f3b47e3"
+      },
+      "emitted_at_ms": {
+        "type": "integer",
+        "value": 1794181208136
+      },
+      "installation_id": {
+        "type": "string",
+        "value": "5c855f49-c282-460b-bf0a-26d74ecc16dc"
+      },
+      "candidate_reused": {
+        "type": "boolean",
+        "value": false
+      },
+      "source": {
+        "type": "string",
+        "value": "background"
+      },
+      "correlation_version": {
+        "type": "integer",
+        "value": 1
+      },
+      "schema_version": {
+        "type": "integer",
+        "value": 1
+      },
+      "moment_id": {
+        "type": "string",
+        "value": "c86562b9-6629-48aa-a9b5-dca2c9537dbb"
+      },
+      "context_expanded": {
+        "type": "boolean",
+        "value": false
+      },
+      "execution_id": {
+        "type": "string",
+        "value": "29a8f684-e6f8-4274-ac2e-225f0051aa67"
+      },
+      "generation_attempt_id": {
+        "type": "string",
+        "value": "e3b744e8-a6f2-4b4e-b0cc-ac82c9bedd32"
+      },
+      "operation_id": {
+        "type": "string",
+        "value": "c86562b9-6629-48aa-a9b5-dca2c9537dbb"
+      },
+      "retry_trigger": {
+        "type": "string",
+        "value": "explicit_retry"
+      },
+      "transcript_revision_id": {
+        "type": "string",
+        "value": "be8f1ac3-57a0-4dc1-b043-5f36645443ba"
+      },
+      "observed_at_ms": {
+        "type": "integer",
+        "value": 1794181208085
+      },
+      "event_id": {
+        "type": "string",
+        "value": "c6f873a5-7f9a-4035-bb1e-d32c8b570d76"
+      },
+      "test_traffic": {
+        "type": "boolean",
+        "value": false
+      }
+    }
+  },
+  {
+    "body": "distillation.started",
+    "attributes": {
+      "correlation_complete": {
+        "type": "boolean",
+        "value": true
+      },
+      "reason": {
+        "type": "string",
+        "value": "none"
+      },
+      "capture_request_id": {
+        "type": "string",
+        "value": "5672dade-2448-493a-a339-5dff4f3b47e3"
+      },
+      "emitted_at_ms": {
+        "type": "integer",
+        "value": 1794181208143
+      },
+      "installation_id": {
+        "type": "string",
+        "value": "5c855f49-c282-460b-bf0a-26d74ecc16dc"
+      },
+      "candidate_reused": {
+        "type": "boolean",
+        "value": false
+      },
+      "source": {
+        "type": "string",
+        "value": "background"
+      },
+      "correlation_version": {
+        "type": "integer",
+        "value": 1
+      },
+      "schema_version": {
+        "type": "integer",
+        "value": 1
+      },
+      "moment_id": {
+        "type": "string",
+        "value": "c86562b9-6629-48aa-a9b5-dca2c9537dbb"
+      },
+      "context_expanded": {
+        "type": "boolean",
+        "value": false
+      },
+      "execution_id": {
+        "type": "string",
+        "value": "3c9e282f-c646-422b-8505-ffcdc6a343a3"
+      },
+      "generation_attempt_id": {
+        "type": "string",
+        "value": "e3b744e8-a6f2-4b4e-b0cc-ac82c9bedd32"
+      },
+      "operation_id": {
+        "type": "string",
+        "value": "c86562b9-6629-48aa-a9b5-dca2c9537dbb"
+      },
+      "retry_trigger": {
+        "type": "string",
+        "value": "explicit_retry"
+      },
+      "transcript_revision_id": {
+        "type": "string",
+        "value": "be8f1ac3-57a0-4dc1-b043-5f36645443ba"
+      },
+      "observed_at_ms": {
+        "type": "integer",
+        "value": 1794181208102
+      },
+      "event_id": {
+        "type": "string",
+        "value": "9acdf43c-14fd-44b5-996d-83277e3120ef"
+      },
+      "test_traffic": {
+        "type": "boolean",
+        "value": false
+      }
+    }
+  },
+  {
+    "body": "distillation.finished",
+    "attributes": {
+      "correlation_complete": {
+        "type": "boolean",
+        "value": true
+      },
+      "reason": {
+        "type": "string",
+        "value": "succeeded"
+      },
+      "capture_request_id": {
+        "type": "string",
+        "value": "5672dade-2448-493a-a339-5dff4f3b47e3"
+      },
+      "emitted_at_ms": {
+        "type": "integer",
+        "value": 1794181208166
+      },
+      "installation_id": {
+        "type": "string",
+        "value": "5c855f49-c282-460b-bf0a-26d74ecc16dc"
+      },
+      "candidate_reused": {
+        "type": "boolean",
+        "value": false
+      },
+      "source": {
+        "type": "string",
+        "value": "background"
+      },
+      "correlation_version": {
+        "type": "integer",
+        "value": 1
+      },
+      "schema_version": {
+        "type": "integer",
+        "value": 1
+      },
+      "moment_id": {
+        "type": "string",
+        "value": "c86562b9-6629-48aa-a9b5-dca2c9537dbb"
+      },
+      "context_expanded": {
+        "type": "boolean",
+        "value": false
+      },
+      "execution_id": {
+        "type": "string",
+        "value": "3c9e282f-c646-422b-8505-ffcdc6a343a3"
+      },
+      "generation_attempt_id": {
+        "type": "string",
+        "value": "e3b744e8-a6f2-4b4e-b0cc-ac82c9bedd32"
+      },
+      "operation_id": {
+        "type": "string",
+        "value": "c86562b9-6629-48aa-a9b5-dca2c9537dbb"
+      },
+      "retry_trigger": {
+        "type": "string",
+        "value": "explicit_retry"
+      },
+      "transcript_revision_id": {
+        "type": "string",
+        "value": "be8f1ac3-57a0-4dc1-b043-5f36645443ba"
+      },
+      "observed_at_ms": {
+        "type": "integer",
+        "value": 1794181208163
+      },
+      "event_id": {
+        "type": "string",
+        "value": "0147ca61-44be-4256-8bd4-f2d0ef132c0e"
+      },
+      "test_traffic": {
+        "type": "boolean",
+        "value": false
+      }
+    }
+  },
+  {
+    "body": "operation.summary",
+    "attributes": {
+      "correlation_complete": {
+        "type": "boolean",
+        "value": true
+      },
+      "reason": {
+        "type": "string",
+        "value": "succeeded"
+      },
+      "capture_request_id": {
+        "type": "string",
+        "value": "5672dade-2448-493a-a339-5dff4f3b47e3"
+      },
+      "emitted_at_ms": {
+        "type": "integer",
+        "value": 1794181208174
+      },
+      "candidate_reused": {
+        "type": "boolean",
+        "value": false
+      },
+      "installation_id": {
+        "type": "string",
+        "value": "5c855f49-c282-460b-bf0a-26d74ecc16dc"
+      },
+      "source": {
+        "type": "string",
+        "value": "phone"
+      },
+      "correlation_version": {
+        "type": "integer",
+        "value": 1
+      },
+      "moment_id": {
+        "type": "string",
+        "value": "c86562b9-6629-48aa-a9b5-dca2c9537dbb"
+      },
+      "context_expanded": {
+        "type": "boolean",
+        "value": false
+      },
+      "schema_version": {
+        "type": "integer",
+        "value": 1
+      },
+      "execution_id": {
+        "type": "string",
+        "value": "3c9e282f-c646-422b-8505-ffcdc6a343a3"
+      },
+      "feature": {
+        "type": "string",
+        "value": "distillation"
+      },
+      "elapsed_ms": {
+        "type": "integer",
+        "value": 61
+      },
+      "operation_id": {
+        "type": "string",
+        "value": "c86562b9-6629-48aa-a9b5-dca2c9537dbb"
+      },
+      "generation_attempt_id": {
+        "type": "string",
+        "value": "e3b744e8-a6f2-4b4e-b0cc-ac82c9bedd32"
+      },
+      "outcome": {
+        "type": "string",
+        "value": "completed"
+      },
+      "retry_trigger": {
+        "type": "string",
+        "value": "explicit_retry"
+      },
+      "operation_release": {
+        "type": "string",
+        "value": "0.20.0-alpha.1"
+      },
+      "operation_started_ms": {
+        "type": "integer",
+        "value": 1794181207978
+      },
+      "summary_id": {
+        "type": "string",
+        "value": "4483cf66-695a-46be-8d09-2939fd24c0bd"
+      },
+      "transcript_revision_id": {
+        "type": "string",
+        "value": "be8f1ac3-57a0-4dc1-b043-5f36645443ba"
+      },
+      "sequence": {
+        "type": "integer",
+        "value": 10
+      },
+      "observed_at_ms": {
+        "type": "integer",
+        "value": 1794181208163
+      },
+      "event_id": {
+        "type": "string",
+        "value": "a254f6b5-49b8-42d6-87d3-c4feb249ae7a"
+      },
+      "test_traffic": {
+        "type": "boolean",
+        "value": false
+      }
+    }
+  }
+]
