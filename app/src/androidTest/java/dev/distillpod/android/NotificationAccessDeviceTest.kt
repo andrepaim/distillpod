@@ -42,7 +42,7 @@ class NotificationAccessDeviceTest {
         check(Build.HARDWARE.contains("ranchu") || Build.FINGERPRINT.contains("generic") ||
             packageName == "dev.distillpod.android.validation.issue20")
         context.applicationContext.appGraph.ready.await()
-        shell("pm revoke $packageName ${Manifest.permission.POST_NOTIFICATIONS}")
+        instrumentation.uiAutomation.revokeRuntimePermission(packageName, Manifest.permission.POST_NOTIFICATIONS)
         shell("pm clear-permission-flags $packageName ${Manifest.permission.POST_NOTIFICATIONS} user-set user-fixed")
         if (blocked) shell("pm set-permission-flags $packageName ${Manifest.permission.POST_NOTIFICATIONS} user-set user-fixed")
         context.getSharedPreferences("notification_access", Context.MODE_PRIVATE).edit().clear().commit()
@@ -56,13 +56,13 @@ class NotificationAccessDeviceTest {
     private fun dialogButton(id: String) = device.wait(Until.findObject(By.res(Pattern.compile(".*:id/$id"))), 10000)
         ?: error("Permission dialog button $id not found")
     private fun cleanup() {
-        shell("pm revoke $packageName ${Manifest.permission.POST_NOTIFICATIONS}")
+        instrumentation.uiAutomation.revokeRuntimePermission(packageName, Manifest.permission.POST_NOTIFICATIONS)
         shell("pm clear-permission-flags $packageName ${Manifest.permission.POST_NOTIFICATIONS} user-set user-fixed")
     }
     private suspend fun grantInSettingsAndReturn() {
         compose.onNodeWithText("Open notification settings").performScrollTo().performClick()
         check(device.wait(Until.hasObject(By.pkg("com.android.settings")), 10000))
-        shell("pm grant $packageName ${Manifest.permission.POST_NOTIFICATIONS}")
+        instrumentation.uiAutomation.grantRuntimePermission(packageName, Manifest.permission.POST_NOTIFICATIONS)
         await { enabled() }
         device.pressBack()
         compose.waitUntil(10000) { compose.onAllNodesWithText("Notifications are enabled", substring = true).fetchSemanticsNodes().isNotEmpty() }
@@ -78,7 +78,7 @@ class NotificationAccessDeviceTest {
             enabledText().assertExists()
             compose.runOnUiThread { context.startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, packageName)) }
             check(device.wait(Until.hasObject(By.pkg("com.android.settings")), 10000))
-            shell("pm revoke $packageName ${Manifest.permission.POST_NOTIFICATIONS}")
+            instrumentation.uiAutomation.revokeRuntimePermission(packageName, Manifest.permission.POST_NOTIFICATIONS)
             await { !enabled() }
             device.pressBack()
             compose.onNodeWithText("Open notification settings").performScrollTo().assertIsDisplayed()
