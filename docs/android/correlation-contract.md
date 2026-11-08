@@ -55,6 +55,13 @@ records and captures before a transcript exists are intentionally incomplete.
 Version-1 journal records remain readable with missing correlation. Unknown
 outcomes and missing evidence must not be attributed to product failure.
 
+Generation starts are observed synchronously at the serialized claim boundary,
+before the calling coroutine can suspend behind a newer cancellation/resume.
+Raw emission remains asynchronous and provider calls remain outside the Room
+transaction. A rare transaction commit failure can leave an attempted start in
+the journal: it is not proof that a provider request ran and recovery may mark
+it interrupted or unknown.
+
 A terminal callback carrying an older execution cannot overwrite the latest
 journal state. An identityless callback cannot mutate a correlated lifecycle.
 Raw events retain the identity the producer supplied, never a guessed latest
