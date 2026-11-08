@@ -114,7 +114,10 @@ class AppViewModel(val graph: AppGraph, private val saved: SavedStateHandle) : V
     fun unsubscribe(id: String) = action("unsubscribe:$id") { graph.automation.setEnabled(id, false); graph.podcasts.unsubscribe(id); root("library") }
     fun downloadModel(id: String) = action("model:$id") { graph.jobs.model(id) }
     fun deleteModel(id: String) = action("model:$id") { graph.media.deleteModel(id) }
-    fun flag(key: String, value: Boolean) = action("settings") { graph.settings.flag(key, value); graph.jobs.configureRefresh() }
+    fun flag(key: String, value: Boolean) = action("settings") {
+        graph.settings.flag(key, value)
+        if (key == "wifi") graph.jobs.configureNetworkPolicy() else graph.jobs.configureRefresh()
+    }
     fun text(key: String, value: String) = action("settings") { graph.settings.text(key, value) }
     fun createPost(momentId: String, format: String = "discussion") = action("create-post:$momentId") {
         open("post:${graph.socialResults.create(momentId, format)}")

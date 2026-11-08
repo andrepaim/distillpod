@@ -15,23 +15,42 @@ import dev.distillpod.android.data.*
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 class AppJobs(private val context: Context) {
     private val manager get() = WorkManager.getInstance(context)
-    suspend fun download(id: String) {
+    private val downloadControls = Mutex()
+    suspend fun download(id: String) = downloadControls.withLock { withContext(Dispatchers.IO) {
         val prefs = context.appGraph.settings.flow.first()
         context.appGraph.db.library().episode(id)?.let { ep ->
-            if (ep.downloadState == "downloaded" && ep.localFile?.let { java.io.File(it).isFile } == true) return
+            if (ep.downloadState == "downloaded" && ep.localFile?.let { java.io.File(it).isFile } == true) return@withContext
             context.appGraph.db.library().downloadProgress(id, "queued", ep.downloadedBytes, ep.totalBytes, ep.etag, ep.lastModified, null)
         }
-        manager.enqueueUniqueWork("download:$id", ExistingWorkPolicy.KEEP, request("download", id, prefs))
-    }
-    suspend fun model(id: String) {
+        manager.enqueueUniqueWork("download:$id", ExistingWorkPolicy.KEEP, request("download", id, prefs)).result.get()
+        Unit
+    } }
+    suspend fun model(id: String) = downloadControls.withLock { withContext(Dispatchers.IO) {
         val prefs = context.appGraph.settings.flow.first()
         val old = context.appGraph.db.library().model(id)
         context.appGraph.db.library().putModel(ModelEntity(id, "queued", old?.bytes ?: 0, old?.etag))
-        manager.enqueueUniqueWork("model:$id", ExistingWorkPolicy.KEEP, request("model", id, prefs))
-    }
+        manager.enqueueUniqueWork("model:$id", ExistingWorkPolicy.KEEP, request("model", id, prefs)).result.get()
+        Unit
+    } }
+    /** Updates retain identity/checkpoints. A running attempt finishes under its original constraints. */
+    suspend fun configureNetworkPolicy() = downloadControls.withLock { withContext(Dispatchers.IO) {
+        val prefs = context.appGraph.settings.flow.first()
+        for (info in manager.getWorkInfosByTag(LibraryWorker::class.java.name).get()) {
+            if (info.state.isFinished) continue
+            val tag = info.tags.firstOrNull { it.startsWith("download:") || it.startsWith("model:") } ?: continue
+            val kind = tag.substringBefore(':')
+            val target = tag.substringAfter(':')
+            val network = if (prefs.wifiOnly) NetworkType.UNMETERED else NetworkType.CONNECTED
+            if (info.constraints.requiredNetworkType != network) manager.updateWork(request(kind, target, prefs, info)).get()
+        }
+        context.appGraph.transcription.configureNetworkPolicy()
+        configureRefresh()
+    } }
     fun refresh(id:String = "") { manager.enqueueUniqueWork(if(id.isBlank())"refresh" else "refresh:$id", ExistingWorkPolicy.KEEP, request("refresh", id, Preferences(wifiOnly = false))) }
     suspend fun configureRefresh() {
         val prefs = context.appGraph.settings.flow.first()
@@ -61,9 +80,15 @@ class AppJobs(private val context: Context) {
     private fun enqueueAi(kind: String, id: String) { manager.enqueueUniqueWork("$kind:$id", ExistingWorkPolicy.APPEND_OR_REPLACE,
         OneTimeWorkRequestBuilder<UnderstandingWorker>().setInputData(workDataOf("kind" to kind, "id" to id))
             .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()).build()) }
-    private fun request(kind: String, id: String, prefs: Preferences) = OneTimeWorkRequestBuilder<LibraryWorker>()
+    private fun request(kind: String, id: String, prefs: Preferences, existing: WorkInfo? = null) = OneTimeWorkRequestBuilder<LibraryWorker>()
         .setInputData(workDataOf("kind" to kind, "id" to id))
-        .setConstraints(Constraints.Builder().setRequiredNetworkType(if (prefs.wifiOnly) NetworkType.UNMETERED else NetworkType.CONNECTED).build())
+        .setConstraints((existing?.constraints ?: Constraints.NONE)
+            .withNetworkType(if (prefs.wifiOnly) NetworkType.UNMETERED else NetworkType.CONNECTED))
+        .apply { existing?.let { info ->
+            setId(info.id)
+            setInitialDelay(info.initialDelayMillis, TimeUnit.MILLISECONDS)
+            info.tags.forEach { addTag(it) }
+        } }
         .addTag("$kind:$id").build()
 }
 
