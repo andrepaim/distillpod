@@ -1,5 +1,6 @@
 import groovy.json.JsonSlurper
 import java.io.File
+import java.io.IOException
 import java.net.URI
 import java.security.MessageDigest
 
@@ -28,8 +29,9 @@ fun clientString(key: String): String = when(key) {
 }
 ksp { arg("room.schemaLocation", "$projectDir/schemas") }
 // Immutable build input, verified before packaging. Never update executable code on the phone.
-val youtubeExtractorVersion = "2026.10.26"
-val youtubeExtractorSha256 = "e51e69e89489f199530f13d32a4342da3ddb2cf34842f364603a066db05afbf3"
+val youtubeExtractorSpec = JsonSlurper().parse(rootProject.file("scripts/youtube_extractor.json")) as Map<*, *>
+val youtubeExtractorVersion = youtubeExtractorSpec["version"] as String
+val youtubeExtractorSha256 = youtubeExtractorSpec["sha256"] as String
 val youtubeResources = layout.buildDirectory.dir("generated/youtube/res")
 val prepareYoutubeExtractor by tasks.registering {
     inputs.property("version", youtubeExtractorVersion)
@@ -39,13 +41,30 @@ val prepareYoutubeExtractor by tasks.registering {
     doLast {
         val destination = output.get().asFile
         destination.parentFile.mkdirs()
+        fun checksum(file: File) = MessageDigest.getInstance("SHA-256").digest(file.readBytes()).joinToString("") { "%02x".format(it) }
+        if (destination.isFile && checksum(destination) == youtubeExtractorSha256) return@doLast
         val temporary = File(destination.parentFile, "ytdlp.download")
         try {
-            val connection = URI("https://api.github.com/repos/yt-dlp/yt-dlp/releases/assets/679669627").toURL().openConnection()
-            connection.setRequestProperty("Accept", "application/octet-stream")
-            connection.setRequestProperty("User-Agent", "DistillPodBuild/1.0")
-            connection.connectTimeout = 30_000; connection.readTimeout = 60_000
-            connection.getInputStream().use { input -> temporary.outputStream().use { input.copyTo(it) } }
+            val urls = listOf("https://api.github.com/${youtubeExtractorSpec["asset"]}",
+                "https://github.com/yt-dlp/yt-dlp/releases/download/$youtubeExtractorVersion/yt-dlp")
+            var downloaded = false
+            var failure: IOException? = null
+            for (attempt in 0..2) {
+                for (url in urls) {
+                    try {
+                        val connection = URI(url).toURL().openConnection()
+                        connection.setRequestProperty("Accept", "application/octet-stream")
+                        connection.setRequestProperty("User-Agent", "DistillPodBuild/1.0")
+                        connection.connectTimeout = 15_000; connection.readTimeout = 30_000
+                        connection.getInputStream().use { input -> temporary.outputStream().use { input.copyTo(it) } }
+                        downloaded = true
+                        break
+                    } catch (error: IOException) { failure = error; temporary.delete() }
+                }
+                if (downloaded) break
+                if (attempt < 2) Thread.sleep((attempt + 1) * 1_000L)
+            }
+            check(downloaded) { "Cannot fetch the pinned YouTube extractor: ${failure?.javaClass?.simpleName}" }
             val digest = MessageDigest.getInstance("SHA-256").digest(temporary.readBytes()).joinToString("") { "%02x".format(it) }
             check(digest == youtubeExtractorSha256) { "YouTube extractor checksum mismatch" }
             check(temporary.renameTo(destination)) { "Cannot finalize the pinned extractor" }
