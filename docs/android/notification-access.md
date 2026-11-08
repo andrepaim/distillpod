@@ -42,3 +42,11 @@ claiming device acceptance. Android 12L coverage is automated; a current Android
 phone does not establish physical-device behavior on older OS versions. No
 account action, data migration, release publication, or production configuration
 change is needed.
+
+The ordinary emulator runner excludes notification permission mutations from
+its shared instrumentation invocation, then calls
+`scripts/notification-device-tests.sh` for three separate invocations: denial
+and blocked recovery, external revocation, and a fresh runtime grant. Each result
+must be nonempty and successful. The runner requires both an emulator serial
+and the emulator system property before changing permissions; it cannot be used
+for the separate physical-phone validation described above.
