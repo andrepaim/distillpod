@@ -24,7 +24,7 @@ internal class DistillationOutcome {
         if(stage !in outcomes)return
         this.stage=stage
         calls[stage]=(calls.getValue(stage)+1).coerceAtMost(1000)
-        models[stage]="unknown";outcomes[stage]="request_started"
+        models[stage]="unknown";outcomes[stage]="unknown"
         started=System.nanoTime()
     }
     private fun stop() {

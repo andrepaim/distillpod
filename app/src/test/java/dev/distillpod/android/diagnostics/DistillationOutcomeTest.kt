@@ -8,6 +8,7 @@ class DistillationOutcomeTest {
         val summary=DistillationOutcome()
         assertEquals("not_run",summary.fields()["review_outcome"])
         summary.begin("generation")
+        assertEquals("unknown",summary.fields()["generation_outcome"])
         summary.fail("quota")
         val fields=summary.fields()
         assertEquals("generation",fields["stage"])

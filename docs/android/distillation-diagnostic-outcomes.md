@@ -5,7 +5,7 @@ The additive `distillation.attempt_summary` event uses `outcome_version=1` along
 ## Contract
 
 - `stage`: generation, review, or publication. `stage_outcome` is a finite category, never a provider message.
-- `generation_outcome`, `review_outcome`: not_run, cached, ready/accepted, generator_needs_context, generator_unclear_source, review_rejected, invalid_response, interrupted, cancelled, auth_failure, quota, request_failed, stale_result_suppressed, or internal_failure as applicable.
+- `generation_outcome`, `review_outcome`: not_run, unknown, cached, ready/accepted, generator_needs_context, generator_unclear_source, review_rejected, invalid_response, interrupted, cancelled, auth_failure, quota, request_failed, stale_result_suppressed, or internal_failure as applicable.
 - `passage_complete`, `takeaway_supported`, `relevant`, `quote_faithful`, `needs_context`: booleans when validated review evidence exists, otherwise unknown.
 - `issue_incomplete_count`, `issue_unsupported_count`, `issue_irrelevant_count`, `issue_quote_count`: counts of validated allowlisted issues (0–20), or -1 when no valid review exists.
 - `contradictory_review`: true when a positive review flag conflicts with a corresponding issue, or needsContext is true despite otherwise positive takeaway checks; unknown without validated review. This observation never changes acceptance policy.
