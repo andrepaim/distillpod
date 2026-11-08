@@ -32,6 +32,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import dev.distillpod.android.data.PodcastCandidate
 import dev.distillpod.android.data.PodcastEntity
+import dev.distillpod.core.YouTubeUrl
 
 @Composable internal fun SearchPage(vm: AppViewModel, podcasts: List<PodcastEntity>) {
     val query by vm.query.collectAsStateWithLifecycle()
@@ -52,6 +53,14 @@ private val topics = listOf(SearchTopic("Technology", Icons.Default.Memory), Sea
 @Composable internal fun SearchScreen(query: String, state: SearchState, recent: List<String>, podcasts: List<PodcastEntity>, busy: Set<String>,
     onQuery: (String) -> Unit, onSearch: (String) -> Unit, onClearRecent: () -> Unit, onFollow: (String) -> Unit,
     onOpenPodcast: (String) -> Unit, onExplore: () -> Unit, onRetryProvider: (String) -> Unit = {}) {
+    var format by rememberSaveable { mutableStateOf("All") }
+    fun accepts(provider: String) = format == "All" || (provider == "youtube") == (format == "Video")
+    val pending = state.loadingProviders.filter(::accepts).toSet()
+    val displayed = state.copy(
+        results = state.results.filter { format == "All" || (YouTubeUrl.source(it.feedUrl) != null) == (format == "Video") },
+        loadingProviders = pending,
+        failedProviders = state.failedProviders.filter(::accepts).toSet(),
+        loading = pending.isNotEmpty() || (state.loading && state.loadingProviders.isEmpty()))
     val keyboard = LocalSoftwareKeyboardController.current
     val focus = LocalFocusManager.current
     var preview by remember { mutableStateOf<PodcastCandidate?>(null) }
@@ -59,7 +68,7 @@ private val topics = listOf(SearchTopic("Technology", Icons.Default.Memory), Sea
     var rssDraft by rememberSaveable { mutableStateOf("") }
     val adding = busy.any { it.startsWith("subscribe:") }
     val list = rememberLazyListState()
-    LaunchedEffect(state.submittedQuery) { list.scrollToItem(0) }
+    LaunchedEffect(displayed.submittedQuery, format) { list.scrollToItem(0) }
     fun existing(candidate: PodcastCandidate) = podcasts.firstOrNull { it.subscribed && (it.feedUrl == candidate.feedUrl || it.originalFeedUrl == candidate.feedUrl) }
     fun submit(term: String) {
         if (term.trim().length < 2) return
@@ -71,7 +80,7 @@ private val topics = listOf(SearchTopic("Technology", Icons.Default.Memory), Sea
     Column(Modifier.fillMaxSize().imePadding()) {
         Column(Modifier.padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 8.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(query, onQuery, placeholder = { Text("Search podcasts", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                OutlinedTextField(query, onQuery, placeholder = { Text("Search podcasts or videos", maxLines = 1, overflow = TextOverflow.Ellipsis) },
                     leadingIcon = { Icon(Icons.Default.Search, null) }, trailingIcon = {
                         if (query.isNotEmpty()) IconButton(onClick = { onQuery("") }) { Icon(Icons.Default.Close, "Clear search") }
                     }, singleLine = true, shape = RoundedCornerShape(18.dp),
@@ -81,31 +90,36 @@ private val topics = listOf(SearchTopic("Technology", Icons.Default.Memory), Sea
                     Icon(if (isFeedAddress(query)) Icons.Default.RssFeed else Icons.Default.ArrowForward, if (isFeedAddress(query)) "Preview RSS feed" else "Submit search")
                 }
             }
-            Text("Find a show by name, creator or subject.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Find a podcast, video channel or playlist.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf("All", "Audio", "Video").forEach { option ->
+                FilterChip(selected = format == option, onClick = { format = option }, label = { Text(option) })
+            }
         }
         LazyColumn(state = list, modifier = Modifier.weight(1f).testTag("Podcast search results"), contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 6.dp, bottom = 20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             when {
-                state.loading && state.results.isEmpty() -> item {
-                    SearchMessage("Searching podcasts", "Looking for “${state.submittedQuery.orEmpty()}”…")
+                displayed.loading && displayed.results.isEmpty() -> item {
+                    SearchMessage("Searching shows", "Looking for “${displayed.submittedQuery.orEmpty()}”…")
                     LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 16.dp))
                 }
-                state.error != null -> item {
-                    SearchMessage("Search unavailable", state.error, "Try again", { submit(state.submittedQuery ?: query) })
+                displayed.error != null -> item {
+                    SearchMessage("Search unavailable", displayed.error, "Try again", { submit(displayed.submittedQuery ?: query) })
                 }
-                state.submittedQuery != null && state.results.isEmpty() -> item {
-                    SearchMessage("No podcasts found", "No results for “${state.submittedQuery}”. Try a show name, creator or a broader subject.")
+                displayed.submittedQuery != null && displayed.results.isEmpty() -> item {
+                    SearchMessage(if (format == "Video") "No video shows found" else if (format == "Audio") "No audio podcasts found" else "No podcasts found", "No results for “${displayed.submittedQuery}”. Try a show name, creator or a broader subject.")
                     TextButton(onClick = { onQuery("") }) { Text("Browse topics") }
                 }
-                state.results.isNotEmpty() -> {
-                    item { SectionHeading("Results", "${state.results.size} podcasts for “${state.submittedQuery ?: query}”") }
+                displayed.results.isNotEmpty() -> {
+                    item { SectionHeading("Results", "${displayed.results.size} shows for “${displayed.submittedQuery ?: query}”") }
                     item { Text("TOP RESULT", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.secondary) }
-                    item(key = "top:${state.results.first().feedUrl}") {
-                        val candidate = state.results.first()
+                    item(key = "top:${displayed.results.first().feedUrl}") {
+                        val candidate = displayed.results.first()
                         SearchResult(candidate, existing(candidate), true, adding, "subscribe:${candidate.feedUrl}" in busy,
                             { preview = candidate }, { follow(candidate) }, onOpenPodcast)
                     }
-                    if (state.results.size > 1) item { SectionHeading("More podcasts") }
-                    items(state.results.drop(1), key = { it.feedUrl }) { candidate -> SearchResult(candidate, existing(candidate), false, adding,
+                    if (displayed.results.size > 1) item { SectionHeading("More shows") }
+                    items(displayed.results.drop(1), key = { it.feedUrl }) { candidate -> SearchResult(candidate, existing(candidate), false, adding,
                         "subscribe:${candidate.feedUrl}" in busy, { preview = candidate }, { follow(candidate) }, onOpenPodcast) }
                 }
                 else -> {
@@ -145,13 +159,13 @@ private val topics = listOf(SearchTopic("Technology", Icons.Default.Memory), Sea
                     }
                 }
             }
-            state.loadingProviders.forEach { provider -> item(key = "loading:$provider") {
+            displayed.loadingProviders.forEach { provider -> item(key = "loading:$provider") {
                 Text("Searching ${if (provider == "youtube") "YouTube" else "Apple Podcasts"}…", style = MaterialTheme.typography.bodySmall)
             } }
-            state.failedProviders.forEach { provider -> item(key = "failed:$provider") {
+            displayed.failedProviders.forEach { provider -> item(key = "failed:$provider") {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("${if (provider == "youtube") "YouTube" else "Apple Podcasts"} is unavailable.", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
-                    TextButton(onClick = { onRetryProvider(provider) }, enabled = !state.loading) { Text("Retry") }
+                    TextButton(onClick = { onRetryProvider(provider) }, enabled = !displayed.loading) { Text("Retry") }
                 }
             } }
             item {
@@ -179,7 +193,7 @@ private val topics = listOf(SearchTopic("Technology", Icons.Default.Memory), Sea
         Column(Modifier.fillMaxWidth().imePadding().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Icon(Icons.Default.RssFeed, null, tint = MaterialTheme.colorScheme.secondary)
             Text("Add a podcast feed", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
-            Text("Paste a public RSS feed, YouTube playlist or video link.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Paste a public RSS feed, YouTube channel, playlist or video link.", color = MaterialTheme.colorScheme.onSurfaceVariant)
             OutlinedTextField(rssDraft, { rssDraft = it.take(2048) }, label = { Text("RSS or YouTube URL") }, modifier = Modifier.fillMaxWidth().testTag("Feed address"), maxLines = 3)
             Button(onClick = { rss = false; onQuery(rssDraft.trim()); onFollow(rssDraft.trim()) }, enabled = isFeedAddress(rssDraft) && !adding,
                 modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) { Text("Add feed") }

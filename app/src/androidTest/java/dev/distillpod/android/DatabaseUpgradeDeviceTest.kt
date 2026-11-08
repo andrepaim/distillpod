@@ -24,6 +24,7 @@ class DatabaseUpgradeDeviceTest {
     @Test fun schemaSevenUpgradesWithoutLosingProgressSavedMomentsOrMessages() = upgradeFixture(7)
     @Test fun schemaEightUpgradesWithoutLosingSavedMoments() = upgradeFixture(8)
     @Test fun schemaNineUpgradesWithoutActivatingAutomation() = upgradeFixture(9)
+    @Test fun schemaTenUpgradesWithoutChangingExistingLibrary() = upgradeFixture(10)
     private fun upgradeFixture(from: Int) = runBlocking {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
@@ -61,11 +62,12 @@ class DatabaseUpgradeDeviceTest {
                 if(from>=6)insert("sync_views",mapOf("entityKey" to "subscription_old","version" to 7,"sessionId" to "retained-session"))
                 old.version = from
             }
-            val upgraded = Room.databaseBuilder(context, AppDatabase::class.java, name).addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4, AppDatabase.MIGRATION_4_5, AppDatabase.MIGRATION_5_6, AppDatabase.MIGRATION_6_7, AppDatabase.MIGRATION_7_8, AppDatabase.MIGRATION_8_9, AppDatabase.MIGRATION_9_10).build()
+            val upgraded = Room.databaseBuilder(context, AppDatabase::class.java, name).addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4, AppDatabase.MIGRATION_4_5, AppDatabase.MIGRATION_5_6, AppDatabase.MIGRATION_6_7, AppDatabase.MIGRATION_7_8, AppDatabase.MIGRATION_8_9, AppDatabase.MIGRATION_9_10, AppDatabase.MIGRATION_10_11).build()
             try {
                 assertEquals(if(from>=3)listOf("old-operation") else emptyList<String>(),upgraded.sync().pending("alice", "g1"))
                 if(from>=4)assertEquals(7L,upgraded.sync().view("subscription_old")!!.version)
                 assertEquals(23000L, upgraded.library().episode("e")!!.positionMs)
+                assertNull(upgraded.library().episode("e")!!.sourceOrder)
                 assertEquals("Saved source", upgraded.library().distillation("d")!!.excerpt)
                 assertEquals("Saved reply", upgraded.library().message("m")!!.text)
                 assertEquals("[]", upgraded.library().message("m")!!.sourcesJson)

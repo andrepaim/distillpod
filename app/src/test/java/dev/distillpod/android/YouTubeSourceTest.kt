@@ -20,6 +20,112 @@ import java.io.IOException
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
 class YouTubeSourceTest {
+    @Test fun `queryless channels stay local even when included in a public feed approval`() = runBlocking {
+        val db = Room.inMemoryDatabaseBuilder(ApplicationProvider.getApplicationContext<Context>(), AppDatabase::class.java).build()
+        try {
+            val repo = PodcastRepository(db, OkHttpClient(), youtube = source())
+            val id = repo.subscribe("https://www.youtube.com/@portadosfundos/videos")
+            val store = dev.distillpod.android.sync.SubscriptionSyncStore(db)
+            store.bind(dev.distillpod.core.sync.SyncOwner("fixture-owner", "fixture-generation"), setOf(id))
+            assertEquals(0, store.pendingCount())
+        } finally { db.close() }
+    }
+
+    @Test fun `refresh keeps retained archive entries behind the current source snapshot`() = runBlocking {
+        val db = Room.inMemoryDatabaseBuilder(ApplicationProvider.getApplicationContext<Context>(), AppDatabase::class.java).build()
+        var latest = false
+        val source = YouTubeSource { _, _, _ ->
+            JSONObject(if (latest) """{"title":"Show","entries":[{"id":"ABCDEFGHIJK","title":"New upload"},{"id":"heoWstJTwu4","title":"Z recent"}]}"""
+                else """{"title":"Show","entries":[{"id":"heoWstJTwu4","title":"Z recent"},{"id":"abcdefghijk","title":"A archive"}]}""")
+        }
+        try {
+            val repo = PodcastRepository(db, OkHttpClient(), youtube = source)
+            val id = repo.subscribe(playlist)
+            latest = true; repo.refresh(id)
+            assertEquals(listOf("ABCDEFGHIJK", "heoWstJTwu4", "abcdefghijk"), db.library().episodesForPodcast(id).map { it.guid })
+        } finally { db.close() }
+    }
+    @Test fun `dated playlists sort newest first while a channel retains its latest upload order`() = runBlocking {
+        val source = YouTubeSource { _, _, _ -> JSONObject("""{"entries":[
+            {"id":"heoWstJTwu4","title":"Old","upload_date":"20260101"},
+            {"id":"abcdefghijk","title":"New","upload_date":"20261101"}]}""") }
+        assertEquals(listOf("abcdefghijk", "heoWstJTwu4"), source.feed("show", playlist).episodes.map { it.guid })
+        val channel = YouTubeSource { url, flat, _ ->
+            assertTrue(flat); assertTrue(url.endsWith("/videos"))
+            JSONObject("""{"entries":[{"id":"abcdefghijk","title":"Newest unknown date"},
+                {"id":"heoWstJTwu4","title":"Old known date","upload_date":"20260101"}]}""")
+        }.feed("show", "https://www.youtube.com/@portadosfundos")
+        assertEquals(listOf("abcdefghijk", "heoWstJTwu4"), channel.episodes.map { it.guid })
+    }
+
+    @Test fun `valid signed streams survive the old two minute deadline without repeated extraction`() {
+        var nanos = 0L
+        val now = 1_800_000_000_000L
+        var calls = 0
+        val source = YouTubeSource(YouTubeExtractor { _, _, _ ->
+            calls++
+            JSONObject("""{"formats":[{"protocol":"https","url":"https://a.googlevideo.com/audio?expire=${now / 1000 + 3600}","vcodec":"none","acodec":"aac"}]}""")
+        }, StreamClock({ nanos }, { now }))
+        source.streams(video)
+        nanos = java.util.concurrent.TimeUnit.MINUTES.toNanos(3)
+        source.streams(video)
+        assertEquals(1, calls)
+        source.invalidate(video); source.streams(video)
+        assertEquals(2, calls)
+    }
+    @Test fun `near-expiry signed streams are resolved again before reuse`() {
+        val now = 1_800_000_000_000L
+        var calls = 0
+        val source = YouTubeSource(YouTubeExtractor { _, _, _ ->
+            calls++
+            JSONObject("""{"formats":[{"protocol":"https","url":"https://a.googlevideo.com/audio?expire=${now / 1000 + 30}","vcodec":"none","acodec":"aac"}]}""")
+        }, StreamClock({ 0L }, { now }))
+        source.streams(video); source.streams(video)
+        assertEquals(2, calls)
+    }
+
+    @Test fun `unknown date episodes preserve source order through persistence refresh and backup`() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
+        val restored = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
+        var updated = false
+        val youtube = YouTubeSource { _, _, _ -> JSONObject("""{"title":"Show","entries":[
+            {"id":"heoWstJTwu4","title":"Z newest"},
+            {"id":"abcdefghijk","title":"A oldest"}]}""").also {
+                if (updated) it.getJSONArray("entries").put(0, JSONObject("""{"id":"heoWstJTwu4","title":"Z newest updated"}"""))
+            }
+        }
+        try {
+            val repo = PodcastRepository(db, OkHttpClient(), youtube = youtube)
+            val id = repo.subscribe(playlist)
+            val newest = db.library().episodes().first()
+            assertEquals("heoWstJTwu4", newest.guid)
+            db.library().putEpisode(newest.copy(positionMs = 42_000, completed = true))
+            updated = true; repo.refresh(id)
+            assertEquals(listOf("heoWstJTwu4", "abcdefghijk"), db.library().episodes().map { it.guid })
+            assertEquals(listOf("heoWstJTwu4", "abcdefghijk"), db.library().episodesForPodcast(id).map { it.guid })
+            assertTrue(db.library().episodes().all { it.publishedAt == 0L })
+            assertEquals(42_000L, db.library().episode(newest.id)!!.positionMs)
+            assertTrue(db.library().episode(newest.id)!!.completed)
+            val backup = LibraryBackup(db).export()
+            LibraryBackup(restored).merge(LibraryBackup(restored).preview(backup.inputStream()))
+            assertEquals(listOf("heoWstJTwu4", "abcdefghijk"), restored.library().episodes().map { it.guid })
+        } finally { db.close(); restored.close() }
+    }
+
+    @Test fun `search includes channels and playlists but never individual video hits`() = runBlocking {
+        val found = YouTubeSource { _, flat, _ ->
+            assertTrue(flat)
+            JSONObject("""{"entries":[
+                {"_type":"url","ie_key":"YoutubeTab","id":"UC1234567890123456789012","title":"Porta dos Fundos","url":"https://www.youtube.com/channel/UC1234567890123456789012"},
+                {"title":"A series","channel":"Porta dos Fundos","url":"$playlist"},
+                {"title":"A video","url":"$video"}]}""")
+        }.search("Porta dos Fundos")
+        assertEquals(2, found.size)
+        assertEquals("https://www.youtube.com/channel/UC1234567890123456789012/videos", found.first().feedUrl)
+        assertTrue(found.first().category.contains("channel", ignoreCase = true))
+    }
+
     @Test fun `one slow video does not serialize extraction of another video`() {
         val entered = java.util.concurrent.CountDownLatch(1)
         val release = java.util.concurrent.CountDownLatch(1)
@@ -200,7 +306,7 @@ class YouTubeSourceTest {
             assertEquals(video, url)
             assertFalse(flat)
             assertEquals(1, limit)
-            JSONObject("""{"formats":[{"protocol":"https","url":"https://a.googlevideo.com/audio?expire=123", "vcodec":"none","acodec":"aac","ext":"m4a"}]}""")
+            JSONObject("""{"formats":[{"protocol":"https","url":"https://a.googlevideo.com/audio?expire=9999999999", "vcodec":"none","acodec":"aac","ext":"m4a"}]}""")
         }
         assertEquals(source.streams(video), source.streams("https://youtu.be/heoWstJTwu4"))
         assertEquals(1, calls)

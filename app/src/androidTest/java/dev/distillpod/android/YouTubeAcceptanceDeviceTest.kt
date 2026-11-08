@@ -24,6 +24,19 @@ import java.util.concurrent.atomic.AtomicReference
 @RunWith(AndroidJUnit4::class)
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 class YouTubeAcceptanceDeviceTest {
+    @Test fun portaDosFundosChannelIsFoundAndLoadsItsLatestVideos() = runBlocking {
+        assumeTrue(InstrumentationRegistry.getArguments().getString("allowPublicYoutube") == "true")
+        check(android.os.Build.HARDWARE.contains("ranchu") || android.os.Build.FINGERPRINT.contains("generic"))
+        val source = YouTubeSource(AndroidYouTubeExtractor(InstrumentationRegistry.getInstrumentation().targetContext))
+        val found = source.search("Porta dos Fundos").firstOrNull {
+            it.title.equals("Porta dos Fundos", true) && dev.distillpod.core.YouTubeUrl.channel(it.feedUrl) != null
+        }
+        assertNotNull("The actual channel must be discoverable", found)
+        val feed = source.feed("isolated-porta-acceptance", found!!.feedUrl)
+        assertTrue(feed.episodes.isNotEmpty())
+        assertEquals((feed.episodes.indices).toList(), feed.episodes.map { it.sourceOrder })
+    }
+
     @Test fun officialFalhaPlaylistHasPlayableOriginalAudioAndVideo() = runBlocking {
         assumeTrue(InstrumentationRegistry.getArguments().getString("allowPublicYoutube") == "true")
         check(android.os.Build.HARDWARE.contains("ranchu") || android.os.Build.FINGERPRINT.contains("generic")) {

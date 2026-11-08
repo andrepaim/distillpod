@@ -13,7 +13,7 @@ import org.w3c.dom.Document
 /** Feed identity is independent of redirect/enclosure URLs. Optional metadata preserves older callers. */
 data class FeedEpisode(val id: String, val guid: String, val title: String, val audioUrl: String,
     val durationMs: Long?, val transcriptUrl: String?, val publishedAt: String?, val description: String = "",
-    val imageUrl: String? = null, val mimeType: String? = null, val transcriptType: String? = null, val webpageUrl: String? = null)
+    val imageUrl: String? = null, val mimeType: String? = null, val transcriptType: String? = null, val webpageUrl: String? = null, val sourceOrder: Int? = null)
 data class Feed(val title: String, val episodes: List<FeedEpisode>, val author: String = "", val description: String = "", val imageUrl: String? = null, val websiteUrl: String? = null)
 
 fun plainDescription(text: String): String = text.replace(Regex("(?is)<(script|style)\\b[^>]*>.*?</\\1>"), "")
