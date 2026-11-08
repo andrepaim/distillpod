@@ -81,6 +81,18 @@ class Diagnostics(private val context: Context, private val dsn:String = context
                 "audio_duration_ms" to duration.coerceAtLeast(0),"covered_audio_ms" to covered.coerceAtLeast(0),"empty_output" to empty,"test_traffic" to false))}
         }
     }
+    internal fun contextSummary(operation:String, evidence:ContextPreparationEvidence, elapsed:Long, correlation:DiagnosticCorrelation?) {
+        if(!enabled || !configured)return
+        synchronized(lock) {
+            if(!enabled)return
+            runCatching {
+                val fields=evidence.fields(elapsed)+(correlation ?: DiagnosticCorrelation()).fields()+
+                    mapOf("stream" to "diagnostics","test_traffic" to dev.distillpod.android.sync.SubscriptionCloudAccess.instrumentation)
+                val id=operation.takeIf {runCatching {UUID.fromString(it)}.isSuccess}
+                log("capture.context_summary",fields+if(id!=null)mapOf("operation_id" to id) else emptyMap())
+            }
+        }
+    }
     /** Runs on the IO startup path, after reading authoritative application state. */
     internal fun reconcile(states:Map<Pair<String,String>,String>):Unit = synchronized(lock) {
         if(!enabled || dev.distillpod.android.sync.SubscriptionCloudAccess.instrumentation)return
@@ -337,7 +349,7 @@ class Diagnostics(private val context: Context, private val dsn:String = context
     }
     internal fun uploaded() { prefs.edit().putString("last_upload",java.time.Instant.now().toString()).apply();status.value="Last upload: ${java.text.DateFormat.getDateTimeInstance().format(java.util.Date())}" }
     companion object {
-        private val EVENT_NAMES=setOf("youtube.extraction_started","youtube.extraction_completed","youtube.extraction_failed","youtube.extraction_retry","youtube.stream_refreshed","videocast.video_requested","videocast.audio_restored","videocast.first_frame","videocast.failed","videocast.download_validated","transcription.quality","diagnostics.health","operation.summary","usage.feature","transcription.partial","transcription.paused","transcription.cancelled","distillation.cancelled","voice.recording","voice.text","voice.audio","voice.resumed","voice.resume_failed","playback.buffering","playback.ready","playback.focus","playback.route","app.started","diagnostics.test","diagnostics.failed","headphone.received","headphone.rejected","headphone.previous","headphone.next",
+        private val EVENT_NAMES=setOf("capture.context_summary","youtube.extraction_started","youtube.extraction_completed","youtube.extraction_failed","youtube.extraction_retry","youtube.stream_refreshed","videocast.video_requested","videocast.audio_restored","videocast.first_frame","videocast.failed","videocast.download_validated","transcription.quality","diagnostics.health","operation.summary","usage.feature","transcription.partial","transcription.paused","transcription.cancelled","distillation.cancelled","voice.recording","voice.text","voice.audio","voice.resumed","voice.resume_failed","playback.buffering","playback.ready","playback.focus","playback.route","app.started","diagnostics.test","diagnostics.failed","headphone.received","headphone.rejected","headphone.previous","headphone.next",
             "capture.started","capture.completed","capture.requested","capture.accepted","capture.saved","capture.waiting","capture.transcript_link","capture.prepared","capture.failed",
             "transcription.dependency","transcription.started","transcription.stage","transcription.queued","transcription.completed","transcription.failed",
             "distillation.discarded","distillation.queued","distillation.started","distillation.finished","distillation.failed","playback.service_started","playback.service_stopped","playback.state","playback.failed",

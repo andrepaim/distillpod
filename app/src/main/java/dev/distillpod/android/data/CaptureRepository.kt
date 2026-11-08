@@ -72,63 +72,106 @@ class CaptureRepository(private val db: AppDatabase, private val ai: AiGateway, 
         AttemptDiagnostics.correlation(attempt,AttemptDiagnostics.previousId(attempt)?.let {dao.momentAttempt(it)},revision)
 
     private suspend fun hydrate(saved: DistillationEntity) {
-        val ep = dao.episode(saved.episodeId) ?: return
-        val attempt = dao.momentAttempt(saved.attempt) ?: MomentAttemptEntity(UUID.randomUUID().toString(),saved.id,"{\"expanded\":false}")
-        val expanded = JSONObject(attempt.contextJson).optBoolean("expanded")
-        val transcript = dao.transcript(ep.id)?.takeUnless { it.source == "online" }
-        // Publisher transcripts can be complete even when the feed has no episode duration.
-        // Only a complete, matching transcript can supply the missing end boundary.
-        val duration = ep.durationMs.takeIf { it > 0 }
-            ?: transcript?.takeIf { it.state == "ready" && it.fingerprint == ep.mediaFingerprint && it.durationMs > 0 }?.durationMs
-            ?: 0L
-        val range = MomentContexts.range(saved.endMs, duration, expanded)
-        val coverage = transcript?.let { dao.coverage(ep.id,it.revision).map { c -> TimeRange(c.startMs,c.endMs) } }.orEmpty()
-        val covered = transcript != null && transcript.fingerprint == ep.mediaFingerprint && normalizeRanges(coverage,Long.MAX_VALUE)
-            .any { it.startMs <= range.startMs && it.endMs >= range.endMs }
-        if (!covered) {
-            diagnostics?.event("capture.waiting",saved.id,reason="transcript_required",related=transcript?.revision,
-                attempt=saved.attempt,correlation=correlation(attempt,transcript?.revision))
-            prepare(ep.id)
-            // Scheduling may create or replace the revision after the original save.
-            dao.transcript(ep.id)?.let { dependency ->
-                diagnostics?.event("capture.transcript_link",saved.id,reason="transcript_required",related=dependency.revision,
-                    correlation=correlation(attempt,dependency.revision))
+        val started=System.nanoTime()
+        val evidence=dev.distillpod.android.diagnostics.ContextPreparationEvidence()
+        var identity:DiagnosticCorrelation?=null
+        try {
+            val ep = dao.episode(saved.episodeId) ?: run {
+                evidence.outcome="episode_missing";evidence.reason="episode_missing";return
             }
-            return
-        }
-        val segments = dao.window(ep.id,transcript!!.revision,range.startMs,range.endMs)
-        val context = try { MomentContexts.build(TimeRange(saved.startMs,saved.endMs),range,
-            segments.map { SubtitleSegment(TimeRange(it.startMs,it.endMs),it.text) }) }
-        catch (_: IllegalArgumentException) {
-            db.withTransaction { dao.distillation(saved.id)?.takeIf { it.attempt==saved.attempt && it.state=="waiting_transcript" }?.let {
-                dao.putDistillation(it.copy(state="needs_context",error="This source needs a shorter, clearer passage. Your moment is saved."))
-            } };return
-        }
-        val raw = dao.window(ep.id,transcript.revision,saved.startMs,saved.endMs).joinToString(" ") { it.text.trim() }.trim()
-        val original = if(saved.sourceJson.isNotBlank()) JSONObject(saved.sourceJson).getString("originalExcerpt") else saved.excerpt.ifBlank { raw }
-        val state = when {
-            raw.isBlank() -> "no_speech"
-            context.spans.isEmpty() -> "needs_context"
-            saved.fingerprint != ep.mediaFingerprint -> "review_source"
-            !connected() -> "waiting_auth"
-            else -> "queued"
-        }
-        val changed = db.withTransaction {
-            val current=dao.distillation(saved.id)
-            if(current?.state!="waiting_transcript" || current.attempt!=saved.attempt) false else {
-                dao.putMomentAttempt(attempt.copy(contextJson=AttemptDiagnostics.preserve(attempt.contextJson,MomentGeneration.contextJson(context,transcript.revision,ep.mediaFingerprint,original,expanded))))
-                val updated=current.copy(excerpt=current.excerpt.ifBlank { raw },attempt=attempt.id,
-                    revision=if(current.insight==null)transcript.revision else current.revision,state=state,
-                    error=when(state) { "no_speech" -> "No transcribed speech was found in this window."; "needs_context" -> "No complete source segments fit this window. Expand the context."; else -> null })
-                dao.putDistillation(updated);if(updated.insight==null)portable.recordMoment(updated);true
+            val attempt = dao.momentAttempt(saved.attempt) ?: MomentAttemptEntity(UUID.randomUUID().toString(),saved.id,"{\"expanded\":false}")
+            identity=correlation(attempt)
+            val expanded = JSONObject(attempt.contextJson).optBoolean("expanded")
+            evidence.expanded=expanded
+            val availableTranscript=dao.transcript(ep.id)
+            evidence.source=availableTranscript?.source ?: "missing"
+            val transcript = availableTranscript?.takeUnless { it.source == "online" }
+            identity=correlation(attempt,transcript?.revision)
+            // Publisher transcripts can be complete even when the feed has no episode duration.
+            // Only a complete, matching transcript can supply the missing end boundary.
+            val duration = ep.durationMs.takeIf { it > 0 }
+                ?: transcript?.takeIf { it.state == "ready" && it.fingerprint == ep.mediaFingerprint && it.durationMs > 0 }?.durationMs
+                ?: 0L
+            evidence.durationKnown=duration>0
+            val range = MomentContexts.range(saved.endMs, duration, expanded)
+            val coverage = transcript?.let { dao.coverage(ep.id,it.revision).map { c -> TimeRange(c.startMs,c.endMs) } }.orEmpty()
+            val covered = transcript != null && transcript.fingerprint == ep.mediaFingerprint && normalizeRanges(coverage,Long.MAX_VALUE)
+                .any { it.startMs <= range.startMs && it.endMs >= range.endMs }
+            evidence.coverageComplete=covered
+            evidence.missingDuration=ContextReadiness.missing(range,coverage)
+            if (!covered) {
+                evidence.outcome="transcript_required"
+                evidence.reason=if(transcript!=null && transcript.fingerprint!=ep.mediaFingerprint)"source_mismatch" else "coverage_missing"
+                diagnostics?.event("capture.waiting",saved.id,reason="transcript_required",related=transcript?.revision,
+                    attempt=saved.attempt,correlation=correlation(attempt,transcript?.revision))
+                prepare(ep.id)
+                // Scheduling may create or replace the revision after the original save.
+                dao.transcript(ep.id)?.let { dependency ->
+                    diagnostics?.event("capture.transcript_link",saved.id,reason="transcript_required",related=dependency.revision,
+                        correlation=correlation(attempt,dependency.revision))
+                }
+                return
             }
+            val segments = dao.window(ep.id,transcript!!.revision,range.startMs,range.endMs)
+            val context = try { MomentContexts.build(TimeRange(saved.startMs,saved.endMs),range,
+                segments.map { SubtitleSegment(TimeRange(it.startMs,it.endMs),it.text) }, evidence.counts::built) }
+            catch (_: IllegalArgumentException) {
+                evidence.outcome="needs_context"
+                evidence.reason=if(evidence.counts.oversized)"oversized" else "invalid_bounds"
+                val changed=db.withTransaction { dao.distillation(saved.id)?.takeIf { it.attempt==saved.attempt && it.state=="waiting_transcript" }?.let {
+                    dao.putDistillation(it.copy(state="needs_context",error="This source needs a shorter, clearer passage. Your moment is saved."))
+                    true
+                } ?: false }
+                if(!changed) {evidence.outcome="superseded";evidence.reason="superseded"}
+                return
+            }
+            val raw = dao.window(ep.id,transcript.revision,saved.startMs,saved.endMs).joinToString(" ") { it.text.trim() }.trim()
+            val original = if(saved.sourceJson.isNotBlank()) JSONObject(saved.sourceJson).getString("originalExcerpt") else saved.excerpt.ifBlank { raw }
+            val state = when {
+                raw.isBlank() -> "no_speech"
+                context.spans.isEmpty() -> "needs_context"
+                saved.fingerprint != ep.mediaFingerprint -> "review_source"
+                !connected() -> "waiting_auth"
+                else -> "queued"
+            }
+            evidence.outcome=state
+            evidence.reason=when(state) {
+                "no_speech" -> "empty_speech"
+                "needs_context" -> "empty_context"
+                "review_source" -> "source_mismatch"
+                else -> "ready"
+            }
+            val changed = db.withTransaction {
+                val current=dao.distillation(saved.id)
+                if(current?.state!="waiting_transcript" || current.attempt!=saved.attempt) false else {
+                    // Observe stale dependencies without changing selection or existing persistence policy.
+                    if(dao.episode(ep.id)?.mediaFingerprint!=ep.mediaFingerprint)evidence.reason="source_mismatch"
+                    else if(dao.transcript(ep.id)?.revision!=transcript.revision)evidence.reason="revision_mismatch"
+                    dao.putMomentAttempt(attempt.copy(contextJson=AttemptDiagnostics.preserve(attempt.contextJson,MomentGeneration.contextJson(context,transcript.revision,ep.mediaFingerprint,original,expanded))))
+                    val updated=current.copy(excerpt=current.excerpt.ifBlank { raw },attempt=attempt.id,
+                        revision=if(current.insight==null)transcript.revision else current.revision,state=state,
+                        error=when(state) { "no_speech" -> "No transcribed speech was found in this window."; "needs_context" -> "No complete source segments fit this window. Expand the context."; else -> null })
+                    dao.putDistillation(updated);if(updated.insight==null)portable.recordMoment(updated);true
+                }
+            }
+            evidence.frozen=changed
+            if(!changed) {evidence.outcome="superseded";evidence.reason="superseded"}
+            if(changed) {
+                val prepared=dao.momentAttempt(attempt.id) ?: attempt
+                identity=correlation(prepared)
+                diagnostics?.event("capture.transcript_link",saved.id,reason="ready",related=transcript.revision,correlation=correlation(prepared))
+                diagnostics?.event("capture.prepared",saved.id,reason=state,correlation=correlation(prepared));onPortableChanged()
+            }
+            if(changed && state=="queued")enqueue(saved.id)
+        } catch(cancelled:CancellationException) {
+            evidence.outcome="cancelled";evidence.reason="cancelled";throw cancelled
+        } catch(error:Exception) {
+            evidence.outcome="failed"
+            evidence.reason=if(error is IllegalArgumentException)"invalid_bounds" else "internal"
+            throw error
+        } finally {
+            diagnostics?.contextSummary(saved.id,evidence,(System.nanoTime()-started)/1_000_000,identity)
         }
-        if(changed) {
-            val prepared=dao.momentAttempt(attempt.id) ?: attempt
-            diagnostics?.event("capture.transcript_link",saved.id,reason="ready",related=transcript.revision,correlation=correlation(prepared))
-            diagnostics?.event("capture.prepared",saved.id,reason=state,correlation=correlation(prepared));onPortableChanged()
-        }
-        if(changed && state=="queued")enqueue(saved.id)
     }
 
     suspend fun transcriptUpdated(id: String) {
