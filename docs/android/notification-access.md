@@ -23,9 +23,10 @@ that denying notifications removes Android's exempt media-session controls.
 screen grant/revocation, already-attempted recovery, and Android 12L Settings
 return. `NotificationAccessDeviceTest` covers an actual runtime grant, denial
 with recreation, blocked legacy permission, and external grants/revocations
-while visiting the application's notification Settings. Retained-screen disablement
-uses AppOps; actual runtime revocation is verified in a second invocation after
+while visiting the application's notification Settings. Actual runtime revocation is verified in a second invocation after
 the first instrumentation run ends because Android can kill the app on revoke.
+A third invocation verifies a fresh runtime grant. Retained-screen revocation
+is covered by the lifecycle regression tests.
 
 Physical acceptance must use a separate `dev.distillpod.android.validation.issue20`
 application ID and matching `.test` ID, overridden with a temporary Gradle init
