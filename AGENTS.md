@@ -1,5 +1,15 @@
 # Working on DistillPod
 
+## Default issue-handling loop
+
+- When asked to handle repository issues, work through the authorized queue autonomously: select one eligible issue, complete it, refresh the queue, and repeat until no eligible issues remain. Do not ask for confirmation between issues already within the user's authorized scope. A request to edit this policy alone does not start an issue-processing run.
+- Select the highest-priority ready issue using the repository's established priority and readiness signals; prefer work that unblocks other issues and use oldest-ready first when priorities are equal. An eligible issue has clear scope and acceptance criteria, satisfied dependencies, the necessary authorization, and no active owner in another session. Do not treat every open issue as approved work or invent product decisions to make it ready.
+- Claim the issue in the tracker and record the plan before implementation. Keep at most one active issue per session and respect other sessions' ownership. Split oversized issues into small, independently verifiable increments without closing the parent before all its acceptance criteria are met.
+- Carry each issue through the applicable engineering workflow below. Features and bug fixes require planning, a separate branch/worktree, TDD for testable behavior, relevant automated checks, emulator acceptance, and non-destructive USB-phone validation. Documentation-only issues follow the documentation validation exception under Evidence.
+- Completion includes review, integration with current `origin/main`, required validation of the combined code, a merged pull request, and successful CI on the combined commit. A local implementation, passing branch checks, or a pushed branch alone does not complete an issue. Link the PR to the issue and record the tested revision, checks, results, and limitations; close the issue only when its acceptance criteria and required validation are satisfied.
+- If an issue needs clarification, an unavailable device, separate authorization, or another unmet dependency, record the concrete blocker and the next action needed in the tracker. Leave it open, release ownership when appropriate, and continue with independent eligible work. Do not repeatedly retry an unchanged blocker, bypass checks, or silently abandon unfinished work.
+- Refresh priorities, dependencies, and ownership after each issue. Stop when the user asks, the authorized scope is exhausted, or no eligible issues remain; report completed issues and remaining blockers. Queue exhaustion does not mean all open issues are resolved. Never create a release, bump release versions, tag, or publish an APK as part of the loop without a separate explicit release request.
+
 ## Default feature workflow
 
 - Treat every feature request as authorization to carry the feature through planning, implementation, validation, and merging into `main`. Follow this workflow unless the user explicitly changes its scope; release publication always requires a separate explicit request.
