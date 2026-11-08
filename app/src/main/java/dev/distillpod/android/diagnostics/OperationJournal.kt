@@ -23,6 +23,10 @@ internal class OperationJournal(private val file: File, private val now: () -> L
         } } catch(_:Exception) { rows.clear();dropped++ }
     }
     @Synchronized fun transition(kind:String, operation:String, state:String, reason:String="none", source:String="background", attempt:String?=null, correlation:DiagnosticCorrelation?=null, observedAt:Long=now()) {
+        transitionRecord(kind,operation,state,reason,source,attempt,correlation?.copy(collectionEpoch=null),observedAt)
+    }
+    private fun transitionRecord(kind:String,operation:String,state:String,reason:String,source:String,attempt:String?,
+        correlation:DiagnosticCorrelation?,observedAt:Long) {
         require(kind in KINDS && state in STATES && source in SOURCES && reason.matches(Regex("[a-z_]{1,40}")))
         UUID.fromString(operation);attempt?.let {UUID.fromString(it)}
         val old=rows.lastOrNull {it.kind==kind && it.operation==operation}

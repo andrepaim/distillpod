@@ -37,13 +37,23 @@ class Diagnostics(private val context: Context, private val dsn:String = context
     val enabled get()=prefs.getBoolean("enabled",false)
     val usageEnabled get()=prefs.getBoolean("usage_enabled",false)
     val collecting get()=enabled || usageEnabled
+    internal val correlationEpoch:String? get()=if(enabled && configured)prefs.getString("correlation_epoch",null) else null
+    internal fun acceptsCorrelation(correlation:DiagnosticCorrelation?):Boolean =
+        correlation?.collectionEpoch?.let {it==correlationEpoch} ?: true
     val reportingHealth get()="${queue.files().size} pending envelopes · ${prefs.getLong("dropped",0)+journal.dropped} collection warnings · last acknowledgement: ${prefs.getString("last_upload","none")}"
     val configured get()=dsn.isNotBlank()
     val reference get()="${context.packageManager.getPackageInfo(context.packageName,0).versionName} / installation $installation / session $session"
-    init { if(collecting && configured) safeInitialize() }
+    init {
+        if(enabled && configured && !prefs.contains("correlation_epoch"))
+            prefs.edit().putString("correlation_epoch",UUID.randomUUID().toString()).commit()
+        if(collecting && configured) safeInitialize()
+    }
     fun consent(allow:Boolean) = synchronized(lock) {
         generation++
-        prefs.edit().putBoolean("enabled",allow).commit()
+        prefs.edit().putBoolean("enabled",allow).apply {
+            if(allow && !enabled)putString("correlation_epoch",UUID.randomUUID().toString())
+            if(!allow)remove("correlation_epoch")
+        }.commit()
         Sentry.close()
         queue.clear()
         if(!allow){journal.clear();prefs.edit().remove("suppressed_summaries").commit()}
@@ -268,14 +278,17 @@ class Diagnostics(private val context: Context, private val dsn:String = context
             "playback.state"->if(reason=="playing")usage("playback",source)
         }
         if(!enabled || !configured)return
-        if(name !in EVENT_NAMES || reason !in REASONS || source !in OperationJournal.SOURCES)return
+        if(name !in EVENT_NAMES || reason !in REASONS || source !in OperationJournal.SOURCES || !acceptsCorrelation(correlation))return
         val observedAt=System.currentTimeMillis()
         // Capture the context before asynchronous emission; never attach a newer run to an old event.
         val snapshot=correlation
-        synchronized(lock) {if(enabled)runCatching {observe(name,operation,reason,source,attempt,snapshot,observedAt)}}
-        val epoch=generation
+        val epoch=synchronized(lock) {
+            if(!enabled || !acceptsCorrelation(correlation))return
+            runCatching {observe(name,operation,reason,source,attempt,snapshot,observedAt)}
+            generation
+        }
         val observedTick=android.os.SystemClock.elapsedRealtime()
-        executor.execute {if(enabled && generation==epoch) {eventNow(name,operation,reason,source,elapsedMs,related,attempt,observedTick,snapshot,observedAt);flushSummaries()}}
+        executor.execute {if(enabled && generation==epoch) {eventNow(name,operation,reason,source,elapsedMs,related,attempt,observedTick,snapshot,observedAt,epoch);flushSummaries()}}
     }
     /** One compact terminal observation. No arbitrary attributes or provider strings cross this boundary. */
     internal fun attemptSummary(summary:DistillationOutcome, correlation:DiagnosticCorrelation?, observedAt:Long=System.currentTimeMillis()) {
@@ -292,32 +305,34 @@ class Diagnostics(private val context: Context, private val dsn:String = context
         }
     }
     internal fun awaitIdle() {executor.submit {}.get(5,TimeUnit.SECONDS)}
-    private fun eventNow(name:String, operation:String?, reason:String, source:String, elapsedMs:Long?,related:String?,attempt:String?,observedTick:Long,correlation:DiagnosticCorrelation?,observedAt:Long) {
-        if(!enabled || !configured)return
-        try {
-            // Categorical fields only. IDs must be random UUIDs, never hashes of content or URLs.
-            if(name !in EVENT_NAMES)return
-            if(reason !in REASONS || source !in setOf("background","phone","headphones","car"))return
-            val attributes=mutableMapOf<String,Any>("event_id" to UUID.randomUUID().toString(),"session_id" to session,"installation_id" to installation,"schema_version" to 1,"test_traffic" to (name.startsWith("diagnostics.") || dev.distillpod.android.sync.SubscriptionCloudAccess.instrumentation),"reason" to reason,"source" to source,"android_api" to Build.VERSION.SDK_INT)
-            attributes.putAll((correlation ?: DiagnosticCorrelation()).fields())
-            attributes["observed_at_ms"]=observedAt
-            attributes["emitted_at_ms"]=System.currentTimeMillis()
-            synchronized(lock) {
-                val tick=observedTick
-                if(name in setOf("voice.started","playback.buffering","playback.service_started"))timings[name]=tick
-                val start=when(name){"voice.audio"->"voice.started";"playback.ready"->"playback.buffering";"playback.state"->"playback.service_started";else->null}
-                if(start!=null)timings.remove(start)?.let {attributes["stage_elapsed_ms"]=(tick-it).coerceAtLeast(0)}
-                if(name=="playback.state" && reason=="playing")timings["playing"]=tick
-                if(name=="playback.state" && reason=="paused" || name=="playback.service_stopped")timings.remove("playing")?.let {attributes["playing_ms"]=(tick-it).coerceAtLeast(0)}
-            }
-            operation?.takeIf {runCatching {UUID.fromString(it)}.isSuccess}?.let {attributes["operation_id"]=it}
-            related?.takeIf {runCatching {UUID.fromString(it)}.isSuccess}?.let {attributes[if(name=="capture.completed")"moment_id" else "transcript_id"]=it}
-            attempt?.takeIf {runCatching {UUID.fromString(it)}.isSuccess}?.let {attributes["attempt_id"]=it}
-            elapsedMs?.takeIf {it>=0}?.let {attributes["elapsed_ms"]=it}
-            val network=context.getSystemService(ConnectivityManager::class.java)
-            attributes["network"]=if(network.activeNetwork==null) "offline" else if(network.isActiveNetworkMetered) "metered" else "unmetered"
-            Sentry.logger().log(SentryLogLevel.INFO,SentryLogParameters.create(SentryAttributes.fromMap(attributes)),name)
-        }catch(_:Exception) {}
+    private fun eventNow(name:String, operation:String?, reason:String, source:String, elapsedMs:Long?,related:String?,attempt:String?,observedTick:Long,correlation:DiagnosticCorrelation?,observedAt:Long,expectedGeneration:Long) {
+        synchronized(lock) {
+            if(!enabled || !configured || generation!=expectedGeneration || !acceptsCorrelation(correlation))return
+            try {
+                // Categorical fields only. IDs must be random UUIDs, never hashes of content or URLs.
+                if(name !in EVENT_NAMES)return
+                if(reason !in REASONS || source !in setOf("background","phone","headphones","car"))return
+                val attributes=mutableMapOf<String,Any>("event_id" to UUID.randomUUID().toString(),"session_id" to session,"installation_id" to installation,"schema_version" to 1,"test_traffic" to (name.startsWith("diagnostics.") || dev.distillpod.android.sync.SubscriptionCloudAccess.instrumentation),"reason" to reason,"source" to source,"android_api" to Build.VERSION.SDK_INT)
+                attributes.putAll((correlation ?: DiagnosticCorrelation()).fields())
+                attributes["observed_at_ms"]=observedAt
+                attributes["emitted_at_ms"]=System.currentTimeMillis()
+                synchronized(lock) {
+                    val tick=observedTick
+                    if(name in setOf("voice.started","playback.buffering","playback.service_started"))timings[name]=tick
+                    val start=when(name){"voice.audio"->"voice.started";"playback.ready"->"playback.buffering";"playback.state"->"playback.service_started";else->null}
+                    if(start!=null)timings.remove(start)?.let {attributes["stage_elapsed_ms"]=(tick-it).coerceAtLeast(0)}
+                    if(name=="playback.state" && reason=="playing")timings["playing"]=tick
+                    if(name=="playback.state" && reason=="paused" || name=="playback.service_stopped")timings.remove("playing")?.let {attributes["playing_ms"]=(tick-it).coerceAtLeast(0)}
+                }
+                operation?.takeIf {runCatching {UUID.fromString(it)}.isSuccess}?.let {attributes["operation_id"]=it}
+                related?.takeIf {runCatching {UUID.fromString(it)}.isSuccess}?.let {attributes[if(name=="capture.completed")"moment_id" else "transcript_id"]=it}
+                attempt?.takeIf {runCatching {UUID.fromString(it)}.isSuccess}?.let {attributes["attempt_id"]=it}
+                elapsedMs?.takeIf {it>=0}?.let {attributes["elapsed_ms"]=it}
+                val network=context.getSystemService(ConnectivityManager::class.java)
+                attributes["network"]=if(network.activeNetwork==null) "offline" else if(network.isActiveNetworkMetered) "metered" else "unmetered"
+                Sentry.logger().log(SentryLogLevel.INFO,SentryLogParameters.create(SentryAttributes.fromMap(attributes)),name)
+            }catch(_:Exception) {}
+        }
     }
     /** Intentional handled failure through the same path used by real operations. */
     fun test() {
@@ -334,20 +349,23 @@ class Diagnostics(private val context: Context, private val dsn:String = context
     }
     fun failure(stage:String,error:Throwable,operation:String?=null,source:String="background",correlation:DiagnosticCorrelation?=null) {
         event("$stage.failed",operation,reason(error),source=source,correlation=correlation)
-        if(!enabled || !configured || error is kotlinx.coroutines.CancellationException)return
-        try {
-            // Copy stack frames, never message/cause/suppressed payloads from the original throwable.
-            val safe=RuntimeException("Diagnostic failure: ${reason(error)}").also {it.stackTrace=error.stackTrace}
-            Sentry.captureException(safe) { scope ->
-                scope.setTag("stage",stage)
-                (correlation ?: DiagnosticCorrelation()).fields().forEach { (key,value) -> scope.setTag(key,value.toString()) }
-                scope.setTag("source",source.takeIf {it in OperationJournal.SOURCES} ?: "background")
-                scope.setTag("test_traffic",(stage=="diagnostics" || dev.distillpod.android.sync.SubscriptionCloudAccess.instrumentation).toString())
-                scope.setTag("reason",reason(error))
-                scope.setTag("exception_type",error.javaClass.name.take(160))
-                operation?.takeIf {runCatching {UUID.fromString(it)}.isSuccess}?.let {scope.setTag("operation_id",it)}
-            }
-        }catch(_:Exception) {}
+        if(!enabled || !configured || !acceptsCorrelation(correlation) || error is kotlinx.coroutines.CancellationException)return
+        synchronized(lock) {
+            if(!enabled || !acceptsCorrelation(correlation))return
+            try {
+                // Copy stack frames, never message/cause/suppressed payloads from the original throwable.
+                val safe=RuntimeException("Diagnostic failure: ${reason(error)}").also {it.stackTrace=error.stackTrace}
+                Sentry.captureException(safe) { scope ->
+                    scope.setTag("stage",stage)
+                    (correlation ?: DiagnosticCorrelation()).fields().forEach { (key,value) -> scope.setTag(key,value.toString()) }
+                    scope.setTag("source",source.takeIf {it in OperationJournal.SOURCES} ?: "background")
+                    scope.setTag("test_traffic",(stage=="diagnostics" || dev.distillpod.android.sync.SubscriptionCloudAccess.instrumentation).toString())
+                    scope.setTag("reason",reason(error))
+                    scope.setTag("exception_type",error.javaClass.name.take(160))
+                    operation?.takeIf {runCatching {UUID.fromString(it)}.isSuccess}?.let {scope.setTag("operation_id",it)}
+                }
+            }catch(_:Exception) {}
+        }
     }
     internal fun uploaded() { prefs.edit().putString("last_upload",java.time.Instant.now().toString()).apply();status.value="Last upload: ${java.text.DateFormat.getDateTimeInstance().format(java.util.Date())}" }
     companion object {

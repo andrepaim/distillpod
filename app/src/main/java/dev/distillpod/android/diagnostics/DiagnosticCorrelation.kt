@@ -21,10 +21,12 @@ data class DiagnosticCorrelation(
     val transcriptChanged: Boolean? = null,
     val modelChanged: Boolean? = null,
     val promptChanged: Boolean? = null,
-    val candidateReused: Boolean? = null
+    val candidateReused: Boolean? = null,
+    /** In-process consent guard only; never serialized to telemetry or the operation journal. */
+    val collectionEpoch: String? = null
 ) {
     init {
-        ids().forEach { it?.let { value ->
+        (ids()+collectionEpoch).forEach { it?.let { value ->
             require(UUID.fromString(value).toString() == value && UUID.fromString(value).version() == 4) {
                 "Correlation identifiers must be canonical random UUIDs"
             }

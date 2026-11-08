@@ -63,9 +63,10 @@ class CaptureRepositoryTest {
     }
     @Test fun `capture correlation persists original request and explicit retry ancestry`() = runBlocking {
         val db=database()
+        val diagnostics=enabledDiagnostics()
         try {
             seed(db)
-            val repo=CaptureRepository(db,ai("unused"),{false},{},{})
+            val repo=CaptureRepository(db,ai("unused"),{false},{},{},diagnostics=diagnostics)
             val id=repo.capture("ep",10000,true)
             val first=db.library().momentAttempt(db.library().distillation(id)!!.attempt)!!
             val metadata=JSONObject(first.contextJson).getJSONObject("_diagnostics")
@@ -83,7 +84,7 @@ class CaptureRepositoryTest {
             assertEquals(request,next.getString("capture_request_id"))
             assertEquals("expanded_context",next.getString("retry_trigger"))
             assertTrue(JSONObject(retry.contextJson).getBoolean("expanded"))
-        } finally {db.close()}
+        } finally {diagnostics.consent(false);db.close()}
     }
     @Test fun `cancel resume keeps execution ownership and suppresses the old response`()=runBlocking {
         val db=database()
@@ -122,6 +123,7 @@ class CaptureRepositoryTest {
     }
     @Test fun `review resume retains generation identity but has new execution evidence`()=runBlocking {
         val db=database()
+        val diagnostics=enabledDiagnostics()
         try {
             seed(db)
             var generations=0;var reviews=0
@@ -136,7 +138,7 @@ class CaptureRepositoryTest {
                     return AiText("""{"outcome":"ready","passageStart":0,"passageEnd":0,"takeaway":"A supported idea","quoteStart":null,"quoteEnd":null}""","test-model")
                 }
             }
-            val repo=CaptureRepository(db,gateway,{true},{},{})
+            val repo=CaptureRepository(db,gateway,{true},{},{},diagnostics=diagnostics)
             val id=repo.capture("ep",10000,true)
             repo.run(id)
             val first=db.library().momentAttempt(db.library().distillation(id)!!.attempt)!!
@@ -148,7 +150,7 @@ class CaptureRepositoryTest {
             assertEquals(true,correlation.candidateReused)
             assertEquals(1,generations);assertEquals(2,reviews)
             assertEquals("succeeded",db.library().distillation(id)!!.state)
-        } finally {db.close()}
+        } finally {diagnostics.consent(false);db.close()}
     }
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     @Test fun `worker suspended after claim cannot adopt a resumed workers execution`()=runBlocking {
@@ -191,6 +193,49 @@ class CaptureRepositoryTest {
             release.complete(Unit);current.join()
             assertEquals("succeeded",db.library().distillation(id)!!.state)
         } finally {release.complete(Unit);dispatcher.scheduler.advanceUntilIdle();diagnostics.consent(false);db.close()}
+    }
+    private fun enabledDiagnostics():dev.distillpod.android.diagnostics.Diagnostics {
+        val context=ApplicationProvider.getApplicationContext<Context>()
+        androidx.work.testing.WorkManagerTestInitHelper.initializeTestWorkManager(context)
+        return dev.distillpod.android.diagnostics.Diagnostics(context,"https://abc123@o1.ingest.sentry.io/1").also {
+            it.consent(false);it.consent(true)
+        }
+    }
+    @Test fun `disabled diagnostics never adds provenance and later consent leaves capture incomplete`()=runBlocking {
+        val db=database();val diagnostics=enabledDiagnostics()
+        diagnostics.consent(false)
+        try {
+            seed(db)
+            val repo=CaptureRepository(db,ai("unused"),{false},{},{},diagnostics=diagnostics)
+            val id=repo.capture("ep",10000,true)
+            val saved=db.library().momentAttempt(db.library().distillation(id)!!.attempt)!!
+            assertFalse(JSONObject(saved.contextJson).has("_diagnostics"))
+            diagnostics.consent(true)
+            val c=repo.correlation(saved)
+            assertNull(c.captureRequestId);assertNull(c.previousAttemptId)
+            assertEquals("unknown",c.retryTrigger)
+            assertEquals(false,c.fields()["correlation_complete"])
+        } finally {diagnostics.consent(false);db.close()}
+    }
+    @Test fun `revoked provenance and in flight evidence cannot reappear after new consent`()=runBlocking {
+        val db=database();val diagnostics=enabledDiagnostics()
+        try {
+            seed(db)
+            val repo=CaptureRepository(db,ai("unused"),{false},{},{},diagnostics=diagnostics)
+            val id=repo.capture("ep",10000,true)
+            val saved=db.library().momentAttempt(db.library().distillation(id)!!.attempt)!!
+            val old=repo.correlation(saved)
+            assertNotNull(old.captureRequestId)
+            assertFalse(old.fields().toString().contains(old.collectionEpoch!!))
+            diagnostics.consent(false);diagnostics.consent(true)
+            val fresh=repo.correlation(saved)
+            assertNotEquals(old.collectionEpoch,fresh.collectionEpoch)
+            assertNull(fresh.captureRequestId);assertNull(fresh.previousAttemptId)
+            diagnostics.event("distillation.finished",id,reason="succeeded",correlation=old)
+            diagnostics.awaitIdle()
+            assertFalse(diagnostics.queue.files().any {it.readText().contains(old.captureRequestId!!)})
+            assertFalse(diagnostics.journal.latest().any {it.operation==id})
+        } finally {diagnostics.consent(false);db.close()}
     }
     private fun database() = Room.inMemoryDatabaseBuilder(ApplicationProvider.getApplicationContext<Context>(), AppDatabase::class.java).build()
     private suspend fun seed(db: AppDatabase) {
