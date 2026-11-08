@@ -38,6 +38,29 @@ import java.util.concurrent.atomic.AtomicInteger
 class SearchDesignDeviceTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
 
+    @Test fun audioAndVideoFiltersKeepPendingProviderVisible() = runBlocking<Unit> {
+        val rows = listOf(PodcastCandidate("Audio fixture", "Publisher", "https://example.test/audio", null),
+            PodcastCandidate("Video fixture", "Publisher", "https://www.youtube.com/@fixture/videos", null, "YouTube · channel"))
+        val state = mutableStateOf(SearchState(results = rows.take(1), loading = true, submittedQuery = "fixture", loadingProviders = setOf("youtube")))
+        withContext(Dispatchers.Main) { compose.activity.setContent {
+            DistillTheme { Surface { SearchScreen("fixture", state.value, emptyList(), emptyList(), emptySet(),
+                {}, {}, {}, {}, {}, {}) } }
+        } }
+        compose.onNodeWithText("Video", substring = false).performClick()
+        compose.onNodeWithText("Audio fixture").assertDoesNotExist()
+        compose.onNodeWithText("Searching YouTube…").assertIsDisplayed()
+        compose.runOnIdle { state.value = state.value.copy(results = rows, loading = false, loadingProviders = emptySet()) }
+        compose.onNodeWithText("Video fixture").assertIsDisplayed()
+        compose.onNodeWithText("Audio fixture").assertDoesNotExist()
+        compose.onNodeWithText("Audio", substring = false).performClick()
+        compose.onNodeWithText("Audio fixture").assertIsDisplayed()
+        compose.onNodeWithText("Video fixture").assertDoesNotExist()
+        compose.onNodeWithText("All", substring = false).performClick()
+        compose.onNodeWithText("Audio fixture").assertIsDisplayed()
+        compose.onNodeWithTag("Podcast search results").performScrollToNode(hasText("Video fixture"))
+        compose.onNodeWithText("Video fixture").assertIsDisplayed()
+    }
+
     @Test fun partialProviderResultsStayVisibleAndRetryTargetsOnlyTheFailedProvider() = runBlocking<Unit> {
         val state = mutableStateOf(SearchState(results = listOf(PodcastCandidate("Fast podcast", "Fixture", "https://example.test/feed", null)),
             loading = true, submittedQuery = "science", loadingProviders = setOf("youtube")))

@@ -4,6 +4,15 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class YouTubeUrlTest {
+    @org.junit.Test fun `channels canonicalize to the latest videos tab without tracking parameters`() {
+        org.junit.Assert.assertEquals("https://www.youtube.com/channel/UC1234567890123456789012/videos",
+            YouTubeUrl.source("https://www.youtube.com/channel/UC1234567890123456789012?view=0"))
+        org.junit.Assert.assertEquals("https://www.youtube.com/@portadosfundos/videos",
+            YouTubeUrl.source("https://www.youtube.com/@portadosfundos/featured?si=tracking"))
+        org.junit.Assert.assertNull(YouTubeUrl.source("https://www.youtube.com/@portadosfundos/unknown"))
+        org.junit.Assert.assertNull(YouTubeUrl.source("https://youtu.be/@portadosfundos"))
+    }
+
     @Test fun `shared links use a stable public video identity`() {
         val expected = "https://www.youtube.com/watch?v=heoWstJTwu4"
         listOf("https://youtu.be/heoWstJTwu4?si=tracking", "https://m.youtube.com/watch?v=heoWstJTwu4&t=60",
