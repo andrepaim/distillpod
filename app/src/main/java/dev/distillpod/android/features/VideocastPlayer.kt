@@ -52,7 +52,7 @@ private tailrec fun Context.activity(): Activity? = when (this) {
 
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 @Composable internal fun VideocastPlayer(playback: PlaybackRepository, episodeId: String,
-    title: String = "", onFullscreen: (Boolean) -> Unit = {}, onCapture: () -> Unit = {}, captureBusy: Boolean = false,
+    title: String = "", fullscreenExitRequest: Int = 0, onFullscreen: (Boolean) -> Unit = {}, onCapture: () -> Unit = {}, captureBusy: Boolean = false,
     onVoice: () -> Unit = {}, onToggle: (() -> Unit)? = null, onSeek: ((Long) -> Unit)? = null, voiceEnabled: Boolean = false, voiceActive: Boolean = false,
     audioOnlyArtwork: @Composable () -> Unit) {
     var player by remember { mutableStateOf<Player?>(null) }
@@ -63,6 +63,9 @@ private tailrec fun Context.activity(): Activity? = when (this) {
     var firstFrame by remember(episodeId) { mutableStateOf(false) }
     var presentation by remember(episodeId) { mutableStateOf(VideoPresentation()) }
     val fullscreen = video && presentation.fullscreen
+    LaunchedEffect(fullscreenExitRequest) {
+        if (presentation.fullscreen) presentation = presentation.exit()
+    }
     val notifyFullscreen by rememberUpdatedState(onFullscreen)
     SideEffect { notifyFullscreen(fullscreen) }
     DisposableEffect(episodeId) { onDispose { notifyFullscreen(false) } }

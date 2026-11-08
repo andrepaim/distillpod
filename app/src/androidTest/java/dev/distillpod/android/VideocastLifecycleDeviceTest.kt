@@ -80,9 +80,14 @@ class VideocastLifecycleDeviceTest {
             graph.playback.pause(); graph.playback.speed(1.25f)
             awaitPlayer("paused and prepared") { !it.isPlaying && it.playbackState == Player.STATE_READY }
             val position = withContext(Dispatchers.Main) { player.currentPosition }
-            withContext(Dispatchers.Main) { compose.activity.setContent {
-                DistillTheme { Surface { Column(Modifier.padding(48.dp)) { VideocastPlayer(playback, tag, audioOnlyArtwork = {}) } } }
-            } }
+            withContext(Dispatchers.Main) {
+                if (fullscreen) {
+                    // Exercise the application's navigation BackHandler as well as the player.
+                    androidx.lifecycle.ViewModelProvider(compose.activity, AppViewModel.factory(graph))[AppViewModel::class.java].open("player")
+                } else compose.activity.setContent {
+                    DistillTheme { Surface { Column(Modifier.padding(48.dp)) { VideocastPlayer(playback, tag, audioOnlyArtwork = {}) } } }
+                }
+            }
             compose.waitUntil(10_000) { compose.onAllNodesWithText("Video", useUnmergedTree = true).fetchSemanticsNodes().size == 1 }
             compose.onNodeWithText("Video", useUnmergedTree = true).performClick()
             compose.waitForIdle()

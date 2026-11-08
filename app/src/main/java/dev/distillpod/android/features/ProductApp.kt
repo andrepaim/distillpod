@@ -73,6 +73,7 @@ private fun date(ms: Long) = if (ms <= 0) "" else DateTimeFormatter.ofPattern("d
     val stack by vm.backStack.collectAsStateWithLifecycle()
     val route = stack.last()
     var videoFullscreen by remember { mutableStateOf(false) }
+    var fullscreenExitRequest by remember { mutableIntStateOf(0) }
     LaunchedEffect(route) { if (route != "player") videoFullscreen = false }
     val podcasts by vm.podcasts.collectAsStateWithLifecycle()
     val episodes by vm.episodes.collectAsStateWithLifecycle()
@@ -87,7 +88,9 @@ private fun date(ms: Long) = if (ms <= 0) "" else DateTimeFormatter.ofPattern("d
     val snackbar = remember { SnackbarHostState() }
     val screenState = rememberSaveableStateHolder()
     LaunchedEffect(Unit) { for (message in vm.messages) snackbar.showSnackbar(message) }
-    BackHandler(stack.size > 1) { vm.back() }
+    BackHandler(stack.size > 1 || videoFullscreen) {
+        if (videoFullscreen) fullscreenExitRequest++ else vm.back()
+    }
     val title = when {
         route == "library" -> "DistillPod"
         route == "search" -> "Discover"
@@ -146,7 +149,7 @@ private fun date(ms: Long) = if (ms <= 0) "" else DateTimeFormatter.ofPattern("d
                     route == "shows" -> ShowsPage(vm, podcasts)
                     route == "settings" || route.startsWith("settings:") -> SettingsPage(vm, preferences, account, models, episodes, route.substringAfter(':', "overview"))
                     route == "backup" -> BackupPage(vm)
-                    route == "player" -> PlayerPage(vm, episodes.firstOrNull { it.id == player.episodeId }, podcasts, player) { videoFullscreen = it }
+                    route == "player" -> PlayerPage(vm, episodes.firstOrNull { it.id == player.episodeId }, podcasts, player, fullscreenExitRequest) { videoFullscreen = it }
                     route.startsWith("episode:") -> EpisodePage(vm, episodes.firstOrNull { it.id == route.substringAfter(':') }, podcasts, player)
                     route.startsWith("capture:") -> CapturePage(vm, captures.firstOrNull { it.id == route.substringAfter(':') }, episodes)
                     route.startsWith("transcript:") -> TranscriptPage(vm, episodes.firstOrNull { it.id == route.substringAfter(':') })
@@ -315,7 +318,7 @@ private fun date(ms: Long) = if (ms <= 0) "" else DateTimeFormatter.ofPattern("d
 }
 
 @OptIn(ExperimentalLayoutApi::class)
-@Composable private fun PlayerPage(vm: AppViewModel, ep: EpisodeEntity?, podcasts: List<PodcastEntity>, player: PlaybackState, onFullscreen: (Boolean) -> Unit) {
+@Composable private fun PlayerPage(vm: AppViewModel, ep: EpisodeEntity?, podcasts: List<PodcastEntity>, player: PlaybackState, fullscreenExitRequest: Int, onFullscreen: (Boolean) -> Unit) {
     if (ep == null) { Empty("Pick an episode", "Choose something from your library to start listening.", "Open library", { vm.root("library") }); return }
     val podcast = podcasts.firstOrNull { it.id == ep.podcastId }
     var dragging by remember(ep.id) { mutableStateOf<Float?>(null) }
@@ -325,7 +328,7 @@ private fun date(ms: Long) = if (ms <= 0) "" else DateTimeFormatter.ofPattern("d
     VoicePlayerHost(vm, showLastAnswer = !fullscreen) { voiceEnabled, voiceActive, ask ->
         Column(Modifier.fillMaxSize().then(if (fullscreen) Modifier else Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 8.dp)), verticalArrangement = Arrangement.spacedBy(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             if (ep.mimeType?.startsWith("video/") == true) {
-                VideocastPlayer(vm.graph.playback, ep.id, title = ep.title,
+                VideocastPlayer(vm.graph.playback, ep.id, title = ep.title, fullscreenExitRequest = fullscreenExitRequest,
                     onFullscreen = { fullscreen = it; onFullscreen(it) },
                     onCapture = vm::captureMomentInPlayer, captureBusy = "distill" in busy,
                     onVoice = ask, onToggle = vm::toggle, onSeek = vm::seek, voiceEnabled = voiceEnabled, voiceActive = voiceActive) { Cover(ep.imageUrl ?: podcast?.imageUrl, Modifier.size(196.dp)) }

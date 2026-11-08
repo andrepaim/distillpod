@@ -184,9 +184,24 @@ class OwnerVideocastDeviceTest {
                     device.click(device.displayWidth / 2, device.displayHeight / 2)
                     clickDescription("Pause video"); await { !it.playWhenReady }
                     assertTrue(device.pressBack())
-                    assertTrue(device.wait(androidx.test.uiautomator.Until.hasObject(androidx.test.uiautomator.By.desc("Enter fullscreen")), 15_000))
+                    val inline = device.wait(androidx.test.uiautomator.Until.hasObject(androidx.test.uiautomator.By.desc("Enter fullscreen")), 15_000)
+                    if (!inline) {
+                        val route = withContext(Dispatchers.Main) {
+                            androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry.getInstance()
+                                .getActivitiesInStage(androidx.test.runner.lifecycle.Stage.RESUMED).filterIsInstance<MainActivity>().firstOrNull()?.let {
+                                    androidx.lifecycle.ViewModelProvider(it, dev.distillpod.android.features.AppViewModel.factory(graph))[dev.distillpod.android.features.AppViewModel::class.java].backStack.value.last().substringBefore(':')
+                                } ?: "not_resumed"
+                        }
+                        receipt("back_failure", JSONObject().put("route", route))
+                    }
+                    assertTrue("Back must return to the inline player", inline)
                     await { C.TRACK_TYPE_VIDEO !in it.trackSelectionParameters.disabledTrackTypes }
-                    receipt("experience", JSONObject().put("portaVideoDecoded", true).put("landscapeFullscreen", true)
+                    clickDescription("Enter fullscreen")
+                    assertTrue(device.wait(androidx.test.uiautomator.Until.hasObject(androidx.test.uiautomator.By.desc("Exit fullscreen")), 10_000))
+                    assertTrue(device.pressHome())
+                    await { C.TRACK_TYPE_VIDEO in it.trackSelectionParameters.disabledTrackTypes &&
+                        it.currentMediaItem?.localConfiguration?.uri?.getQueryParameter("distillpod_video") == null }
+                    receipt("experience", JSONObject().put("backgroundRestoresAudio", true).put("portaVideoDecoded", true).put("landscapeFullscreen", true)
                         .put("samePlaybackSource", true).put("seekCaptureAndOverlay", true).put("backExitsFullscreen", true)
                         .put("paidVoiceRequest", false))
                 } finally { restore() }
@@ -297,6 +312,8 @@ class OwnerVideocastDeviceTest {
             JSONObject().put("queue", JSONArray((0 until c.mediaItemCount).map { c.getMediaItemAt(it).mediaId }))
                 .put("current", c.currentMediaItem?.mediaId ?: "").put("position", c.currentPosition.coerceAtLeast(0))
                 .put("speed", c.playbackParameters.speed.toDouble()).put("volume", c.volume.toDouble()).put("playing", c.playWhenReady)
+                .put("video", c.currentMediaItem?.localConfiguration?.uri?.getQueryParameter("distillpod_video") == "1")
+                .put("videoDisabled", C.TRACK_TYPE_VIDEO in c.trackSelectionParameters.disabledTrackTypes)
                 .put("automatic", prefs.transcribeOnPlayback)
         }
         backup.parentFile!!.mkdirs()
@@ -372,7 +389,11 @@ class OwnerVideocastDeviceTest {
             c.pause(); c.clearMediaItems()
             if (episodes.isNotEmpty()) {
                 val index = episodes.indexOfFirst { it.id == old.getString("current") }.coerceAtLeast(0)
-                c.setMediaItems(episodes.map { mediaItem(it, podcasts[it.podcastId]) }, index, old.getLong("position")); c.prepare()
+                c.setMediaItems(episodes.mapIndexed { itemIndex, episode ->
+                    dev.distillpod.android.playback.videocastMediaItem(episode, podcasts[episode.podcastId], itemIndex == index && old.optBoolean("video"))
+                }, index, old.getLong("position"))
+                c.trackSelectionParameters = c.trackSelectionParameters.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, old.optBoolean("videoDisabled", true)).build()
+                c.prepare()
             }
             c.setPlaybackSpeed(old.getDouble("speed").toFloat()); c.volume = old.getDouble("volume").toFloat()
             if (old.optBoolean("playing") && episodes.isNotEmpty()) c.play()

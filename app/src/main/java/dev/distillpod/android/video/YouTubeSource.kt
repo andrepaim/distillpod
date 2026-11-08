@@ -44,9 +44,6 @@ class AndroidYouTubeExtractor(private val context: Context,
                         .addOption("--socket-timeout", 12).addOption("--retries", 0).addOption("--extractor-retries", 0)
                     if (flat) request.addOption("--flat-playlist").addOption("--playlist-end", limit)
                     else request.addOption("--no-playlist")
-                        // Playback consumes direct HTTPS audio/H.264 formats only. Do not fetch
-                        // HLS/DASH manifests whose formats selectStreams will discard anyway.
-                        .addOption("--extractor-args", "youtube:skip=hls,dash")
                     val response = YoutubeDL.getInstance().execute(request, id, null)
                     require(response.out.length <= 10_000_000) { "YouTube response is too large" }
                     JSONObject(response.out)
