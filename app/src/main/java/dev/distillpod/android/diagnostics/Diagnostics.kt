@@ -259,9 +259,7 @@ class Diagnostics(private val context: Context, private val dsn:String = context
         if(name !in EVENT_NAMES || reason !in REASONS || source !in OperationJournal.SOURCES)return
         val observedAt=System.currentTimeMillis()
         // Capture the context before asynchronous emission; never attach a newer run to an old event.
-        val snapshot=synchronized(lock) {
-            correlation ?: journal.latest().lastOrNull {it.operation==operation}?.correlation
-        }
+        val snapshot=correlation
         synchronized(lock) {if(enabled)runCatching {observe(name,operation,reason,source,attempt,snapshot,observedAt)}}
         val epoch=generation
         val observedTick=android.os.SystemClock.elapsedRealtime()
@@ -329,7 +327,7 @@ class Diagnostics(private val context: Context, private val dsn:String = context
         private val EVENT_NAMES=setOf("youtube.extraction_started","youtube.extraction_completed","youtube.extraction_failed","youtube.extraction_retry","youtube.stream_refreshed","videocast.video_requested","videocast.audio_restored","videocast.first_frame","videocast.failed","videocast.download_validated","transcription.quality","diagnostics.health","operation.summary","usage.feature","transcription.partial","transcription.paused","transcription.cancelled","distillation.cancelled","voice.recording","voice.text","voice.audio","voice.resumed","voice.resume_failed","playback.buffering","playback.ready","playback.focus","playback.route","app.started","diagnostics.test","diagnostics.failed","headphone.received","headphone.rejected","headphone.previous","headphone.next",
             "capture.started","capture.completed","capture.requested","capture.accepted","capture.saved","capture.waiting","capture.transcript_link","capture.prepared","capture.failed",
             "transcription.dependency","transcription.started","transcription.stage","transcription.queued","transcription.completed","transcription.failed",
-            "distillation.queued","distillation.started","distillation.finished","distillation.failed","playback.service_started","playback.service_stopped","playback.state","playback.failed",
+            "distillation.discarded","distillation.queued","distillation.started","distillation.finished","distillation.failed","playback.service_started","playback.service_stopped","playback.state","playback.failed",
             "voice.started","voice.finished","voice.failed","sync.finished","sync.failed","worker.failed")
         private val REASONS=setOf("restricted","throttled","formats","busy","partial","superseded","reconciled","process_interrupted","buffering","ended","resume_succeeded","resume_failed","none","created","deduplicated","transcript_required","waiting","waiting_auth","waiting_quota","waiting_transcript","queued","unknown",
             "no_speech","needs_context","review_source","unclear_source","succeeded","failed","ready","rejected","disabled","accepted","duplicate","cancelled","repeat","untrusted",

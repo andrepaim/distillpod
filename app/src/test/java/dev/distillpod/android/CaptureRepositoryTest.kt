@@ -60,6 +60,95 @@ class CaptureRepositoryTest {
             assertNotNull(db.library().distillation(id))
         } finally {db.close()}
     }
+    @Test fun `capture correlation persists original request and explicit retry ancestry`() = runBlocking {
+        val db=database()
+        try {
+            seed(db)
+            val repo=CaptureRepository(db,ai("unused"),{false},{},{})
+            val id=repo.capture("ep",10000,true)
+            val first=db.library().momentAttempt(db.library().distillation(id)!!.attempt)!!
+            val metadata=JSONObject(first.contextJson).getJSONObject("_diagnostics")
+            val request=metadata.getString("capture_request_id")
+            assertEquals("initial",metadata.getString("retry_trigger"))
+            assertFalse(MomentGeneration.input(first.contextJson).contains("_diagnostics"))
+            assertFalse(MomentGeneration.input(first.contextJson).contains(request))
+            assertEquals(id,repo.save("ep",10000,true))
+            assertEquals(request,JSONObject(db.library().momentAttempt(first.id)!!.contextJson).getJSONObject("_diagnostics").getString("capture_request_id"))
+            repo.improve(id,true)
+            val retry=db.library().momentAttempt(db.library().distillation(id)!!.attempt)!!
+            val next=JSONObject(retry.contextJson).getJSONObject("_diagnostics")
+            assertNotEquals(first.id,retry.id)
+            assertEquals(first.id,next.getString("previous_attempt_id"))
+            assertEquals(request,next.getString("capture_request_id"))
+            assertEquals("expanded_context",next.getString("retry_trigger"))
+            assertTrue(JSONObject(retry.contextJson).getBoolean("expanded"))
+        } finally {db.close()}
+    }
+    @Test fun `cancel resume keeps execution ownership and suppresses the old response`()=runBlocking {
+        val db=database()
+        try {
+            seed(db)
+            var id=""
+            var generations=0
+            var reviews=0
+            var firstRun=""
+            var secondRun=""
+            lateinit var repo:CaptureRepository
+            val gateway=object:AiGateway {
+                override suspend fun complete(instructions:String,input:String,onDelta:(String)->Unit):AiText {
+                    if(instructions==MomentGeneration.reviewPrompt) {reviews++;return AiText(review,"review-model")}
+                    generations++
+                    val current=db.library().momentAttempt(db.library().distillation(id)!!.attempt)!!
+                    if(generations==1) {
+                        firstRun=current.run
+                        repo.cancel(id);repo.generate(id);repo.run(id)
+                        return AiText("""{"outcome":"ready","passageStart":0,"passageEnd":0,"takeaway":"Old response","quoteStart":null,"quoteEnd":null}""","old-model")
+                    }
+                    secondRun=current.run
+                    return AiText("""{"outcome":"ready","passageStart":0,"passageEnd":0,"takeaway":"Current response","quoteStart":null,"quoteEnd":null}""","new-model")
+                }
+            }
+            repo=CaptureRepository(db,gateway,{true},{},{})
+            id=repo.capture("ep",10000,true)
+            val attemptId=db.library().distillation(id)!!.attempt
+            repo.run(id)
+            assertNotEquals(firstRun,secondRun)
+            assertEquals(attemptId,db.library().distillation(id)!!.attempt)
+            assertEquals("Current response",db.library().distillation(id)!!.insight)
+            assertEquals(2,generations);assertEquals(1,reviews)
+            assertEquals(secondRun,db.library().momentAttempt(attemptId)!!.run)
+        } finally {db.close()}
+    }
+    @Test fun `review resume retains generation identity but has new execution evidence`()=runBlocking {
+        val db=database()
+        try {
+            seed(db)
+            var generations=0;var reviews=0
+            val gateway=object:AiGateway {
+                override suspend fun complete(instructions:String,input:String,onDelta:(String)->Unit):AiText {
+                    if(instructions==MomentGeneration.reviewPrompt) {
+                        reviews++
+                        if(reviews==1)throw java.io.IOException("synthetic")
+                        return AiText(review,"review-model")
+                    }
+                    generations++
+                    return AiText("""{"outcome":"ready","passageStart":0,"passageEnd":0,"takeaway":"A supported idea","quoteStart":null,"quoteEnd":null}""","test-model")
+                }
+            }
+            val repo=CaptureRepository(db,gateway,{true},{},{})
+            val id=repo.capture("ep",10000,true)
+            repo.run(id)
+            val first=db.library().momentAttempt(db.library().distillation(id)!!.attempt)!!
+            repo.generate(id);repo.run(id)
+            val resumed=db.library().momentAttempt(db.library().distillation(id)!!.attempt)!!
+            assertEquals(first.id,resumed.id);assertNotEquals(first.run,resumed.run)
+            val correlation=repo.correlation(resumed)
+            assertEquals("review_resume",correlation.retryTrigger)
+            assertEquals(true,correlation.candidateReused)
+            assertEquals(1,generations);assertEquals(2,reviews)
+            assertEquals("succeeded",db.library().distillation(id)!!.state)
+        } finally {db.close()}
+    }
     private fun database() = Room.inMemoryDatabaseBuilder(ApplicationProvider.getApplicationContext<Context>(), AppDatabase::class.java).build()
     private suspend fun seed(db: AppDatabase) {
         val dao = db.library()

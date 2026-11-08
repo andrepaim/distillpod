@@ -53,12 +53,38 @@ class CorrelationContractTest {
         assertEquals(first.generationAttemptId,retry.previousAttemptId)
         assertEquals(true,retry.fields()["transcript_changed"])
     }
+    @Test fun `late uncorrelated callback never acquires the current execution`() {
+        val journal=OperationJournal(File(folder.root,"journal"))
+        val c=DiagnosticCorrelation(momentId=id(),generationAttemptId=id(),executionId=id())
+        journal.transition("distillation",c.momentId!!,"running",correlation=c)
+        journal.transition("distillation",c.momentId,"completed")
+        assertEquals("running",journal.latest().single().state)
+        assertEquals(1,journal.pending().size)
+    }
+    @Test fun `completed moment accepts preparation of explicitly new generation`() {
+        val journal=OperationJournal(File(folder.root,"journal"))
+        val c=DiagnosticCorrelation(momentId=id(),generationAttemptId=id(),executionId=id())
+        journal.transition("distillation",c.momentId!!,"running",correlation=c)
+        journal.transition("distillation",c.momentId,"completed",correlation=c)
+        journal.transition("distillation",c.momentId,"waiting",correlation=c.copy(generationAttemptId=id(),executionId=id(),previousAttemptId=c.generationAttemptId))
+        assertEquals("waiting",journal.latest().single().state)
+    }
     @Test fun `legacy identity never becomes a fabricated generation link`() {
         val journal=OperationJournal(File(folder.root,"journal"))
         journal.transition("distillation",id(),"running")
         assertNull(journal.latest().single().correlation)
         assertEquals(false,DiagnosticCorrelation().fields()["correlation_complete"])
         assertFalse(DiagnosticCorrelation().fields().containsKey("generation_attempt_id"))
+    }
+    @Test fun `recovery retains identity and comparison unknowns without fabricating a retry`() {
+        val file=File(folder.root,"journal")
+        val c=DiagnosticCorrelation(momentId=id(),generationAttemptId=id(),executionId=id(),retryTrigger="review_resume",candidateReused=true)
+        OperationJournal(file).transition("distillation",c.momentId!!,"running",correlation=c)
+        val reopened=OperationJournal(file)
+        reopened.recover {_,_->"queued"}
+        assertEquals(c,reopened.latest().single().correlation)
+        assertNull(reopened.latest().single().correlation!!.modelChanged)
+        assertTrue(reopened.pending().any {it.state=="interrupted"})
     }
     @Test(expected=IllegalArgumentException::class) fun `reject content identifiers`() {
         DiagnosticCorrelation(momentId="private transcript")
