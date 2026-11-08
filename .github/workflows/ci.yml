@@ -80,7 +80,11 @@ jobs:
       - name: Validate release tooling
         run: python3 -m unittest discover -s scripts -p 'test_*.py'
       - name: Test, lint and build
-        run: ./gradlew --no-daemon :core:test :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 scripts/fetch_youtube_extractor.py --output app/build/generated/youtube/res/raw/ytdlp.bin
+          ./gradlew --no-daemon :core:test :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
       - name: Validate opt-in voice configuration
         run: |
           ./gradlew --no-daemon :app:testDebugUnitTest :app:lintDebug :app:assembleDebug -PdistillpodVoiceEnabled=true
@@ -169,7 +173,10 @@ jobs:
       - name: Install cloud emulator tools
         run: npm ci --prefix firebase --ignore-scripts --no-audit --no-fund
       - name: Prepare verified public inference fixtures
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
+          python3 scripts/fetch_youtube_extractor.py --output app/build/generated/youtube/res/raw/ytdlp.bin
           scripts/prepare-fixtures.sh /tmp/distillpod-fixtures
           sdkmanager 'platforms;android-35' 'build-tools;35.0.0' 'ndk;27.2.12479018' 'cmake;3.22.1'
       - name: Enable emulator acceleration

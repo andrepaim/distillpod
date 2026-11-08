@@ -53,7 +53,8 @@ class AppViewModel(val graph: AppGraph, private val saved: SavedStateHandle) : V
     }
 
     val player = graph.playback.state
-    private val directorySearch = PodcastSearch(viewModelScope, graph.podcasts::search, graph.settings::rememberSearch)
+    private val directorySearch = PodcastSearch(viewModelScope, graph.podcasts::search, graph.settings::rememberSearch,
+        graph.podcasts.searchProviderNames, graph.podcasts::searchProviders)
     val search = directorySearch.state
     val recentSearches = graph.settings.recentSearches.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     val busy = MutableStateFlow<Set<String>>(emptySet())
@@ -88,6 +89,7 @@ class AppViewModel(val graph: AppGraph, private val saved: SavedStateHandle) : V
         if (isFeedAddress(text)) { subscribe(text); return }
         directorySearch.submit(text)
     }
+    fun retrySearch(provider: String) = directorySearch.retry(provider)
     fun subscribe(url: String) = action("subscribe:$url") {
         val candidate = search.value.results.firstOrNull { it.feedUrl == url }
         val id = if (candidate != null) graph.podcasts.follow(candidate) else graph.podcasts.subscribe(url); messages.send("Subscribed"); open("podcast:$id")

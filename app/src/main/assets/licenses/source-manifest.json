@@ -1,0 +1,28 @@
+{
+  "components": [
+    {
+      "repository": "yausername/youtubedl-android",
+      "version": "0.18.1",
+      "commit": "d725d5c9a18c3a99a13ee0308bf78275dc310760",
+      "source": "https://codeload.github.com/yausername/youtubedl-android/tar.gz/d725d5c9a18c3a99a13ee0308bf78275dc310760",
+      "sha256": "cf3b5bc27da8ed34bb562c3f6ba8c758721291f2acbddfec698b5070c6c496f3",
+      "bytes": 218946985
+    },
+    {
+      "repository": "yt-dlp/yt-dlp",
+      "version": "2026.10.26",
+      "commit": "f264a6cbd1f630894da0f368df00f8aae50140e0",
+      "source": "https://codeload.github.com/yt-dlp/yt-dlp/tar.gz/f264a6cbd1f630894da0f368df00f8aae50140e0",
+      "sha256": "958a811c7b0ffa187ff7a92051af28e8b87fa1febbb2a6239d24bfc917b55ad0",
+      "bytes": 3085727
+    },
+    {
+      "repository": "yt-dlp/ejs",
+      "version": "0.8.0",
+      "commit": "4fb477f4af56880cfd324c48bd4294a2d2294e50",
+      "source": "https://codeload.github.com/yt-dlp/ejs/tar.gz/4fb477f4af56880cfd324c48bd4294a2d2294e50",
+      "sha256": "47830f927650be514ec13c90b0e15fffbc8c462675d01c4a201632fae7ebdcfc",
+      "bytes": 101641
+    }
+  ]
+}

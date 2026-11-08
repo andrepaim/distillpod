@@ -126,6 +126,38 @@
         "h": 3,
         "minH": 3
       }
+    },
+    {
+      "title": "YouTube and videocast events",
+      "displayType": "table",
+      "widgetType": "logs",
+      "interval": "1h",
+      "queries": [
+        {
+          "name": "",
+          "fields": [
+            "message",
+            "reason",
+            "count_unique(event_id)"
+          ],
+          "columns": [
+            "message",
+            "reason"
+          ],
+          "aggregates": [
+            "count_unique(event_id)"
+          ],
+          "conditions": "tags[schema_version,number]:1 !tags[test_traffic,boolean]:true message:[youtube.extraction_started,youtube.extraction_completed,youtube.extraction_failed,youtube.extraction_retry,youtube.stream_refreshed,videocast.video_requested,videocast.audio_restored,videocast.first_frame,videocast.failed,videocast.download_validated]",
+          "orderby": "-count_unique(event_id)"
+        }
+      ],
+      "layout": {
+        "x": 0,
+        "y": 12,
+        "w": 6,
+        "h": 3,
+        "minH": 3
+      }
     }
   ]
 }

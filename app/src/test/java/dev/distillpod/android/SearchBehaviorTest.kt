@@ -23,6 +23,47 @@ import java.io.File
 @Config(sdk = [34])
 class SearchBehaviorTest {
     private val candidate = PodcastCandidate("New result", "Creator", "https://example.com/feed", null)
+    @Test fun `partial results remain visible and retry only replaces the failed provider`() = runBlocking<Unit> {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val release = CompletableDeferred<Unit>()
+        val calls = mutableListOf<String?>()
+        val extra = candidate.copy(title = "Video", feedUrl = "https://www.youtube.com/playlist?list=abcdefghijk")
+        try {
+            val search = PodcastSearch(scope, { error("Streaming path expected") }, providers = linkedSetOf("apple", "youtube"),
+                findProviders = { _, only, publish ->
+                    calls += only
+                    if (only == null) {
+                        publish(ProviderSearchResult("apple", listOf(candidate)))
+                        release.await(); publish(ProviderSearchResult("youtube", failed = true))
+                    } else publish(ProviderSearchResult("youtube", listOf(extra)))
+                })
+            search.submit("shows")
+            assertEquals(listOf(candidate), search.state.value.results)
+            assertTrue(search.state.value.loading)
+            assertEquals(setOf("youtube"), search.state.value.loadingProviders)
+            release.complete(Unit); yield()
+            assertEquals(setOf("youtube"), search.state.value.failedProviders)
+            assertEquals(listOf(candidate), search.state.value.results)
+            search.retry("youtube")
+            assertEquals(listOf(null, "youtube"), calls)
+            assertEquals(listOf(candidate, extra), search.state.value.results)
+            assertTrue(search.state.value.failedProviders.isEmpty())
+        } finally { release.complete(Unit); scope.cancel() }
+    }
+
+    @Test fun `late provider result cannot replace a newer query`() = runBlocking<Unit> {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val release = CompletableDeferred<Unit>()
+        try {
+            val search = PodcastSearch(scope, { emptyList() }, providers = setOf("apple"), findProviders = { term, _, publish ->
+                if (term == "old") withContext(NonCancellable) { release.await() }
+                publish(ProviderSearchResult("apple", listOf(candidate.copy(title = term))))
+            })
+            search.submit("old"); search.submit("new"); release.complete(Unit); yield()
+            assertEquals("new", search.state.value.results.single().title)
+            assertFalse(search.state.value.loading)
+        } finally { release.complete(Unit); scope.cancel() }
+    }
     @Test fun `canceling search cancels its underlying network call`() = runBlocking<Unit> {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()

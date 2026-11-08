@@ -40,7 +40,7 @@ import dev.distillpod.android.data.PodcastEntity
     val busy by vm.busy.collectAsStateWithLifecycle()
     SearchScreen(query, state, recent, podcasts, busy, vm::query,
         { term -> vm.query(term); vm.search() }, vm::clearSearches, vm::subscribe,
-        { vm.open("podcast:$it") }, { vm.open("recommendations") })
+        { vm.open("podcast:$it") }, { vm.open("recommendations") }, vm::retrySearch)
 }
 
 private data class SearchTopic(val name: String, val icon: ImageVector)
@@ -51,7 +51,7 @@ private val topics = listOf(SearchTopic("Technology", Icons.Default.Memory), Sea
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable internal fun SearchScreen(query: String, state: SearchState, recent: List<String>, podcasts: List<PodcastEntity>, busy: Set<String>,
     onQuery: (String) -> Unit, onSearch: (String) -> Unit, onClearRecent: () -> Unit, onFollow: (String) -> Unit,
-    onOpenPodcast: (String) -> Unit, onExplore: () -> Unit) {
+    onOpenPodcast: (String) -> Unit, onExplore: () -> Unit, onRetryProvider: (String) -> Unit = {}) {
     val keyboard = LocalSoftwareKeyboardController.current
     val focus = LocalFocusManager.current
     var preview by remember { mutableStateOf<PodcastCandidate?>(null) }
@@ -85,7 +85,7 @@ private val topics = listOf(SearchTopic("Technology", Icons.Default.Memory), Sea
         }
         LazyColumn(state = list, modifier = Modifier.weight(1f).testTag("Podcast search results"), contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 6.dp, bottom = 20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             when {
-                state.loading -> item {
+                state.loading && state.results.isEmpty() -> item {
                     SearchMessage("Searching podcasts", "Looking for “${state.submittedQuery.orEmpty()}”…")
                     LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 16.dp))
                 }
@@ -145,6 +145,15 @@ private val topics = listOf(SearchTopic("Technology", Icons.Default.Memory), Sea
                     }
                 }
             }
+            state.loadingProviders.forEach { provider -> item(key = "loading:$provider") {
+                Text("Searching ${if (provider == "youtube") "YouTube" else "Apple Podcasts"}…", style = MaterialTheme.typography.bodySmall)
+            } }
+            state.failedProviders.forEach { provider -> item(key = "failed:$provider") {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("${if (provider == "youtube") "YouTube" else "Apple Podcasts"} is unavailable.", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+                    TextButton(onClick = { onRetryProvider(provider) }, enabled = !state.loading) { Text("Retry") }
+                }
+            } }
             item {
                 TextButton(onClick = { keyboard?.hide(); rssDraft = query.takeIf(::isFeedAddress) ?: ""; rss = true }) {
                     Icon(Icons.Default.RssFeed, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("Add RSS feed")
@@ -170,8 +179,8 @@ private val topics = listOf(SearchTopic("Technology", Icons.Default.Memory), Sea
         Column(Modifier.fillMaxWidth().imePadding().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Icon(Icons.Default.RssFeed, null, tint = MaterialTheme.colorScheme.secondary)
             Text("Add a podcast feed", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
-            Text("Paste a public RSS feed address to add the show directly.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            OutlinedTextField(rssDraft, { rssDraft = it.take(2048) }, label = { Text("RSS feed URL") }, modifier = Modifier.fillMaxWidth(), maxLines = 3)
+            Text("Paste a public RSS feed, YouTube playlist or video link.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            OutlinedTextField(rssDraft, { rssDraft = it.take(2048) }, label = { Text("RSS or YouTube URL") }, modifier = Modifier.fillMaxWidth().testTag("Feed address"), maxLines = 3)
             Button(onClick = { rss = false; onQuery(rssDraft.trim()); onFollow(rssDraft.trim()) }, enabled = isFeedAddress(rssDraft) && !adding,
                 modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) { Text("Add feed") }
         }

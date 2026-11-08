@@ -7,6 +7,13 @@ import dev.distillpod.core.parseFeedStream
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
+import dev.distillpod.core.YouTubeUrl
+import dev.distillpod.android.video.YouTubeSource
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
@@ -15,6 +22,7 @@ import org.json.JSONObject
 import java.time.Instant
 
 data class PodcastCandidate(val title: String, val author: String, val feedUrl: String, val imageUrl: String?, val category: String = "")
+data class ProviderSearchResult(val provider: String, val results: List<PodcastCandidate> = emptyList(), val failed: Boolean = false)
 
 fun publicHttpUrl(raw: String): HttpUrl = raw.trim().toHttpUrl().newBuilder().fragment(null).build().also {
     require(it.username.isEmpty() && it.password.isEmpty()) { "Feed URLs with embedded passwords are not supported" }
@@ -31,14 +39,48 @@ fun okhttp3.ResponseBody.boundedText(limit: Int = 10_000_000): String {
 class PodcastRepository(private val db: AppDatabase, private val http: OkHttpClient,
     private val directory: HttpUrl = "https://itunes.apple.com/search".toHttpUrl(),
     private val onSubscriptionChanged: () -> Unit = {},
-    private val onFeedNeeded: (String) -> Unit = {}) {
+    private val onFeedNeeded: (String) -> Unit = {},
+    private val youtube: YouTubeSource? = null) {
     private val dao = db.library()
     private val subscriptionSync = dev.distillpod.android.sync.SubscriptionSyncStore(db)
     suspend fun search(query: String): List<PodcastCandidate> = withContext(Dispatchers.IO) {
         require(query.trim().length in 2..200) { "Enter at least two characters" }
+        if (youtube == null) return@withContext searchDirectory(query)
+        val received = java.util.concurrent.CopyOnWriteArrayList<ProviderSearchResult>()
+        searchProviders(query, publish = { received.add(it) })
+        val results = received.flatMap { it.results }.distinctBy { it.feedUrl }
+            .sortedByDescending { it.title.equals(query.trim(), ignoreCase = true) }
+        if (results.isEmpty() && received.any { it.failed }) throw java.io.IOException("Search could not finish. Please retry.")
+        results
+    }
+
+    val searchProviderNames get() = if (youtube == null) setOf("apple") else setOf("apple", "youtube")
+
+    /** Each provider publishes immediately; a slow or failed peer cannot hide its results. */
+    suspend fun searchProviders(query: String, only: String? = null, publish: (ProviderSearchResult) -> Unit) = withContext(Dispatchers.IO) {
+        require(query.trim().length in 2..200) { "Enter at least two characters" }
+        require(only == null || only in searchProviderNames)
+        coroutineScope {
+            searchProviderNames.filter { only == null || it == only }.forEach { provider -> launch {
+                val result = try {
+                    val rows = withTimeout(if (provider == "apple") 30_000L else 45_000L) {
+                        if (provider == "apple") searchDirectory(query) else youtube!!.search(query.trim())
+                    }
+                    ProviderSearchResult(provider, rows)
+                } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+                    kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                    ProviderSearchResult(provider, failed = true)
+                } catch (e: CancellationException) { throw e }
+                catch (_: Exception) { ProviderSearchResult(provider, failed = true) }
+                publish(result)
+            } }
+        }
+    }
+
+    private suspend fun searchDirectory(query: String): List<PodcastCandidate> {
         val url = directory.newBuilder().addQueryParameter("term", query.trim()).addQueryParameter("media", "podcast")
             .addQueryParameter("entity", "podcast").addQueryParameter("country", "BR").addQueryParameter("limit", "30").build()
-        suspendCancellableCoroutine { continuation ->
+        return suspendCancellableCoroutine { continuation ->
             val call = http.newCall(Request.Builder().url(url).build())
             continuation.invokeOnCancellation { call.cancel() }
             call.enqueue(object : okhttp3.Callback {
@@ -64,6 +106,7 @@ class PodcastRepository(private val db: AppDatabase, private val http: OkHttpCli
     }
 
     suspend fun follow(candidate: PodcastCandidate): String = withContext(Dispatchers.IO) {
+        if (YouTubeUrl.source(candidate.feedUrl) != null) return@withContext subscribe(candidate.feedUrl)
         val url=publicHttpUrl(candidate.feedUrl).toString()
         val old=dao.podcastByUrl(url)
         val value=old?.copy(subscribed=true) ?: PodcastEntity(episodeId("podcast",url),url,candidate.title,
@@ -75,13 +118,26 @@ class PodcastRepository(private val db: AppDatabase, private val http: OkHttpCli
     }
 
     suspend fun subscribe(rawUrl: String): String = withContext(Dispatchers.IO) {
-        val url = publicHttpUrl(rawUrl).toString()
+        val youtubeUrl = YouTubeUrl.source(rawUrl)
+        val url = youtubeUrl ?: publicHttpUrl(rawUrl).toString()
         val existing = dao.podcastByUrl(url)
         if (existing != null) {
             subscriptionSync.follow(existing.copy(subscribed = true))
             onSubscriptionChanged()
             try { refresh(existing.id) } catch(cancelled:kotlinx.coroutines.CancellationException) { throw cancelled } catch(_:Exception) { /* Follow remains saved offline. */ }
             return@withContext existing.id
+        }
+        if (youtubeUrl != null) {
+            val source = requireNotNull(youtube) { "YouTube support is unavailable" }
+            val id = episodeId("podcast", url)
+            val feed = source.feed(id, url)
+            db.withTransaction {
+                subscriptionSync.follow(PodcastEntity(id, url, feed.title, feed.author, feed.description, feed.imageUrl,
+                    originalFeedUrl = url, websiteUrl = url, refreshedAt = System.currentTimeMillis()))
+                saveEpisodes(id, feed.episodes)
+            }
+            onSubscriptionChanged()
+            return@withContext id
         }
         http.newCall(Request.Builder().url(url).build()).execute().use { response ->
             check(response.isSuccessful) { "Could not load that feed. Check the URL and connection." }
@@ -102,6 +158,16 @@ class PodcastRepository(private val db: AppDatabase, private val http: OkHttpCli
     suspend fun refresh(id: String) = withContext(Dispatchers.IO) {
         val podcast = dao.podcast(id) ?: return@withContext
         try {
+            YouTubeUrl.source(podcast.feedUrl)?.let { url ->
+                val feed = requireNotNull(youtube) { "YouTube support is unavailable" }.feed(id, url)
+                db.withTransaction {
+                    val latest = dao.podcast(id) ?: return@withTransaction
+                    dao.putPodcast(latest.copy(title = feed.title, author = feed.author, description = feed.description,
+                        imageUrl = feed.imageUrl, websiteUrl = url, refreshedAt = System.currentTimeMillis(), error = null))
+                    saveEpisodes(id, feed.episodes)
+                }
+                return@withContext
+            }
             val request = Request.Builder().url(publicHttpUrl(podcast.feedUrl)).apply {
                 podcast.etag?.let { header("If-None-Match", it) }
                 podcast.lastModified?.let { header("If-Modified-Since", it) }

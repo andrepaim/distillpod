@@ -38,6 +38,24 @@ import java.util.concurrent.atomic.AtomicInteger
 class SearchDesignDeviceTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
 
+    @Test fun partialProviderResultsStayVisibleAndRetryTargetsOnlyTheFailedProvider() = runBlocking<Unit> {
+        val state = mutableStateOf(SearchState(results = listOf(PodcastCandidate("Fast podcast", "Fixture", "https://example.test/feed", null)),
+            loading = true, submittedQuery = "science", loadingProviders = setOf("youtube")))
+        var retried: String? = null
+        withContext(Dispatchers.Main) { compose.activity.setContent {
+            DistillTheme { Surface { SearchScreen("science", state.value, emptyList(), emptyList(), emptySet(),
+                onQuery = {}, onSearch = { error("Provider retry must not resubmit the complete search") }, onClearRecent = {},
+                onFollow = {}, onOpenPodcast = {}, onExplore = {}, onRetryProvider = { retried = it }) } }
+        } }
+        compose.onNodeWithText("Fast podcast").assertIsDisplayed()
+        compose.onNodeWithTag("Podcast search results").performScrollToNode(hasText("Searching YouTube…"))
+        compose.onNodeWithText("Searching YouTube…").assertIsDisplayed()
+        compose.runOnIdle { state.value = state.value.copy(loading = false, loadingProviders = emptySet(), failedProviders = setOf("youtube")) }
+        compose.onNodeWithTag("Podcast search results").performScrollToNode(hasText("Retry"))
+        compose.onNodeWithText("Retry").performClick()
+        assertEquals("youtube", retried)
+    }
+
     @Test fun thumbnailPreviewFollowRetryHistoryRssAndLargeText() = runBlocking<Unit> {
         val graph = compose.activity.applicationContext.appGraph
         graph.ready.await()
@@ -124,7 +142,7 @@ class SearchDesignDeviceTest {
             assertTrue(recent.value.isEmpty())
             compose.onNodeWithTag("Podcast search results").performScrollToNode(hasText("Add RSS feed"))
             compose.onNodeWithText("Add RSS feed").performClick()
-            compose.onNodeWithText("RSS feed URL").performTextInput(server.url("/feed-$id").toString())
+            compose.onNodeWithTag("Feed address").performTextInput(server.url("/feed-$id").toString())
             compose.onNodeWithText("Add feed", substring = false).performScrollTo().performClick()
             compose.waitUntil(10000) { draft.value == server.url("/feed-$id").toString() && followed.value.size == 1 }
             assertEquals(created, graph.db.library().podcastByUrl(server.url("/feed-$id").toString())!!.id)

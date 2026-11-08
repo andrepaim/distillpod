@@ -67,6 +67,8 @@ import org.json.JSONArray
         Text("Skip marked ads", Modifier.weight(1f))
         Switch(enabled, { vm.skipEpisodeAds(ep.id, it) })
     }
+    if (dev.distillpod.core.YouTubeUrl.videoId(ep.audioUrl) != null)
+        Text("Ad skipping works in Audio mode using this episode’s download.", style = MaterialTheme.typography.bodySmall)
     if (showReview) TextButton(onClick = { vm.open("analysis:${ep.id}") }) { Text("Review marked ads") }
 }
 
