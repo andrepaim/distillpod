@@ -18,6 +18,14 @@ account identifier, URL, model name, or content hash is included.
   `capture.transcript_link` and `transcription.dependency` explicitly connect a
   moment/attempt to a revision created or replaced after initial capture.
 
+New diagnostic provenance is collected only while configured diagnostic reporting
+is enabled. A private consent epoch invalidates previously collected local
+provenance on revoke/re-enable, without Room calls from diagnostic locks. Old
+metadata may remain in untouched local attempt rows but is ignored and removed
+when touched. Epochs are excluded from telemetry, journal serialization, AI input,
+and backups. In-flight evidence from a revoked epoch is not emitted under new
+consent. Functional attempt/run IDs remain ordinary application state.
+
 The original capture request and previous attempt are retained in local attempt
 provenance through preparation and restarts. This local metadata is stripped from
 AI prompt input and is not part of portable source records. Legacy records are
