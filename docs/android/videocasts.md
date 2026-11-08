@@ -20,7 +20,7 @@ player or backgrounding the app restores audio mode. Public RSS video enclosures
 the video surface. YouTube video uses a separate H.264 track up to 720p with the original
 audio track; auto-dubs have lower priority. Background audio, queue and position remain
 owned by the existing Media3 service. Queue transitions reset the next episode to audio mode.
-Queue edits preserve the current video selection. Offline YouTube downloads contain audio only.
+Queue edits preserve the current video selection. Offline YouTube downloads contain audio only. Reviewed ad skipping for YouTube uses that download in Audio mode; streamed Video is not skipped. Show automation uses the same first-refresh baseline and future-discovery rules as RSS, including entries whose publication dates are unknown.
 
 Subscriptions store canonical playlist URLs and episodes store canonical watch URLs. Video
 IDs determine episode identity. Temporary Google CDN URLs are resolved on the loading thread,

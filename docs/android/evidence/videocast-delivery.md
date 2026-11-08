@@ -32,3 +32,7 @@ The release owner additionally requires a measured 60-minute locked, USB-powered
 ## Cloud observations
 
 Actual S22 extraction and transcription-stage events were observed through the connected Sentry tools under the configured staging release. The playback dashboard's new YouTube/videocast widget was deployed, read back and its production query executed successfully. Test traffic is excluded; event counts are not inferred success-rate denominators. No raw audio, transcript, video identifiers, titles, URLs or extractor output are included in these reports.
+
+## Integration with current main
+
+Main `9ccd4ba` adds show automation, per-episode ad preferences and schema 10. The combined feature branch retains those changes, adds deterministic coverage for YouTube baseline/future-discovery admission, and explains the downloaded-Audio scope of YouTube ad skipping. Final combined checks, in-place S22 database preservation and candidate validation are recorded in PR #16. The original hour trial remains evidence for installed revision `6320edc`, rather than proof of every later combination.

@@ -44,6 +44,30 @@ class OwnerVideocastDeviceTest {
         check(android.os.Build.MODEL == "SM-S908E") { "Owner acceptance is restricted to the authorized S22 model" }
         graph.ready.await()
         when (args.getString("videocastPhase")) {
+            "inventory" -> {
+                val db = graph.db.openHelper.readableDatabase
+                val inventory = JSONObject()
+                db.query("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT IN ('android_metadata','room_master_table') ORDER BY name").use { tables ->
+                    while (tables.moveToNext()) {
+                        val table = tables.getString(0)
+                        require(Regex("[a-z_]+").matches(table))
+                        val keys = mutableListOf<Pair<Int, String>>()
+                        db.query("PRAGMA table_info(`$table`)").use { columns ->
+                            while (columns.moveToNext()) if (columns.getInt(5) > 0) keys.add(columns.getInt(5) to columns.getString(1))
+                        }
+                        val names = keys.sortedBy { it.first }.map { "`${it.second}`" }
+                        check(names.isNotEmpty())
+                        val values = mutableListOf<String>()
+                        db.query("SELECT ${names.joinToString(" || ':' || ") { "quote($it)" }} FROM `$table` ORDER BY ${names.joinToString()}").use { rows ->
+                            while (rows.moveToNext()) values.add(rows.getString(0))
+                        }
+                        val hash = java.security.MessageDigest.getInstance("SHA-256").digest(values.joinToString("\n").toByteArray(Charsets.UTF_8))
+                            .joinToString("") { "%02x".format(it) }
+                        inventory.put(table, JSONObject().put("rows", values.size).put("keysSha256", hash))
+                    }
+                }
+                receipt("inventory", JSONObject().put("schema", db.version).put("tables", inventory))
+            }
             "live" -> {
                 unmetered(); snapshot()
                 try {

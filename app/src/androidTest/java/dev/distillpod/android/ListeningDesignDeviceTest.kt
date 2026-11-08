@@ -125,7 +125,9 @@ class ListeningDesignDeviceTest {
             await { c.currentMediaItem?.mediaId == ids[2] }
             delay(1500)
             dao.markCompleted(ids[0], true)
-            compose.waitUntil(10000) { compose.onAllNodesWithText("Nothing in progress").fetchSemanticsNodes().isNotEmpty() }
+            compose.waitUntil(10000) { vm.episodes.value.firstOrNull { it.id == ids[0] }?.completed == true }
+            // Show controls and large text can put this lazy item outside the viewport.
+            compose.onNode(hasScrollAction()).performScrollToNode(hasText("Nothing in progress"))
             compose.onNodeWithText("Show latest").performScrollTo().performClick()
             compose.onNode(hasScrollAction()).performScrollToNode(hasText(titles[0]))
             compose.onNodeWithText(titles[0]).assertIsDisplayed()

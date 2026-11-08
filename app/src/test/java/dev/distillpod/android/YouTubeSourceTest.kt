@@ -45,6 +45,31 @@ class YouTubeSourceTest {
     }
     private val playlist = "https://www.youtube.com/playlist?list=PLaE_mZALZ0V3lAEAvIfZC-aKf2ATIY3uy"
     private val video = "https://www.youtube.com/watch?v=heoWstJTwu4"
+    @Test fun `YouTube automation baselines unknown dates and admits future discoveries only once`() = runBlocking {
+        val db = Room.inMemoryDatabaseBuilder(ApplicationProvider.getApplicationContext<Context>(), AppDatabase::class.java).build()
+        var fresh = false
+        val youtube = YouTubeSource { _, _, _ -> JSONObject().put("title", "Show").put("entries", org.json.JSONArray().apply {
+            put(JSONObject().put("id", "heoWstJTwu4").put("title", "Existing episode"))
+            if (fresh) put(JSONObject().put("id", "abcdefghijk").put("title", "New discovery"))
+        }) }
+        try {
+            val repo = PodcastRepository(db, OkHttpClient(), youtube = youtube)
+            val id = repo.subscribe(playlist)
+            assertTrue(db.automation().jobs().isEmpty())
+            db.automation().putShow(ShowAutomationEntity(id, System.currentTimeMillis()))
+            repo.refresh(id)
+            assertTrue(db.automation().show(id)!!.initialized)
+            assertTrue(db.automation().jobs().isEmpty())
+            fresh = true
+            repo.refresh(id); repo.refresh(id)
+            val job = db.automation().jobs().single()
+            assertEquals("abcdefghijk", db.library().episode(job.episodeId)!!.guid)
+            assertEquals(0L, db.library().episode(job.episodeId)!!.publishedAt)
+            db.automation().disable(id); db.automation().deleteJobs(id)
+            repo.refresh(id)
+            assertTrue(db.automation().jobs().isEmpty())
+        } finally { db.close() }
+    }
     private fun source() = YouTubeSource { url, _, _ ->
         if (url.contains("/results?")) JSONObject("""{"entries":[{"title":"FALHA DE COBERTURA","channel":"Podpah TV","url":"$playlist"}]}""")
         else JSONObject("""{"title":"FALHA DE COBERTURA","channel":"Podpah TV","entries":[

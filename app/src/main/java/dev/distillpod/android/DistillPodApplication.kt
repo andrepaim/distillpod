@@ -79,6 +79,7 @@ class AppGraph(val context: Context) {
     val understanding by lazy { EpisodeUnderstanding(db, ai, jobs::analyze, jobs::reply) }
     val explanations by lazy { MomentExplanation(db, ai, jobs::explain) }
     val recommendations by lazy { Recommendations(db, settings, podcasts, http, ai, jobs::recommend, jobs::recommendationPending) }
+    val automation by lazy { ShowAutomation(this) }
     val ready = CompletableDeferred<Unit>()
     init {
         scope.launch(Dispatchers.IO) {
@@ -116,6 +117,7 @@ class AppGraph(val context: Context) {
                 }
             }
             jobs.configureRefresh(); transcription.recover(); ready.complete(Unit)
+            automation.observe()
             captures.resumeSaved()
         }
         catch (error: Exception) { ready.completeExceptionally(error) }
