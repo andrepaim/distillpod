@@ -589,7 +589,7 @@ private fun captureState(state: String) = when (state) { "waiting_transcript" ->
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf("auto" to "Auto", "en" to "English", "pt" to "Português").forEach { (key, title) -> FilterChip(selected = prefs.language == key, onClick = { vm.text("language", key) }, label = { Text(title) }) } }
         }
         if(section=="storage") {
-        SettingSwitch("Wi-Fi / unmetered downloads only", "Audio and model downloads wait for an unmetered network.", prefs.wifiOnly) { vm.flag("wifi", it) }
+        SettingSwitch("Wi-Fi / unmetered downloads only", "Queued audio, model downloads and online transcript preparation follow this policy. Work already running finishes its current attempt; retries use the new policy.", prefs.wifiOnly) { vm.flag("wifi", it) }
         SettingSwitch("Transcribe while charging", "Pause new transcription chunks until power is connected.", prefs.chargingOnly) { vm.flag("charging", it) }
         SettingSwitch("Refresh subscriptions", "Check your followed feeds periodically when Android permits.", prefs.refresh) { vm.flag("refresh", it) }
         RefreshIntervalControl(vm, prefs)
