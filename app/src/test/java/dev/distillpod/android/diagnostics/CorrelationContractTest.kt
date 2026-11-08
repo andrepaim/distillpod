@@ -69,6 +69,18 @@ class CorrelationContractTest {
         journal.transition("distillation",c.momentId,"waiting",correlation=c.copy(generationAttemptId=id(),executionId=id(),previousAttemptId=c.generationAttemptId))
         assertEquals("waiting",journal.latest().single().state)
     }
+    @Test fun `private consent marker is never persisted and cannot defeat duplicate replay detection`() {
+        val file=File(folder.root,"epoch")
+        val c=DiagnosticCorrelation(momentId=id(),generationAttemptId=id(),executionId=id(),collectionEpoch=id())
+        val journal=OperationJournal(file)
+        journal.transition("distillation",c.momentId!!,"running",correlation=c)
+        journal.transition("distillation",c.momentId,"completed",correlation=c)
+        assertNull(journal.latest().single().correlation!!.collectionEpoch)
+        assertFalse(file.readBytes().toString(Charsets.ISO_8859_1).contains(c.collectionEpoch!!))
+        val recovered=OperationJournal(file)
+        recovered.transition("distillation",c.momentId,"completed",correlation=c)
+        assertEquals(2,recovered.pending().size)
+    }
     @Test fun `version one journal rows remain readable and explicitly unlinked`() {
         val file=File(folder.root,"legacy")
         val operation=id()

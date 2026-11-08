@@ -32,7 +32,10 @@ class CaptureRepository(private val db: AppDatabase, private val ai: AiGateway, 
     /** Durable acceptance is independent from preparation, authorization and inference. */
     suspend fun save(id: String, position: Long, verifiedSource: Boolean, source:String="background"): String {
         val request=UUID.randomUUID().toString()
-        diagnostics?.event("capture.started",request,source=source,correlation=DiagnosticCorrelation(captureRequestId=request))
+        val requestEpoch=diagnostics?.correlationEpoch
+        val requestEvidence=DiagnosticCorrelation(captureRequestId=if(requestEpoch!=null)request else null,
+            collectionEpoch=requestEpoch ?: UUID.randomUUID().toString())
+        diagnostics?.event("capture.started",request,source=source,correlation=requestEvidence)
         try {
             require(position>=0) { "Playback position is invalid" }
             val ep = dao.episode(id) ?: error("Episode is unavailable")
@@ -42,20 +45,20 @@ class CaptureRepository(private val db: AppDatabase, private val ai: AiGateway, 
                     val fresh=DistillationEntity(UUID.randomUUID().toString(),id,(position-60000).coerceAtLeast(0),position,
                         fingerprint=if(verifiedSource)ep.mediaFingerprint else "unverified:${ep.id}",attempt=UUID.randomUUID().toString())
                     dao.putDistillation(fresh)
-                    dao.putMomentAttempt(MomentAttemptEntity(fresh.attempt,fresh.id,AttemptDiagnostics.context(false,request=request)))
+                    dao.putMomentAttempt(MomentAttemptEntity(fresh.attempt,fresh.id,AttemptDiagnostics.context(false,request=request,consentEpoch=requestEpoch?.takeIf {it==diagnostics?.correlationEpoch})))
                     portable.recordMoment(fresh)
                     fresh to true
                 }
             }
-            val correlation=dao.momentAttempt(saved.attempt)?.let { correlation(it) }?.copy(captureRequestId=request)
-                ?: DiagnosticCorrelation(captureRequestId=request,momentId=saved.id)
+            val correlation=dao.momentAttempt(saved.attempt)?.let { correlation(it) }?.copy(captureRequestId=requestEvidence.captureRequestId,collectionEpoch=requestEvidence.collectionEpoch)
+                ?: requestEvidence.copy(momentId=saved.id)
             diagnostics?.event("capture.completed",request,source=source,related=saved.id,correlation=correlation)
             diagnostics?.event("capture.saved",saved.id,reason=if(created) "created" else "deduplicated",source=source,correlation=correlation)
             onPortableChanged()
             if(created)try {onSaved(saved.id)}catch(_:Exception) { /* Optional feedback cannot fail a durable save. */ }
             return saved.id
         } catch(error:Exception) {
-            diagnostics?.event("capture.failed",request,reason=dev.distillpod.android.diagnostics.Diagnostics.reason(error),source=source,correlation=DiagnosticCorrelation(captureRequestId=request))
+            diagnostics?.event("capture.failed",request,reason=dev.distillpod.android.diagnostics.Diagnostics.reason(error),source=source,correlation=requestEvidence)
             throw error
         }
     }
@@ -68,8 +71,12 @@ class CaptureRepository(private val db: AppDatabase, private val ai: AiGateway, 
             try {prepareSaved(it.id)} catch(cancelled:CancellationException) {throw cancelled} catch(error:Exception) { diagnostics?.failure("capture",error,it.id) }
         }
     }
-    internal suspend fun correlation(attempt:MomentAttemptEntity,revision:String?=null):DiagnosticCorrelation =
-        AttemptDiagnostics.correlation(attempt,AttemptDiagnostics.previousId(attempt)?.let {dao.momentAttempt(it)},revision)
+    internal suspend fun correlation(attempt:MomentAttemptEntity,revision:String?=null):DiagnosticCorrelation {
+        val epoch=diagnostics?.correlationEpoch
+        val local=attempt.copy(contextJson=AttemptDiagnostics.forConsent(attempt.contextJson,epoch))
+        return AttemptDiagnostics.correlation(local,AttemptDiagnostics.previousId(local)?.let {dao.momentAttempt(it)},revision,epoch)
+            .copy(collectionEpoch=epoch ?: UUID.randomUUID().toString())
+    }
 
     private suspend fun hydrate(saved: DistillationEntity) {
         val ep = dao.episode(saved.episodeId) ?: return
@@ -116,7 +123,7 @@ class CaptureRepository(private val db: AppDatabase, private val ai: AiGateway, 
         val changed = db.withTransaction {
             val current=dao.distillation(saved.id)
             if(current?.state!="waiting_transcript" || current.attempt!=saved.attempt) false else {
-                dao.putMomentAttempt(attempt.copy(contextJson=AttemptDiagnostics.preserve(attempt.contextJson,MomentGeneration.contextJson(context,transcript.revision,ep.mediaFingerprint,original,expanded))))
+                dao.putMomentAttempt(attempt.copy(contextJson=AttemptDiagnostics.preserve(attempt.contextJson,MomentGeneration.contextJson(context,transcript.revision,ep.mediaFingerprint,original,expanded),diagnostics?.correlationEpoch)))
                 val updated=current.copy(excerpt=current.excerpt.ifBlank { raw },attempt=attempt.id,
                     revision=if(current.insight==null)transcript.revision else current.revision,state=state,
                     error=when(state) { "no_speech" -> "No transcribed speech was found in this window."; "needs_context" -> "No complete source segments fit this window. Expand the context."; else -> null })
@@ -140,7 +147,7 @@ class CaptureRepository(private val db: AppDatabase, private val ai: AiGateway, 
         val pending=db.withTransaction {
             val current=dao.distillation(id) ?: return@withTransaction null
             if(current.state in busy)return@withTransaction null
-            val attempt=MomentAttemptEntity(UUID.randomUUID().toString(),id,AttemptDiagnostics.context(expanded,previous=dao.momentAttempt(current.attempt),trigger=retryTrigger))
+            val attempt=MomentAttemptEntity(UUID.randomUUID().toString(),id,AttemptDiagnostics.context(expanded,previous=dao.momentAttempt(current.attempt),trigger=retryTrigger,consentEpoch=diagnostics?.correlationEpoch))
             dao.putMomentAttempt(attempt)
             current.copy(attempt=attempt.id,state="waiting_transcript",error=null).also { dao.putDistillation(it) }
         } ?: return
@@ -165,7 +172,7 @@ class CaptureRepository(private val db: AppDatabase, private val ai: AiGateway, 
         val queued=db.withTransaction {
             val current=dao.distillation(id) ?: return@withTransaction false
             if(current.attempt!=saved.attempt || current.state in busy)return@withTransaction false
-            dao.putMomentAttempt(attempt.copy(run=UUID.randomUUID().toString(),contextJson=AttemptDiagnostics.resume(attempt.contextJson,if(attempt.candidateJson.isNotBlank())"review_resume" else "explicit_retry")))
+            dao.putMomentAttempt(attempt.copy(run=UUID.randomUUID().toString(),contextJson=AttemptDiagnostics.resume(attempt.contextJson,if(attempt.candidateJson.isNotBlank())"review_resume" else "explicit_retry",diagnostics?.correlationEpoch)))
             dao.putDistillation(current.copy(state=if(connected())"queued" else "waiting_auth",fingerprint=if(current.insight==null)ep.mediaFingerprint else current.fingerprint,error=null));true
         }
         if(queued)diagnostics?.event("distillation.queued",id,reason=if(connected())"queued" else "waiting_auth",correlation=dao.momentAttempt(saved.attempt)?.let {correlation(it)})
@@ -210,7 +217,7 @@ class CaptureRepository(private val db: AppDatabase, private val ai: AiGateway, 
         val (saved,acquiredAttempt,claimedEvidence)=db.withTransaction {
             val current=dao.distillation(id)?.takeIf {it.state=="queued"} ?: return@withTransaction null
             val acquired=dao.momentAttempt(current.attempt)?.let { attempt ->
-                attempt.copy(run=UUID.randomUUID().toString(),contextJson=AttemptDiagnostics.executionContext(attempt)).also {dao.putMomentAttempt(it)}
+                attempt.copy(run=UUID.randomUUID().toString(),contextJson=AttemptDiagnostics.executionContext(attempt,diagnostics?.correlationEpoch)).also {dao.putMomentAttempt(it)}
             }
             dao.putDistillation(current.copy(state="running",error=null))
             val observed=runCatching {acquired?.let {correlation(it)}}.getOrNull()
