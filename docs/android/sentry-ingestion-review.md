@@ -25,19 +25,23 @@ Logs are also outside the data categories covered by its documented spike protec
 | Overage fields | Base plan `allowOnDemand=false`; error/log on-demand budgets and spend are 0 | Current observations show no paid error/log capacity allocated or used |
 | Other billing flags | `supportsOnDemand=true`, `onDemandDisabled=false`, `onDemandMaxSpend=null` | Do **not** describe this as a verified global zero-spend cap; confirm subscription controls before any future plan change |
 | Observed projects | One, `distillpod-android` | Staging and production currently share a project and organization capacity |
-| Client keys visible through MCP | One key named Default | Key value deliberately omitted; current active/rate-limit fields were not exposed by MCP |
+| Client key configuration | One Default key; active; `rateLimit=null` | No per-key rate limit is configured; DSN/key values deliberately omitted |
 | Project features reported by list endpoint | Includes rate limits and custom inbound filters during trial | This does not establish post-trial Developer entitlement or actual configured values |
 | Issue alerts | Two production reliability alerts plus two defaults; no metric monitors returned | Existing failure alerts are not quota or log-volume alarms |
 | Spike notification actions | Organization list returned no actions | No project spike notification action was configured at review time |
-| Project detail, key configuration, filters, spike configuration | Direct API returned HTTP 403 | Enabled settings and exact key limits remain **unverified**, not assumed off |
+| Spike-protection setting | Project option `quotas:spike-protection-disabled=false` | Enabled as a setting, but ineffective during the active trial; not a logs protection |
+| Filter lists | IP, release, error-message, log-message and metric-name lists are empty | No custom patterns or source-IP blocks configured in these lists |
+| Built-in filters | `filtered-transaction` active; browser-extension, legacy-browser, localhost and web-crawler filters inactive; JavaScript hydration/chunk-load options enabled | These do not establish meaningful Android error/log flood protection |
 | Spend notification preferences / automatic budget increases | Not exposed by the inspected responses | Default provider behavior is not evidence of the account's current recipient/threshold settings |
 
-The read credential can inspect billing and aggregate outcomes, but needs
-`project:read` access to complete the project-setting inventory. MCP can list key
-names but does not return their configuration. The owner must verify personal
-notification delivery preferences separately if no read interface exposes them.
-Until these checks are supplied, issue #27 remains open; this report is a useful
-partial review rather than a claim that all acceptance criteria are satisfied.
+The initial credential could inspect billing and aggregate outcomes but returned
+403 for project settings. After the owner replaced it with a credential including
+`project:read`, project details, filters and key configuration were read successfully.
+The organization's separate spike endpoint remained inaccessible, but the project
+option above provides the enabled-setting evidence. The current credential still
+cannot read the owner's personal notification settings (global user endpoints
+returned 403). Spend thresholds/delivery and personal spike preferences need an
+owner readout or appropriate read access. Until then, issue #27 remains open.
 
 ## Observed ingestion
 
@@ -107,11 +111,12 @@ These are proposals, not settings applied by this review.
    maximum or zero historical spend as a contractual hard cap. Recheck after trial
    expiry and before any subscription change. Accept losing telemetry at exhaustion
    instead of purchasing unapproved capacity.
-2. Once project settings are readable, record the actual Default-key limit,
-   enabled inbound filters and spike toggle. Retain harmless built-ins; do not
+2. Retain the verified active key and enabled spike setting; no key limit or custom
+   filter is currently configured. Retain harmless built-ins; do not
    block mobile-carrier IPs, countries, releases or broad message patterns without
-   identifying collateral loss. After trial expiry, enable error spike protection
-   if available and add an owner-only notification action with delivery enabled.
+   identifying collateral loss. After trial expiry, recheck that error spike
+   protection remains available/enabled and add an owner-only notification action
+   with delivery enabled.
    This requires a separately authorized configuration change.
 3. Review usage daily through trial expiry and weekly thereafter while volumes stay
    low. Investigate more than **50 errors/day**, more than **5 MB of logs/day**, or
@@ -175,17 +180,20 @@ These are proposals, not settings applied by this review.
 
 ## Evidence and remaining blocker
 
-Provider reads: organization/project list, customer subscription metadata, seven-day
-stats summary, per-category dropped-event tools, aggregate environment searches,
-client-key names, alert inventory and spike-notification actions. Project details,
-key settings, filters and spike configuration returned 403 with the existing read
-credential. Personal spend/spike notification preferences were not verified.
+Provider reads: organization/project list/details, customer subscription metadata,
+seven-day stats summary, per-category dropped-event tools, aggregate environment
+searches, client-key configuration, filter settings, alert inventory and spike
+notification actions. Project details,
+key settings and filters initially returned 403; these were verified after the
+owner supplied project-read access. The separate organization spike endpoint still
+returned 403; project settings provided the spike toggle. Personal spend/spike
+notification endpoints returned 403 and their preferences remain unverified.
 
 No synthetic submissions were needed. No app behavior changed, so no Android build,
 emulator or phone checks are claimed for this documentation increment. Validation is
 source/document accuracy, local links, `git diff --check`, PR checks, and the applicable
-combined-commit CI/security workflow. Completing the missing inventory requires
-project-settings read access and owner confirmation of notification preferences;
+combined-commit CI/security workflow. Completing the remaining inventory requires
+owner confirmation/read access for spend and personal spike notification preferences;
 leave #27 open until that evidence is recorded.
 
 ## Official references (checked November 8, 2026)
