@@ -41,8 +41,8 @@ def _open_readonly(request,timeout):
     # Refuse before sending credentials to any redirected endpoint.
     return urllib.request.build_opener(_NoRedirect()).open(request,timeout=timeout)
 
-def collect_window(token, organization, project_id, environment, start, end,
-                   max_rows=10000,max_pages=100):
+def _collect_columns(token, organization, project_id, environment, start, end,
+                   max_rows=10000,max_pages=100,selected_fields=()):
     """Collect only selected content-free fields; partial reads remain explicitly incomplete."""
     from datetime import datetime
     from investigation_report import FIELDS as INVESTIGATION_FIELDS, normalize
@@ -63,11 +63,12 @@ def collect_window(token, organization, project_id, environment, start, end,
         'pending_envelopes','dropped_reports'}
     numeric.update(f for f in INVESTIGATION_FIELDS if f.endswith(('_ms','_count','_calls','_used','_limit','_dropped')))
     def column(f):
-        return 'tags['+f+',number]' if f in numeric else 'tags['+f+',boolean]' if f in booleans else f
+        return f if f in ('message','timestamp') else 'tag['+f+(',number]' if f in numeric else ',boolean]' if f in booleans else ',string]')
     params=[('dataset','logs'),('project',str(project_id)),('environment',environment),
         ('start',start),('end',end),('per_page','100'),('sort','timestamp'),
-        ('query','(message:capture.* OR message:transcription.* OR message:distillation.* OR message:operation.summary OR message:diagnostics.health) !tags[test_traffic,boolean]:true')]
-    params += [('field',column(f)) for f in INVESTIGATION_FIELDS]
+        ('query','(message:capture.* OR message:transcription.* OR message:distillation.* OR message:operation.summary OR message:diagnostics.health) !test_traffic:true')]
+    params += [('field',column(f)) for f in selected_fields]
+    if not 1<=len(selected_fields)<=20:raise ValueError('Explore allows at most20 fields')
     endpoint='https://us.sentry.io/api/0/organizations/'+organization+'/events/'
     initial_url=endpoint+'?'+urllib.parse.urlencode(params)
     url=initial_url
@@ -128,6 +129,57 @@ def collect_window(token, organization, project_id, environment, start, end,
     return result
 
 
+BATCH_ANCHORS=('message','timestamp','event_id','installation_id','summary_id',
+               'observed_at_ms','emitted_at_ms','schema_version','correlation_version')
+
+def collect_window(token, organization, project_id, environment, start, end,
+                   max_rows=10000,max_pages=100):
+    """Fetch <=20 columns/query and join only identical immutable event identities."""
+    from investigation_report import FIELDS as INVESTIGATION_FIELDS, random_id
+    if not 1<=max_rows<=10000 or not 1<=max_pages<=100:raise ValueError('Invalid export cap')
+    remaining=[f for f in INVESTIGATION_FIELDS if f not in BATCH_ANCHORS]
+    width=20-len(BATCH_ANCHORS)
+    batches=[BATCH_ANCHORS+tuple(remaining[i:i+width]) for i in range(0,len(remaining),width)]
+    combined=None;indexed={};pages=0
+    for batch_number,fields in enumerate(batches):
+        if pages>=max_pages:
+            combined['observation']['complete']=False
+            combined['observation']['warnings'].append('page_cap')
+            return combined
+        part=_collect_columns(token,organization,project_id,environment,start,end,
+                              max_rows,max_pages-pages,fields)
+        pages+=part['observation']['pages']
+        if combined is None:combined=part
+        combined['observation']['pages']=pages
+        combined['observation']['column_batches']=batch_number+1
+        def stop(reason):
+            combined['observation']['complete']=False
+            combined['observation']['warnings']=sorted(set(combined['observation']['warnings']+[reason]))
+            return combined
+        if not part['observation']['complete']:
+            for warning in part['observation']['warnings']:stop(warning)
+            return combined
+        current={}
+        for row in part['records']:
+            if not random_id(row.get('event_id')) or not random_id(row.get('installation_id')):
+                return stop('missing_batch_identity')
+            key=(row['installation_id'],row['event_id'])
+            if key in current and current[key]!=row:return stop('batch_identity_conflict')
+            current[key]=row
+        if batch_number==0:indexed=current
+        else:
+            if current.keys()!=indexed.keys():return stop('batch_snapshot_mismatch')
+            for key,row in current.items():
+                old=indexed[key]
+                if any(old.get(k)!=row.get(k) for k in BATCH_ANCHORS):
+                    return stop('batch_identity_conflict')
+                if any(k in old and old[k]!=v for k,v in row.items()):
+                    return stop('batch_identity_conflict')
+            for key,row in current.items():indexed[key].update(row)
+        combined['records']=list(indexed.values())
+    return combined
+
+
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--token-file',type=Path,required=True)
@@ -152,7 +204,7 @@ def main():
         print('Saved private investigation export; complete API read: '+str(result['observation']['complete']))
         if not result['observation']['complete']:raise SystemExit(2)
         return
-    params=[('dataset','logs'),('project',str(args.project_id)),('environment',args.environment),('statsPeriod',args.period),('per_page','100'),('sort','timestamp'),('query','message:operation.summary tags[schema_version,number]:1 !tags[test_traffic,boolean]:true')]+[('field',f'tags[{f},number]' if f in NUMBERS else 'tags[test_traffic,boolean]' if f=='test_traffic' else f) for f in FIELDS]
+    params=[('dataset','logs'),('project',str(args.project_id)),('environment',args.environment),('statsPeriod',args.period),('per_page','100'),('sort','timestamp'),('query','message:operation.summary tags[schema_version,number]:1 !test_traffic:true')]+[('field',f'tags[{f},number]' if f in NUMBERS else 'tags[test_traffic,boolean]' if f=='test_traffic' else f) for f in FIELDS]
     url='https://us.sentry.io/api/0/organizations/'+args.organization+'/events/?'+urllib.parse.urlencode(params)
     rows=[];seen=set()
     while url:

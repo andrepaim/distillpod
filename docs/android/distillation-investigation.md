@@ -33,11 +33,22 @@ distillation, operation summaries, and reporting health in the existing US Sentr
 It rejects redirects before transmitting credentials to a different endpoint. Pagination
 may change only the cursor, not organization/project/environment/query/window. The window
 must have explicit timezone offsets, be positive, and be at most seven days. There is a
-10,000-row/100-page cap. A full page without pagination metadata, malformed response,
+10,000-unique-row/100-total-request cap across all column batches. A full page without pagination metadata, malformed response,
 partial-result signal, repeated/unsafe cursor, changed scope, cap, or API failure yields
 an explicitly incomplete export and exit status 2. Observations already retrieved remain
 available for diagnosis; they never become a clean success/failure rate. Narrow the window
 after a cap. Do not treat an exit-2 artifact as an exhaustive incident record.
+
+The [official Explore table API](https://docs.sentry.io/api/explore/query-explore-events-in-table-format/)
+permits at most 20 selected fields. The exporter uses the documented singular
+`tag[name,type]` form for custom columns and includes its sort column. It requests column
+batches with identical project/environment/window/filter and repeated event/installation/
+summary/schema/observation/emission anchors. It joins by canonical event ID plus installation
+ID, never by row position. Different key sets, conflicting anchors, missing identity or a
+failed batch make the entire export incomplete; only previously verified columns remain.
+This is not an API snapshot: stable event contents are assumed immutable, and events can
+arrive after the last request. More columns consume more of the shared 100-request budget,
+so practical safe windows may be much smaller than 10,000 rows.
 
 The API window is a **provider ingestion window**, not original observation time. A late
 summary can refer to an earlier incident. Choose a bounded window that includes possible

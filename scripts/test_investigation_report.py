@@ -54,7 +54,9 @@ class ExportTest(unittest.TestCase):
  def collect(self,**kw):return collect_window('secret','synthetic',1,'production','2026-01-01T00:00:00Z','2026-01-02T00:00:00Z',**kw)
  def test_pages_and_cap(self):
   link='<https://us.sentry.io/api/0/organizations/synthetic/events/?cursor=two>; rel="next"; results="true"'
-  with patch('export_operations._open_readonly',side_effect=[Response({'data':[{'message':'capture.accepted'}]},link),Response({'data':[]})]):self.assertTrue(self.collect()['observation']['complete'])
+  def pages(request,timeout):
+   return Response({'data':[]}) if 'cursor=' in request.full_url else Response({'data':[row(10)]},link)
+  with patch('export_operations._open_readonly',side_effect=pages):self.assertTrue(self.collect()['observation']['complete'])
   with patch('export_operations._open_readonly',return_value=Response({'data':[{}]},link)):
    r=self.collect(max_rows=1);self.assertFalse(r['observation']['complete']);self.assertIn('row_cap',r['observation']['warnings'])
  def test_api_failure_partial_and_bad_cursor(self):
@@ -205,3 +207,61 @@ class MissingContextGraphTest(unittest.TestCase):
   self.assertEqual('unknown',result['publication']['state'])
   self.assertEqual('unknown',result['capture_acceptance']['state'])
   self.assertIn('stage_evidence_unavailable',result['gaps'])
+
+class ExploreContractTest(unittest.TestCase):
+ def responder(self,drift=False,conflict=False):
+  import urllib.parse,re
+  calls=[]
+  def respond(request,timeout):
+   q=urllib.parse.parse_qs(urllib.parse.urlsplit(request.full_url).query)
+   fields=q['field'];calls.append(q)
+   self.assertLessEqual(len(fields),20)
+   self.assertIn(q['sort'][0],fields)
+   self.assertTrue(all(f in ('message','timestamp') or f.startswith('tag[') for f in fields))
+   source=[row(10),row(11)]
+   if drift and len(calls)>1:source.pop()
+   if conflict and len(calls)>1:source[0]['observed_at_ms']=999
+   if len(calls)%2==0:source.reverse()
+   result=[]
+   for r in source:
+    result.append({f:r.get(re.match(r'tag\[([^,]+),',f).group(1) if f.startswith('tag[') else f) for f in fields})
+   return Response({'data':result})
+  return respond,calls
+ def test_documented_twenty_field_limit_and_typed_joins(self):
+  respond,calls=self.responder()
+  with patch('export_operations._open_readonly',side_effect=respond):
+   result=ExportTest().collect()
+  self.assertTrue(result['observation']['complete'])
+  self.assertGreater(len(calls),1)
+  self.assertEqual(2,len(result['records']))
+  self.assertTrue(all(r['stage_outcome']=='published' for r in result['records']))
+  self.assertEqual({uid(110),uid(111)},{r['event_id'] for r in result['records']})
+ def test_batch_drift_and_conflicts_are_incomplete(self):
+  for kwargs,reason in [(dict(drift=True),'batch_snapshot_mismatch'),(dict(conflict=True),'batch_identity_conflict')]:
+   respond,_=self.responder(**kwargs)
+   with patch('export_operations._open_readonly',side_effect=respond):result=ExportTest().collect()
+   self.assertFalse(result['observation']['complete'])
+   self.assertIn(reason,result['observation']['warnings'])
+
+class CommandLineTest(unittest.TestCase):
+ def test_private_cli_synthetic_report(self):
+  import subprocess,os
+  with tempfile.TemporaryDirectory() as directory:
+   source=Path(directory)/'input.json';target=Path(directory)/'report.json'
+   source.write_text(json.dumps(export([row(10)])))
+   command=[sys.executable,str(Path(__file__).parent/'telemetry/investigation_report.py'),
+            str(source),'--reference',uid(1),'--output',str(target)]
+   result=subprocess.run(command,text=True,capture_output=True,check=True)
+   self.assertNotIn(uid(1),result.stdout+result.stderr)
+   self.assertEqual(0o600,target.stat().st_mode & 0o777)
+   self.assertEqual('observed_published',json.loads(target.read_text())['publication']['state'])
+ def test_late_column_failure_retains_incomplete_evidence(self):
+  respond,calls=ExploreContractTest().responder()
+  def fail_later(request,timeout):
+   if calls:raise RuntimeError('SECRET_SENTINEL')
+   return respond(request,timeout)
+  with patch('export_operations._open_readonly',side_effect=fail_later):
+   result=ExportTest().collect()
+  self.assertFalse(result['observation']['complete'])
+  self.assertIn('api_read_failed',result['observation']['warnings'])
+  self.assertNotIn('SECRET_SENTINEL',json.dumps(result))

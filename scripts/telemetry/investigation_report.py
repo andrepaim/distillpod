@@ -93,7 +93,7 @@ BOOLEAN_FIELDS=set(FLAGS+('test_traffic','correlation_complete','passage_complet
  'relevant','quote_faithful','needs_context','contradictory_review','quote_omitted','expanded_context',
  'duration_known','coverage_measured','coverage_complete','segments_measured','frozen_context'))
 IDENTIFIERS=set(IDS+('summary_id','event_id','installation_id','operation_id','transcript_id'))
-WARNING_CODES=set('row_cap page_cap api_read_failed invalid_api_response partial_api_response invalid_api_row unsafe_pagination repeated_cursor invalid_pagination changed_pagination_scope missing_pagination_cursor pagination_metadata_missing unexpected_response_url invalid_observation_metadata'.split())
+WARNING_CODES=set('missing_batch_identity batch_identity_conflict batch_snapshot_mismatch row_cap page_cap api_read_failed invalid_api_response partial_api_response invalid_api_row unsafe_pagination repeated_cursor invalid_pagination changed_pagination_scope missing_pagination_cursor pagination_metadata_missing unexpected_response_url invalid_observation_metadata'.split())
 
 def safe_date(value):
     from datetime import datetime
@@ -130,9 +130,10 @@ def safe_observation(value):
     result=dict(complete=value.get('complete') is True,
         start=safe_date(value.get('start')),end=safe_date(value.get('end')),
         environment=value.get('environment') if value.get('environment') in ('production','staging') else None,
-        pages=number(value.get('pages')),warnings=normalized,
+        pages=number(value.get('pages')),column_batches=number(value.get('column_batches')),warnings=normalized,
         scope='Provider ingestion window; original observations can precede it.')
     if result['pages'] is not None and not 0<=result['pages']<=100:result['pages']=None
+    if result['column_batches'] is not None and not 0<=result['column_batches']<=100:result['column_batches']=None
     return result
 
 def normalize(row):
@@ -144,8 +145,10 @@ def normalize(row):
         value=attributes.get(field)
         if value is None:
             for kind in ('number','boolean','string'):
-                if 'tags['+field+','+kind+']' in attributes:
-                    value=attributes['tags['+field+','+kind+']'];break
+                keys=[prefix+'['+field+','+space+kind+']' for prefix in ('tag','tags') for space in ('',' ')]
+                key=next((k for k in keys if k in attributes),None)
+                if key is not None:
+                    value=attributes[key];break
         if isinstance(value,dict):value=value.get('value')
         if value is not None and isinstance(value,(str,int,float,bool)):
             clean=safe_value(field,value)
