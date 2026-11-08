@@ -1,7 +1,7 @@
 # Sentry ingestion and quota review
 
 Review for [issue #27](https://github.com/andrepaim/distillpod/issues/27), November 8,
-2026, against source `f87d845`. This is a read-only review: no Sentry settings,
+2026, against source `41b59f2` after integrating current main. This is a read-only review: no Sentry settings,
 client keys, billing, notifications, APKs or backend deployments were changed.
 
 ## Findings and verification status
@@ -32,16 +32,19 @@ Logs are also outside the data categories covered by its documented spike protec
 | Spike-protection setting | Project option `quotas:spike-protection-disabled=false` | Enabled as a setting, but ineffective during the active trial; not a logs protection |
 | Filter lists | IP, release, error-message, log-message and metric-name lists are empty | No custom patterns or source-IP blocks configured in these lists |
 | Built-in filters | `filtered-transaction` active; browser-extension, legacy-browser, localhost and web-crawler filters inactive; JavaScript hydration/chunk-load options enabled | These do not establish meaningful Android error/log flood protection |
-| Spend notification preferences / automatic budget increases | Not exposed by the inspected responses | Default provider behavior is not evidence of the account's current recipient/threshold settings |
+| Spend notifications | Owner confirmed an 80% threshold in response to the settings review | Manual evidence; no notification email was induced |
+| Spike setting / notification preference | Owner confirmed spike protection is on in response to the notification-settings check | Manual confirmation supplements the API toggle; no project action exists to trigger a spike notification |
+| Automatic budget increases | No current paid error/log capacity in the Developer base plan; no such setting exposed by the inspected responses | Preserve zero budgets; verify any newly offered controls before a future subscription change |
 
 The initial credential could inspect billing and aggregate outcomes but returned
 403 for project settings. After the owner replaced it with a credential including
 `project:read`, project details, filters and key configuration were read successfully.
 The organization's separate spike endpoint remained inaccessible, but the project
-option above provides the enabled-setting evidence. The current credential still
-cannot read the owner's personal notification settings (global user endpoints
-returned 403). Spend thresholds/delivery and personal spike preferences need an
-owner readout or appropriate read access. Until then, issue #27 remains open.
+option above provides the enabled-setting evidence. The credential cannot read the owner's personal notification settings (global user
+endpoints returned 403). The owner supplied the remaining settings readout: spend
+notifications are set to 80% and spike protection is on. This is manual evidence,
+not an API read-back or proof of email delivery. No further credential scope is
+required to finish this review. Actual changes remain outside this issue's scope.
 
 ## Observed ingestion
 
@@ -87,8 +90,10 @@ operator views. UI routes can redirect; select the same organization/project.
   Event environments, release strings and synthetic flags are client-supplied and
   cannot authenticate the sender.
 - **Usage notifications:** Sentry documents default spend notifications at 80%
-  consumption and exhaustion; recipient and threshold preferences must be checked.
-  Issue alerts do not establish that these notifications are enabled or delivered.
+  consumption and exhaustion; the owner confirmed the configured 80% threshold.
+  Actual delivery was not tested. Issue alerts do not establish quota notifications
+  or log-volume alarms, and an enabled personal spike preference cannot compensate
+  for the missing project-level spike notification action.
 - **Client controls:** app consent, redaction, the 5 MB / 1,000-file / 72-hour outbox,
   1,000-envelope daily budget and separate 30-error allowance reduce honest-client
   volume. Attackers can bypass all these by posting directly. `beforeSend` and
@@ -124,7 +129,8 @@ These are proposals, not settings applied by this review.
    baseline. These are initial **investigation thresholds**, not configured alerts
    or provider caps. They are deliberately above this small sample and should be
    revised after at least seven populated days. Ensure provider 80% and exhaustion
-   spend notifications reach the owner. No email or quota exhaustion was induced.
+   spend notifications reach the owner; the reported threshold is already 80%.
+   No email or quota exhaustion was induced.
 4. On a plan supporting per-key error caps, **100 errors/day** would cap one key at
    roughly 3,000/month, below the 5,000-error base quota and above current observed
    usage. This is a future option, **not available protection to promise on free
@@ -178,7 +184,7 @@ These are proposals, not settings applied by this review.
    crash the owner phone. Recheck accepted/dropped volumes and document the final
    configuration and outstanding gaps.
 
-## Evidence and remaining blocker
+## Evidence, validation and limits
 
 Provider reads: organization/project list/details, customer subscription metadata,
 seven-day stats summary, per-category dropped-event tools, aggregate environment
@@ -187,14 +193,18 @@ notification actions. Project details,
 key settings and filters initially returned 403; these were verified after the
 owner supplied project-read access. The separate organization spike endpoint still
 returned 403; project settings provided the spike toggle. Personal spend/spike
-notification endpoints returned 403 and their preferences remain unverified.
+notification endpoints returned 403; the owner supplied the 80% spend threshold
+and on-state in response to the requested notification-settings readout. Effective
+notification delivery was not tested.
 
 No synthetic submissions were needed. No app behavior changed, so no Android build,
 emulator or phone checks are claimed for this documentation increment. Validation is
 source/document accuracy, local links, `git diff --check`, PR checks, and the applicable
-combined-commit CI/security workflow. Completing the remaining inventory requires
-owner confirmation/read access for spend and personal spike notification preferences;
-leave #27 open until that evidence is recorded.
+combined-commit CI/security workflow. Project settings were read directly; the
+remaining notification preferences were supplied by the owner. This completes the
+review evidence without requiring live submissions. It does not claim that the
+recommendations have been applied or that telemetry cannot be spoofed. Close #27
+only after the review PR is merged and applicable combined-commit checks pass.
 
 ## Official references (checked November 8, 2026)
 
