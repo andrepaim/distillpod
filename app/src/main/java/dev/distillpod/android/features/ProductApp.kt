@@ -611,12 +611,7 @@ private fun captureState(state: String) = when (state) { "waiting_transcript" ->
         }
         if(section=="storage") {
         SettingSwitch("Wi-Fi / unmetered downloads only", "Applies to queued audio, model downloads and transcript preparation that needs internet. Transfers already in progress continue; retries use your new setting.", prefs.wifiOnly) { vm.flag("wifi", it) }
-        HorizontalDivider(); Text("Storage", style = MaterialTheme.typography.titleLarge)
-        Text("Downloaded audio: ${fileSize(episodes.filter { it.localFile != null }.sumOf { it.downloadedBytes })}", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text("Audio limit: ${fileSize(prefs.storageLimitBytes)}. Deleting downloads keeps saved insights and listening progress.", style = MaterialTheme.typography.bodySmall)
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf(1L, 2L, 5L).forEach { gb -> FilterChip(selected = prefs.storageLimitBytes == gb * 1024 * 1024 * 1024, onClick = { vm.action("settings") { vm.graph.settings.storage(gb * 1024 * 1024 * 1024) } }, label = { Text("$gb GB") }) } }
-        OutlinedButton(onClick = vm::clearUnusedAudio) { Text("Clear unused audio") }
-        Text("Removes leftover cache files after feed changes. Downloads, resumable partials, queued audio and processing files are kept.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        StorageSettings(vm, prefs, episodes, models)
         }
         if(section=="library") {
         SettingSwitch("Refresh subscriptions", "Check your followed feeds periodically when Android permits.", prefs.refresh) { vm.flag("refresh", it) }
