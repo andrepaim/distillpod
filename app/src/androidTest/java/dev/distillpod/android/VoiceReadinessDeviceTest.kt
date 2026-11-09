@@ -34,7 +34,7 @@ class VoiceReadinessDeviceTest {
     private val instrumentation get() = InstrumentationRegistry.getInstrumentation()
     private fun guard() {
         check(Build.HARDWARE.contains("ranchu") || Build.FINGERPRINT.contains("generic") ||
-            compose.activity.packageName == "dev.distillpod.android.validation.voice57") { "Use an isolated validation app" }
+            compose.activity.packageName == "dev.distillpod.android.validation.voice57handoff") { "Use an isolated validation app" }
     }
     private fun <T> main(block: () -> T): T {
         var result: Result<T>? = null

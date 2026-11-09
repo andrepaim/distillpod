@@ -83,3 +83,13 @@ lease/observer positions and event counts, and checks zero SEEK events plus
 resume policy for readiness restoration. It retains exact paused-position
 assertions and requires the configured rewind's exact SEEK target on normal
 completion. No tolerance was widened; a new phone run is still required.
+
+## Fresh handoff validation package
+
+The handoff S22 already has the older isolated voice57 app and test app installed.
+The fresh-install guard stopped before any replacement. Preserve those packages
+and use dev.distillpod.android.validation.voice57handoff with the matching test
+ID for this continuation. Both the opt-in build configuration and exact physical
+package guard now use that new ID; no broad prefix exception is allowed. Rebuild
+and verify both APKs, target, signatures, permissions and hashes before installing.
+Production code is unchanged. Required phone evidence remains pending.
