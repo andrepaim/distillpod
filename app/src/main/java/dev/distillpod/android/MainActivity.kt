@@ -23,6 +23,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge(statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT), navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT))
+        observeTranscriptionRecovery({ applicationContext.appGraph.ready.await() },
+            { applicationContext.appGraph.transcription.resumeQueued() })
         if (intent.getBooleanExtra("openPlayer", false)) model.open("player")
         mediaSearch(intent)
         lifecycleScope.launch {
@@ -54,10 +56,6 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         applicationContext.appGraph.account.foreground(true)
         applicationContext.appGraph.syncAccount.kick()
-        lifecycleScope.launch {
-            applicationContext.appGraph.ready.await()
-            if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) applicationContext.appGraph.transcription.resumeQueued()
-        }
     }
     override fun onPause() { applicationContext.appGraph.account.foreground(false); super.onPause() }
     override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); mediaSearch(intent); if (intent.getBooleanExtra("openPlayer", false)) model.open("player") }
