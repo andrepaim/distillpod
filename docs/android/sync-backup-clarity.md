@@ -44,6 +44,31 @@ the existing settings large-text test. Also inspect:
    provider/file, three portable preferences, excluded local settings and text
    restoration path.
 
-Fresh USB-phone validation of navigation/readability is required before merge,
-without account changes, backup writes/restores, uninstall or data clearing.
-No phone or emulator results are claimed by this document.
+## Per-change risk assessment
+
+Under the risk-based policy merged in PR #50, this change has low hardware/platform
+risk: explanatory copy, ordinary in-app cross-links and display-only backup age
+selection. Sync/restore logic, account permissions, file-picker mechanisms,
+archive formats, persisted settings, background work and upgrade/signing behavior
+are unchanged. Incorrect scope wording could mislead recovery expectations, so
+copy was checked against the configured flags and actual serializers, including
+provider-upload limitations.
+
+Focused JVM checks cover flag combinations, age edge cases and existing backup
+safeguards. Compose navigation, picker/history/restore and scope tests run in
+ordinary isolated Android acceptance. Together with source review, lint and
+current-main CI these are suitable evidence for this UI-only scope; physical
+hardware is not needed to establish the changed behavior.
+
+Exact-head Android CI 42536528104 and repository security passed on 5daf899,
+including isolated Android acceptance. Initial CI failures were corrected by
+scrolling setup controls into view and replacing obsolete copy expectations,
+without removing picker/restore assertions. After integrating policy and the
+already-merged pause prerequisite, rerun relevant checks and CI on the combined
+head. Earlier results do not validate later integration automatically.
+
+No physical-phone or live-account validation is claimed. This does not waive
+physical evidence for permission recovery, OEM behavior, backups/restores or
+other platform mechanisms if a later change affects them. Reassess integration
+with settings organization (#22), preserving its canonical notification route
+and this change's exact sync/backup guidance.
