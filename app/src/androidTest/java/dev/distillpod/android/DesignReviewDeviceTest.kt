@@ -41,20 +41,49 @@ class DesignReviewDeviceTest {
         compose.onNodeWithText("Backup & Restore").assertIsDisplayed().performClick()
         compose.onNodeWithText("Connect a backup file once. DistillPod remembers it for your next backup and restore.").assertIsDisplayed()
     }
-    @Test fun settingsRemainReachableWithLargeText()=runBlocking<Unit> {
+    @Test fun settingsRemainReachableAt160Percent() = settingsNavigationAtFontScale(1.6f)
+    @Test fun settingsRemainReachableAt200Percent() = settingsNavigationAtFontScale(2f)
+
+    private fun settingsNavigationAtFontScale(scale: Float)=runBlocking<Unit> {
         val graph=compose.activity.applicationContext.appGraph
         graph.ready.await()
+        lateinit var vm: AppViewModel
         withContext(Dispatchers.Main) {
-            val vm=ViewModelProvider(compose.activity,AppViewModel.factory(graph))[AppViewModel::class.java]
+            vm=ViewModelProvider(compose.activity,AppViewModel.factory(graph))[AppViewModel::class.java]
             vm.open("settings")
-            compose.activity.setContent {CompositionLocalProvider(LocalDensity provides Density(graph.context.resources.displayMetrics.density,1.6f)){ProductApp(vm)}}
+            compose.activity.setContent {CompositionLocalProvider(LocalDensity provides Density(graph.context.resources.displayMetrics.density,scale)){ProductApp(vm)}}
         }
-        compose.onNodeWithText("Backup & Restore").assertIsDisplayed()
-        shot("settings-large-text")
-        compose.onNodeWithText("Local transcription").performScrollTo().performClick()
-        compose.onNodeWithText("Português").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithContentDescription("Back").performClick()
-        compose.onNodeWithText("Local transcription").assertIsDisplayed()
+        repeat(2) { pass ->
+            compose.onNodeWithText("Backup & Restore").performScrollTo().assertIsDisplayed()
+            compose.onNodeWithText("Transcript preparation").performScrollTo().performClick()
+            compose.onNodeWithText("Only transcribe while charging").performScrollTo().assertIsDisplayed()
+            compose.onNodeWithText("Download network policy").performScrollTo().performClick()
+            compose.onNodeWithText("Wi-Fi / unmetered downloads only").performScrollTo().assertIsDisplayed()
+            compose.onNodeWithText("Only transcribe while charging").assertDoesNotExist()
+            compose.onNodeWithText("Refresh subscriptions").assertDoesNotExist()
+            compose.onNodeWithContentDescription("Back").performClick()
+            compose.onNodeWithText("Português").performScrollTo().assertIsDisplayed()
+            compose.onNodeWithContentDescription("Back").performClick()
+            // Match the settings card, not the bottom navigation Library tab.
+            compose.onNode(hasText("Library") and hasText("Import, export and refresh subscriptions")).performScrollTo().performClick()
+            compose.onNodeWithText("Refresh subscriptions").performScrollTo().assertIsDisplayed()
+            compose.onNodeWithText("Export OPML").performScrollTo().assertIsDisplayed()
+            compose.onNodeWithText("Moment saved sound").assertDoesNotExist()
+            compose.onNodeWithText("Background progress").assertDoesNotExist()
+            compose.onNodeWithText("Library sync").performScrollTo().performClick()
+            compose.onNodeWithContentDescription("Back").performClick()
+            compose.onNodeWithText("Import OPML").performScrollTo().assertIsDisplayed()
+            compose.onNodeWithContentDescription("Back").performClick()
+            compose.onNodeWithText("Notification access").performScrollTo().performClick()
+            compose.onNodeWithText("Background progress").performScrollTo().assertIsDisplayed()
+            compose.onNodeWithText("Export OPML").assertDoesNotExist()
+            compose.onNodeWithContentDescription("Back").performClick()
+            compose.onNodeWithText("Playback & headphones").performScrollTo().performClick()
+            compose.onNodeWithText("Moment saved sound").performScrollTo().assertIsDisplayed()
+            compose.onNodeWithText("Distill confirmation sound").assertDoesNotExist()
+            shot("settings-font-" + scale + "-pass-" + pass)
+            compose.onNodeWithContentDescription("Back").performClick()
+        }
     }
     @Test fun gallerySearchFindsShowsBeyondTheRail()=runBlocking<Unit> {
         val dao=compose.activity.applicationContext.appGraph.db.library()
