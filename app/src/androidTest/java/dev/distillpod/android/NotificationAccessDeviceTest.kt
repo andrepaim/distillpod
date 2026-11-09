@@ -2,9 +2,7 @@ package dev.distillpod.android
 
 import android.Manifest
 import android.content.Context
-import android.content.Intent
 import android.os.Build
-import android.provider.Settings
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.core.app.NotificationManagerCompat
@@ -35,7 +33,41 @@ class NotificationAccessDeviceTest {
             android.os.ParcelFileDescriptor.AutoCloseInputStream(fd).use { it.readBytes() }
         }
     }
-    private suspend fun await(check: () -> Boolean) = withTimeout(15000) { while (!check()) delay(50) }
+    private val phase get() = InstrumentationRegistry.getArguments().getString("notificationPhase") ?: "recovery"
+    private fun granted() = androidx.core.content.ContextCompat.checkSelfPermission(
+        context, Manifest.permission.POST_NOTIFICATIONS
+    ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+    private fun status(step: String, result: String) {
+        // Android instrumentation status 2 is in-progress, never a test PASS.
+        instrumentation.sendStatus(2, android.os.Bundle().apply {
+            putString("stream", "Notification acceptance: phase=$phase step=$step result=$result runtimeGranted=${granted()} notificationsEnabled=${enabled()}\n")
+        })
+    }
+    private suspend fun await(step: String, timeoutMs: Long = 15000, check: () -> Boolean) {
+        status(step, "waiting")
+        try {
+            withTimeout(timeoutMs) { while (!check()) delay(50) }
+        } catch (failure: TimeoutCancellationException) {
+            throw AssertionError("Notification acceptance: phase=$phase step=$step runtimeGranted=${granted()} notificationsEnabled=${enabled()} activityState=${context.lifecycle.currentState}", failure)
+        }
+        status(step, "passed")
+    }
+    private suspend fun activityReturned(step: String) {
+        await(step, 10000) {
+            device.hasObject(By.pkg(packageName)) &&
+                context.lifecycle.currentState == androidx.lifecycle.Lifecycle.State.RESUMED
+        }
+    }
+    private suspend fun permissionDecision(id: String) {
+        val selector = By.res(Pattern.compile(".*:id/$id"))
+        await("dialog-$id-ready", 10000) {
+            device.findObject(selector)?.let { it.isEnabled && it.isClickable } == true
+        }
+        // Click once only; never substitute a shell grant for the runtime UI.
+        device.findObject(selector)?.click() ?: error("phase=$phase dialog button disappeared before click")
+        await("dialog-$id-dismissed", 10000) { !device.hasObject(selector) }
+        activityReturned("dialog-$id-activity-returned")
+    }
     private fun enabled() = NotificationManagerCompat.from(context).areNotificationsEnabled()
     private fun guard() {
         check(Build.VERSION.SDK_INT >= 33)
@@ -52,22 +84,22 @@ class NotificationAccessDeviceTest {
         compose.runOnUiThread {
             ViewModelProvider(context, AppViewModel.factory(context.applicationContext.appGraph))[AppViewModel::class.java].open("settings:notifications")
         }
-        await { !enabled() }
+        await("setup-disabled") { !enabled() }
     }
     private fun enabledText() = compose.onNodeWithText("Notifications are enabled", substring = true)
     private fun enableClick() = compose.onNodeWithText("Enable notifications").performScrollTo().performClick()
-    private fun dialogButton(id: String) = device.wait(Until.findObject(By.res(Pattern.compile(".*:id/$id"))), 10000)
-        ?: error("Permission dialog button $id not found")
     private fun cleanup() {
         shell("pm clear-permission-flags $packageName ${Manifest.permission.POST_NOTIFICATIONS} user-set user-fixed")
     }
     private suspend fun grantInSettingsAndReturn() {
         compose.onNodeWithText("Open notification settings").performScrollTo().performClick()
-        check(device.wait(Until.hasObject(By.pkg("com.android.settings")), 10000))
+        await("settings-opened", 10000) { device.hasObject(By.pkg("com.android.settings")) }
         instrumentation.uiAutomation.grantRuntimePermission(packageName, Manifest.permission.POST_NOTIFICATIONS)
-        await { enabled() }
+        await("settings-runtime-granted") { granted() }
+        await("settings-notifications-enabled") { enabled() }
         device.pressBack()
-        compose.waitUntil(10000) { compose.onAllNodesWithText("Notifications are enabled", substring = true).fetchSemanticsNodes().isNotEmpty() }
+        activityReturned("settings-activity-returned")
+        await("settings-enabled-ui", 10000) { compose.onAllNodesWithText("Notifications are enabled", substring = true).fetchSemanticsNodes().isNotEmpty() }
     }
 
     @Test fun denialBlockedRecoveryRuntimeGrantAndSettingsReturn() = runBlocking {
@@ -76,7 +108,9 @@ class NotificationAccessDeviceTest {
             compose.runOnUiThread {
                 ViewModelProvider(context, AppViewModel.factory(context.applicationContext.appGraph))[AppViewModel::class.java].open("settings:notifications")
             }
-            assertFalse(enabled())
+            assertFalse("phase=$phase runtime permission must be revoked", granted())
+            assertFalse("phase=$phase notifications must be disabled", enabled())
+            status("external-revocation", "passed")
             enabledText().assertDoesNotExist()
             compose.onNodeWithText("Open notification settings").performScrollTo().assertIsDisplayed()
             compose.onNodeWithText("Enable notifications").assertDoesNotExist()
@@ -84,14 +118,18 @@ class NotificationAccessDeviceTest {
         }
         if (InstrumentationRegistry.getArguments().getString("notificationPhase") == "runtimeGrant") {
             setup(); compose.activityRule.scenario.recreate()
-            enableClick(); dialogButton("permission_allow_button").click()
-            await { enabled() }; enabledText().assertExists()
+            activityReturned("recreated-before-runtime-grant")
+            enableClick(); permissionDecision("permission_allow_button")
+            await("runtime-permission-granted") { granted() }
+            await("runtime-notifications-enabled") { enabled() }
+            await("runtime-enabled-ui", 10000) { compose.onAllNodesWithText("Notifications are enabled", substring = true).fetchSemanticsNodes().isNotEmpty() }
+            enabledText().assertExists()
             compose.activityRule.scenario.recreate(); enabledText().assertExists()
             return@runBlocking
         }
         setup()
         try {
-            enableClick(); dialogButton("permission_deny_button").click()
+            enableClick(); permissionDecision("permission_deny_button")
             compose.onNodeWithText("Open notification settings").performScrollTo().assertIsDisplayed()
             compose.onNodeWithText("Enable notifications").assertDoesNotExist()
             compose.activityRule.scenario.recreate()
@@ -105,8 +143,8 @@ class NotificationAccessDeviceTest {
             enableClick()
             // Some OEMs still show a dialog after the synthetic USER_FIXED setup.
             device.wait(Until.findObject(By.res(Pattern.compile(".*:id/permission_deny_button"))), 1500)?.click()
-            check(device.wait(Until.hasObject(By.pkg(packageName)), 10000))
-            compose.waitUntil(10000) { compose.onAllNodesWithText("Enable notifications").fetchSemanticsNodes().isEmpty() }
+            activityReturned("blocked-activity-returned")
+            await("blocked-enable-control-absent", 10000) { compose.onAllNodesWithText("Enable notifications").fetchSemanticsNodes().isEmpty() }
             assertFalse(enabled())
 
             grantInSettingsAndReturn()
