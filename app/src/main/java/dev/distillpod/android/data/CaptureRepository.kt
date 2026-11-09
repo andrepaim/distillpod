@@ -185,7 +185,8 @@ class CaptureRepository(private val db: AppDatabase, private val ai: AiGateway, 
             evidence.reason=if(invalidBoundsFailure)"invalid_bounds" else "internal"
             throw error
         } finally {
-            diagnostics?.contextSummary(saved.id,evidence,(System.nanoTime()-started)/1_000_000,identity)
+            val observedAt=System.currentTimeMillis()
+            diagnostics?.contextSummary(saved.id,evidence,(System.nanoTime()-started)/1_000_000,identity,observedAt)
         }
     }
 

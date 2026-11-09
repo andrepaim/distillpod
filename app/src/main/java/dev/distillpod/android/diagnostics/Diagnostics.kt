@@ -93,13 +93,15 @@ class Diagnostics(private val context: Context, private val dsn:String = context
                 "audio_duration_ms" to duration.coerceAtLeast(0),"covered_audio_ms" to covered.coerceAtLeast(0),"empty_output" to empty,"test_traffic" to false))}
         }
     }
-    internal fun contextSummary(operation:String, evidence:ContextPreparationEvidence, elapsed:Long, correlation:DiagnosticCorrelation?) {
+    internal fun contextSummary(operation:String, evidence:ContextPreparationEvidence, elapsed:Long, correlation:DiagnosticCorrelation?,
+        observedAt:Long=System.currentTimeMillis()) {
         if(!enabled || !configured)return
         synchronized(lock) {
             if(!enabled || !acceptsCorrelation(correlation))return
             runCatching {
                 val fields=evidence.fields(elapsed)+(correlation ?: DiagnosticCorrelation()).fields()+
-                    mapOf("stream" to "diagnostics","test_traffic" to dev.distillpod.android.sync.SubscriptionCloudAccess.instrumentation)
+                    mapOf("observed_at_ms" to observedAt,"stream" to "diagnostics",
+                        "test_traffic" to dev.distillpod.android.sync.SubscriptionCloudAccess.instrumentation)
                 val id=operation.takeIf {runCatching {UUID.fromString(it)}.isSuccess}
                 contextWaits.record(operation,evidence,correlation,correlationEpoch,System.currentTimeMillis()/86_400_000L) {
                     log("capture.context_summary",fields+if(id!=null)mapOf("operation_id" to id) else emptyMap())
