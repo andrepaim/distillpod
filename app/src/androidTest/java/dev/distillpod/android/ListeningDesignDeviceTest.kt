@@ -6,7 +6,6 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.test.*
-import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.lifecycle.ViewModelProvider
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
@@ -35,7 +34,7 @@ import java.util.concurrent.TimeUnit
 /** Exercises real UI actions with local fixtures; no account/provider requests. */
 @RunWith(AndroidJUnit4::class)
 class ListeningDesignDeviceTest {
-    @get:Rule val compose = createAndroidComposeRule<MainActivity>()
+    @get:Rule val compose = createQueuedAndroidComposeRule<MainActivity>()
 
     @Test fun listeningNavigationQueueAndLargeTextPreservePlaybackAndOwnerLibrary() = runBlocking<Unit> {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
@@ -100,7 +99,9 @@ class ListeningDesignDeviceTest {
             repeat(2) {
                 compose.onNodeWithContentDescription("View show: Design validation show").performScrollTo().assertHasClickAction().performClick()
                 compose.waitUntil(5000) { vm.backStack.value.last() == "podcast:$id" }
-                compose.onNodeWithText("Design validation show").assertIsDisplayed()
+                // The same show name is also present in the clickable mini-player.
+                compose.onNode(hasText("Design validation show") and !hasClickAction() and
+                    !hasAnyAncestor(hasClickAction())).assertIsDisplayed()
                 withContext(Dispatchers.Main) {
                     assertEquals(beforeShow, c.currentPosition)
                     assertEquals(queueBeforeShow, (0 until c.mediaItemCount).map { c.getMediaItemAt(it).mediaId })

@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.*
-import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.unit.dp
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.room.Room
@@ -27,7 +26,7 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class ManagedBackupsDeviceTest {
-    @get:Rule(order = 0) val compose = createAndroidComposeRule<MainActivity>()
+    @get:Rule(order = 0) val compose = createQueuedAndroidComposeRule<MainActivity>()
     private var diagnostics: BackupCrashDiagnostics? = null
     @get:Rule(order = 1) val crashDiagnostics = object : ExternalResource() {
         override fun before() { diagnostics = BackupCrashDiagnostics() }
@@ -35,7 +34,11 @@ class ManagedBackupsDeviceTest {
     }
     private fun phase(name: String) { diagnostics?.mark(name) }
     private val device get() = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
-    private fun root() = DocumentPickerUi.location(device, By.text("DistillPod test files"))
+    private fun root() {
+        // A queued Compose effect can launch the picker; UiAutomator does not drive that clock.
+        compose.waitForIdle()
+        DocumentPickerUi.location(device, By.text("DistillPod test files"))
+    }
     private fun save() { checkNotNull(device.wait(Until.findObject(By.text(Pattern.compile("Save", Pattern.CASE_INSENSITIVE)).enabled(true)), 10000)).click() }
     private suspend fun show(managed: ManagedBackups, legacy: BackupDocuments, onCreated: (android.net.Uri?) -> Unit = managed::created) {
         phase("show-before-main")
