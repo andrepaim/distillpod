@@ -202,7 +202,7 @@ internal fun VoiceSettings(vm: AppViewModel) {
         try { store.clear(); hasKey = false; message = "API key removed" }
         catch (_: Exception) { message = "Could not remove the API key. Try again." }
     }) { Text("Remove API key") }
-    Text("Questions and transcript excerpts go to OpenAI and use your API credits. Your key stays encrypted on this phone and is excluded from backups and sync.", style = MaterialTheme.typography.bodySmall)
+    Text("Questions and the available transcript up to your listening position go to OpenAI and use your API credits. Longer transcripts use more input credits. Your key stays encrypted on this phone and is excluded from backups and sync.", style = MaterialTheme.typography.bodySmall)
     HorizontalDivider()
     Text("Answers", style = MaterialTheme.typography.titleMedium)
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {

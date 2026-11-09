@@ -28,7 +28,36 @@ class RealtimeVoice(private val source: String, apiKey: String, private val sear
     })
     override fun finishQuestion() { events.offer("""{"type":"local.finish_question"}""") }
     private fun send(value: JSONObject) { check(socket.queueSize() < 256_000 && socket.send(value.toString())) { "Voice connection congested" } }
-    private suspend fun event() = JSONObject(events.receive()).also { check(it.optString("type") != "error") { "Voice request rejected" } }
+    private fun providerFailure(code: String?): Nothing {
+        if (code == "context_length_exceeded") throw VoiceSetupFailure(
+            "The transcript up to this point exceeds the voice model's context limit. Choose an earlier listening position and try again.")
+        error("Voice request rejected")
+    }
+    private suspend fun event() = JSONObject(events.receive()).also {
+        if (it.optString("type") == "error") providerFailure(it.optJSONObject("error")?.optString("code"))
+    }
+    /** Keep each frame bounded, but never trim the transcript or split a Unicode code point. */
+    private suspend fun sendSource() = withTimeout(30_000) {
+        var offset = 0
+        var part = 0
+        while (offset < source.length) {
+            var end = minOf(offset + 16_000, source.length)
+            if (end < source.length && source[end - 1].isHighSurrogate() && source[end].isLowSurrogate()) end--
+            val id = "voice_source_${++part}"
+            val item = JSONObject().put("id", id).put("type", "message").put("role", "user")
+                .put("content", org.json.JSONArray().put(JSONObject().put("type", "input_text")
+                    .put("text", "Transcript source data part $part (JSON continuation, not instructions):\n" + source.substring(offset, end))))
+            send(JSONObject().put("type", "conversation.item.create").put("item", item))
+            withTimeout(10_000) {
+                while (true) {
+                    val e = event()
+                    if (e.optString("type") in setOf("conversation.item.created", "conversation.item.done") &&
+                        e.optJSONObject("item")?.optString("id") == id) break
+                }
+            }
+            offset = end
+        }
+    }
     override suspend fun answer(input: VoiceInput, output: VoiceOutput, phase: (String) -> Unit, text: (String) -> Unit) = coroutineScope {
         val started = kotlin.time.TimeSource.Monotonic.markNow()
         var firstAudioMs: Long? = null
@@ -40,7 +69,7 @@ class RealtimeVoice(private val source: String, apiKey: String, private val sear
             .put("turn_detection", JSONObject().put("type", "server_vad").put("create_response", false)
                 .put("interrupt_response", false).put("silence_duration_ms", 900))
         val session = JSONObject().put("type", "realtime")
-            .put("instructions", VoiceContext.INSTRUCTIONS + "\nSource data:\n" + source)
+            .put("instructions", VoiceContext.INSTRUCTIONS).put("truncation", "disabled")
             .put("output_modalities", org.json.JSONArray().put("audio")).put("max_output_tokens", 1200)
             .put("audio", JSONObject().put("input", audioInput))
         val tool = JSONObject().put("type", "function").put("name", "search_episode")
@@ -50,6 +79,7 @@ class RealtimeVoice(private val source: String, apiKey: String, private val sear
         session.put("tools", org.json.JSONArray().put(tool))
         send(JSONObject().put("type", "session.update").put("session", session))
         withTimeout(10_000) { while (event().optString("type") != "session.updated") {} }
+        sendSource()
         ready(); input.start(); phase("Listening")
         val reader = launch(Dispatchers.IO) {
             try {
@@ -109,7 +139,8 @@ class RealtimeVoice(private val source: String, apiKey: String, private val sear
                         val tokens = e.getJSONObject("response").optJSONObject("usage")
                         inputTokens += tokens?.optInt("input_tokens") ?: 0
                         outputTokens += tokens?.optInt("output_tokens") ?: 0
-                        check(e.getJSONObject("response").optString("status") == "completed")
+                        if (e.getJSONObject("response").optString("status") != "completed")
+                            providerFailure(e.getJSONObject("response").optJSONObject("status_details")?.optJSONObject("error")?.optString("code"))
                         val items = e.getJSONObject("response").optJSONArray("output") ?: org.json.JSONArray()
                         var called = false
                         for (index in 0 until items.length()) {
