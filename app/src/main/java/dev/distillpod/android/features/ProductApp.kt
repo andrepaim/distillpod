@@ -336,7 +336,7 @@ private fun date(ms: Long) = if (ms <= 0) "" else DateTimeFormatter.ofPattern("d
             if (!fullscreen) {
                 Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                     Text(ep.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold, maxLines = 3, overflow = TextOverflow.Ellipsis)
-                    Text(podcast?.title ?: "Podcast", color = MaterialTheme.colorScheme.secondary, style = MaterialTheme.typography.bodyMedium)
+                    EpisodeShowLink(podcast, vm::open)
                 }
                 if (voiceEnabled) Button(onClick = ask, enabled = !voiceActive, modifier = Modifier.fillMaxWidth()) {
                     Icon(Icons.Default.Mic, null); Spacer(Modifier.width(8.dp)); Text("Ask about this")
@@ -389,13 +389,31 @@ private fun date(ms: Long) = if (ms <= 0) "" else DateTimeFormatter.ofPattern("d
     }
 }
 
+@Composable internal fun EpisodeShowLink(podcast: PodcastEntity?, onOpen: (String) -> Unit) {
+    if (podcast == null) {
+        Text("Show unavailable", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
+        return
+    }
+    TextButton(
+        onClick = { onOpen("podcast:${podcast.id}") },
+        modifier = Modifier.semantics { contentDescription = "View show: ${podcast.title}" },
+    ) {
+        Column(horizontalAlignment = Alignment.Start) {
+            Text(podcast.title, style = MaterialTheme.typography.bodyMedium)
+            Text("View show", style = MaterialTheme.typography.labelMedium)
+        }
+        Spacer(Modifier.width(8.dp))
+        Icon(Icons.Default.ChevronRight, contentDescription = null)
+    }
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable private fun EpisodePage(vm: AppViewModel, ep: EpisodeEntity?, podcasts: List<PodcastEntity>, player: PlaybackState) {
     if (ep == null) { Empty("Episode unavailable", "Refresh the podcast or choose another saved episode."); return }
     val podcast = podcasts.firstOrNull { it.id == ep.podcastId }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Cover(ep.imageUrl ?: podcast?.imageUrl, Modifier.size(96.dp)); Column(Modifier.weight(1f)) { Text(podcast?.title ?: "Podcast", color = MaterialTheme.colorScheme.secondary); Text(date(ep.publishedAt), style = MaterialTheme.typography.bodySmall) }
+            Cover(ep.imageUrl ?: podcast?.imageUrl, Modifier.size(96.dp)); Column(Modifier.weight(1f)) { EpisodeShowLink(podcast, vm::open); Text(date(ep.publishedAt), style = MaterialTheme.typography.bodySmall) }
         }
         Text(ep.title, style = MaterialTheme.typography.headlineSmall)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
