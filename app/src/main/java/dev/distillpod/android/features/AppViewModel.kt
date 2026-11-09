@@ -113,9 +113,14 @@ class AppViewModel(val graph: AppGraph, private val saved: SavedStateHandle) : V
     fun seek(position: Long) = action("seek") { graph.voice.cancel(false); graph.playback.seek(position) }
     fun skip(delta: Long) = action("seek") { graph.voice.cancel(false); graph.playback.skip(delta) }
     fun speed(value: Float) = action("speed") { graph.playback.speed(value) }
-    fun enqueue(id: String, next: Boolean = false) = action("queue") { graph.playback.enqueue(id, next); messages.send(if (next) "Added to play next" else "Added to queue") }
-    fun removeQueue(id: String) = action("queue") { graph.playback.remove(id) }
-    fun moveQueue(id: String, offset: Int) = action("queue") { graph.playback.move(id, offset) }
+    private val queueActions = QueueActions(viewModelScope) { error ->
+        graph.diagnostics.failure("worker", error, source="phone")
+        messages.send(safeFailure(error))
+    }
+    fun clearQueue() = queueActions.submit { graph.voice.cancel(false); graph.playback.clear() }
+    fun enqueue(id: String, next: Boolean = false) = queueActions.submit { graph.playback.enqueue(id, next); messages.send(if (next) "Added to play next" else "Added to queue") }
+    fun removeQueue(id: String) = queueActions.submit { graph.playback.remove(id) }
+    fun moveQueue(id: String, offset: Int) = queueActions.submit { graph.playback.move(id, offset) }
     fun download(id: String) = action("download:$id") { graph.jobs.download(id); messages.send("Download queued") }
     fun pauseDownload(id: String) { graph.jobs.pauseDownload(id) }
     fun deleteDownload(id: String) = action("delete:$id") { graph.media.deleteDownload(id) }
