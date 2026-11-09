@@ -1,0 +1,147 @@
+package dev.distillpod.android
+
+import android.Manifest
+import android.app.Application
+import android.app.NotificationManager
+import android.content.ComponentName
+import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
+import android.os.Looper
+import android.provider.Settings
+import androidx.activity.ComponentActivity
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.test.*
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.SavedStateHandle
+import androidx.lifecycle.ViewModelStore
+import androidx.test.core.app.ApplicationProvider
+import androidx.work.Configuration
+import androidx.work.WorkManager
+import androidx.work.testing.SynchronousExecutor
+import androidx.work.testing.WorkManagerTestInitHelper
+import dev.distillpod.android.features.AppViewModel
+import dev.distillpod.android.features.DataControls
+import kotlinx.coroutines.*
+import org.junit.After
+import org.junit.Assert.*
+import org.junit.Before
+import org.junit.Rule
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows.shadowOf
+import org.robolectric.annotation.Config
+import java.util.concurrent.TimeUnit
+
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [34])
+class NotificationAccessTest {
+    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    private val application get() = ApplicationProvider.getApplicationContext<Application>()
+    private lateinit var graph: AppGraph
+    private lateinit var vm: AppViewModel
+    private val store = ViewModelStore()
+    private val permissionPrefs get() = application.getSharedPreferences("notification_access", Context.MODE_PRIVATE)
+
+    @Before fun setup() = runBlocking {
+        WorkManagerTestInitHelper.initializeTestWorkManager(application,
+            Configuration.Builder().setExecutor(SynchronousExecutor()).build())
+        shadowOf(application).declareComponentUnbindable(ComponentName(application, PlaybackService::class.java))
+        graph = application.appGraph
+        graph.scope.cancel()
+        withTimeout(5000) { while (!graph.scope.coroutineContext[Job]!!.isCompleted) {
+            shadowOf(Looper.getMainLooper()).idle(); delay(10)
+        } }
+        vm = AppViewModel(graph, SavedStateHandle())
+        store.put("settings", vm)
+        permissionPrefs.edit().clear().commit()
+        notifications(false)
+    }
+
+    @After fun cleanup() {
+        store.clear()
+        WorkManager.getInstance(application).cancelAllWork().result.get(5, TimeUnit.SECONDS)
+        shadowOf(Looper.getMainLooper()).idle()
+        graph.db.close()
+        WorkManagerTestInitHelper.closeWorkDatabase()
+    }
+
+    private fun notifications(enabled: Boolean) {
+        shadowOf(application.getSystemService(NotificationManager::class.java)).setNotificationsEnabled(enabled)
+        if (Build.VERSION.SDK_INT >= 33) {
+            if (enabled) shadowOf(application).grantPermissions(Manifest.permission.POST_NOTIFICATIONS)
+            else shadowOf(application).denyPermissions(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+    private fun render() = compose.setContent {
+        MaterialTheme { Column(Modifier.verticalScroll(rememberScrollState())) { DataControls(vm) } }
+    }
+    private fun enabledText() = compose.onNodeWithText("Notifications are enabled", substring = true)
+    private fun resume() {
+        compose.activityRule.scenario.moveToState(Lifecycle.State.STARTED)
+        compose.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
+        compose.waitForIdle()
+    }
+    private fun requestResult(granted: Boolean) {
+        val request = shadowOf(compose.activity).lastRequestedPermission ?: error("No runtime permission request")
+        compose.runOnIdle {
+            compose.activity.onRequestPermissionsResult(request.requestCode, arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                intArrayOf(if (granted) PackageManager.PERMISSION_GRANTED else PackageManager.PERMISSION_DENIED))
+        }
+    }
+
+    @Test fun `an existing notification grant is reflected initially`() {
+        notifications(true); render()
+        enabledText().assertExists()
+        compose.onNodeWithText("Enable notifications").assertDoesNotExist()
+    }
+
+    @Test fun `initial runtime grant refreshes actual enabled state`() {
+        render()
+        compose.onNodeWithText("Enable notifications").performScrollTo().performClick()
+        assertNotNull(shadowOf(compose.activity).lastRequestedPermission)
+        notifications(true); requestResult(true)
+        enabledText().assertExists()
+    }
+
+    @Test fun `denial leaves a clear settings action instead of another no-op prompt`() {
+        render()
+        compose.onNodeWithText("Enable notifications").performScrollTo().performClick()
+        requestResult(false)
+        compose.onNodeWithText("Open notification settings").performScrollTo().performClick()
+        val intent = shadowOf(compose.activity).nextStartedActivity
+        assertEquals(Settings.ACTION_APP_NOTIFICATION_SETTINGS, intent.action)
+        assertEquals(compose.activity.packageName, intent.getStringExtra(Settings.EXTRA_APP_PACKAGE))
+        assertTrue(permissionPrefs.getBoolean("runtime_requested", false))
+        compose.onNodeWithText("Enable notifications").assertDoesNotExist()
+    }
+
+    @Test fun `already attempted or blocked permission goes directly to notification settings`() {
+        permissionPrefs.edit().putBoolean("runtime_requested", true).commit()
+        render()
+        compose.onNodeWithText("Open notification settings").performScrollTo().performClick()
+        assertNull(shadowOf(compose.activity).lastRequestedPermission)
+        assertEquals(Settings.ACTION_APP_NOTIFICATION_SETTINGS, shadowOf(compose.activity).nextStartedActivity.action)
+    }
+
+    @Test fun `retained screen refreshes external grant and revocation on resume`() {
+        render(); enabledText().assertDoesNotExist()
+        notifications(true); resume(); enabledText().assertExists()
+        notifications(false); resume(); enabledText().assertDoesNotExist()
+        compose.onNodeWithText("Open notification settings").assertExists()
+    }
+
+    @Test @Config(sdk = [32]) fun `legacy Android notification settings return refreshes the retained screen`() {
+        render()
+        compose.onNode(hasText("Enable notifications") or hasText("Open notification settings")).performScrollTo().performClick()
+        assertEquals(Settings.ACTION_APP_NOTIFICATION_SETTINGS, shadowOf(compose.activity).nextStartedActivity.action)
+        notifications(true); resume(); enabledText().assertExists()
+        notifications(false); resume(); enabledText().assertDoesNotExist()
+    }
+}
