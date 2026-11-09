@@ -207,3 +207,26 @@ speed appear in failure diagnostics. The delayed case remains as a regression;
 no sleep is used to hide an ordering race. These are test-only changes; Android
 runtime/core/unit-test sources remain the full-gate validated code. Final-head
 hosted checks and updated phone-protocol validation must still pass.
+
+## Partial apply-marker cleanup
+
+Final review strengthened the post-commit failure case so its import callback
+sets the marker before throwing, then the user deliberately enqueues the same
+order. The new behavioral red retained the chosen DB[c,b] and actual player[a,b]
+after failure, but incorrectly suppressed the later local[a,c,b] edit. Receipt
+c88d247ec017 records the expected/actual persisted-order assertion. The earlier
+failure test threw before setting the marker and did not cover this case.
+
+The writer now remembers its attempted import marker and removes only a matching
+marker during owned completion/failure cleanup. Its actual-player baseline still
+prevents automatic republication of the earlier local queue after commit. A
+later deliberate matching edit must publish normally. The serialized restored
+baseline function remains unchanged; no per-event DB comparison is introduced.
+This is a runtime correction, so the previous runtime/phone/CI evidence must not
+be represented as validating it. Re-run full local gates, affected emulator
+cases, final-head offline S22 acceptance and all five hosted checks.
+
+The correction passed the12-case local emulator group, including the strengthened
+post-commit failure/later-edit case (receipt885aa1ed35fe). The dedicated offline
+phone protocol now includes that case too:5cases rather than4. Final updated
+phone evidence remains outstanding until the committed correction is tested.

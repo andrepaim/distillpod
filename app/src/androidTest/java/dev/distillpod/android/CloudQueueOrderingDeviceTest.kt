@@ -30,7 +30,7 @@ class CloudQueueOrderingDeviceTest {
     @Test fun localClearAcceptedWhileCloudChoiceWaitsWins() = CloudQueueOrderingFixture.scenario("clear")
     @Test fun settledCloudChoiceMayTakeMoreThanThreeSecondsWithoutRewindingAudio() = CloudQueueOrderingFixture.scenario("settled-delay")
     @Test fun localClearCannotBeUndoneByAnOlderQueueFlowEmission() = CloudQueueOrderingFixture.scenario("later-clear")
-    @Test fun failedPlayerApplicationRetainsCommittedCloudOrder() = CloudQueueOrderingFixture.scenario("apply-failure")
+    @Test fun failedPlayerApplicationRetainsCloudOrderAndAllowsLaterLocalEdits() = CloudQueueOrderingFixture.scenario("apply-failure")
     @Test fun cancelledResolutionDoesNotStopThePersistenceWriter() = CloudQueueOrderingFixture.scenario("resolver-cancel")
     @Test fun cancellationBeforeWriterOwnershipDoesNotResolve() = CloudQueueOrderingFixture.scenario("cancel")
     @Test fun cancellationAfterWriterOwnershipDoesNotStrandCommittedChoice() = CloudQueueOrderingFixture.scenario("cancel-running")
@@ -129,7 +129,10 @@ internal object CloudQueueOrderingFixture {
                         if(mode=="resolver-cancel")throw CancellationException("synthetic resolver cancellation")
                         portable.resolve("queue_library",false);resolved=true
                 }
-                val importedAction:(List<String>)->Unit = {if(mode=="apply-failure")error("synthetic player application failure") else graph.importedQueue.value=it}
+                val importedAction:(List<String>)->Unit = {
+                    graph.importedQueue.value=it
+                    if(mode=="apply-failure")error("synthetic player application failure")
+                }
                 if(mode.startsWith("settled")) {
                     // Exercise the same completion/cancellation wrapper as the UI caller.
                     graph.playback.chooseCloudQueue(resolveAction,importedAction)
@@ -169,7 +172,16 @@ internal object CloudQueueOrderingFixture {
                 assertEquals("Actual service order after $mode",expected,actual())
                 assertEquals("Persisted order after $mode",if(mode=="apply-failure")listOf(c,b) else expected,dao.queue().map {it.episodeId})
                 assertEquals(mode in listOf("clear","apply-failure"),resolved)
-                if(mode!="clear")withContext(Dispatchers.Main){assertTrue(player!!.isPlaying)}
+                if(mode!="clear") {
+                    withTimeout(10000){while(!withContext(Dispatchers.Main){player!!.isPlaying})delay(25)}
+                    withContext(Dispatchers.Main){assertTrue(player!!.isPlaying)}
+                }
+                if(mode=="apply-failure") {
+                    graph.playback.enqueue(c,next=true)
+                    withTimeout(10000){while(actual()!=listOf(a,c,b))delay(25)}
+                    graph.playback.awaitQueueWritesProcessed()
+                    assertEquals("A later local edit matching the failed import must persist",listOf(a,c,b),dao.queue().map {it.episodeId})
+                }
                 return@runBlocking
             }
             withTimeout(10000){while(actual()!=listOf(a,c,b))delay(25)}

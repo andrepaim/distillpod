@@ -279,6 +279,7 @@ class PlaybackService : MediaLibraryService() {
                 }
                 if (message is CloudChoice) {
                     var committed=false
+                    var importMarker:List<String>?=null
                     var failure:Throwable?=null
                     try {
                         // The startup restore must finish before an explicit choice replaces it.
@@ -304,6 +305,7 @@ class PlaybackService : MediaLibraryService() {
                                             val index=ids.indexOf(current).coerceAtLeast(0)
                                             val position=if(current in ids)player.currentPosition.coerceAtLeast(0) else ids.firstOrNull()?.let {data.first.getValue(it).positionMs}?:0
                                             val resume=player.playWhenReady
+                                            importMarker=ids
                                             message.choice.imported(ids)
                                             player.setMediaItems(ids.map {dev.distillpod.android.playback.preserveVideoItem(data.first.getValue(it),data.second[data.first.getValue(it).podcastId],player.currentMediaItem)},index,position)
                                             player.prepare();player.playWhenReady=resume
@@ -326,6 +328,8 @@ class PlaybackService : MediaLibraryService() {
                         }
                     } finally {
                         withContext(NonCancellable+Dispatchers.Main.immediate) {
+                            // A failed apply must not make a later matching local edit look imported.
+                            if(importMarker!=null && graph.importedQueue.value==importMarker)graph.importedQueue.value=null
                             pendingCloudChoice=null
                             // Suppressed intermediate snapshots cannot publish. This final boundary
                             // recovers later local edits (or edits during a rejected/cancelled choice).

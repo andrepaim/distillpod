@@ -15,6 +15,7 @@ class CloudQueueChoicePhoneDeviceTest {
     @Test fun offlineCloudChoiceAndLaterEditsPreservePlaybackAndPersistedOrder() = checkScenario("normal")
     @Test fun offlineClearWhileCloudChoiceWaitsRemainsCleared() = checkScenario("clear")
     @Test fun offlineLaterClearCannotBeUndoneByAnOlderRoomEmission() = checkScenario("later-clear")
+    @Test fun offlineFailedApplyDoesNotSuppressALaterMatchingEdit() = checkScenario("apply-failure")
     @Test fun offlineCallerCancellationDoesNotStrandCloudChoice() = checkScenario("cancel-running")
 
     private fun checkScenario(mode:String) {
