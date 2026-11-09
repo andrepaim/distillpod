@@ -79,3 +79,20 @@ dismisses it through its existing accessibility action, and waits for it to leav
 before the final real row click. This tests the feedback instead of bypassing it.
 The hypothesis still requires hosted/phone confirmation; no assertions, ownership
 barriers or timeout bounds are relaxed.
+
+## Combined-main acceptance after queue ordering and Compose fixes
+
+Integrate main `b86738b` normally, retaining this issue's typed rejection and
+unexpected-error handling. Review the combined deletion paths, then rerun both
+full local configurations, lint and APK builds. Exercise the original protected
+deletion UI on the owned emulator before changing any fixture; diagnose observed
+failures without weakening ownership, file, transcript or dialog assertions.
+
+Deletion and persistence still require the dedicated synthetic S22 protocol.
+Build fresh offline APKs from the final clean revision, verify immutable hashes,
+package IDs, instrumentation target, signatures and permissions, and install only
+the isolated namespace under the phone lock. Preserve production content and
+settings, verify cleanup, and record unavailable evidence. Historical phone
+attempts and APKs do not validate this integration. All five exact-head checks,
+normal PR integration and successful merged-main CI remain required. This does
+not implement retention or claim atomic exclusion beyond the existing guards.
