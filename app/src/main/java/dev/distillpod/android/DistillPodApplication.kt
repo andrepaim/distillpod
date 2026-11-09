@@ -16,8 +16,8 @@ class DistillPodApplication : Application() {
 }
 val Context.appGraph: AppGraph get() = (applicationContext as DistillPodApplication).graph
 
-class AppGraph(val context: Context) {
-    val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+class AppGraph internal constructor(val context: Context, val scope: CoroutineScope) {
+    constructor(context: Context) : this(context, CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate))
     val diagnostics = dev.distillpod.android.diagnostics.Diagnostics(context)
     val db = AppDatabase.open(context)
     val settings = AppSettings(context,db=db,portableChanged={syncAccount.kick()})

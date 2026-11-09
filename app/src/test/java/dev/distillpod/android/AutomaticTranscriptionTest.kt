@@ -4,7 +4,6 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.Intent
-import android.os.Looper
 import androidx.test.core.app.ApplicationProvider
 import androidx.work.Configuration
 import androidx.work.WorkManager
@@ -18,7 +17,6 @@ import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
-import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import java.io.File
 import java.nio.file.Files
@@ -34,14 +32,14 @@ class AutomaticTranscriptionTest {
     private suspend fun isolatedGraph(ctx: Context = context): AppGraph {
         WorkManagerTestInitHelper.initializeTestWorkManager(context,
             Configuration.Builder().setExecutor(SynchronousExecutor()).build())
-        val graph = AppGraph(ctx)
-        graph.scope.cancel()
-        withTimeout(5000) {
-            while (!graph.scope.coroutineContext[Job]!!.isCompleted) {
-                shadowOf(Looper.getMainLooper()).idle()
-                delay(10)
-            }
-        }
+        // This fixture tests explicit repository calls, not app startup or worker recovery.
+        // Cancel before construction so DEFAULT-start graph jobs never begin, even on IO.
+        val isolatedJob = SupervisorJob().apply { cancel() }
+        val graph = AppGraph(ctx, CoroutineScope(isolatedJob + Dispatchers.Main.immediate))
+        assertTrue(graph.scope.coroutineContext[Job]!!.isCompleted)
+        assertFalse(graph.scope.isActive)
+        assertFalse(graph.scope.coroutineContext[Job]!!.children.any())
+        assertFalse(graph.ready.isCompleted)
         graph.settings.flag("transcribeOnPlayback", true)
         graph.settings.flag("onlineTranscripts", false)
         graph.db.library().putPodcast(PodcastEntity(episode.podcastId, "https://example.test/feed", "Show"))
