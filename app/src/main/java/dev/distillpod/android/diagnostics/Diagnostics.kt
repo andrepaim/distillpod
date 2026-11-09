@@ -22,6 +22,7 @@ class Diagnostics(private val context: Context, private val dsn:String = context
     internal val queue=DiagnosticQueue(java.io.File(context.noBackupFilesDir,"diagnostics"),onDrop={prefs.edit().putLong("dropped",prefs.getLong("dropped",0)+1).commit()})
     private val lock=Any()
     private val budget=DiagnosticBudget(prefs)
+    private val contextWaits=ContextWaitCoalescer()
     private val admissionLane=ThreadLocal<DiagnosticBudget.Lane>()
     internal val journal=OperationJournal(java.io.File(context.noBackupFilesDir,"reliability/journal"),release=context.packageManager.getPackageInfo(context.packageName,0).versionName ?: "unknown")
     private val persisted=ThreadLocal<Boolean>()
@@ -56,6 +57,7 @@ class Diagnostics(private val context: Context, private val dsn:String = context
         }.commit()
         Sentry.close()
         queue.clear()
+        contextWaits.clear()
         if(!allow){journal.clear();prefs.edit().remove("suppressed_summaries").commit()}
         if(collecting && configured) safeInitialize() else {
             WorkManager.getInstance(context).cancelUniqueWork("diagnostics-upload")
@@ -66,7 +68,7 @@ class Diagnostics(private val context: Context, private val dsn:String = context
     }
     fun usageConsent(allow:Boolean) = synchronized(lock) {
         generation++;prefs.edit().putBoolean("usage_enabled",allow).commit();Sentry.close()
-        queue.clear();java.io.File(context.noBackupFilesDir,"sentry").deleteRecursively()
+        queue.clear();contextWaits.clear();java.io.File(context.noBackupFilesDir,"sentry").deleteRecursively()
         if(collecting && configured)safeInitialize() else {
             WorkManager.getInstance(context).cancelUniqueWork("diagnostics-upload")
             WorkManager.getInstance(context).cancelUniqueWork("diagnostics-recovery")
@@ -89,6 +91,22 @@ class Diagnostics(private val context: Context, private val dsn:String = context
                 "model_category" to model.takeIf {it in setOf("tiny","tiny.en","base","base.en","small","small.en","medium","large")} .orEmpty().ifEmpty {"other"},
                 "language_category" to language.takeIf {it in setOf("auto","en","pt","es","de","fr","zh","ja","ru")} .orEmpty().ifEmpty {"other"},
                 "audio_duration_ms" to duration.coerceAtLeast(0),"covered_audio_ms" to covered.coerceAtLeast(0),"empty_output" to empty,"test_traffic" to false))}
+        }
+    }
+    internal fun contextSummary(operation:String, evidence:ContextPreparationEvidence, elapsed:Long, correlation:DiagnosticCorrelation?,
+        observedAt:Long=System.currentTimeMillis()) {
+        if(!enabled || !configured)return
+        synchronized(lock) {
+            if(!enabled || !acceptsCorrelation(correlation))return
+            runCatching {
+                val fields=evidence.fields(elapsed)+(correlation ?: DiagnosticCorrelation()).fields()+
+                    mapOf("observed_at_ms" to observedAt,"stream" to "diagnostics",
+                        "test_traffic" to dev.distillpod.android.sync.SubscriptionCloudAccess.instrumentation)
+                val id=operation.takeIf {runCatching {UUID.fromString(it)}.isSuccess}
+                contextWaits.record(operation,evidence,correlation,correlationEpoch,System.currentTimeMillis()/86_400_000L) {
+                    log("capture.context_summary",fields+if(id!=null)mapOf("operation_id" to id) else emptyMap())
+                }
+            }
         }
     }
     /** Runs on the IO startup path, after reading authoritative application state. */
@@ -369,7 +387,7 @@ class Diagnostics(private val context: Context, private val dsn:String = context
     }
     internal fun uploaded() { prefs.edit().putString("last_upload",java.time.Instant.now().toString()).apply();status.value="Last upload: ${java.text.DateFormat.getDateTimeInstance().format(java.util.Date())}" }
     companion object {
-        private val EVENT_NAMES=setOf("distillation.attempt_summary","youtube.extraction_started","youtube.extraction_completed","youtube.extraction_failed","youtube.extraction_retry","youtube.stream_refreshed","videocast.video_requested","videocast.audio_restored","videocast.first_frame","videocast.failed","videocast.download_validated","transcription.quality","diagnostics.health","operation.summary","usage.feature","transcription.partial","transcription.paused","transcription.cancelled","distillation.cancelled","voice.recording","voice.text","voice.audio","voice.resumed","voice.resume_failed","playback.buffering","playback.ready","playback.focus","playback.route","app.started","diagnostics.test","diagnostics.failed","headphone.received","headphone.rejected","headphone.previous","headphone.next",
+        private val EVENT_NAMES=setOf("capture.context_summary","distillation.attempt_summary","youtube.extraction_started","youtube.extraction_completed","youtube.extraction_failed","youtube.extraction_retry","youtube.stream_refreshed","videocast.video_requested","videocast.audio_restored","videocast.first_frame","videocast.failed","videocast.download_validated","transcription.quality","diagnostics.health","operation.summary","usage.feature","transcription.partial","transcription.paused","transcription.cancelled","distillation.cancelled","voice.recording","voice.text","voice.audio","voice.resumed","voice.resume_failed","playback.buffering","playback.ready","playback.focus","playback.route","app.started","diagnostics.test","diagnostics.failed","headphone.received","headphone.rejected","headphone.previous","headphone.next",
             "capture.started","capture.completed","capture.requested","capture.accepted","capture.saved","capture.waiting","capture.transcript_link","capture.prepared","capture.failed",
             "transcription.dependency","transcription.started","transcription.stage","transcription.queued","transcription.completed","transcription.failed",
             "distillation.discarded","distillation.queued","distillation.started","distillation.finished","distillation.failed","playback.service_started","playback.service_stopped","playback.state","playback.failed",
