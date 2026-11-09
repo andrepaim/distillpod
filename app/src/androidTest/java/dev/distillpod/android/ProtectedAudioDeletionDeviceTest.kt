@@ -121,8 +121,15 @@ class ProtectedAudioDeletionDeviceTest {
             compose.waitUntil(10000) { vm.audioDeletionBlocks.value[id] == AudioDeletionBlockReason.ACTIVE }
             compose.onNode(hasText("Delete download") and hasAnyAncestor(isDialog())).assertIsNotEnabled()
             compose.onNodeWithText("Cancel").performClick()
-            withContext(Dispatchers.Main) { vm.deleteDownload(id) }
+            withContext(Dispatchers.Main) {
+                check("delete:$id" !in vm.busy.value)
+                vm.deleteDownload(id)
+            }
+            // Existing disabled-action text is not proof the async command has finished.
+            // Keep the owner held until this exact action's finally block clears its busy key.
+            compose.waitUntil(10000) { "delete:$id" !in vm.busy.value }
             compose.waitUntil(10000) { compose.onAllNodesWithText(AudioDeletionBlockReason.ACTIVE.feedback).fetchSemanticsNodes().isNotEmpty() }
+            trace("after blocked action completion", vm)
             retained()
             graph.media.active.release(partial)
             acquired = false
