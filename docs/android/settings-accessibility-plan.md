@@ -31,3 +31,16 @@ Relevant automated and emulator checks cover these contracts; actual TalkBack
 acceptance remains mandatory under the issue's criteria. Recurrent Windows
 socket-buffer errors currently block physical validation; leave the PR unmerged
 until that evidence is available.
+
+## Handoff regression evidence
+
+All three handoff tests failed on current main 9f56e74 in a separate test-only
+worktree because the named toggle nodes were missing. The preserved fix was
+committed and merged with main without conflict; only the three intended row
+call sites changed, retaining current full-transcript voice copy. The same three
+tests passed on the combined tree. The two actual-settings emulator scenarios
+compile after correcting a test bounds assertion to the supported API. They
+cover role/state, one target per diagnostics switch, 200% text, 48dp minimum
+targets and rewind persistence. The opt-in offline accessibility21 build removes
+network/microphone permissions from both packages. Full gates, hosted execution
+and manual TalkBack acceptance are pending; none is replaced by these results.
