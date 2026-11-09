@@ -56,7 +56,7 @@ class ManagedBackupsDeviceTest {
             source.library().putEpisode(EpisodeEntity("managed-episode", "managed-show", "guid", "Fixture episode", "https://example.test/audio", positionMs = 12000))
             show(managed, legacySource) { selected -> uri = selected; managed.created(selected) }
             compose.waitUntil(10000) { !managed.state.value.working }
-            compose.onNodeWithText("Create backup file").performClick()
+            compose.onNodeWithText("Create backup file").performScrollTo().assertIsDisplayed().assertIsEnabled().performClick()
             root(); save()
             compose.waitUntil(20000) { !managed.state.value.working && (managed.state.value.history.isNotEmpty() || managed.state.value.error) }
             assertFalse(managed.state.value.message, managed.state.value.error)
@@ -73,7 +73,7 @@ class ManagedBackupsDeviceTest {
             val fresh = ManagedBackups(context, LibraryBackup(target), targetSettings, scope, legacyTarget::review)
             show(fresh, legacyTarget)
             compose.waitUntil(10000) { !fresh.state.value.working }
-            compose.onNodeWithText("Connect existing backup").performClick()
+            compose.onNodeWithText("Connect existing backup").performScrollTo().assertIsDisplayed().assertIsEnabled().performClick()
             root()
             val file = device.findObject(UiSelector().text(name).className("android.widget.TextView"))
             check(file.waitForExists(10000)); file.click()
