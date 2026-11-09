@@ -22,6 +22,7 @@ class Diagnostics(private val context: Context, private val dsn:String = context
     internal val queue=DiagnosticQueue(java.io.File(context.noBackupFilesDir,"diagnostics"),onDrop={prefs.edit().putLong("dropped",prefs.getLong("dropped",0)+1).commit()})
     private val lock=Any()
     private val budget=DiagnosticBudget(prefs)
+    private val contextWaits=ContextWaitCoalescer()
     private val admissionLane=ThreadLocal<DiagnosticBudget.Lane>()
     internal val journal=OperationJournal(java.io.File(context.noBackupFilesDir,"reliability/journal"),release=context.packageManager.getPackageInfo(context.packageName,0).versionName ?: "unknown")
     private val persisted=ThreadLocal<Boolean>()
@@ -56,6 +57,7 @@ class Diagnostics(private val context: Context, private val dsn:String = context
         }.commit()
         Sentry.close()
         queue.clear()
+        contextWaits.clear()
         if(!allow){journal.clear();prefs.edit().remove("suppressed_summaries").commit()}
         if(collecting && configured) safeInitialize() else {
             WorkManager.getInstance(context).cancelUniqueWork("diagnostics-upload")
@@ -66,7 +68,7 @@ class Diagnostics(private val context: Context, private val dsn:String = context
     }
     fun usageConsent(allow:Boolean) = synchronized(lock) {
         generation++;prefs.edit().putBoolean("usage_enabled",allow).commit();Sentry.close()
-        queue.clear();java.io.File(context.noBackupFilesDir,"sentry").deleteRecursively()
+        queue.clear();contextWaits.clear();java.io.File(context.noBackupFilesDir,"sentry").deleteRecursively()
         if(collecting && configured)safeInitialize() else {
             WorkManager.getInstance(context).cancelUniqueWork("diagnostics-upload")
             WorkManager.getInstance(context).cancelUniqueWork("diagnostics-recovery")
@@ -91,15 +93,19 @@ class Diagnostics(private val context: Context, private val dsn:String = context
                 "audio_duration_ms" to duration.coerceAtLeast(0),"covered_audio_ms" to covered.coerceAtLeast(0),"empty_output" to empty,"test_traffic" to false))}
         }
     }
-    internal fun contextSummary(operation:String, evidence:ContextPreparationEvidence, elapsed:Long, correlation:DiagnosticCorrelation?) {
+    internal fun contextSummary(operation:String, evidence:ContextPreparationEvidence, elapsed:Long, correlation:DiagnosticCorrelation?,
+        observedAt:Long=System.currentTimeMillis()) {
         if(!enabled || !configured)return
         synchronized(lock) {
             if(!enabled || !acceptsCorrelation(correlation))return
             runCatching {
                 val fields=evidence.fields(elapsed)+(correlation ?: DiagnosticCorrelation()).fields()+
-                    mapOf("stream" to "diagnostics","test_traffic" to dev.distillpod.android.sync.SubscriptionCloudAccess.instrumentation)
+                    mapOf("observed_at_ms" to observedAt,"stream" to "diagnostics",
+                        "test_traffic" to dev.distillpod.android.sync.SubscriptionCloudAccess.instrumentation)
                 val id=operation.takeIf {runCatching {UUID.fromString(it)}.isSuccess}
-                log("capture.context_summary",fields+if(id!=null)mapOf("operation_id" to id) else emptyMap())
+                contextWaits.record(operation,evidence,correlation,correlationEpoch,System.currentTimeMillis()/86_400_000L) {
+                    log("capture.context_summary",fields+if(id!=null)mapOf("operation_id" to id) else emptyMap())
+                }
             }
         }
     }

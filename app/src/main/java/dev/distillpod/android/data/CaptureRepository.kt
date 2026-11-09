@@ -113,6 +113,8 @@ class CaptureRepository(private val db: AppDatabase, private val ai: AiGateway, 
             evidence.coverageComplete=covered
             evidence.missingDuration=ContextReadiness.missing(range,coverage)
             if (!covered) {
+                evidence.waitInput=dev.distillpod.android.diagnostics.ContextWaitInput.create(
+                    saved.startMs,saved.endMs,range,duration,availableTranscript?.revision,coverage)
                 evidence.outcome="transcript_required"
                 evidence.reason=if(transcript!=null && transcript.fingerprint!=ep.mediaFingerprint)"source_mismatch" else "coverage_missing"
                 diagnostics?.event("capture.waiting",saved.id,reason="transcript_required",related=transcript?.revision,
@@ -183,7 +185,8 @@ class CaptureRepository(private val db: AppDatabase, private val ai: AiGateway, 
             evidence.reason=if(invalidBoundsFailure)"invalid_bounds" else "internal"
             throw error
         } finally {
-            diagnostics?.contextSummary(saved.id,evidence,(System.nanoTime()-started)/1_000_000,identity)
+            val observedAt=System.currentTimeMillis()
+            diagnostics?.contextSummary(saved.id,evidence,(System.nanoTime()-started)/1_000_000,identity,observedAt)
         }
     }
 

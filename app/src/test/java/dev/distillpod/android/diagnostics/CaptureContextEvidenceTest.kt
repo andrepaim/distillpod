@@ -95,6 +95,8 @@ class CaptureContextEvidenceTest {
                 .mapNotNull {it.optJSONArray("items")}.first().getJSONObject(0)
             val attributes=item.getJSONObject("attributes")
             val fields=attributes.keys().asSequence().associateWith {attributes.getJSONObject(it).get("value")}
+            assertTrue(attributes.has("observed_at_ms"))
+            assertTrue((fields["observed_at_ms"] as Number).toLong()<=(fields["emitted_at_ms"] as Number).toLong())
             assertEquals(0,calls)
             if(fields["frozen_context"]==true) {
                 val saved=dao.distillation(id)!!

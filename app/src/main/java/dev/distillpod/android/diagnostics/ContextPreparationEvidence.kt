@@ -12,6 +12,7 @@ internal class ContextPreparationEvidence {
     var coverageComplete=false
     var missingDuration:Long?=null
     var frozen=false
+    var waitInput:ContextWaitInput?=null
     val counts=ContextReadiness()
     fun fields(elapsed:Long):Map<String,Any> = buildMap {
         put("context_schema_version",1)

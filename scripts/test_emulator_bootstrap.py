@@ -36,7 +36,11 @@ if cmd[:3] in [['shell','getprop','ro.boot.qemu'],['shell','getprop','ro.kernel.
 elif cmd[:3]==['shell','am','get-started-user-state']:
  p=root/'count';n=int(p.read_text()) if p.exists() else 0;p.write_text(str(n+1))
  print('RUNNING_UNLOCKED' if os.environ['PROOF_CASE']=='race' and n>=2 else 'RUNNING_LOCKED')
-elif cmd[:3]==['shell','am','instrument']:print('INSTRUMENTATION_STATUS_CODE: 0\\nOK (1 test)\\nINSTRUMENTATION_CODE: -1')
+elif cmd[:3]==['shell','am','instrument']:
+ phase=cmd[cmd.index('notificationPhase')+1] if 'notificationPhase' in cmd else ''
+ if phase and phase==os.environ.get('PROOF_FAIL_PHASE'):
+  print('INSTRUMENTATION_STATUS: stream=phase='+phase+' step=runtime-permission-granted\\nINSTRUMENTATION_STATUS_CODE: -2\\nFAILURES!!!')
+ else:print('INSTRUMENTATION_STATUS_CODE: 0\\nOK (1 test)\\nINSTRUMENTATION_CODE: -1')
 """)
 
     def executable(self, name, text):
@@ -128,11 +132,11 @@ elif cmd[:3]==['shell','am','instrument']:print('INSTRUMENTATION_STATUS_CODE: 0\
         self.assertEqual([["shell", "getprop", "ro.kernel.qemu"]], calls)
         self.assertFalse((self.root / "gradle-args").exists())
 
-    def notification_fixture(self, serial="emulator-5554", qemu="1"):
+    def notification_fixture(self, serial="emulator-5554", qemu="1", fail_phase=""):
         env = os.environ.copy()
         env.update(DISTILLPOD_ADB=str(self.root / "bin/fake-adb"), DISTILLPOD_SERIAL=serial,
                    DISTILLPOD_NOTIFICATION_LOG=str(self.root / "notification"), PROOF_ROOT=str(self.root),
-                   PROOF_CASE="notification", PROOF_QEMU=qemu)
+                   PROOF_CASE="notification", PROOF_QEMU=qemu, PROOF_FAIL_PHASE=fail_phase)
         result = subprocess.run(["bash", str(self.root / "scripts/notification-device-tests.sh")],
                                 cwd=self.root, env=env, capture_output=True, text=True, timeout=15)
         file = self.root / "calls"
@@ -162,3 +166,19 @@ elif cmd[:3]==['shell','am','instrument']:print('INSTRUMENTATION_STATUS_CODE: 0\
         result, calls = self.notification_fixture(qemu="0")
         self.assertNotEqual(0, result.returncode)
         self.assertEqual([["shell", "getprop", "ro.kernel.qemu"]], calls)
+
+    def test_notification_failure_preserves_phase_log_and_stops_before_next_phase(self):
+        result, calls = self.notification_fixture(fail_phase="verifyRevoked")
+        self.assertNotEqual(0, result.returncode)
+        phases = [call[call.index("notificationPhase") + 1] for call in calls
+                  if call[:3] == ["shell", "am", "instrument"]]
+        self.assertEqual(["recovery", "verifyRevoked"], phases)
+        log = (self.root / "notification-verifyRevoked.log").read_text()
+        self.assertIn("phase=verifyRevoked step=runtime-permission-granted", log)
+        self.assertIn("FAILURES!!!", log)
+        self.assertFalse((self.root / "notification-runtimeGrant.log").exists())
+
+    def test_ci_retains_all_notification_phase_logs_on_failure(self):
+        workflow = Path(__file__).resolve().parent.parent / ".github/workflows/ci.yml"
+        artifact = workflow.read_text().split("name: emulator-test-results", 1)[1]
+        self.assertIn("/tmp/distillpod-notification-*.log", artifact)
