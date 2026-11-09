@@ -22,6 +22,20 @@ class VoiceContextTest {
         assertNull(VoiceContext.readiness(episode, transcript, 10000, spans))
         VoiceReadiness.entries.forEach { assertFalse(it.feedback.contains(episode.title)) }
     }
+    @Test fun `old valid full prefix is a coverage gap rather than empty selection`() {
+        assertEquals(VoiceReadiness.COVERAGE_GAP,
+            VoiceContext.readiness(episode, transcript, 300000, listOf(span(0, 1000))))
+    }
+    @Test fun `long recent partial context is ready without a local text cutoff`() {
+        val spans = listOf(span(0, 1000, "a".repeat(16000)), span(290000, 300000, "recent"))
+        assertNull(VoiceContext.readiness(episode, transcript, 300000, spans))
+        assertEquals(spans, VoiceContext.select(300000, spans))
+    }
+    @Test fun `malformed and unrelated segments cannot make full prefix ready`() {
+        val ineligible = listOf(span(-1, 1000), span(500, 500), span(900, 400), span(9000, 11000),
+            span(0, 9000).copy(revision = "old"), span(0, 9000).copy(episodeId = "other"))
+        assertEquals(VoiceReadiness.EMPTY_SELECTION, VoiceContext.readiness(episode, transcript, 10000, ineligible))
+    }
     @Test fun `all earlier speech is kept while future and boundary straddling segments are excluded`() {
         val selected = VoiceContext.select(180000, listOf(span(0, 1000), span(59000,61000), span(60000,70000), span(179000,181000), span(180000,190000)))
         assertEquals(listOf(0L, 59000L, 60000L), selected.map { it.startMs })
