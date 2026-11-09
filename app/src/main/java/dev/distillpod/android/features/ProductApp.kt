@@ -147,7 +147,7 @@ private fun date(ms: Long) = if (ms <= 0) "" else DateTimeFormatter.ofPattern("d
                     route == "posts" || route.startsWith("posts:") -> PostDraftsPage(vm, route.substringAfter(':', "").takeIf { it.isNotBlank() })
                     route.startsWith("post:") -> PostEditorPage(vm, route.substringAfter(':'))
                     route == "saved" -> SavedPage(vm, captures, episodes, podcasts)
-                    route == "shows" -> ShowsPage(vm, podcasts)
+                    route == "shows" -> ShowsPage(vm)
                     route == "settings" || route.startsWith("settings:") -> SettingsPage(vm, preferences, account, models, episodes, route.substringAfter(':', "overview"))
                     route == "backup" -> BackupPage(vm) { vm.open("settings:sync") }
                     route == "player" -> PlayerPage(vm, episodes.firstOrNull { it.id == player.episodeId }, podcasts, player, fullscreenExitRequest) { videoFullscreen = it }

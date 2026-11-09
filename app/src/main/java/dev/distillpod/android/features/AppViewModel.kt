@@ -23,6 +23,13 @@ class AppViewModel(val graph: AppGraph, private val saved: SavedStateHandle) : V
     val recommendationError = graph.recommendations.error.stateIn(viewModelScope, SharingStarted.Eagerly, "")
     val podcasts = dao.observePodcasts().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     val episodes = dao.observeEpisodes().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    val shows = combine(dao.observePodcasts(), dao.observeEpisodes(), graph.settings.shows) { podcasts, episodes, preferences ->
+        ShowLibraryState(summarizeShows(podcasts, episodes), preferences)
+    }.distinctUntilChanged().flowOn(Dispatchers.Default)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+    fun showFormat(format: ShowFormat) = action("shows-format") { graph.settings.showFormat(format) }
+    fun showSort(sort: ShowSort) = action("shows-sort") { graph.settings.showSort(sort) }
+    fun pinShow(feed: String, pinned: Boolean) = action("show-pin:$feed") { graph.settings.pinShow(feed, pinned) }
     val posts = dao.observePosts().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     val captures = dao.observeDistillations().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     val localTranscripts = dao.observeTranscripts().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
