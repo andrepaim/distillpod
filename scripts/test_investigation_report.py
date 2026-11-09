@@ -332,3 +332,34 @@ class ProducerExportPipelineTest(unittest.TestCase):
   self.assertIn('incomplete_export',result['gaps'])
   self.assertNotIn('SECRET_SENTINEL',json.dumps(result))
   self.assertNotIn('success_rate',json.dumps(result))
+
+class ContextCoalescingInterpretationTest(unittest.TestCase):
+ def waiting(self):
+  items=json.loads((Path(__file__).parent/'fixtures/investigation/context-missing.json').read_text())
+  return report.normalize(items[0])
+ def test_observed_wait_is_not_a_preparation_denominator(self):
+  waiting=self.waiting()
+  result=report.investigate(export([waiting]),waiting['capture_request_id'])
+  self.assertEqual(1,len(result['timeline']))
+  self.assertEqual(0,result['duplicates'])
+  self.assertEqual('unknown',result['publication']['state'])
+  self.assertIn('not a preparation count',result['limits'])
+  for key in ('preparation_count','coalesced_wait_count','lost_attempt_count'):
+   self.assertNotIn(key,json.dumps(result))
+ def test_same_metrics_new_event_is_preserved_not_consumer_coalesced(self):
+  first=self.waiting();second=dict(first,event_id=uid(700))
+  result=report.investigate(export([first,second,first]),first['capture_request_id'])
+  self.assertEqual(2,len(result['timeline']))
+  self.assertEqual(1,result['duplicates'])  # known event replay only, not suppressed callbacks
+ def test_terminal_journal_evidence_does_not_restore_dropped_stage_details(self):
+  waiting=self.waiting()
+  terminal=dict(waiting,message='operation.summary',event_id=uid(701),summary_id=uid(702),
+       feature='distillation',outcome='completed',sequence=1)
+  health=dict(waiting,message='diagnostics.health',event_id=uid(703),budget_policy_version=2,
+       critical_limit=160,critical_used=160,critical_dropped=7)
+  result=report.investigate(export([waiting,terminal,health]),waiting['capture_request_id'])
+  self.assertEqual('observed_published',result['publication']['state'])
+  self.assertIn('stage_evidence_unavailable',result['gaps'])
+  self.assertIn('budget_admission_suppression_observed',result['gaps'])
+  self.assertIn('best-effort direct details',result['limits'])
+  self.assertNotIn('lost_attempt_count',json.dumps(result))

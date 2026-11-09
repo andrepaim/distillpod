@@ -199,3 +199,31 @@ owned by the prerequisite changes. Before publication, wait for #36 to merge, ve
 equivalence with actual main or review/retest any differences, then run required CI on the
 final published consumer head. This local preparation does not authorize premature merge,
 retargeting, live inspection or release.
+
+
+## Context-wait observation limits
+
+Context-summary records are observed snapshots, **not one record per preparation
+callback**, a preparation denominator, or a count of lost attempts. Corrected #36
+coalesces only unchanged transcript_required waits after successful local outbox insertion,
+for the same actual moment/attempt/execution and meaningful input snapshot. The first or
+changed wait and ready/terminal results remain eligible to attempt emission; this is not
+a delivery guarantee. The bounded 160-entry cache resets with consent/day/process lifetime.
+No additional wire fields or higher budgets identify suppressed callbacks.
+
+Consequently the consumer cannot tell from a missing row alone whether a callback was
+coalesced, never occurred, was budget-denied, or was otherwise unobserved. It must not
+invent coalescing counts or use context-row counts as a denominator. Stable event-ID replay
+deduplication is separate: two distinct observed events with equal metrics remain two
+observations, including after cache resets.
+
+Direct context and detailed attempt summaries are best-effort and may be dropped at the
+critical cap. Generic terminal operation summaries have separate journal replay within
+existing retention/queue limits; their later observation does not restore missing context
+or review details. Aggregate critical_dropped combines admission-denial/deferred evidence
+and is not a lost-attempt count. A journal completion can support observed publication
+while detailed stage evidence remains unavailable.
+
+This consumer clarification does not merge or validate the unpublished producer correction.
+Original observation times absent from historical producer fixtures remain unavailable,
+never reconstructed from emission time.

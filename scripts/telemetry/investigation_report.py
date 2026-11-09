@@ -38,6 +38,10 @@ LIMITS = ('Content-free telemetry explains the recorded pipeline decision; it ca
           'pagination is not complete application observation: consent, retention, delayed delivery, '
           'queue/provider loss and budgets can hide evidence. Budget counters include suppressed '
           'pending summaries and are not proof of permanent loss or unique lost operations. '
+          'Context snapshots are not a preparation count: successfully queued unchanged '
+          'transcript_required waits may be coalesced. Missing rows do not identify the cause. '
+          'Context and attempt summaries are best-effort direct details; generic terminal '
+          'journal replay within retention does not restore missing stage/context details. '
           'Attempted calls are execution gateway invocations, not billing. Coverage is interval '
           'coverage, not semantic quality. No success/failure rate is computed.')
 
