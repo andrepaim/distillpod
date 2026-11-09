@@ -21,6 +21,9 @@ class ProductFlowDeviceTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
 
     @Test fun subscriptionDownloadTranscriptCaptureAndReplaySurviveRecreation() = runBlocking {
+        check(android.os.Build.HARDWARE.contains("ranchu") || android.os.Build.FINGERPRINT.contains("generic")) {
+            "Use a disposable test emulator"
+        }
         val graph = compose.activity.applicationContext.appGraph
         graph.ready.await()
         val originalWifiOnly = graph.settings.flow.first().wifiOnly
@@ -44,6 +47,7 @@ class ProductFlowDeviceTest {
         server.start()
         var podcast: String? = null
         var episode: String? = null
+        var bodyFailure: Throwable? = null
         try {
             // This loopback flow tests the product pipeline, independent of whether
             // the emulator's real default connection is metered. Policy has its own suite.
@@ -87,20 +91,41 @@ class ProductFlowDeviceTest {
             await("saved source replay starts") { graph.playback.state.value.episodeId == episode && graph.playback.state.value.playing }
             assertEquals(dao.episode(episode)!!.localFile, graph.playback.captureSource().third)
             assertEquals(10000L, dao.distillation(capture)!!.endMs)
-        } finally {
+        } catch (error: Throwable) {
+            bodyFailure = error
+            throw error
+        } finally { withContext(NonCancellable) {
+            var cleanupFailure: Throwable? = null
+            fun record(error: Throwable) {
+                val first = cleanupFailure
+                if (first == null) cleanupFailure = error else first.addSuppressed(error)
+            }
             try {
-                episode?.let {
-                    graph.playback.pause(); graph.playback.remove(it)
-                    await("playback releases the fixture download") { !graph.activeFiles.busy(dao.episode(it)?.localFile ?: "") }
-                    graph.media.deleteDownload(it)
+                episode?.let { fixtureId ->
+                    graph.playback.pause(); graph.playback.remove(fixtureId)
+                    if (dao.transcript(fixtureId)?.state in listOf("queued", "processing")) graph.transcription.pause(fixtureId)
+                    withContext(Dispatchers.IO) {
+                        androidx.work.WorkManager.getInstance(graph.context).cancelUniqueWork("download:$fixtureId")
+                            .result.get(10, java.util.concurrent.TimeUnit.SECONDS)
+                    }
+                    await("playback and persisted queue release the fixture download") {
+                        fixtureId !in graph.playback.state.value.queue && dao.queue().none { queued -> queued.episodeId == fixtureId } &&
+                            !graph.activeFiles.busy(dao.episode(fixtureId)?.localFile ?: "")
+                    }
+                    graph.media.deleteDownload(fixtureId)
                 }
                 podcast?.let { dao.deletePodcast(it) }
-            } finally {
+            } catch (error: Throwable) { record(error) }
+            try {
                 graph.settings.flag("wifi", originalWifiOnly)
                 graph.jobs.configureNetworkPolicy()
-                server.shutdown()
+            } catch (error: Throwable) { record(error) }
+            try { server.shutdown() } catch (error: Throwable) { record(error) }
+            cleanupFailure?.let { cleanup ->
+                val original = bodyFailure
+                if (original != null) original.addSuppressed(cleanup) else throw cleanup
             }
-        }
+        } }
     }
 
     private suspend fun await(stage: String, predicate: suspend () -> Boolean) {
