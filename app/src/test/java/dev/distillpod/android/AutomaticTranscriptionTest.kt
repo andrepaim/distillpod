@@ -152,6 +152,71 @@ class AutomaticTranscriptionTest {
         } finally { graph.db.close() }
     }
 
+    @Test fun `missing model cannot overwrite a pause from an in flight pass`() = runBlocking<Unit> {
+        val graph = isolatedGraph()
+        try {
+            val dao = graph.db.library()
+            val row = TranscriptEntity(episode.id, "pause-before-model", episode.mediaFingerprint, "missing-test-model", "auto")
+            dao.putTranscript(row)
+            val entered = CompletableDeferred<Unit>()
+            val release = CompletableDeferred<Unit>()
+            // Gate the pass before model lookup; pause must cancel it and clear progress
+            // without relying on sleeps or scheduler timing.
+            val worker = launch {
+                graph.transcription.process(episode.id, row.revision, TranscriptExecution({ false }, {
+                    entered.complete(Unit)
+                    release.await()
+                }, false))
+            }
+            try {
+                withTimeout(5000) { entered.await() }
+                graph.transcription.pause(episode.id)
+            } finally { release.complete(Unit) }
+            withTimeout(5000) { worker.join() }
+            assertEquals("paused", dao.transcript(episode.id)!!.state)
+            assertNull(dao.transcript(episode.id)!!.error)
+            assertFalse(graph.transcription.progress.value.containsKey(episode.id))
+        } finally { graph.db.close() }
+    }
+
+    @Test fun `missing model cannot restore superseded or terminal work`() = runBlocking<Unit> {
+        val graph = isolatedGraph()
+        try {
+            val dao = graph.db.library()
+            val row = TranscriptEntity(episode.id, "obsolete-model-check", episode.mediaFingerprint, "missing-test-model", "auto")
+            for (replacement in listOf(
+                // Persist the control result independently of this worker's cancellation,
+                // as when an already-dispatched database write races with user controls.
+                row.copy(state = "paused"),
+                row.copy(revision = "replacement", state = "queued"),
+                row.copy(state = "stale"),
+                row.copy(state = "ready"),
+                row.copy(state = "partial"),
+            )) {
+                dao.putTranscript(row)
+                graph.transcription.process(episode.id, row.revision, TranscriptExecution({ false }, {
+                    dao.putTranscript(replacement)
+                }, false))
+                assertEquals(replacement, dao.transcript(episode.id))
+            }
+        } finally { graph.db.close() }
+    }
+
+    @Test fun `missing model preserves current progress when publisher fallback leaves work queued`() = runBlocking<Unit> {
+        val graph = isolatedGraph()
+        try {
+            val dao = graph.db.library()
+            val row = TranscriptEntity(episode.id, "queued-fallback", episode.mediaFingerprint, "missing-test-model", "auto")
+            val current = row.copy(processedMs = 5000, durationMs = 10000)
+            dao.putTranscript(row)
+            graph.transcription.process(episode.id, row.revision, TranscriptExecution({ false }, {
+                dao.putTranscript(current)
+            }, false))
+            assertEquals(current.copy(state = "waiting_model",
+                error = "Download the selected transcription model in Settings."), dao.transcript(episode.id))
+        } finally { graph.db.close() }
+    }
+
     @Test fun `an active pipeline keeps its revision while the downloaded audio identity changes`() = runBlocking<Unit> {
         val graph = isolatedGraph()
         try {

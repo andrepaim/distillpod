@@ -248,7 +248,16 @@ class TranscriptionRepository(private val graph: AppGraph,
             }
             val modelPath = File(graph.media.modelsDirectory, "${row.model}.bin")
             if (dao.model(row.model)?.state != "ready" || !modelPath.isFile) {
-                dao.putTranscript(row.copy(state = "waiting_model", error = "Download the selected transcription model in Settings.")); return
+                // Cancellation alone cannot retract an already-dispatched database write.
+                // Serialize with pause/prepare and never restore the snapshot held by this pass.
+                controls.withLock {
+                    val current = dao.transcript(id)
+                    if (current?.revision == revision && current.state in listOf("queued", "processing")) {
+                        dao.putTranscript(current.copy(state = "waiting_model",
+                            error = "Download the selected transcription model in Settings."))
+                    }
+                }
+                return
             }
             report(TranscriptStage.DOWNLOADING)
             val source = graph.media.ensureDownloaded(id)
