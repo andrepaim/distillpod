@@ -169,6 +169,38 @@ class StorageUsageTest {
             } finally { child.delete(); partial.delete() }
         }
     }
+    @Test fun completedDeletionFailureAfterPartialRemovalRetriesFromActualDiskOffset() = runBlocking {
+        fixture { db, media, _ ->
+            MockWebServer().use { server ->
+                // Simulate a non-deletable completed target without changing permissions.
+                val completed = File(media.directory, "e.audio").apply { mkdirs() }
+                val child = File(completed, "fixture").apply { writeText("retained") }
+                val partial = File(media.directory, "e.partial").apply { writeText("old") }
+                db.library().putEpisode(episode().copy(localFile = completed.absolutePath,
+                    audioUrl = server.url("/audio").toString()))
+                try {
+                    assertTrue(runCatching { media.deleteDownload("e") }.isFailure)
+                    assertFalse(partial.exists())
+                    assertEquals("retained", child.readText())
+                    val unchanged = db.library().episode("e")!!
+                    assertEquals("paused", unchanged.downloadState)
+                    assertEquals(3L, unchanged.downloadedBytes)
+                    assertEquals("old", unchanged.etag)
+                    // Physical reporting must not trust the stale resume byte count.
+                    assertEquals(0L, media.storageUsage().quotaBytes)
+                    server.enqueue(MockResponse().setBody("fresh audio"))
+                    assertEquals("fresh audio", media.ensureDownloaded("e").readText())
+                    val request = server.takeRequest()
+                    assertNull(request.getHeader("Range"))
+                    assertNull(request.getHeader("If-Range"))
+                    val retried = db.library().episode("e")!!
+                    assertEquals("downloaded", retried.downloadState)
+                    assertEquals(11L, retried.downloadedBytes)
+                    assertEquals(11L, media.storageUsage().downloadedBytes)
+                } finally { child.delete(); completed.delete() }
+            }
+        }
+    }
     private fun episode() = EpisodeEntity("e", "p", "g", "Episode", "https://example.test/audio",
         downloadState = "paused", downloadedBytes = 3, etag = "old")
     private suspend fun fixture(block: suspend (AppDatabase, MediaRepository, AppSettings) -> Unit) {

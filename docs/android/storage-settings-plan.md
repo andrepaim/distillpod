@@ -68,3 +68,10 @@ for the expected missing-audio assertion. Cleanup now removes the partial first,
 so that failure leaves completed audio and its metadata intact. This reduces
 the deterministic multi-file failure risk; it does not make filesystem deletion
 and database commit atomic across process death.
+
+The inverse failure is also covered: partial deletion can succeed before
+completed-audio deletion fails. Room metadata then remains unchanged and may
+temporarily retain stale partial byte/validator fields. Storage reporting reads
+actual files, and retry uses the on-disk offset: a missing partial restarts at
+zero without Range or If-Range and successful completion refreshes byte state.
+This is explicitly not a claim that two filesystem deletes are transactional.
