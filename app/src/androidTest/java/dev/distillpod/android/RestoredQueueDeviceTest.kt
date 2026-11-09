@@ -1,6 +1,7 @@
 package dev.distillpod.android
 
 import android.os.Build
+import androidx.media3.exoplayer.ExoPlayer
 import androidx.room.withTransaction
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -18,6 +19,7 @@ import java.util.UUID
 
 /** Normal cloud projection into a running empty service, on disposable emulators only. */
 @RunWith(AndroidJUnit4::class)
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 class RestoredQueueDeviceTest {
     @Test fun projectedQueueRestoresAndCanBeCleared()=runBlocking<Unit> {
         check(Build.HARDWARE.contains("ranchu") || Build.FINGERPRINT.contains("generic"))
@@ -31,15 +33,30 @@ class RestoredQueueDeviceTest {
         val seed="$tag-seed";val restored="$tag-restored"
         val file=File(instrumentation.targetContext.cacheDir,"$tag.wav")
         instrumentation.context.assets.open("jfk.wav").use {input->file.outputStream().use {output->input.copyTo(output)}}
-        suspend fun awaitQueue(expected:List<String>,phase:String) {
+        var servicePlayer:ExoPlayer?=null
+        suspend fun awaitQueue(expected:List<String>,phase:String,bindServiceEpisode:String?=null) {
             var persisted=emptyList<String>()
+            var backend:List<String>?=null
+            var backendPaused:Boolean?=null
             try {
                 withTimeout(15000) {
-                    graph.playback.state.first {it.queue==expected}
-                    do {persisted=dao.queue().map {it.episodeId};if(persisted!=expected)delay(50)} while(persisted!=expected)
+                    while(true) {
+                        val controllerMatches=graph.playback.state.value.queue==expected
+                        persisted=dao.queue().map {it.episodeId}
+                        if(servicePlayer==null && bindServiceEpisode!=null && controllerMatches && persisted==expected) {
+                            servicePlayer=withContext(Dispatchers.Main) {fixtureServicePlayer(bindServiceEpisode)}
+                        }
+                        val observed=servicePlayer?.let {player->withContext(Dispatchers.Main) {
+                            (0 until player.mediaItemCount).map {player.getMediaItemAt(it).mediaId} to !player.playWhenReady
+                        }}
+                        backend=observed?.first;backendPaused=observed?.second
+                        if(controllerMatches && persisted==expected &&
+                            (backend==null || backend==expected && backendPaused==true))break
+                        delay(50)
+                    }
                 }
             } catch(failure:Throwable) {
-                throw AssertionError("Restored queue phase '$phase' failed; expectedCount=${expected.size}, controllerCount=${graph.playback.state.value.queue.size}, persistedCount=${persisted.size}",failure)
+                throw AssertionError("Restored queue phase '$phase' failed; expectedCount=${expected.size}, controllerCount=${graph.playback.state.value.queue.size}, persistedCount=${persisted.size}, serviceCount=${backend?.size}, servicePaused=$backendPaused",failure)
             }
         }
         var primary:Throwable?=null
@@ -51,7 +68,7 @@ class RestoredQueueDeviceTest {
             dao.putPodcast(PodcastEntity(tag,"https://example.test/$tag","Restored queue fixture"))
             listOf(seed,restored).forEach {id->dao.putEpisode(EpisodeEntity(id,tag,id,"Restored queue item","https://example.test/$id",localFile=file.absolutePath,downloadState="downloaded"))}
             // Establish that the serialized writer has processed a nonempty queue and its clear.
-            graph.playback.play(seed,1000);graph.playback.pause();awaitQueue(listOf(seed),"seed persisted")
+            graph.playback.play(seed,1000);graph.playback.pause();awaitQueue(listOf(seed),"seed persisted",bindServiceEpisode=seed)
             graph.playback.clear();awaitQueue(emptyList(),"seed cleared")
             graph.db.withTransaction {
                 graph.db.sync().putView(SyncViewEntity("queue_library"))
