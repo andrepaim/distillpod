@@ -21,3 +21,10 @@ A paused-partial confirmation can race with resumed/queued downloading. Its paus
 
 ## Acceptance protocol
 The synthetic UI fixture covers both episode-menu and storage deletion readiness, queued/transcribing/downloading/active owners, a confirmation-time ownership change, cancel, direct repository rejection, and successful retry after release. It preserves synthetic resume metadata, listening position, transcript, audio and partial bytes while protected. Physical execution requires the exact isolated validation application ID, with an offline manifest overlay and no production configuration. Ordinary hosted emulator CI also runs the fixture. Existing non-atomic ActiveFiles ownership transitions are not expanded or redesigned by this classification change.
+
+## Local validation
+Tested combined source revision: 7e5adf23ecfb83d37760b7257b2a2d3b5efbe0ca (#58 plus #54 queue controls).
+- Three red regressions reproduced: unstructured protection exception; expected rejection sent to unexpected-error sink; resumed paused-partial race misclassified.
+- Final combined :core:test (99 tests), :app:testDebugUnitTest (513 tests), :app:lintDebug, :app:assembleDebug and :app:assembleDebugAndroidTest passed. No test failures or skips.
+- Repository Python suite: 87 passed. Committed-data guard, secret-rule regression and fully redacted full-history Gitleaks passed.
+- Hosted emulator acceptance and isolated phone validation are pending, not waived. Coordinator owns current-main integration and final combined CI. No release or production data changes.
