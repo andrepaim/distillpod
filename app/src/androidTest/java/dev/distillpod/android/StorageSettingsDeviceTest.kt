@@ -78,7 +78,17 @@ class StorageSettingsDeviceTest {
             assertFalse(partial.exists())
             assertEquals(1234L, dao.episode(id)!!.positionMs)
             val quotaAfter = "Audio quota used: ${fileSize(baseline.quotaBytes)} of ${fileSize(prefs.storageLimitBytes)}"
-            compose.waitUntil(15000) { compose.onAllNodesWithText(quotaAfter).fetchSemanticsNodes().isNotEmpty() }
+            try {
+                compose.waitUntil(15000) { compose.onAllNodesWithText(quotaAfter).fetchSemanticsNodes().isNotEmpty() }
+            } catch (error: Throwable) {
+                val snapshot = try { withTimeout(2000) {
+                    val actual = graph.media.storageUsage()
+                    "expectedQuota=${baseline.quotaBytes}, actualQuota=${actual.quotaBytes}, " +
+                        "downloaded=${actual.downloadedBytes}, partials=${actual.partialCacheBytes}, models=${actual.modelBytes}, " +
+                        "fixtureState=${dao.episode(id)?.downloadState}, partialExists=${partial.exists()}, modelExists=${model.exists()}"
+                } } catch (snapshotError: Exception) { "snapshotUnavailable=${snapshotError.javaClass.simpleName}" }
+                throw AssertionError("Post-deletion storage display did not reach expected quota; $snapshot", error)
+            }
             compose.onNodeWithText(quotaAfter).performScrollTo().assertIsDisplayed()
             assertTrue(model.exists())
         } finally {
