@@ -12,7 +12,6 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.*
-import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModelProvider
@@ -32,7 +31,7 @@ import java.io.File
 /** Synthetic subscriptions only; never run on an owner's physical installation. */
 @RunWith(AndroidJUnit4::class)
 class ShowsOrganizationDeviceTest {
-    @get:Rule val compose = createAndroidComposeRule<MainActivity>()
+    @get:Rule val compose = createQueuedAndroidComposeRule<MainActivity>()
     private lateinit var graph: AppGraph
     private lateinit var vm: AppViewModel
     private lateinit var original: ShowPreferences

@@ -51,3 +51,17 @@ this scope. Reassess if scope or integration changes those dependencies.
 Use synthetic data, no owner-phone fixtures, live accounts or paid services.
 Record tested revision, checks, results and limitations in the PR. No release
 publication is included.
+
+## Validation integration
+
+Hosted acceptance exposed a fixture assumption that two cards were composed
+without scrolling. The same failure was reproduced locally at 320×640/160dpi;
+the revised test observes visual order while scrolling and explicitly reveals
+card details before asserting them, including actual text at 200% font size.
+
+The independently owned Compose test-dispatcher fix from PR #76 (`82fda97`) is
+integrated into this feature branch for combined validation. The Shows fixture
+uses its queued main-thread/lifecycle rule. This changes test infrastructure
+only; the production risk assessment above is unchanged. Keep PR #78 draft
+until #76 is merged, integrate current main again, and require successful
+combined CI. Ownership of the shared test fix remains with its original session.
