@@ -41,8 +41,33 @@ class ProtectedAudioDeletionDeviceTest {
             etag = "fixture-etag", lastModified = "fixture-date", positionMs = 1234)
         val transcript = TranscriptEntity(id, "r", "fixture", "tiny", "en", state = "ready")
         val delete = hasText("Delete download") and hasAnyAncestor(hasTestTag("storage-download-$id"))
+        var fixtureViewModel: AppViewModel? = null
+        var lastDbQueued: Boolean? = null
+        var lastDbTranscript: String? = null
+        fun fixtureState(): String {
+            val vm = fixtureViewModel
+            return "dbQueuedLast=$lastDbQueued, dbTranscriptLast=$lastDbTranscript, " +
+                "controllerQueued=${id in graph.playback.state.value.queue}, " +
+                "activeQueued=${audio.absolutePath in graph.media.active.queued}, " +
+                "audioBusy=${graph.media.active.busy(audio.absolutePath)}, " +
+                "partialBusy=${graph.media.active.busy(partial.absolutePath)}, " +
+                "block=${vm?.audioDeletionBlocks?.value?.get(id)}, " +
+                "deleteBusy=${vm?.busy?.value?.contains("delete:$id")}, " +
+                "observedTranscript=${vm?.localTranscripts?.value?.firstOrNull { it.episodeId == id }?.state}, " +
+                "observedDownload=${vm?.episodes?.value?.firstOrNull { it.id == id }?.downloadState}, " +
+                "audioExists=${audio.exists()}, partialExists=${partial.exists()}"
+        }
+        fun phaseFailure(phase: String, error: Throwable) =
+            AssertionError("Protected deletion phase [$phase] failed; ${fixtureState()}", error)
+        fun awaitUi(phase: String, timeoutMs: Long = 10000, condition: () -> Boolean) {
+            try { compose.waitUntil(timeoutMs, condition) }
+            catch (error: Throwable) { throw phaseFailure(phase, error) }
+        }
+        suspend fun <T> awaitState(phase: String, block: suspend CoroutineScope.() -> T): T =
+            try { withTimeout(10000, block) }
+            catch (error: Throwable) { throw phaseFailure(phase, error) }
         fun feedback(reason: AudioDeletionBlockReason) {
-            compose.waitUntil(10000) { compose.onAllNodesWithText(reason.feedback).fetchSemanticsNodes().isNotEmpty() }
+            awaitUi("storage feedback ${reason.name}") { compose.onAllNodesWithText(reason.feedback).fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithText(reason.feedback).performScrollTo().assertIsDisplayed()
             compose.onNode(delete).performScrollTo().assertIsNotEnabled()
         }
@@ -52,15 +77,13 @@ class ProtectedAudioDeletionDeviceTest {
             assertEquals(1234L, dao.episode(id)!!.positionMs)
             assertEquals("fixture-etag", dao.episode(id)!!.etag)
         }
-        suspend fun trace(stage: String, vm: AppViewModel) {
-            println("Protected audio fixture $stage: reason=${vm.audioDeletionBlocks.value[id]}, " +
-                "dbQueued=${dao.queue().any { it.episodeId == id }}, " +
-                "controllerQueued=${id in graph.playback.state.value.queue}, " +
-                "activeQueued=${audio.absolutePath in graph.media.active.queued}, " +
-                "transcript=${dao.transcript(id)?.state}")
+        suspend fun recordState() {
+            lastDbQueued = dao.queue().any { it.episodeId == id }
+            lastDbTranscript = dao.transcript(id)?.state
         }
         var acquired = false
         var audioAcquired = false
+        var bodyFailure: Throwable? = null
         try {
             audio.writeText("audio"); partial.writeText("resume")
             dao.putPodcast(PodcastEntity(id, "https://example.test/$id", "Protected audio fixture"))
@@ -70,7 +93,8 @@ class ProtectedAudioDeletionDeviceTest {
                 ViewModelProvider(compose.activity, AppViewModel.factory(graph))[AppViewModel::class.java]
                     .also { it.root("library") }
             }
-            compose.waitUntil(15000) {
+            fixtureViewModel = vm
+            awaitUi("initial queued readiness", 15000) {
                 vm.episodes.value.any { it.id == id } &&
                     vm.audioDeletionBlocks.value[id] == AudioDeletionBlockReason.QUEUED
             }
@@ -81,7 +105,7 @@ class ProtectedAudioDeletionDeviceTest {
             compose.onNodeWithText(AudioDeletionBlockReason.QUEUED.feedback).assertIsDisplayed()
             androidx.test.espresso.Espresso.pressBack()
             withContext(Dispatchers.Main) { vm.open("settings:storage") }
-            compose.waitUntil(15000) { compose.onAllNodesWithText("Manage downloads").fetchSemanticsNodes().isNotEmpty() }
+            awaitUi("storage navigation", 15000) { compose.onAllNodesWithText("Manage downloads").fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithText("Manage downloads").performScrollTo().performClick()
             feedback(AudioDeletionBlockReason.QUEUED)
             assertTrue(runCatching { graph.media.deleteDownload(id) }.exceptionOrNull() is AudioDeletionBlocked)
@@ -89,14 +113,16 @@ class ProtectedAudioDeletionDeviceTest {
             check(dao.queue() == listOf(QueueEntryEntity(id, 0)))
             // The real service restores DAO entries into Media3; deleting only the DAO row
             // does not release that ownership and the next service checkpoint restores it.
-            withTimeout(10000) { graph.playback.state.first { id in it.queue } }
-            trace("before controller clear", vm)
+            recordState()
+            awaitState("controller acquires queued fixture") { graph.playback.state.first { id in it.queue } }
+            recordState()
             graph.playback.clear()
-            withTimeout(10000) {
-                while (id in graph.playback.state.value.queue || dao.queue().any { it.episodeId == id } ||
+            awaitState("controller clear releases all owners") {
+                while (id in graph.playback.state.value.queue ||
+                    dao.queue().any { it.episodeId == id }.also { lastDbQueued = it } ||
                     graph.media.active.busy(audio.absolutePath)) delay(50)
             }
-            trace("after controller clear", vm)
+            recordState()
             dao.putTranscript(transcript.copy(state = "processing"))
             feedback(AudioDeletionBlockReason.TRANSCRIBING)
             retained()
@@ -112,13 +138,13 @@ class ProtectedAudioDeletionDeviceTest {
             retained()
             graph.media.active.release(audio)
             audioAcquired = false
-            compose.waitUntil(10000) { vm.audioDeletionBlocks.value[id] == null }
+            awaitUi("audio owner released") { vm.audioDeletionBlocks.value[id] == null }
             compose.onNode(delete).performScrollTo().assertIsEnabled().performClick()
             compose.onNodeWithText("Delete downloaded audio?").assertIsDisplayed()
             // Ownership can change after opening confirmation; UI updates but repository remains authoritative.
             graph.media.active.acquire(partial)
             acquired = true
-            compose.waitUntil(10000) { vm.audioDeletionBlocks.value[id] == AudioDeletionBlockReason.ACTIVE }
+            awaitUi("confirmation becomes protected") { vm.audioDeletionBlocks.value[id] == AudioDeletionBlockReason.ACTIVE }
             compose.onNode(hasText("Delete download") and hasAnyAncestor(isDialog())).assertIsNotEnabled()
             compose.onNodeWithText("Cancel").performClick()
             withContext(Dispatchers.Main) {
@@ -127,27 +153,36 @@ class ProtectedAudioDeletionDeviceTest {
             }
             // Existing disabled-action text is not proof the async command has finished.
             // Keep the owner held until this exact action's finally block clears its busy key.
-            compose.waitUntil(10000) { "delete:$id" !in vm.busy.value }
-            compose.waitUntil(10000) { compose.onAllNodesWithText(AudioDeletionBlockReason.ACTIVE.feedback).fetchSemanticsNodes().isNotEmpty() }
-            trace("after blocked action completion", vm)
+            awaitUi("blocked delete action completes") { "delete:$id" !in vm.busy.value }
+            awaitUi("blocked action feedback") { compose.onAllNodesWithText(AudioDeletionBlockReason.ACTIVE.feedback).fetchSemanticsNodes().isNotEmpty() }
+            recordState()
             retained()
             graph.media.active.release(partial)
             acquired = false
-            compose.waitUntil(10000) { vm.audioDeletionBlocks.value[id] == null && vm.busy.value.isEmpty() }
+            awaitUi("partial owner released and actions idle") { vm.audioDeletionBlocks.value[id] == null && vm.busy.value.isEmpty() }
             compose.onNode(delete).performScrollTo().assertIsEnabled().performClick()
             compose.onNode(hasText("Delete download") and hasAnyAncestor(isDialog())).performClick()
-            withTimeout(10000) { while (dao.episode(id)?.localFile != null) delay(50) }
+            awaitState("allowed deletion persists") { while (dao.episode(id)?.localFile != null) delay(50) }
             assertFalse(audio.exists()); assertFalse(partial.exists())
             assertEquals(1234L, dao.episode(id)!!.positionMs)
             assertEquals(transcript, dao.transcript(id))
+        } catch (error: Throwable) {
+            bodyFailure = error
+            throw error
         } finally {
-            if (acquired) graph.media.active.release(partial)
-            if (audioAcquired) graph.media.active.release(audio)
-            // Remove only this fixture from the real controller, including after a failed assertion.
-            graph.playback.remove(id)
-            withTimeout(10000) { graph.playback.state.first { id !in it.queue } }
-            dao.deletePodcast(id)
-            audio.delete(); partial.delete()
+            try {
+                if (acquired) graph.media.active.release(partial)
+                if (audioAcquired) graph.media.active.release(audio)
+                // Remove only this fixture from the real controller, including after a failed assertion.
+                graph.playback.remove(id)
+                awaitState("cleanup removes controller fixture") { graph.playback.state.first { id !in it.queue } }
+                dao.deletePodcast(id)
+                audio.delete(); partial.delete()
+            } catch (error: Throwable) {
+                val cleanupFailure = phaseFailure("cleanup", error)
+                val original = bodyFailure
+                if (original != null) original.addSuppressed(cleanupFailure) else throw cleanupFailure
+            }
         }
     }
 }
