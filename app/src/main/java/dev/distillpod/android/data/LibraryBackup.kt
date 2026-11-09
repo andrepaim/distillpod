@@ -265,6 +265,9 @@ class LibraryBackup(private val db: AppDatabase, private val assets: dev.distill
     }
 
     private fun portable(table: String, row: JSONObject) {
+        if(table=="moment_attempts") {
+            row.put("contextJson",JSONObject(row.getString("contextJson")).apply {remove("_diagnostics")}.toString())
+        }
         if (table == "post_drafts") {
             val post = SocialResult.parse(row.getString("content"))
             if (post.stage in listOf("queued", "preparing", "researching", "illustrating")) row.put("content",post.copy(stage="failed", attempt=java.util.UUID.randomUUID().toString(), error="Restored from backup. Retry when ready.").json())

@@ -50,7 +50,7 @@ class NotificationAccessDeviceTest {
         if (blocked) shell("pm set-permission-flags $packageName ${Manifest.permission.POST_NOTIFICATIONS} user-set user-fixed")
         context.getSharedPreferences("notification_access", Context.MODE_PRIVATE).edit().clear().commit()
         compose.runOnUiThread {
-            ViewModelProvider(context, AppViewModel.factory(context.applicationContext.appGraph))[AppViewModel::class.java].open("settings:library")
+            ViewModelProvider(context, AppViewModel.factory(context.applicationContext.appGraph))[AppViewModel::class.java].open("settings:notifications")
         }
         await { !enabled() }
     }
@@ -74,7 +74,7 @@ class NotificationAccessDeviceTest {
         if (InstrumentationRegistry.getArguments().getString("notificationPhase") == "verifyRevoked") {
             guard(); context.applicationContext.appGraph.ready.await()
             compose.runOnUiThread {
-                ViewModelProvider(context, AppViewModel.factory(context.applicationContext.appGraph))[AppViewModel::class.java].open("settings:library")
+                ViewModelProvider(context, AppViewModel.factory(context.applicationContext.appGraph))[AppViewModel::class.java].open("settings:notifications")
             }
             assertFalse(enabled())
             enabledText().assertDoesNotExist()

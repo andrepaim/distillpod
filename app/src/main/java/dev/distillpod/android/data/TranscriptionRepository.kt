@@ -10,6 +10,7 @@ import dev.distillpod.android.work.workForeground
 import dev.distillpod.android.work.TranscriptionService
 import dev.distillpod.android.work.withNetworkType
 import dev.distillpod.core.*
+import dev.distillpod.android.diagnostics.DiagnosticCorrelation
 import java.io.File
 import java.util.UUID
 import java.util.concurrent.Executors
@@ -44,6 +45,8 @@ class TranscriptionRepository(private val graph: AppGraph,
     private val running = ConcurrentHashMap<String, Job>()
     private val live = MutableStateFlow<Map<String, TranscriptProgress>>(emptyMap())
     val progress = live.asStateFlow()
+    private fun correlation(revision:String,run:String?=null):DiagnosticCorrelation =
+        runCatching {DiagnosticCorrelation(transcriptRevisionId=revision,executionId=run)}.getOrDefault(DiagnosticCorrelation())
     suspend fun prepare(id: String, forceLocal: Boolean = false, allowOnline: Boolean = true) = controls.withLock { prepareInternal(id, forceLocal, allowOnline) }
     /** Playback must not undo a pause, retry a failure or regenerate text after a model change. */
     suspend fun prepareAutomatically(id: String) = controls.withLock {
@@ -81,12 +84,19 @@ class TranscriptionRepository(private val graph: AppGraph,
         val current = TranscriptEntity(id, UUID.randomUUID().toString(), ep.mediaFingerprint, if (publisher) "publisher" else prefs.model,
             prefs.language, if (publisher) "publisher" else "whisper", durationMs = ep.durationMs, lookupOnline = onlineAllowed && prefs.onlineTranscripts, replaceOnline = replacingOnline || !allowOnline)
         graph.db.withTransaction { dao.deleteSegments(id); dao.deleteCoverage(id); dao.putTranscript(current) }
+        for(moment in dao.distillations().filter {it.episodeId==id && it.state=="waiting_transcript"}) {
+            dao.momentAttempt(moment.attempt)?.let { attempt ->
+                graph.diagnostics.event("transcription.dependency",moment.id,reason="transcript_required",related=current.revision,
+                    correlation=graph.captures.correlation(attempt,current.revision))
+            }
+        }
         dao.analysis(id)?.takeIf { it.revision == old?.revision && old.source != "online" }?.let { dao.putAnalysis(it.copy(state = "stale", error = "Transcript changed. Analyze the current source again.")) }
         dispatch(current)
     }
     suspend fun pause(id: String) = controls.withLock {
+        val active=live.value[id]
         live.update { it - id }
-        dao.transcript(id)?.let { dao.putTranscript(it.copy(state = "paused", error = null));graph.diagnostics.event("transcription.paused",it.revision) }
+        dao.transcript(id)?.let { dao.putTranscript(it.copy(state = "paused", error = null));graph.diagnostics.event("transcription.paused",it.revision,correlation=correlation(it.revision,active?.takeIf {run->run.revision==it.revision}?.run)) }
         running[id]?.cancel()
         manager.cancelAllWorkByTag("transcript:$id")
     }
@@ -117,14 +127,36 @@ class TranscriptionRepository(private val graph: AppGraph,
         }
     }
 
-    internal suspend fun configureNetworkPolicy() = scheduling.withLock { withContext(Dispatchers.IO) {
+    internal suspend fun configureNetworkPolicy() {
+        val hasLegacy = withContext(Dispatchers.IO) {
+            manager.getWorkInfosByTag(TranscriptWorker::class.java.name).get().any { isLegacy(it) }
+        }
+        // Migration may replace legacy requests, so let the active chunk finish
+        // first. This lock also keeps newly-starting workers from becoming writers
+        // between the WorkInfo snapshot and cancellation. Modern updates do not wait.
+        if (hasLegacy) processing.withLock { reconcileNetworkPolicy() }
+        else reconcileNetworkPolicy()
+    }
+
+    private fun isLegacy(info: WorkInfo) = !info.state.isFinished &&
+        info.tags.none { it.startsWith("transcript-revision:") }
+
+    private suspend fun reconcileNetworkPolicy() = controls.withLock { scheduling.withLock { withContext(Dispatchers.IO) {
         val prefs = graph.settings.flow.first()
         for (row in pending()) {
             val ep = dao.episode(row.episodeId) ?: continue
             val network = if (!transcriptionNeedsNetwork(ep, row)) NetworkType.NOT_REQUIRED
                 else if (prefs.wifiOnly) NetworkType.UNMETERED else NetworkType.CONNECTED
-            val start = nextStart(row) ?: continue
-            for (info in manager.getWorkInfosForUniqueWork("transcript:${row.episodeId}:${row.revision}:$start").get()) {
+            val infos = manager.getWorkInfosByTag("transcript:${row.episodeId}").get()
+            val revisionTag = revisionTag(row)
+            // WorkInfo exposes neither input data nor unique names. Legacy requests
+            // cannot safely be assigned the current revision: cancel them instead.
+            // Room retains completed chunks; a single recovery request resumes them.
+            val legacy = infos.filter { isLegacy(it) }
+            for (info in legacy) manager.cancelWorkById(info.id).result.get()
+            val current = infos.filter { !it.state.isFinished && revisionTag in it.tags }
+            if (legacy.isNotEmpty() && current.isEmpty()) enqueueLocked(row, nextStart(row) ?: 0)
+            for (info in current) {
                 if (info.state.isFinished || info.constraints.requiredNetworkType == network) continue
                 val request = OneTimeWorkRequestBuilder<TranscriptWorker>().setId(info.id)
                     .setInputData(workDataOf("episode" to row.episodeId, "revision" to row.revision))
@@ -134,20 +166,25 @@ class TranscriptionRepository(private val graph: AppGraph,
                 manager.updateWork(request).get()
             }
         }
-    } }
+    } } }
+
+    private fun revisionTag(row: TranscriptEntity) = "transcript-revision:${row.episodeId}:${row.revision}"
 
     private suspend fun enqueue(row: TranscriptEntity, start: Long) = scheduling.withLock { withContext(Dispatchers.IO) {
+        enqueueLocked(row, start)
+    } }
+
+    private suspend fun enqueueLocked(row: TranscriptEntity, start: Long) {
         val prefs = graph.settings.flow.first()
-        val ep = dao.episode(row.episodeId) ?: return@withContext
+        val ep = dao.episode(row.episodeId) ?: return
         val needNetwork = transcriptionNeedsNetwork(ep, row)
-        graph.diagnostics.event("transcription.queued",row.revision,reason=transcriptionWaitReason(graph.context,prefs,needNetwork) ?: "scheduled")
+        graph.diagnostics.event("transcription.queued",row.revision,reason=transcriptionWaitReason(graph.context,prefs,needNetwork) ?: "scheduled",correlation=correlation(row.revision))
         val constraints = Constraints.Builder().setRequiresBatteryNotLow(true).setRequiresCharging(prefs.chargingOnly)
             .apply { if (needNetwork) setRequiredNetworkType(if (prefs.wifiOnly) NetworkType.UNMETERED else NetworkType.CONNECTED) }.build()
         manager.enqueueUniqueWork("transcript:${row.episodeId}:${row.revision}:$start", ExistingWorkPolicy.KEEP,
             OneTimeWorkRequestBuilder<TranscriptWorker>().setInputData(workDataOf("episode" to row.episodeId, "revision" to row.revision))
-                .setConstraints(constraints).addTag("transcript:${row.episodeId}").build()).result.get()
-        Unit
-    } }
+                .setConstraints(constraints).addTag("transcript:${row.episodeId}").addTag(revisionTag(row)).build()).result.get()
+    }
     private suspend fun nextStart(row: TranscriptEntity): Long? {
         if (row.durationMs <= 0) return 0
         val covered = dao.coverage(row.episodeId, row.revision).associateBy { it.startMs }
@@ -183,13 +220,13 @@ class TranscriptionRepository(private val graph: AppGraph,
             val current=dao.transcript(id) ?: return@withLock null
             if(current.revision!=revision || current.state in listOf("paused","ready","stale"))return@withLock null
             dao.putTranscript(current.copy(state="processing",error=null))
-            graph.diagnostics.event("transcription.started",revision,attempt=run)
+            graph.diagnostics.event("transcription.started",revision,attempt=run,correlation=correlation(revision,run))
             live.update {it+(id to TranscriptProgress(revision,run,TranscriptStage.STARTING,current.processedMs,current.durationMs))}
             current
         } ?: return
         var lastDiagnosticStage: TranscriptStage? = null
         fun report(stage: TranscriptStage, workedMs: Long? = null, durationMs: Long? = null, start: Long? = null, end: Long? = null) {
-            if(stage!=lastDiagnosticStage) {lastDiagnosticStage=stage;graph.diagnostics.event("transcription.stage",revision,reason=stage.name.lowercase())}
+            if(stage!=lastDiagnosticStage) {lastDiagnosticStage=stage;graph.diagnostics.event("transcription.stage",revision,reason=stage.name.lowercase(),correlation=correlation(revision,run))}
             live.update { all -> val current = all[id]
                 if (current?.run != run) all else all + (id to current.copy(stage = stage, workedMs = workedMs ?: current.workedMs,
                     durationMs = durationMs ?: current.durationMs, chunkStartMs = start ?: current.chunkStartMs, chunkEndMs = end ?: current.chunkEndMs))
@@ -309,7 +346,7 @@ class TranscriptionRepository(private val graph: AppGraph,
             withContext(NonCancellable) {
                 val current = dao.transcript(id)
                 if(current?.state in listOf("ready","partial"))graph.diagnostics.failure("worker",error)
-                else if(!(error is CancellationException && current?.state=="paused"))graph.diagnostics.failure("transcription",error,revision)
+                else if(!(error is CancellationException && current?.state=="paused"))graph.diagnostics.failure("transcription",error,revision,correlation=correlation(revision,run))
                 if (current?.revision == revision && current.state !in listOf("paused", "stale", "ready", "partial")) dao.putTranscript(current.copy(state = if (error is CancellationException) "queued" else "failed", error = if (error is CancellationException) null else safeFailure(error)))
             }
             if (error is CancellationException) throw error
@@ -318,18 +355,18 @@ class TranscriptionRepository(private val graph: AppGraph,
                 val current = dao.transcript(id)
                 if(onlineCompleted || current?.revision==revision) {
                     when {
-                        onlineCompleted || current?.state=="ready" -> graph.diagnostics.event("transcription.completed",revision)
-                        current?.state=="partial" -> graph.diagnostics.event("transcription.partial",revision,reason="partial")
-                        current?.state=="waiting_model" -> graph.diagnostics.event("transcription.queued",revision,reason="checking_model")
-                        current?.state=="stale" -> graph.diagnostics.event("transcription.cancelled",revision,reason="superseded")
+                        onlineCompleted || current?.state=="ready" -> graph.diagnostics.event("transcription.completed",revision,correlation=correlation(revision,run))
+                        current?.state=="partial" -> graph.diagnostics.event("transcription.partial",revision,reason="partial",correlation=correlation(revision,run))
+                        current?.state=="waiting_model" -> graph.diagnostics.event("transcription.queued",revision,reason="checking_model",correlation=correlation(revision,run))
+                        current?.state=="stale" -> graph.diagnostics.event("transcription.cancelled",revision,reason="superseded",correlation=correlation(revision,run))
                     }
                     if(current!=null && current.state in listOf("ready","partial"))graph.diagnostics.transcriptQuality(revision,current.source,current.model,current.language,
                         current.durationMs,current.processedMs,dao.segments(id,current.revision).isEmpty())
-                } else if(current!=null)graph.diagnostics.event("transcription.cancelled",revision,reason="superseded")
+                } else if(current!=null)graph.diagnostics.event("transcription.cancelled",revision,reason="superseded",correlation=correlation(revision,run))
                 if (current?.revision == revision && current.state == "queued") {
                     val ep=dao.episode(id)
                     val needsNetwork=transcriptionNeedsNetwork(ep,current)
-                    graph.diagnostics.event("transcription.queued",revision,reason=transcriptionWaitReason(graph.context,graph.settings.flow.first(),needsNetwork) ?: "scheduled")
+                    graph.diagnostics.event("transcription.queued",revision,reason=transcriptionWaitReason(graph.context,graph.settings.flow.first(),needsNetwork) ?: "scheduled",correlation=correlation(revision,run))
                     report(TranscriptStage.QUEUED,current.processedMs,current.durationMs)
                 }
                 else live.update { if (it[id]?.run == run) it - id else it }

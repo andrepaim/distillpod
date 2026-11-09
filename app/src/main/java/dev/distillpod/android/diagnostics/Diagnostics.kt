@@ -21,6 +21,8 @@ class Diagnostics(private val context: Context, private val dsn:String = context
     private val prefs=context.getSharedPreferences("diagnostics",Context.MODE_PRIVATE)
     internal val queue=DiagnosticQueue(java.io.File(context.noBackupFilesDir,"diagnostics"),onDrop={prefs.edit().putLong("dropped",prefs.getLong("dropped",0)+1).commit()})
     private val lock=Any()
+    private val budget=DiagnosticBudget(prefs)
+    private val admissionLane=ThreadLocal<DiagnosticBudget.Lane>()
     internal val journal=OperationJournal(java.io.File(context.noBackupFilesDir,"reliability/journal"),release=context.packageManager.getPackageInfo(context.packageName,0).versionName ?: "unknown")
     private val persisted=ThreadLocal<Boolean>()
     private val timings=mutableMapOf<String,Long>()
@@ -35,16 +37,26 @@ class Diagnostics(private val context: Context, private val dsn:String = context
     val enabled get()=prefs.getBoolean("enabled",false)
     val usageEnabled get()=prefs.getBoolean("usage_enabled",false)
     val collecting get()=enabled || usageEnabled
+    internal val correlationEpoch:String? get()=if(enabled && configured)prefs.getString("correlation_epoch",null) else null
+    internal fun acceptsCorrelation(correlation:DiagnosticCorrelation?):Boolean =
+        correlation?.collectionEpoch?.let {it==correlationEpoch} ?: true
     val reportingHealth get()="${queue.files().size} pending envelopes · ${prefs.getLong("dropped",0)+journal.dropped} collection warnings · last acknowledgement: ${prefs.getString("last_upload","none")}"
     val configured get()=dsn.isNotBlank()
     val reference get()="${context.packageManager.getPackageInfo(context.packageName,0).versionName} / installation $installation / session $session"
-    init { if(collecting && configured) safeInitialize() }
+    init {
+        if(enabled && configured && !prefs.contains("correlation_epoch"))
+            prefs.edit().putString("correlation_epoch",UUID.randomUUID().toString()).commit()
+        if(collecting && configured) safeInitialize()
+    }
     fun consent(allow:Boolean) = synchronized(lock) {
         generation++
-        prefs.edit().putBoolean("enabled",allow).commit()
+        prefs.edit().putBoolean("enabled",allow).apply {
+            if(allow && !enabled)putString("correlation_epoch",UUID.randomUUID().toString())
+            if(!allow)remove("correlation_epoch")
+        }.commit()
         Sentry.close()
         queue.clear()
-        if(!allow)journal.clear()
+        if(!allow){journal.clear();prefs.edit().remove("suppressed_summaries").commit()}
         if(collecting && configured) safeInitialize() else {
             WorkManager.getInstance(context).cancelUniqueWork("diagnostics-upload")
             WorkManager.getInstance(context).cancelUniqueWork("diagnostics-recovery")
@@ -79,6 +91,18 @@ class Diagnostics(private val context: Context, private val dsn:String = context
                 "audio_duration_ms" to duration.coerceAtLeast(0),"covered_audio_ms" to covered.coerceAtLeast(0),"empty_output" to empty,"test_traffic" to false))}
         }
     }
+    internal fun contextSummary(operation:String, evidence:ContextPreparationEvidence, elapsed:Long, correlation:DiagnosticCorrelation?) {
+        if(!enabled || !configured)return
+        synchronized(lock) {
+            if(!enabled || !acceptsCorrelation(correlation))return
+            runCatching {
+                val fields=evidence.fields(elapsed)+(correlation ?: DiagnosticCorrelation()).fields()+
+                    mapOf("stream" to "diagnostics","test_traffic" to dev.distillpod.android.sync.SubscriptionCloudAccess.instrumentation)
+                val id=operation.takeIf {runCatching {UUID.fromString(it)}.isSuccess}
+                log("capture.context_summary",fields+if(id!=null)mapOf("operation_id" to id) else emptyMap())
+            }
+        }
+    }
     /** Runs on the IO startup path, after reading authoritative application state. */
     internal fun reconcile(states:Map<Pair<String,String>,String>):Unit = synchronized(lock) {
         if(!enabled || dev.distillpod.android.sync.SubscriptionCloudAccess.instrumentation)return
@@ -90,46 +114,65 @@ class Diagnostics(private val context: Context, private val dsn:String = context
         synchronized(lock) {
             if(!enabled || epoch!=generation)return
             runCatching {
+                val healthFields=budget.fields()
+                val exhaustion=budget.exhaustion()
                 val last=prefs.getLong("last_health",0)
-                if(System.currentTimeMillis()-last>60*60*1000 && log("diagnostics.health",mapOf("stream" to "diagnostics",
-                    "pending_envelopes" to queue.files().size,"dropped_reports" to (prefs.getLong("dropped",0)+journal.dropped),"test_traffic" to false)))prefs.edit().putLong("last_health",System.currentTimeMillis()).apply()
+                if((System.currentTimeMillis()-last>6*60*60*1000 || exhaustion!=prefs.getString("health_exhaustion","")) && log("diagnostics.health",mapOf("stream" to "diagnostics",
+                    "pending_envelopes" to queue.files().size,"dropped_reports" to (prefs.getLong("dropped",0)+journal.dropped),"test_traffic" to false)+healthFields))prefs.edit().putLong("last_health",System.currentTimeMillis()).putString("health_exhaustion",exhaustion).apply()
             }
         }
         val pending=runCatching {journal.pending()}.getOrElse {return}
+        val denied=mutableMapOf<DiagnosticBudget.Lane,MutableSet<String>>()
         for(row in pending) {
             // Release the consent lock between records: a large recovered backlog
             // must not hold up a foreground media command or consent withdrawal.
             val accepted=synchronized(lock) {
                 if(!enabled || epoch!=generation)return
-                runCatching {
+                val lane=DiagnosticBudget.lane("operation.summary",row.state)
+                if(!journal.isPending(row.id)) {
+                    true // Another flush acknowledged this snapshot while the lock was released.
+                } else if(!budget.available(lane)) {
+                    denied.getOrPut(lane){mutableSetOf()}.add(row.id)
+                    false
+                } else runCatching {
                     val stored=log("operation.summary",mapOf("summary_id" to row.id,"operation_id" to row.operation,
                         "attempt_id" to row.attempt,"feature" to row.kind,"outcome" to row.state,"reason" to row.reason,
                         "source" to row.source,"sequence" to row.sequence,"operation_started_ms" to row.started,
-                        "observed_at_ms" to row.updated,"operation_release" to row.release,"test_traffic" to (row.reason=="synthetic"),"elapsed_ms" to row.elapsed,"stream" to "diagnostics"))
+                        "observed_at_ms" to row.updated,"operation_release" to row.release,"test_traffic" to (row.reason=="synthetic"),"elapsed_ms" to row.elapsed,"stream" to "diagnostics") + (row.correlation ?: DiagnosticCorrelation()).fields())
                     if(stored)journal.acknowledge(row.id)
                     stored
                 }.getOrDefault(false)
             }
-            if(!accepted)return
+            // A rejected routine row must not block later terminal outcomes.
+            if(!accepted)continue
+        }
+        synchronized(lock) {
+            if(enabled && epoch==generation)budget.suppressedSummaries(denied,journal.pending().map {it.id}.toSet())
         }
     }
     private fun log(name:String,fields:Map<String,Any>):Boolean {
         persisted.set(false)
+        admissionLane.set(DiagnosticBudget.lane(name,fields["outcome"] as? String))
         try {
-            val attributes=fields+mapOf("schema_version" to 1,"event_id" to UUID.randomUUID().toString(),"installation_id" to installation,"session_id" to session)
+            val attributes=fields+mapOf("emitted_at_ms" to System.currentTimeMillis(),"schema_version" to 1,"event_id" to UUID.randomUUID().toString(),"installation_id" to installation,"session_id" to session)
             Sentry.logger().log(SentryLogLevel.INFO,SentryLogParameters.create(SentryAttributes.fromMap(attributes)),name)
             return persisted.get()==true
-        } finally {persisted.remove()}
+        } finally {persisted.remove();admissionLane.remove()}
     }
-    private fun observe(name:String, operation:String?, reason:String, source:String, attempt:String?) {
+    private fun observe(name:String, operation:String?, reason:String, source:String, attempt:String?, correlation:DiagnosticCorrelation?, observedAt:Long) {
         if(dev.distillpod.android.sync.SubscriptionCloudAccess.instrumentation)return
         val kind=name.substringBefore('.')
         if(kind !in OperationJournal.KINDS)return
         if(name=="voice.started") {voiceOperation=UUID.randomUUID().toString()}
         if(name=="playback.service_started")playbackOperation=UUID.randomUUID().toString()
         val id=operation ?: when(kind){"voice"->voiceOperation;"playback"->playbackOperation;else->null} ?: return
+        if(name=="capture.transcript_link" || name=="transcription.dependency") {
+            journal.transition("distillation",id,journal.latest().lastOrNull {it.kind=="distillation" && it.operation==id}?.state ?: "waiting",
+                reason,source,correlation=correlation,observedAt=observedAt)
+            return
+        }
         if(name=="capture.saved") {
-            if(reason=="created")journal.transition("distillation",id,"waiting","transcript_required",source)
+            if(reason=="created")journal.transition("distillation",id,"waiting","transcript_required",source,correlation=correlation,observedAt=observedAt)
             return
         }
         val state=when(name) {
@@ -152,7 +195,7 @@ class Diagnostics(private val context: Context, private val dsn:String = context
             else->if(name.endsWith(".failed"))if(reason=="cancelled")"interrupted" else "failed" else null
         } ?: return
         val feature=if(name in setOf("capture.waiting","capture.prepared"))"distillation" else kind
-        journal.transition(feature,id,state,reason,if(kind=="voice")reason.takeIf {it in OperationJournal.SOURCES} ?: "background" else source,attempt)
+        journal.transition(feature,id,state,reason,if(kind=="voice")reason.takeIf {it in OperationJournal.SOURCES} ?: "background" else source,attempt,correlation,observedAt)
     }
     private fun safeInitialize() {
         try {initialize()}catch(_:Exception) {Sentry.close();status.value="Diagnostics could not start"}
@@ -200,7 +243,7 @@ class Diagnostics(private val context: Context, private val dsn:String = context
             options.logs.setLoggerBatchProcessorFactory { opts,_ -> object:ILoggerBatchProcessor {
                 override fun add(event:SentryLogEvent) {
                     val envelope=SentryEnvelope(SentryId(),opts.sdkVersion,SentryEnvelopeItem.fromLogs(opts.serializer,SentryLogEvents(listOf(event))))
-                    persist(envelope,opts,epoch)
+                    persist(envelope,opts,epoch,admissionLane.get() ?: DiagnosticBudget.lane(event.body))
                 }
                 override fun flush(timeoutMillis:Long) {}
                 override fun close(isRestarting:Boolean) {}
@@ -220,20 +263,16 @@ class Diagnostics(private val context: Context, private val dsn:String = context
         event("app.started")
         schedule()
     }
-    private fun persist(envelope:SentryEnvelope,options:SentryOptions,epoch:Long) {
+    private fun persist(envelope:SentryEnvelope,options:SentryOptions,epoch:Long,logLane:DiagnosticBudget.Lane=DiagnosticBudget.Lane.ROUTINE) {
         try { synchronized(lock) {
             if(!collecting || generation!=epoch)return
-            val day=System.currentTimeMillis()/86_400_000L
-            if(prefs.getLong("budget_day",-1)!=day)prefs.edit().putLong("budget_day",day).putInt("sent",0).putInt("errors",0).apply()
-            val errorEnvelope=envelope.items.any {it.header.type==SentryItemType.Event}
-            val count=prefs.getInt("sent",0);val errors=prefs.getInt("errors",0)
-            if(!errorEnvelope && count>=1000 || errorEnvelope && errors>=30) {prefs.edit().putLong("dropped",prefs.getLong("dropped",0)+1).apply();return}
-            prefs.edit().putInt("sent",count+1).putInt("errors",errors+if(errorEnvelope)1 else 0).apply()
             val allowed=envelope.items.filter {it.header.type in setOf(SentryItemType.Event,SentryItemType.Log)}
             if(allowed.isEmpty())return
+            val lane=if(allowed.any {it.header.type==SentryItemType.Event})DiagnosticBudget.Lane.ERROR else logLane
+            if(!budget.admit(lane))return
             val safeEnvelope=SentryEnvelope(envelope.header,allowed)
             val bytes=ByteArrayOutputStream().also {options.serializer.serialize(safeEnvelope,it)}.toByteArray()
-            persisted.set(queue.append(bytes));status.value="Pending upload"
+            persisted.set(queue.append(bytes,priority=lane!=DiagnosticBudget.Lane.ROUTINE));status.value="Pending upload"
         };schedule() } catch(_:Exception) { /* Diagnostics must never break the app. */ }
     }
     private fun schedule() {
@@ -244,43 +283,68 @@ class Diagnostics(private val context: Context, private val dsn:String = context
             WorkManager.getInstance(context).enqueueUniqueWork("diagnostics-upload",ExistingWorkPolicy.KEEP,request)
         }catch(_:Exception) {}
     }
-    fun event(name:String, operation:String?=null, reason:String="none", source:String="background", elapsedMs:Long?=null, related:String?=null, attempt:String?=null) {
+    fun event(name:String, operation:String?=null, reason:String="none", source:String="background", elapsedMs:Long?=null, related:String?=null, attempt:String?=null, correlation:DiagnosticCorrelation?=null) {
         if(usageEnabled && configured) when(name) {
             "voice.started"->usage("voice",reason)
             "capture.accepted"->usage("capture",source)
             "playback.state"->if(reason=="playing")usage("playback",source)
         }
         if(!enabled || !configured)return
-        if(name !in EVENT_NAMES || reason !in REASONS || source !in OperationJournal.SOURCES)return
-        synchronized(lock) {if(enabled)runCatching {observe(name,operation,reason,source,attempt)}}
-        val epoch=generation
+        if(name !in EVENT_NAMES || reason !in REASONS || source !in OperationJournal.SOURCES || !acceptsCorrelation(correlation))return
+        val observedAt=System.currentTimeMillis()
+        // Capture the context before asynchronous emission; never attach a newer run to an old event.
+        val snapshot=correlation
+        val epoch=synchronized(lock) {
+            if(!enabled || !acceptsCorrelation(correlation))return
+            runCatching {observe(name,operation,reason,source,attempt,snapshot,observedAt)}
+            generation
+        }
         val observedTick=android.os.SystemClock.elapsedRealtime()
-        executor.execute {if(enabled && generation==epoch) {eventNow(name,operation,reason,source,elapsedMs,related,attempt,observedTick);flushSummaries()}}
+        executor.execute {if(enabled && generation==epoch) {eventNow(name,operation,reason,source,elapsedMs,related,attempt,observedTick,snapshot,observedAt,epoch);flushSummaries()}}
+    }
+    /** One compact terminal observation. No arbitrary attributes or provider strings cross this boundary. */
+    internal fun attemptSummary(summary:DistillationOutcome, correlation:DiagnosticCorrelation?, observedAt:Long=System.currentTimeMillis()) {
+        if(!enabled || !configured || dev.distillpod.android.sync.SubscriptionCloudAccess.instrumentation)return
+        val execution=correlation?.executionId ?: return
+        synchronized(lock) {
+            if(!enabled || !acceptsCorrelation(correlation))return
+            runCatching {
+                log("distillation.attempt_summary",summary.fields()+correlation.fields()+mapOf(
+                    "summary_id" to execution,"operation_id" to (correlation.momentId ?: execution),
+                    "observed_at_ms" to observedAt,"stream" to "diagnostics",
+                    "test_traffic" to dev.distillpod.android.sync.SubscriptionCloudAccess.instrumentation))
+            }
+        }
     }
     internal fun awaitIdle() {executor.submit {}.get(5,TimeUnit.SECONDS)}
-    private fun eventNow(name:String, operation:String?, reason:String, source:String, elapsedMs:Long?,related:String?,attempt:String?,observedTick:Long) {
-        if(!enabled || !configured)return
-        try {
-            // Categorical fields only. IDs must be random UUIDs, never hashes of content or URLs.
-            if(name !in EVENT_NAMES)return
-            if(reason !in REASONS || source !in setOf("background","phone","headphones","car"))return
-            val attributes=mutableMapOf<String,Any>("event_id" to UUID.randomUUID().toString(),"session_id" to session,"installation_id" to installation,"schema_version" to 1,"test_traffic" to (name.startsWith("diagnostics.") || dev.distillpod.android.sync.SubscriptionCloudAccess.instrumentation),"reason" to reason,"source" to source,"android_api" to Build.VERSION.SDK_INT)
-            synchronized(lock) {
-                val tick=observedTick
-                if(name in setOf("voice.started","playback.buffering","playback.service_started"))timings[name]=tick
-                val start=when(name){"voice.audio"->"voice.started";"playback.ready"->"playback.buffering";"playback.state"->"playback.service_started";else->null}
-                if(start!=null)timings.remove(start)?.let {attributes["stage_elapsed_ms"]=(tick-it).coerceAtLeast(0)}
-                if(name=="playback.state" && reason=="playing")timings["playing"]=tick
-                if(name=="playback.state" && reason=="paused" || name=="playback.service_stopped")timings.remove("playing")?.let {attributes["playing_ms"]=(tick-it).coerceAtLeast(0)}
-            }
-            operation?.takeIf {runCatching {UUID.fromString(it)}.isSuccess}?.let {attributes["operation_id"]=it}
-            related?.takeIf {runCatching {UUID.fromString(it)}.isSuccess}?.let {attributes[if(name=="capture.completed")"moment_id" else "transcript_id"]=it}
-            attempt?.takeIf {runCatching {UUID.fromString(it)}.isSuccess}?.let {attributes["attempt_id"]=it}
-            elapsedMs?.takeIf {it>=0}?.let {attributes["elapsed_ms"]=it}
-            val network=context.getSystemService(ConnectivityManager::class.java)
-            attributes["network"]=if(network.activeNetwork==null) "offline" else if(network.isActiveNetworkMetered) "metered" else "unmetered"
-            Sentry.logger().log(SentryLogLevel.INFO,SentryLogParameters.create(SentryAttributes.fromMap(attributes)),name)
-        }catch(_:Exception) {}
+    private fun eventNow(name:String, operation:String?, reason:String, source:String, elapsedMs:Long?,related:String?,attempt:String?,observedTick:Long,correlation:DiagnosticCorrelation?,observedAt:Long,expectedGeneration:Long) {
+        synchronized(lock) {
+            if(!enabled || !configured || generation!=expectedGeneration || !acceptsCorrelation(correlation))return
+            try {
+                // Categorical fields only. IDs must be random UUIDs, never hashes of content or URLs.
+                if(name !in EVENT_NAMES)return
+                if(reason !in REASONS || source !in setOf("background","phone","headphones","car"))return
+                val attributes=mutableMapOf<String,Any>("event_id" to UUID.randomUUID().toString(),"session_id" to session,"installation_id" to installation,"schema_version" to 1,"test_traffic" to (name.startsWith("diagnostics.") || dev.distillpod.android.sync.SubscriptionCloudAccess.instrumentation),"reason" to reason,"source" to source,"android_api" to Build.VERSION.SDK_INT)
+                attributes.putAll((correlation ?: DiagnosticCorrelation()).fields())
+                attributes["observed_at_ms"]=observedAt
+                attributes["emitted_at_ms"]=System.currentTimeMillis()
+                synchronized(lock) {
+                    val tick=observedTick
+                    if(name in setOf("voice.started","playback.buffering","playback.service_started"))timings[name]=tick
+                    val start=when(name){"voice.audio"->"voice.started";"playback.ready"->"playback.buffering";"playback.state"->"playback.service_started";else->null}
+                    if(start!=null)timings.remove(start)?.let {attributes["stage_elapsed_ms"]=(tick-it).coerceAtLeast(0)}
+                    if(name=="playback.state" && reason=="playing")timings["playing"]=tick
+                    if(name=="playback.state" && reason=="paused" || name=="playback.service_stopped")timings.remove("playing")?.let {attributes["playing_ms"]=(tick-it).coerceAtLeast(0)}
+                }
+                operation?.takeIf {runCatching {UUID.fromString(it)}.isSuccess}?.let {attributes["operation_id"]=it}
+                related?.takeIf {runCatching {UUID.fromString(it)}.isSuccess}?.let {attributes[if(name=="capture.completed")"moment_id" else "transcript_id"]=it}
+                attempt?.takeIf {runCatching {UUID.fromString(it)}.isSuccess}?.let {attributes["attempt_id"]=it}
+                elapsedMs?.takeIf {it>=0}?.let {attributes["elapsed_ms"]=it}
+                val network=context.getSystemService(ConnectivityManager::class.java)
+                attributes["network"]=if(network.activeNetwork==null) "offline" else if(network.isActiveNetworkMetered) "metered" else "unmetered"
+                Sentry.logger().log(SentryLogLevel.INFO,SentryLogParameters.create(SentryAttributes.fromMap(attributes)),name)
+            }catch(_:Exception) {}
+        }
     }
     /** Intentional handled failure through the same path used by real operations. */
     fun test() {
@@ -295,28 +359,32 @@ class Diagnostics(private val context: Context, private val dsn:String = context
         }}
         try {throw IllegalStateException("Synthetic diagnostics verification")}catch(error:Exception) {failure("diagnostics",error)}
     }
-    fun failure(stage:String,error:Throwable,operation:String?=null,source:String="background") {
-        event("$stage.failed",operation,reason(error),source=source)
-        if(!enabled || !configured || error is kotlinx.coroutines.CancellationException)return
-        try {
-            // Copy stack frames, never message/cause/suppressed payloads from the original throwable.
-            val safe=RuntimeException("Diagnostic failure: ${reason(error)}").also {it.stackTrace=error.stackTrace}
-            Sentry.captureException(safe) { scope ->
-                scope.setTag("stage",stage)
-                scope.setTag("source",source.takeIf {it in OperationJournal.SOURCES} ?: "background")
-                scope.setTag("test_traffic",(stage=="diagnostics" || dev.distillpod.android.sync.SubscriptionCloudAccess.instrumentation).toString())
-                scope.setTag("reason",reason(error))
-                scope.setTag("exception_type",error.javaClass.name.take(160))
-                operation?.takeIf {runCatching {UUID.fromString(it)}.isSuccess}?.let {scope.setTag("operation_id",it)}
-            }
-        }catch(_:Exception) {}
+    fun failure(stage:String,error:Throwable,operation:String?=null,source:String="background",correlation:DiagnosticCorrelation?=null) {
+        event("$stage.failed",operation,reason(error),source=source,correlation=correlation)
+        if(!enabled || !configured || !acceptsCorrelation(correlation) || error is kotlinx.coroutines.CancellationException)return
+        synchronized(lock) {
+            if(!enabled || !acceptsCorrelation(correlation))return
+            try {
+                // Copy stack frames, never message/cause/suppressed payloads from the original throwable.
+                val safe=RuntimeException("Diagnostic failure: ${reason(error)}").also {it.stackTrace=error.stackTrace}
+                Sentry.captureException(safe) { scope ->
+                    scope.setTag("stage",stage)
+                    (correlation ?: DiagnosticCorrelation()).fields().forEach { (key,value) -> scope.setTag(key,value.toString()) }
+                    scope.setTag("source",source.takeIf {it in OperationJournal.SOURCES} ?: "background")
+                    scope.setTag("test_traffic",(stage=="diagnostics" || dev.distillpod.android.sync.SubscriptionCloudAccess.instrumentation).toString())
+                    scope.setTag("reason",reason(error))
+                    scope.setTag("exception_type",error.javaClass.name.take(160))
+                    operation?.takeIf {runCatching {UUID.fromString(it)}.isSuccess}?.let {scope.setTag("operation_id",it)}
+                }
+            }catch(_:Exception) {}
+        }
     }
     internal fun uploaded() { prefs.edit().putString("last_upload",java.time.Instant.now().toString()).apply();status.value="Last upload: ${java.text.DateFormat.getDateTimeInstance().format(java.util.Date())}" }
     companion object {
-        private val EVENT_NAMES=setOf("youtube.extraction_started","youtube.extraction_completed","youtube.extraction_failed","youtube.extraction_retry","youtube.stream_refreshed","videocast.video_requested","videocast.audio_restored","videocast.first_frame","videocast.failed","videocast.download_validated","transcription.quality","diagnostics.health","operation.summary","usage.feature","transcription.partial","transcription.paused","transcription.cancelled","distillation.cancelled","voice.recording","voice.text","voice.audio","voice.resumed","voice.resume_failed","playback.buffering","playback.ready","playback.focus","playback.route","app.started","diagnostics.test","diagnostics.failed","headphone.received","headphone.rejected","headphone.previous","headphone.next",
+        private val EVENT_NAMES=setOf("capture.context_summary","distillation.attempt_summary","youtube.extraction_started","youtube.extraction_completed","youtube.extraction_failed","youtube.extraction_retry","youtube.stream_refreshed","videocast.video_requested","videocast.audio_restored","videocast.first_frame","videocast.failed","videocast.download_validated","transcription.quality","diagnostics.health","operation.summary","usage.feature","transcription.partial","transcription.paused","transcription.cancelled","distillation.cancelled","voice.recording","voice.text","voice.audio","voice.resumed","voice.resume_failed","playback.buffering","playback.ready","playback.focus","playback.route","app.started","diagnostics.test","diagnostics.failed","headphone.received","headphone.rejected","headphone.previous","headphone.next",
             "capture.started","capture.completed","capture.requested","capture.accepted","capture.saved","capture.waiting","capture.transcript_link","capture.prepared","capture.failed",
             "transcription.dependency","transcription.started","transcription.stage","transcription.queued","transcription.completed","transcription.failed",
-            "distillation.queued","distillation.started","distillation.finished","distillation.failed","playback.service_started","playback.service_stopped","playback.state","playback.failed",
+            "distillation.discarded","distillation.queued","distillation.started","distillation.finished","distillation.failed","playback.service_started","playback.service_stopped","playback.state","playback.failed",
             "voice.started","voice.finished","voice.failed","sync.finished","sync.failed","worker.failed")
         private val REASONS=setOf("restricted","throttled","formats","busy","partial","superseded","reconciled","process_interrupted","buffering","ended","resume_succeeded","resume_failed","none","created","deduplicated","transcript_required","waiting","waiting_auth","waiting_quota","waiting_transcript","queued","unknown",
             "no_speech","needs_context","review_source","unclear_source","succeeded","failed","ready","rejected","disabled","accepted","duplicate","cancelled","repeat","untrusted",

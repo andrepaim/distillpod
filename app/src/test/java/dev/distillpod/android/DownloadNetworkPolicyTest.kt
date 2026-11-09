@@ -30,13 +30,14 @@ class DownloadNetworkPolicyTest {
     private val context get() = ApplicationProvider.getApplicationContext<Context>()
     private val manager get() = WorkManager.getInstance(context)
 
-    private suspend fun fixture(block: suspend (AppGraph, AppViewModel) -> Unit) {
+    private suspend fun fixture(transcriptFactory: ((Context, WorkerParameters) -> ListenableWorker)? = null, block: suspend (AppGraph, AppViewModel) -> Unit) {
         val heldWorkers = java.util.Collections.synchronizedList(mutableListOf<HoldingWorker>())
         WorkManagerTestInitHelper.initializeTestWorkManager(context, Configuration.Builder()
             .setExecutor(SynchronousExecutor())
             .setWorkerFactory(object : WorkerFactory() {
                 override fun createWorker(context: Context, name: String, params: WorkerParameters): ListenableWorker? =
-                    if (name == LibraryWorker::class.java.name || name == TranscriptWorker::class.java.name)
+                    if (name == TranscriptWorker::class.java.name && transcriptFactory != null) transcriptFactory(context, params)
+                    else if (name == LibraryWorker::class.java.name || name == TranscriptWorker::class.java.name)
                         HoldingWorker(context, params).also { heldWorkers += it } else null
             }).build())
         val graph = context.appGraph
@@ -83,6 +84,188 @@ class DownloadNetworkPolicyTest {
         assertEquals(enabled, vm.graph.settings.flow.first().wifiOnly)
     }
 
+    @Test fun `queued transcript keeps new network policy after a capture changes next chunk`() = runBlocking {
+        fixture { graph, vm ->
+            val dao = graph.db.library()
+            val ep = episode("priority-remote").copy(durationMs = 600000)
+            dao.putEpisode(ep)
+            dao.putTranscript(TranscriptEntity(ep.id, "priority-revision", ep.mediaFingerprint, "tiny", "en", durationMs = 600000))
+            graph.settings.flag("wifi", false)
+            graph.settings.flag("charging", true)
+            graph.transcription.recover()
+            val name = "transcript:priority-remote:priority-revision:0"
+            val before = active(name)
+            assertEquals(WorkInfo.State.ENQUEUED, before.state)
+            assertEquals(NetworkType.CONNECTED, before.constraints.requiredNetworkType)
+            dao.putDistillation(DistillationEntity("priority-capture", ep.id, 470000, 480000,
+                revision = "priority-revision", fingerprint = ep.mediaFingerprint))
+            toggle(vm, true)
+            val after = active(name)
+            assertEquals(before.id, after.id)
+            assertEquals(WorkInfo.State.ENQUEUED, after.state)
+            assertEquals(NetworkType.UNMETERED, after.constraints.requiredNetworkType)
+        }
+    }
+
+    @Test fun `checkpoint movement updates all current chunks but not superseded or cancelled work`() = runBlocking {
+        fixture { graph, vm ->
+            val dao = graph.db.library()
+            val ep = episode("checkpoints").copy(durationMs = 600000)
+            dao.putEpisode(ep)
+            dao.putTranscript(TranscriptEntity(ep.id, "current", ep.mediaFingerprint, "tiny", "en", durationMs = 600000))
+            graph.settings.flag("wifi", false)
+            graph.settings.flag("charging", true)
+            graph.transcription.recover()
+            val first = active("transcript:checkpoints:current:0")
+            dao.putCoverage(CoverageEntity(ep.id, "current", 0, 120000))
+            graph.transcription.recover()
+            val second = active("transcript:checkpoints:current:120000")
+            fun request(revision: String) = OneTimeWorkRequestBuilder<TranscriptWorker>()
+                .setInputData(workDataOf("episode" to ep.id, "revision" to revision))
+                .setConstraints(Constraints.Builder().setRequiresCharging(true).setRequiredNetworkType(NetworkType.CONNECTED).build())
+                .setInitialDelay(20, TimeUnit.MINUTES)
+                .addTag("transcript:${ep.id}").addTag("transcript-revision:${ep.id}:$revision").build()
+            val stale = request("superseded")
+            val cancelled = request("current")
+            manager.enqueue(stale).result.get(); manager.enqueue(cancelled).result.get()
+            manager.cancelWorkById(cancelled.id).result.get()
+            for (enabled in listOf(true, false, true)) {
+                toggle(vm, enabled)
+                for (original in listOf(first, second)) {
+                    val updated = manager.getWorkInfoById(original.id).get()!!
+                    assertEquals(if (enabled) NetworkType.UNMETERED else NetworkType.CONNECTED, updated.constraints.requiredNetworkType)
+                    assertEquals(WorkInfo.State.ENQUEUED, updated.state)
+                    assertTrue(updated.constraints.requiresCharging())
+                }
+                val untouched = manager.getWorkInfoById(stale.id).get()!!
+                assertEquals(NetworkType.CONNECTED, untouched.constraints.requiredNetworkType)
+                assertEquals(0, untouched.generation)
+                assertEquals(WorkInfo.State.CANCELLED, manager.getWorkInfoById(cancelled.id).get()!!.state)
+                assertEquals(1, dao.coverage(ep.id, "current").size)
+            }
+            graph.transcription.pause(ep.id)
+            toggle(vm, false)
+            assertTrue(manager.getWorkInfosByTag("transcript:${ep.id}").get().all { it.state == WorkInfo.State.CANCELLED })
+            assertEquals("paused", dao.transcript(ep.id)!!.state)
+        }
+    }
+
+    @Test fun `legacy requests migrate once without losing checkpoints or reviving old revisions`() = runBlocking {
+        fixture { graph, vm ->
+            val dao = graph.db.library()
+            val ep = episode("legacy").copy(durationMs = 240000)
+            dao.putEpisode(ep)
+            dao.putTranscript(TranscriptEntity(ep.id, "current", ep.mediaFingerprint, "tiny", "en", durationMs = 240000, processedMs = 120000))
+            dao.putCoverage(CoverageEntity(ep.id, "current", 0, 120000))
+            dao.putSegments(listOf(SegmentEntity(ep.id, "current", 0, 1000, "Saved text", 0)))
+            graph.settings.flag("charging", true)
+            val legacy = listOf("current", "superseded").map { revision ->
+                OneTimeWorkRequestBuilder<TranscriptWorker>()
+                    .setInputData(workDataOf("episode" to ep.id, "revision" to revision))
+                    .setConstraints(Constraints.Builder().setRequiresCharging(true).setRequiredNetworkType(NetworkType.CONNECTED).build())
+                    .addTag("transcript:${ep.id}").build().also {
+                        // Old start is outside the revised duration: do not guess a range of names.
+                        manager.enqueueUniqueWork("transcript:${ep.id}:$revision:480000", ExistingWorkPolicy.KEEP, it).result.get()
+                    }
+            }
+            toggle(vm, true)
+            legacy.forEach { assertEquals(WorkInfo.State.CANCELLED, manager.getWorkInfoById(it.id).get()!!.state) }
+            val replacement = active("transcript:legacy:current:120000")
+            assertEquals(NetworkType.UNMETERED, replacement.constraints.requiredNetworkType)
+            assertTrue(replacement.constraints.requiresCharging())
+            assertTrue(replacement.constraints.requiresBatteryNotLow())
+            assertTrue("transcript-revision:legacy:current" in replacement.tags)
+            assertEquals(120000L, dao.transcript(ep.id)!!.processedMs)
+            assertEquals("Saved text", dao.segments(ep.id, "current").single().text)
+            assertEquals(120000L, dao.coverage(ep.id, "current").single().endMs)
+            toggle(vm, false)
+            assertEquals(replacement.id, active("transcript:legacy:current:120000").id)
+            assertEquals(1, manager.getWorkInfosByTag("transcript:legacy").get().count { !it.state.isFinished })
+        }
+    }
+
+    @Test fun `legacy migration waits for the active repository chunk before cancelling requests`() = runBlocking {
+        fixture { graph, _ ->
+            val dao = graph.db.library()
+            val ep = episode("legacy-active").copy(durationMs = 240000)
+            dao.putEpisode(ep)
+            val row = TranscriptEntity(ep.id, "current", ep.mediaFingerprint, "tiny", "en", durationMs = 240000, lookupOnline = true)
+            dao.putTranscript(row)
+            val entered = CompletableDeferred<Unit>()
+            val finish = CompletableDeferred<Unit>()
+            val repository = TranscriptionRepository(graph) { _, _ ->
+                entered.complete(Unit)
+                finish.await()
+                // Leave a pending recovery checkpoint after this synthetic active chunk.
+                dao.putTranscript(row.copy(processedMs = 120000))
+                dao.putCoverage(CoverageEntity(ep.id, row.revision, 0, 120000))
+                true
+            }
+            val legacy = OneTimeWorkRequestBuilder<TranscriptWorker>()
+                .setInputData(workDataOf("episode" to ep.id, "revision" to row.revision))
+                .setConstraints(Constraints.Builder().setRequiresCharging(true).setRequiredNetworkType(NetworkType.CONNECTED).build())
+                .addTag("transcript:${ep.id}").build()
+            manager.enqueueUniqueWork("transcript:${ep.id}:current:0", ExistingWorkPolicy.KEEP, legacy).result.get()
+            coroutineScope {
+                val activeChunk = launch(Dispatchers.IO) { repository.process(ep.id, row.revision, TranscriptExecution({ false }, {}, false)) }
+                entered.await()
+                val policy = async(Dispatchers.IO) { repository.configureNetworkPolicy() }
+                delay(100)
+                assertFalse(policy.isCompleted)
+                assertFalse(manager.getWorkInfoById(legacy.id).get()!!.state.isFinished)
+                finish.complete(Unit)
+                activeChunk.join(); policy.await()
+            }
+            assertEquals(WorkInfo.State.CANCELLED, manager.getWorkInfoById(legacy.id).get()!!.state)
+            assertEquals(NetworkType.UNMETERED, active("transcript:${ep.id}:current:120000").constraints.requiredNetworkType)
+            assertEquals(120000L, dao.transcript(ep.id)!!.processedMs)
+        }
+    }
+
+    @Test fun `pause while legacy migration waits cancels active and queued writers without revival`() = runBlocking {
+        lateinit var repository: TranscriptionRepository
+        fixture(transcriptFactory = { context, params ->
+            object : CoroutineWorker(context, params) {
+                override suspend fun doWork(): Result {
+                    repository.process("legacy-paused", "current", TranscriptExecution({ isStopped }, {}, false))
+                    return Result.success()
+                }
+            }
+        }) { graph, _ ->
+            val dao = graph.db.library()
+            val ep = episode("legacy-paused").copy(durationMs = 240000)
+            dao.putEpisode(ep)
+            dao.putTranscript(TranscriptEntity(ep.id, "current", ep.mediaFingerprint, "tiny", "en", durationMs = 240000, lookupOnline = true))
+            val entered = CompletableDeferred<Unit>()
+            var writers = 0
+            repository = TranscriptionRepository(graph) { _, _ ->
+                writers++
+                entered.complete(Unit)
+                awaitCancellation()
+            }
+            coroutineScope {
+                val activeChunk = launch(Dispatchers.IO) { repository.process(ep.id, "current", TranscriptExecution({ false }, {}, false)) }
+                entered.await()
+                val legacy = OneTimeWorkRequestBuilder<TranscriptWorker>()
+                    .setInputData(workDataOf("episode" to ep.id, "revision" to "current"))
+                    .setConstraints(Constraints.Builder().setRequiresCharging(true).build())
+                    .addTag("transcript:${ep.id}").build()
+                manager.enqueueUniqueWork("transcript:${ep.id}:current:0", ExistingWorkPolicy.KEEP, legacy).result.get()
+                WorkManagerTestInitHelper.getTestDriver(context)!!.setAllConstraintsMet(legacy.id)
+                settle { manager.getWorkInfoById(legacy.id).get()!!.state == WorkInfo.State.RUNNING }
+                val policy = async(Dispatchers.IO) { repository.configureNetworkPolicy() }
+                delay(100)
+                assertFalse(policy.isCompleted)
+                repository.pause(ep.id)
+                activeChunk.join(); policy.await()
+                settle { manager.getWorkInfoById(legacy.id).get()!!.state == WorkInfo.State.CANCELLED }
+            }
+            assertEquals(1, writers)
+            assertEquals("paused", dao.transcript(ep.id)!!.state)
+            assertTrue(manager.getWorkInfosByTag("transcript:${ep.id}").get().all { it.state == WorkInfo.State.CANCELLED })
+        }
+    }
+
     @Test fun `both toggle directions update existing audio and model work without replacing progress`() = runBlocking {
         fixture { graph, vm ->
             val dao = graph.db.library()
@@ -121,7 +304,7 @@ class DownloadNetworkPolicyTest {
                     .setInputData(workDataOf("episode" to kind, "revision" to "saved-revision"))
                     .setConstraints(Constraints.Builder().setRequiresBatteryNotLow(true).setRequiresCharging(true)
                         .setRequiredNetworkType(if (kind in listOf("local", "lookup")) NetworkType.NOT_REQUIRED else NetworkType.UNMETERED).build())
-                    .addTag("transcript:$kind").build()
+                    .addTag("transcript:$kind").addTag("transcript-revision:$kind:saved-revision").build()
                 manager.enqueueUniqueWork("transcript:$kind:saved-revision:0", ExistingWorkPolicy.KEEP, request).result.get()
                 revisions[kind] = request.id
             }

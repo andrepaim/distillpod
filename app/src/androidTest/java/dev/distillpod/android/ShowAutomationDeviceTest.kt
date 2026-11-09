@@ -134,11 +134,11 @@ People contribute to their community.
         val prefs = graph.settings.flow.first()
         try {
             graph.settings.flag("refresh", true)
-            open("settings:storage")
+            open("settings:library")
             compose.onNodeWithText("12h").performScrollTo().performClick()
             await { graph.settings.flow.first().refreshHours == 12 }
             compose.activityRule.scenario.recreate()
-            open("settings:storage")
+            open("settings:library")
             compose.onNodeWithText("Check for new episodes every 12 hours").performScrollTo().assertIsDisplayed()
             val work = WorkManager.getInstance(graph.context).getWorkInfosForUniqueWork("refresh-periodic").get()
             assertEquals(1, work.count { !it.state.isFinished })
