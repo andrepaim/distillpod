@@ -8,6 +8,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.unit.Density
@@ -81,12 +84,15 @@ class ShowsOrganizationDeviceTest {
         chooseFormat(ShowFormat.VIDEO)
         compose.onNodeWithText("2 shows").assertIsDisplayed()
         compose.onNodeWithTag("show-card-${ids[0]}").assertDoesNotExist()
+        scrollCard(2)
         compose.onNodeWithText("Audio & video").assertExists()
         chooseSort(ShowSort.LATEST_EPISODE)
         assertBefore(2, 1)
+        scrollCard(1)
         compose.onNodeWithContentDescription("Pin Shelf Beta").performClick()
-        compose.waitUntil(5000) { compose.onAllNodesWithContentDescription("Unpin Shelf Beta").fetchSemanticsNodes().isNotEmpty() }
+        awaitPin(1, true)
         assertBefore(1, 2)
+        scrollCard(2)
         compose.onNode(hasText("1 unfinished") and hasAnyAncestor(hasTestTag("show-card-${ids[2]}")), useUnmergedTree = true).assertExists()
         runBlocking { graph.db.library().markCompleted("shows-episode-c-audio", true) }
         compose.waitUntil(5000) {
@@ -95,15 +101,18 @@ class ShowsOrganizationDeviceTest {
         }
         screenshot("video-pinned")
         // Pinning only changes local display preferences: opening the card remains separate.
+        scrollCard(1)
         compose.onNodeWithText("Shelf Beta").performClick()
         compose.waitUntil(5000) { vm.backStack.value.last() == "podcast:${ids[1]}" }
         compose.onNodeWithContentDescription("Back").performClick()
+        compose.onNodeWithTag("shows-grid").performScrollToIndex(0)
         compose.onNodeWithText("Search your shows").assertTextContains("Shelf")
         // Activity recreation reattaches real settings and keeps the selected controls/pin.
         compose.activityRule.scenario.recreate()
         compose.waitUntil(10000) { compose.onAllNodesWithTag("show-format-VIDEO").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithTag("show-format-VIDEO").assertIsSelected()
         compose.onNodeWithContentDescription("Sort shows: Latest episode").assertExists()
+        scrollCard(1)
         compose.onNodeWithContentDescription("Unpin Shelf Beta").assertExists()
         chooseFormat(ShowFormat.AUDIO)
         compose.onNodeWithText("2 shows").assertExists()
@@ -113,9 +122,11 @@ class ShowsOrganizationDeviceTest {
         assertBefore(0, 2)
         chooseFormat(ShowFormat.ALL)
         chooseSort(ShowSort.TITLE)
+        scrollCard(1)
         compose.onNodeWithContentDescription("Unpin Shelf Beta").performClick()
-        compose.waitUntil(5000) { compose.onAllNodesWithContentDescription("Pin Shelf Beta").fetchSemanticsNodes().isNotEmpty() }
+        awaitPin(1, false)
         assertBefore(0, 1)
+        compose.onNodeWithTag("shows-grid").performScrollToIndex(0)
         compose.onNodeWithText("Search your shows").performTextReplacement("No such show")
         compose.onNodeWithText("Search your shows").performImeAction()
         compose.onNodeWithText("No matching shows").assertIsDisplayed()
@@ -138,10 +149,10 @@ class ShowsOrganizationDeviceTest {
         compose.onNodeWithTag("shows-grid").performScrollToNode(hasContentDescription("Pin Shelf Gamma"))
         compose.onNodeWithContentDescription("Pin Shelf Gamma").assertIsDisplayed().performClick()
         compose.onNodeWithTag("shows-grid").performScrollToNode(hasText("Shelf Gamma"))
-        compose.onNodeWithText("Shelf Gamma").assertIsDisplayed()
-        compose.onNodeWithTag("shows-grid").performScrollToNode(hasText("Audio & video"))
-        compose.onNodeWithText("Audio & video").assertIsDisplayed()
-        compose.onNodeWithTag("shows-grid").performScrollToNode(hasText("1 unfinished"))
+        compose.onNodeWithText("Shelf Gamma", useUnmergedTree = true).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Audio & video", useUnmergedTree = true).performScrollTo().assertIsDisplayed()
+        compose.onNode(hasText("1 unfinished") and hasAnyAncestor(hasTestTag("show-card-${ids[2]}")), useUnmergedTree = true)
+            .performScrollTo().assertIsDisplayed()
         screenshot("large-text")
         compose.onNodeWithTag("shows-grid").performScrollToIndex(0)
         compose.onNodeWithText("Search your shows").performTextReplacement("No such show")
@@ -164,15 +175,41 @@ class ShowsOrganizationDeviceTest {
         compose.waitUntil(5000) { runBlocking { graph.settings.shows.first().sort == sort } }
     }
     private fun assertBefore(first: Int, second: Int) {
-        compose.onNodeWithTag("shows-grid").performScrollToIndex(0)
-        val a = compose.onNodeWithTag("show-card-${ids[first]}").fetchSemanticsNode().boundsInRoot
-        val b = compose.onNodeWithTag("show-card-${ids[second]}").fetchSemanticsNode().boundsInRoot
-        assertTrue("Expected ${titles[first]} before ${titles[second]}", a.top < b.top || (a.top == b.top && a.left < b.left))
+        val grid = compose.onNodeWithTag("shows-grid")
+        grid.performScrollToIndex(0)
+        val expected = listOf("show-card-${ids[first]}", "show-card-${ids[second]}")
+        val seen = mutableListOf<String>()
+        // Observe actual visual order while scrolling; CI may only fit one card per row.
+        repeat(20) {
+            compose.onAllNodes(SemanticsMatcher("requested show cards") {
+                it.config.getOrNull(SemanticsProperties.TestTag) in expected
+            }).fetchSemanticsNodes().filter { it.boundsInRoot.height > 0 && it.boundsInRoot.width > 0 }
+                .sortedWith(compareBy({ it.boundsInRoot.top }, { it.boundsInRoot.left })).forEach { node ->
+                    val tag = node.config[SemanticsProperties.TestTag]
+                    if (tag !in seen) seen += tag
+                }
+            if (seen.size == 2) {
+                assertEquals("Rendered show order", expected, seen)
+                return
+            }
+            val step = grid.fetchSemanticsNode().boundsInRoot.height / 2
+            grid.performSemanticsAction(SemanticsActions.ScrollBy) { it(0f, step) }
+        }
+        fail("Could not reach both show cards: $seen")
+    }
+    private fun scrollCard(index: Int) {
+        compose.onNodeWithTag("shows-grid").performScrollToNode(hasTestTag("show-card-${ids[index]}"))
+    }
+    private fun awaitPin(index: Int, pinned: Boolean) {
+        compose.waitUntil(5000) { vm.shows.value?.preferences?.pinnedFeeds?.contains("https://example.test/${ids[index]}") == pinned }
+        scrollCard(index)
+        compose.onNodeWithContentDescription("${if (pinned) "Unpin" else "Pin"} ${titles[index]}").assertExists()
     }
     private fun episode(id: String, show: Int, mime: String, published: Long, played: Long = 0, completed: Boolean = false) =
         EpisodeEntity("shows-episode-$id", ids[show], id, "Fixture episode $id", "https://example.test/episode/$id",
             mimeType = mime, publishedAt = published, lastPlayedAt = played, completed = completed)
     private fun screenshot(name: String) {
+        compose.waitForIdle()
         val dir = File(compose.activity.filesDir, "shows-acceptance").apply { mkdirs() }
         UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).takeScreenshot(File(dir, "$name.png"))
     }
