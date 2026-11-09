@@ -265,3 +265,70 @@ class CommandLineTest(unittest.TestCase):
   self.assertFalse(result['observation']['complete'])
   self.assertIn('api_read_failed',result['observation']['warnings'])
   self.assertNotIn('SECRET_SENTINEL',json.dumps(result))
+
+class ProducerExportPipelineTest(unittest.TestCase):
+ def fixtures(self):
+  root=Path(__file__).parent/'fixtures/investigation'
+  return [item for path in sorted(root.glob('*.json')) for item in json.loads(path.read_text())]
+ def provider(self,items,fail_after=None):
+  """Synthetic Explore projects real producer values; it never supplies invented app fields."""
+  import urllib.parse,re
+  calls=[]
+  def respond(request,timeout):
+   q=urllib.parse.parse_qs(urllib.parse.urlsplit(request.full_url).query)
+   calls.append(q)
+   if fail_after is not None and len(calls)>fail_after:raise OSError('SECRET_SENTINEL')
+   self.assertLessEqual(len(q['field']),20)
+   result=[]
+   for item in items:
+    attrs={k:v['value'] for k,v in item['attributes'].items()}
+    row={}
+    for field in q['field']:
+     if field=='message':row[field]=item['body']
+     elif field=='timestamp':row[field]='2026-01-01T01:00:00Z'  # simulated provider time only
+     else:
+      key=re.fullmatch(r'tag\[([^,]+),(?:string|number|boolean)\]',field).group(1)
+      row[field]=attrs.get(key)
+    result.append(row)
+   # Changing row order across queries must not change causal joins.
+   if len(calls)%2==0:result.reverse()
+   return Response({'data':result})
+  return respond,calls
+ def test_actual_producer_to_export_to_private_report(self):
+  items=self.fixtures();respond,calls=self.provider(items)
+  with patch('export_operations._open_readonly',side_effect=respond):
+   exported=ExportTest().collect()
+  self.assertTrue(exported['observation']['complete'])
+  self.assertGreater(len(calls),1)
+  stage=next(i for i in items if i['body']=='distillation.attempt_summary'
+             and i['attributes']['stage_outcome']['value']=='published')
+  reference=stage['attributes']['capture_request_id']['value']
+  result=report.investigate(exported,reference)
+  self.assertEqual(['quota','published'],[r['fields']['stage_outcome'] for r in result['timeline']])
+  self.assertEqual(1,len(result['attempts']))
+  self.assertEqual(2,len(result['attempts'][0]['execution_ids']))
+  self.assertEqual('observed_published',result['publication']['state'])
+  self.assertEqual(0,result['timeline'][-1]['fields']['generation_attempted_calls'])
+  missing=next(i for i in items if i['body']=='capture.context_summary'
+               and i['attributes']['context_reason']['value']=='coverage_missing')
+  unknown=report.investigate(exported,missing['attributes']['capture_request_id']['value'])
+  self.assertEqual('unknown',unknown['publication']['state'])
+  self.assertIn('stage_evidence_unavailable',unknown['gaps'])
+  with tempfile.TemporaryDirectory() as directory:
+   for name,value in [('export',exported),('report',result),('unknown',unknown)]:
+    target=Path(directory)/(name+'.json');private_write(target,value)
+    self.assertEqual(0o600,target.stat().st_mode & 0o777)
+    saved=json.loads(target.read_text())
+    self.assertNotIn('success_rate',json.dumps(saved))
+    self.assertNotIn('SECRET_SENTINEL',json.dumps(saved))
+ def test_actual_producer_pipeline_partial_read_stays_incomplete(self):
+  items=self.fixtures();respond,_=self.provider(items,fail_after=1)
+  with patch('export_operations._open_readonly',side_effect=respond):
+   exported=ExportTest().collect()
+  reference=next(i['attributes']['capture_request_id']['value'] for i in items
+                 if i['body']=='distillation.attempt_summary')
+  result=report.investigate(exported,reference)
+  self.assertFalse(exported['observation']['complete'])
+  self.assertIn('incomplete_export',result['gaps'])
+  self.assertNotIn('SECRET_SENTINEL',json.dumps(result))
+  self.assertNotIn('success_rate',json.dumps(result))

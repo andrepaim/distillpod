@@ -166,3 +166,36 @@ on main or successful end-to-end deployment. Keep #38 open until #34/#37/#35/#36
 then compare the actual combined producer definitions, integrate current main again, and
 rerun consumer/security checks and required CI. Any changed event, enum, field type,
 identity or serialization contract requires renewed fixture validation.
+
+
+## Combined producer candidate validation
+
+Local-only reconciliation uses the exact published #36 candidate
+`a987d69e84b5372dd39428283c6411263241fecf` (tree
+`41e005b8794b2a147e7ec4622b2d3f1afd008c15`), which includes actual main
+`b9d4d162` and producer #34/#37/#35 code. At preparation time #36 is not yet
+merged; this candidate is not represented as completed main integration.
+
+The candidate's DiagnosticCorrelation, DistillationOutcome and
+ContextPreparationEvidence files are byte-identical to the previously verified contract
+versions listed above. DiagnosticBudget adds capture.context_summary to the critical
+admission lane; policy version 2, limits and emitted health fields are unchanged.
+Therefore the actual serialized synthetic fixtures remain valid without fabricating or
+rewriting producer values.
+
+The new synthetic end-to-end pass projects those real producer attributes through the
+documented Explore column shape, reads all bounded column batches, and creates reports.
+It verifies the actual quota-to-review-resume chain, separate execution IDs, cached
+generation with zero new calls, publication evidence, missing-context unknown publication,
+and incomplete observation after a later batch failure. Export and report files are
+written and checked as mode 0600. Only the simulated provider timestamp and response
+ordering are supplied by the API fixture; application fields come from producer output.
+No real API response or owner content is used, and passing this test establishes neither
+production credentials nor cloud-field availability.
+
+The consumer's own risk assessment is unchanged: it modifies read-only CLI/API processing
+and private POSIX files, not Android behavior. Producer-specific app validation remains
+owned by the prerequisite changes. Before publication, wait for #36 to merge, verify tree
+equivalence with actual main or review/retest any differences, then run required CI on the
+final published consumer head. This local preparation does not authorize premature merge,
+retargeting, live inspection or release.
