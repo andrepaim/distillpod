@@ -9,8 +9,17 @@ import java.util.regex.Pattern
 /** DocumentsUI uses different list IDs across Android releases; scope rows to the locations pane. */
 internal object DocumentPickerUi {
     private val pane = By.res(Pattern.compile(".*:id/(container_roots|roots_list)"))
-    fun location(device: UiDevice, selector: BySelector) {
-        check(device.wait(Until.hasObject(By.pkg(Pattern.compile(".*documentsui"))), 15000)) { failure(device, "Document picker did not open") }
+    fun location(device: UiDevice, selector: BySelector, synchronizeApp: () -> Unit = {}) {
+        val picker=By.pkg(Pattern.compile(".*documentsui"))
+        val launchDeadline=SystemClock.uptimeMillis()+15000
+        while(true) {
+            // Background preparation may finish after an earlier idle drain. UiAutomator
+            // does not advance a Compose test scheduler while awaiting the system window.
+            synchronizeApp()
+            if(device.hasObject(picker))break
+            check(SystemClock.uptimeMillis()<launchDeadline) { failure(device,"Document picker did not open") }
+            SystemClock.sleep(50)
+        }
         device.waitForIdle()
         if (!device.hasObject(pane)) {
             val navigation = device.wait(Until.findObject(By.desc(Pattern.compile("Show roots|Open navigation drawer|Navigate up"))), 10000)

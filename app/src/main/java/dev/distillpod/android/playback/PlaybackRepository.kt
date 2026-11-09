@@ -76,6 +76,7 @@ class PlaybackRepository(private val context: Context, private val db: AppDataba
         }
         require(streams.video != null) { "No compatible video is available for this episode" }
     }) {
+    internal val cloudQueueChoices = CloudQueueChoices()
     private val future = MediaController.Builder(context, SessionToken(context, ComponentName(context, PlaybackService::class.java))).buildAsync()
     private val mutable = MutableStateFlow(PlaybackState())
     val state = mutable.asStateFlow()
@@ -203,20 +204,32 @@ class PlaybackRepository(private val context: Context, private val db: AppDataba
             }
         }
     }
-    suspend fun acceptCloudQueue(imported:(List<String>)->Unit) {
-        val all=db.library().episodes().associateBy {it.id};val podcasts=db.library().podcasts().associateBy {it.id}
-        val desired=db.library().queue().map {it.episodeId}.filter {it in all}
-        val c=controller()
-        withContext(Dispatchers.Main) {
-            val current=c.currentMediaItem?.mediaId
-            val ids=if(current!=null && current in all)listOf(current)+desired.filter {it!=current} else desired
-            if(ids.isEmpty() || ids==(0 until c.mediaItemCount).map {c.getMediaItemAt(it).mediaId})return@withContext
-            val index=ids.indexOf(current).coerceAtLeast(0)
-            val position=if(current in ids)c.currentPosition.coerceAtLeast(0) else all.getValue(ids[index]).positionMs
-            val playWhenReady=c.playWhenReady
-            imported(ids)
-            c.setMediaItems(ids.map {preserveVideoItem(all.getValue(it),podcasts[all.getValue(it).podcastId],c.currentMediaItem)},index,position)
-            c.prepare();c.playWhenReady=playWhenReady
+    /** Acknowledges processing, including failed writes; callers must separately verify persisted state. */
+    internal suspend fun awaitQueueWritesProcessed() {
+        val c = controller()
+        val reply = withContext(Dispatchers.Main) { c.sendCustomCommand(QueueWriteCommands.BARRIER, android.os.Bundle.EMPTY) }
+        val result = withContext(Dispatchers.IO) { reply.get(15, TimeUnit.SECONDS) }
+        check(result.resultCode == androidx.media3.session.SessionResult.RESULT_SUCCESS) { "Queue writer barrier failed" }
+    }
+    internal suspend fun chooseCloudQueue(resolve: suspend () -> Unit, imported: (List<String>) -> Unit) {
+        val pending=beginCloudQueueChoice(resolve,imported)
+        try { pending.await() }
+        catch(cancelled:CancellationException) {pending.cancel(cancelled);throw cancelled}
+    }
+    internal suspend fun beginCloudQueueChoice(resolve: suspend () -> Unit, imported: (List<String>) -> Unit): Deferred<Unit> {
+        val choice=CloudQueueChoice(resolve=resolve,imported=imported)
+        val token=cloudQueueChoices.register(choice)
+        try {
+            val c=controller()
+            val reply=withContext(Dispatchers.Main) { c.sendCustomCommand(QueueWriteCommands.IMPORT,
+                android.os.Bundle().apply {putString(QueueWriteCommands.TOKEN,token)}) }
+            val result=withContext(Dispatchers.IO) {reply.get(10,TimeUnit.SECONDS)}
+            check(result.resultCode==androidx.media3.session.SessionResult.RESULT_SUCCESS) {"Playback could not accept the queue choice"}
+            return choice.completion
+        } catch(failure:Throwable) {
+            cloudQueueChoices.take(token)
+            choice.completion.completeExceptionally(failure)
+            throw failure
         }
     }
     suspend fun carPlaybackToken(): android.support.v4.media.session.MediaSessionCompat.Token {

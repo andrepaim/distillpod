@@ -38,7 +38,9 @@ elif cmd[:3]==['shell','am','get-started-user-state']:
  print('RUNNING_UNLOCKED' if os.environ['PROOF_CASE']=='race' and n>=2 else 'RUNNING_LOCKED')
 elif cmd[:3]==['shell','am','instrument']:
  phase=cmd[cmd.index('notificationPhase')+1] if 'notificationPhase' in cmd else ''
- if phase and phase==os.environ.get('PROOF_FAIL_PHASE'):
+ if 'class' in cmd and cmd[cmd.index('class')+1]==os.environ.get('PROOF_FAIL_CLASS'):
+  print('INSTRUMENTATION_STATUS: stack=synthetic queue shutdown failure\\nINSTRUMENTATION_STATUS_CODE: -2\\nFAILURES!!!')
+ elif phase and phase==os.environ.get('PROOF_FAIL_PHASE'):
   print('INSTRUMENTATION_STATUS: stream=phase='+phase+' step=runtime-permission-granted\\nINSTRUMENTATION_STATUS_CODE: -2\\nFAILURES!!!')
  else:print('INSTRUMENTATION_STATUS_CODE: 0\\nOK (1 test)\\nINSTRUMENTATION_CODE: -1')
 """)
@@ -48,11 +50,11 @@ elif cmd[:3]==['shell','am','instrument']:
         path.write_text(text)
         path.chmod(0o700)
 
-    def run_fixture(self, case, ci="true", serial="emulator-5554"):
+    def run_fixture(self, case, ci="true", serial="emulator-5554", fail_class=""):
         env = os.environ.copy()
         env.update(GITHUB_ACTIONS=ci, DISTILLPOD_ADB=str(self.root / "bin/fake-adb"),
                    DISTILLPOD_SERIAL=serial, DISTILLPOD_LOG=str(self.root / "instrumentation.log"),
-                   DISTILLPOD_AUTO_LOG=str(self.root / "auto-log"), PROOF_ROOT=str(self.root), PROOF_CASE=case,
+                   DISTILLPOD_AUTO_LOG=str(self.root / "auto-log"), PROOF_ROOT=str(self.root), PROOF_CASE=case, PROOF_FAIL_CLASS=fail_class,
                    PATH=str(self.root / "bin") + ":" + env["PATH"])
         result = subprocess.run(["bash", str(self.root / "scripts/emulator-tests.sh"), str(self.root / "fixtures")],
                                 cwd=self.root, env=env, capture_output=True, text=True, timeout=15)
@@ -75,12 +77,26 @@ elif cmd[:3]==['shell','am','instrument']:
         self.assertIn("dev.distillpod.android.YouTubeAcceptanceDeviceTest", excluded)
         self.assertIn("dev.distillpod.android.OwnerVideocastDeviceTest", excluded)
         phases=[call for call in calls if call[:3]==["shell","am","instrument"]]
-        self.assertEqual(7,len(phases))
-        self.assertIn("AutoBrowserDeviceTest"," ".join(phases[1]))
-        self.assertIn("prepareCheckpoint"," ".join(phases[2]))
-        self.assertIn("verifyCheckpoint"," ".join(phases[3]))
+        self.assertEqual(8,len(phases))
+        self.assertIn("dev.distillpod.android.CloudQueueTeardownDeviceTest",excluded)
+        self.assertIn("dev.distillpod.android.CloudQueueChoicePhoneDeviceTest",excluded)
+        self.assertEqual("dev.distillpod.android.CloudQueueTeardownDeviceTest",phases[1][phases[1].index("class")+1])
+        self.assertIn("AutoBrowserDeviceTest"," ".join(phases[2]))
+        self.assertIn("prepareCheckpoint"," ".join(phases[3]))
+        self.assertIn("verifyCheckpoint"," ".join(phases[4]))
         self.assertTrue(any(call==["shell","am","force-stop","dev.distillpod.android"] for call in calls))
         self.assertTrue(any(call[:3] == ["shell", "am", "clear-debug-app"] for call in calls))
+
+    def test_queue_shutdown_failure_retains_log_and_stops_later_phases(self):
+        result,calls=self.run_fixture("race",fail_class="dev.distillpod.android.CloudQueueTeardownDeviceTest")
+        self.assertNotEqual(0,result.returncode)
+        phases=[call for call in calls if call[:3]==["shell","am","instrument"]]
+        self.assertEqual(2,len(phases))
+        log=(self.root/"instrumentation-queue-shutdown.log").read_text()
+        self.assertIn("synthetic queue shutdown failure",log)
+        self.assertIn("FAILURES!!!",log)
+        self.assertTrue(any(call[:3]==["shell","am","clear-debug-app"] for call in calls))
+        self.assertFalse(any("AutoBrowserDeviceTest" in " ".join(call) and "notClass" not in call for call in calls))
 
     def test_storage_timeout_is_bounded_and_never_installs(self):
         result, calls = self.run_fixture("stuck")
@@ -178,7 +194,8 @@ elif cmd[:3]==['shell','am','instrument']:
         self.assertIn("FAILURES!!!", log)
         self.assertFalse((self.root / "notification-runtimeGrant.log").exists())
 
-    def test_ci_retains_all_notification_phase_logs_on_failure(self):
+    def test_ci_retains_all_phase_logs_on_failure(self):
         workflow = Path(__file__).resolve().parent.parent / ".github/workflows/ci.yml"
         artifact = workflow.read_text().split("name: emulator-test-results", 1)[1]
         self.assertIn("/tmp/distillpod-notification-*.log", artifact)
+        self.assertIn("/tmp/distillpod-instrumentation*.log", artifact)
