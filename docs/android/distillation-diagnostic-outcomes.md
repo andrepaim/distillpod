@@ -1,0 +1,30 @@
+# Distillation attempt outcomes
+
+The additive `distillation.attempt_summary` event uses `outcome_version=1` alongside the existing envelope `schema_version=1` and correlation contract. One summary describes one acquired execution, not the entire lifetime of a saved moment. The stable summary_id is the persisted random execution_id; retries of the same serialized envelope retain this ID and observed_at_ms. emitted_at_ms is separate. Existing operation summaries retain their lifecycle meaning. These fields do not reconstruct historical observations.
+
+## Contract
+
+- `stage`: generation, review, or publication. `stage_outcome` is a finite category, never a provider message.
+- `generation_outcome`, `review_outcome`: not_run, unknown, cached, ready/accepted, generator_needs_context, generator_unclear_source, review_rejected, invalid_response, interrupted, cancelled, auth_failure, quota, request_failed, stale_result_suppressed, or internal_failure as applicable.
+- `passage_complete`, `takeaway_supported`, `relevant`, `quote_faithful`, `needs_context`: booleans when validated review evidence exists, otherwise unknown.
+- `issue_incomplete_count`, `issue_unsupported_count`, `issue_irrelevant_count`, `issue_quote_count`: counts of validated allowlisted issues (0–20), or -1 when no valid review exists.
+- `contradictory_review`: true when a positive review flag conflicts with a corresponding issue, or needsContext is true despite otherwise positive takeaway checks; unknown without validated review. This observation never changes acceptance policy.
+- `generator_model`, `reviewer_model`: finite allowlisted public identifiers, unknown for unrecognized/unobserved identifiers, not_run when the stage has neither run nor cached evidence. Never accept arbitrary provider text as a model identifier.
+- `prompt_version`: the existing prompt contract version, without prompt text.
+- `generation_elapsed_ms`, `review_elapsed_ms`: monotonic elapsed milliseconds for gateway requests in this execution, including failed or malformed responses, bounded to 24 hours; -1 when the stage did not execute. Cached stages do not pretend to have fresh timing.
+- `generation_attempted_calls`, `review_attempted_calls`: gateway invocations initiated in this execution, including failures. These are **not provider billing, token usage, or underlying network retry counts**. A resumed review can have zero generation calls.
+- `quote_omitted`: true/false after successful publication, otherwise unknown. A faithful takeaway published after quote-only rejection uses published_without_quote.
+
+Terminal stage/outcome fields distinguish abstention from review rejection, malformed responses from request failures, and obsolete work from publication. No transcript, prompt, candidate, quote, issue explanation, raw response, credential, or URL is serialized. Existing consent and failure-isolation boundaries apply. Isolated instrumentation cannot emit these summaries. Explicit user cancellation remains its own correlated lifecycle event; a returning cancelled execution has stale_result_suppressed rather than a fabricated provider failure. Process death cannot execute a finalizer: the existing operation journal reports interrupted recovery, not fabricated stage evidence.
+
+## Risk assessment and validation
+
+This change has moderate diagnostic persistence, privacy and concurrency risk. It adds one bounded terminal envelope to the existing outbox/uploader path, not a new scheduler, retry cadence, upload transport, permission, Room schema or application-data migration. The existing critical budget and queue bounds still apply. More diagnostic writes can consume that existing budget; delivery is best effort rather than a guarantee of a complete attempt history.
+
+Production generation prompts, review acceptance expressions, provider-call order, retry decisions, saved-content fields and user-facing state/messages remain unchanged. The typed obsolete-source exception retains the original IllegalStateException behavior and message. New bookkeeping must not turn successful publication into failure, replace a propagated cancellation, adopt a newer execution, or mislabel a failed ownership-storage query as stale work.
+
+Required evidence includes review of the integrated dependency code; synthetic generation/review/publication, malformed-response, quota/auth, interruption/cancellation and stale-result tests; exact serialized IDs and per-execution attempted-call counters; review-only resume; consent-disabled, revoke/re-enable and instrumentation suppression; arbitrary-model/private-content rejection; outbox failure isolation; and combined core/app unit tests, lint, APK assembly, data guards and applicable isolated Android CI acceptance. Existing operation-journal recovery remains the evidence for process death; this finalizer cannot reconstruct a provider outcome after process termination.
+
+Under the repository's risk-based validation policy, suitable JVM and isolated Android/emulator evidence is sufficient for this specific delta. It does not change hardware, Bluetooth/audio routing, runtime permissions, notifications, OEM behavior, background execution constraints or in-place upgrade behavior. This is not a blanket exemption for reporting or for the #34/#37 prerequisites: their persistence/consent risks and the resulting integrated code must be reviewed separately. Reassess and require feature-specific physical checks if later integration changes any device-dependent behavior.
+
+Limitations: instrumented Android runs intentionally suppress diagnostic emission. Serialized stage-summary/privacy/consent behavior is tested through the JVM production producer path, not claimed as phone/cloud-delivery evidence. No live AI, owner data, physical device, or paid-capacity changes are needed or implied. Final current-main integration, exact-head CI and parent review remain merge gates; the optional isolated phone harness is separate validation work, not part of this feature branch.

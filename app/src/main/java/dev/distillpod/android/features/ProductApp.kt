@@ -100,7 +100,7 @@ private fun date(ms: Long) = if (ms <= 0) "" else DateTimeFormatter.ofPattern("d
         route == "queue" -> "Listening queue"
         route == "settings" -> "Settings"
         route == "shows" -> "Your shows"
-        route.startsWith("settings:") -> when(route.substringAfter(':')) { "diagnostics" -> "Diagnostics"; "sync" -> "Library sync"; "ai" -> "ChatGPT"; "voice" -> "Voice"; "playback" -> "Playback & headphones"; "transcription" -> "Local transcription"; "storage" -> "Downloads & storage"; "library" -> "Import & notifications"; else -> "About DistillPod" }
+        route.startsWith("settings:") -> when(route.substringAfter(':')) { "diagnostics" -> "Privacy & diagnostics"; "notifications" -> "Notification access"; "sync" -> "Library sync"; "ai" -> "ChatGPT"; "voice" -> "Voice"; "playback" -> "Playback & headphones"; "transcription" -> "Transcript preparation"; "storage" -> "Downloads & storage"; "library" -> "Library"; else -> "About DistillPod" }
         route.startsWith("transcript:") -> "Transcript"
         route == "backup" -> "Backup & Restore"
         route == "player" -> "Now playing"
@@ -586,9 +586,11 @@ private fun captureState(state: String) = when (state) { "waiting_transcript" ->
         }
         }
         if(section=="transcription") {
-        Text("Local transcription", style = MaterialTheme.typography.titleLarge)
+        Text("Transcript preparation", style = MaterialTheme.typography.titleLarge)
         SettingSwitch("Transcribe when playing", "Automatically prepare transcripts for episodes you play. Uses your download and processing settings. Turning this off leaves existing jobs running; use Pause transcript to stop one.", prefs.transcribeOnPlayback) { vm.flag("transcribeOnPlayback", it) }
         SettingSwitch("Look for existing online transcripts", "Before Whisper, search PodcastTranscript.ai for public shows. Sends the episode title; never uploads audio or starts cloud transcription. Off for unapproved private feeds.", prefs.onlineTranscripts) { vm.flag("onlineTranscripts", it) }
+        SettingSwitch("Only transcribe while charging", "Pause new transcription chunks until power is connected.", prefs.chargingOnly) { vm.flag("charging", it) }
+        TextButton(onClick = { vm.open("settings:storage") }) { Text("Download network policy") }
         Text("Tiny and Base support English and Portuguese. Model files stay on this phone.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         whisperModels.forEach { spec ->
             val status = models.firstOrNull { it.id == spec.id }
@@ -609,9 +611,6 @@ private fun captureState(state: String) = when (state) { "waiting_transcript" ->
         }
         if(section=="storage") {
         SettingSwitch("Wi-Fi / unmetered downloads only", "Applies to queued audio, model downloads and transcript preparation that needs internet. Transfers already in progress continue; retries use your new setting.", prefs.wifiOnly) { vm.flag("wifi", it) }
-        SettingSwitch("Transcribe while charging", "Pause new transcription chunks until power is connected.", prefs.chargingOnly) { vm.flag("charging", it) }
-        SettingSwitch("Refresh subscriptions", "Check your followed feeds periodically when Android permits.", prefs.refresh) { vm.flag("refresh", it) }
-        RefreshIntervalControl(vm, prefs)
         HorizontalDivider(); Text("Storage", style = MaterialTheme.typography.titleLarge)
         Text("Downloaded audio: ${fileSize(episodes.filter { it.localFile != null }.sumOf { it.downloadedBytes })}", color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text("Audio limit: ${fileSize(prefs.storageLimitBytes)}. Deleting downloads keeps saved insights and listening progress.", style = MaterialTheme.typography.bodySmall)
@@ -620,9 +619,11 @@ private fun captureState(state: String) = when (state) { "waiting_transcript" ->
         Text("Removes leftover cache files after feed changes. Downloads, resumable partials, queued audio and processing files are kept.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if(section=="library") {
-            SettingSwitch("Distill confirmation sound", "Play a pen scribble when a moment is saved. Uses media volume.", prefs.distillSound) {vm.flag("distillSound",it)}
+        SettingSwitch("Refresh subscriptions", "Check your followed feeds periodically when Android permits.", prefs.refresh) { vm.flag("refresh", it) }
+        RefreshIntervalControl(vm, prefs)
             DataControls(vm)
         }
+        if(section=="notifications") { NotificationControls() }
         if(section=="about") {
         Text("DistillPod · $version", style = MaterialTheme.typography.labelLarge)
         LicenseAndSources(version)

@@ -78,9 +78,11 @@ class DownloadNetworkPolicyDeviceTest {
                 dao.putEpisode(EpisodeEntity(id, prefix, id, "Fixture", "https://example.test/audio",
                     localFile = if (kind == "remote") null else local.path))
                 dao.putTranscript(TranscriptEntity(id, "saved-revision", "fixture", "tiny", "en",
-                    source = if (kind == "publisher") "publisher" else "whisper", processedMs = 120000, lookupOnline = kind == "lookup"))
+                    source = if (kind == "publisher") "publisher" else "whisper", durationMs = 600000, processedMs = 120000, lookupOnline = kind == "lookup"))
+                dao.putDistillation(DistillationEntity("$id-capture", id, 470000, 480000, revision = "saved-revision", fingerprint = "fixture"))
                 val request = OneTimeWorkRequestBuilder<TranscriptWorker>()
                     .setInputData(workDataOf("episode" to id, "revision" to "saved-revision")).addTag("transcript:$id")
+                    .addTag("transcript-revision:$id:saved-revision")
                     .setInitialDelay(1, TimeUnit.DAYS)
                     .setConstraints(Constraints.Builder().setRequiresCharging(true).setRequiresBatteryNotLow(true)
                         .setRequiredNetworkType(if (kind in listOf("local", "lookup")) NetworkType.NOT_REQUIRED else NetworkType.UNMETERED).build()).build()
@@ -116,6 +118,55 @@ class DownloadNetworkPolicyDeviceTest {
             for (name in names) manager.cancelUniqueWork(name).result.get()
             dao.deletePodcast(prefix); dao.putModel(ModelEntity("tiny"))
             files.forEach { it.delete() }
+            graph.settings.flag("wifi", prefs.wifiOnly); graph.settings.flag("refresh", prefs.refresh)
+            graph.jobs.configureNetworkPolicy()
+        }
+    }
+
+    @Test fun legacyRequestsAreCancelledWithoutDuplicatingCurrentRevisionRecovery() = runBlocking {
+        guard(); graph.ready.await()
+        val dao = graph.db.library()
+        val id = "policy-legacy-${UUID.randomUUID()}"
+        val prefs = graph.settings.flow.first()
+        try {
+            graph.settings.flag("refresh", false)
+            manager.cancelUniqueWork("refresh-periodic").result.get()
+            graph.settings.flag("wifi", false)
+            dao.putPodcast(PodcastEntity(id, "https://example.test/$id", "Legacy fixture"))
+            dao.putEpisode(EpisodeEntity(id, id, id, "Fixture", "https://example.test/audio", durationMs = 240000))
+            dao.putTranscript(TranscriptEntity(id, "current", "fixture", "tiny", "en", durationMs = 240000, processedMs = 120000))
+            dao.putCoverage(CoverageEntity(id, "current", 0, 120000))
+            dao.putSegments(listOf(SegmentEntity(id, "current", 0, 1000, "Saved text", 0)))
+            val legacy = listOf("current", "superseded").map { revision ->
+                OneTimeWorkRequestBuilder<TranscriptWorker>()
+                    .setInputData(workDataOf("episode" to id, "revision" to revision))
+                    .addTag("transcript:$id").setInitialDelay(1, TimeUnit.DAYS)
+                    .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()).build().also {
+                        manager.enqueueUniqueWork("transcript:$id:$revision:480000", ExistingWorkPolicy.KEEP, it).result.get()
+                    }
+            }
+            // Keep the synthetic current recovery delayed; no network request or inference is needed.
+            val current = OneTimeWorkRequestBuilder<TranscriptWorker>()
+                .setInputData(workDataOf("episode" to id, "revision" to "current"))
+                .addTag("transcript:$id").addTag("transcript-revision:$id:current")
+                .setInitialDelay(1, TimeUnit.DAYS)
+                .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()).build()
+            val name = "transcript:$id:current:120000"
+            manager.enqueueUniqueWork(name, ExistingWorkPolicy.KEEP, current).result.get()
+            openStorage(); toggle(true)
+            legacy.forEach { assertEquals(WorkInfo.State.CANCELLED, manager.getWorkInfoById(it.id).get()!!.state) }
+            assertEquals(current.id, active(name).id)
+            assertEquals(TimeUnit.DAYS.toMillis(1), active(name).initialDelayMillis)
+            assertEquals(NetworkType.UNMETERED, active(name).constraints.requiredNetworkType)
+            assertEquals(1, manager.getWorkInfosByTag("transcript:$id").get().count { !it.state.isFinished })
+            assertEquals(120000L, dao.transcript(id)!!.processedMs)
+            assertEquals(120000L, dao.coverage(id, "current").single().endMs)
+            assertEquals("Saved text", dao.segments(id, "current").single().text)
+            graph.transcription.pause(id); toggle(false)
+            assertTrue(manager.getWorkInfosByTag("transcript:$id").get().all { it.state == WorkInfo.State.CANCELLED })
+        } finally {
+            manager.cancelAllWorkByTag("transcript:$id").result.get()
+            dao.deletePodcast(id)
             graph.settings.flag("wifi", prefs.wifiOnly); graph.settings.flag("refresh", prefs.refresh)
             graph.jobs.configureNetworkPolicy()
         }
