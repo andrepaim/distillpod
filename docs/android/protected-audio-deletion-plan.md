@@ -28,3 +28,6 @@ Tested combined source revision: 7e5adf23ecfb83d37760b7257b2a2d3b5efbe0ca (#58 p
 - Final combined :core:test (99 tests), :app:testDebugUnitTest (513 tests), :app:lintDebug, :app:assembleDebug and :app:assembleDebugAndroidTest passed. No test failures or skips.
 - Repository Python suite: 87 passed. Committed-data guard, secret-rule regression and fully redacted full-history Gitleaks passed.
 - Hosted emulator acceptance and isolated phone validation are pending, not waived. Coordinator owns current-main integration and final combined CI. No release or production data changes.
+
+## Acceptance fixture synchronization
+Integrated #54 test-only synchronization correction 24c7905 and explicitly scroll the library before opening the protected-audio episode menu. Both changes preserve the behavioral assertions and runtime code. Normal lint/application/instrumentation builds and isolated offline application/instrumentation builds passed at b44907a9611c6eaefe2a36b636565adc3f927414. Hosted and phone execution remain required.
