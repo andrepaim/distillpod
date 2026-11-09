@@ -52,6 +52,49 @@ Use TDD for logic, default and voice unit tests/lint/APKs, applicable emulator a
 
 Confirmed transcript contract: deletion is local, cloud copies and saved insights remain, and passive import/automatic preparation must not recreate the deleted transcript until explicit user Prepare or Restore. The owner answered “Yes, use those semantics”; this decision no longer needs clarification. A dedicated per-episode local cleanup record remains the proposed implementation, with explicit intent separated from passive restore/conflict resolution. Audio-marker interactions remain part of the existing design review, rather than an implied extension of this transcript decision. No marker, schema, automatic-sweep or transcript-deletion code has been written.
 
+## Preparation and import intent review
+
+Read-only review against current main `a7422e9` on 2026-11-09, including #56's
+startup cancellation/retry changes. This branch has not yet integrated that main
+revision or #58. These are implementation requirements, not implemented behavior.
+
+| Entry point | Required treatment after local transcript cleanup |
+| --- | --- |
+| User Prepare in `features/AppViewModel.kt` | May explicitly clear suppression and start a new revision under the existing preparation controls. |
+| Playback's `prepareAutomatically` | Must respect suppression without queuing a replacement or changing user settings. |
+| `data/ShowAutomation.kt` preparation callback | Currently calls the same `prepare` API as user actions; distinguish its automatic intent before adding suppression. |
+| `DistillPodApplication.kt` capture preparation callback | Must not implicitly count as explicit Prepare merely because a capture needs text. Preserve saved/pending output and expose the missing preparation action. |
+| `TranscriptionRepository.resumeModel`, called by `work/AppJobs.kt` | Model completion is not explicit Prepare. A previously captured waiting-model row must not recreate text after cleanup wins a race. |
+| Passive `sync/ArtifactSync.kt` and subscription projection | Keep suppression and import eligible saved outputs independently of the transcript portion. |
+| `PortableLibrarySync.resolve` with `replaceRevision=true` | Conflict resolution is not, by itself, an explicit transcript Restore. |
+| Explicit saved-copy restore in `SubscriptionSyncAccount.kt` | May clear suppression only as part of a successful, validated Restore; a rejected artifact must leave suppression intact. |
+
+Do not infer user intent from the existing `prepare` or `replaceRevision`
+parameters. Carry it explicitly to the transaction that changes transcript
+availability. Cleanup must remove ordinary transcript rows, segments, coverage
+and the selected online representation in the same transaction that persists
+the suppression record.
+It must preserve episode identities and separately saved outputs. Retained
+compressed artifacts can still contain saved transcript text; the confirmation
+must explain that this removes active local transcript storage and retains
+saved/cloud copies, rather than claiming complete erasure.
+
+Add deterministic races for a model-completion callback captured before deletion,
+an online lookup completing late, passive artifact import and explicit Restore
+competing with deletion. Require suppression to be checked at the final write,
+not only before asynchronous work. Test that malformed or incompatible explicit
+Restore does not clear it, and that suppressed artifact projection still restores
+unrelated eligible saved outputs. Preserve #56's control-lock ordering and
+cancellation protections; do not wait for an old worker to join under that lock.
+
+Before any automatic audio sweep, complete the existing ActiveFiles ownership
+design review: checking `busy` and then deleting does not exclude a concurrent
+playback/queue/processing acquisition. A last-moment boolean check alone does
+not resolve that race. Define and test one exclusion contract for deletion and
+all affected acquisitions, without blocking the media main thread on file I/O.
+This and #58 integration remain prerequisites to deletion implementation; this
+planning update does not enable cleanup or add a scheduler/schema migration.
+
 ## Isolated policy increment evidence
 
 The pure `core/RetentionPolicy.kt` increment has no callers and performs no deletion, persistence, scheduling or setting changes. It requires explicit timestamps and current time as inputs. Defaults are disabled. Eight regression tests cover off/independent settings, never-played audio, earliest audio deadline, exact expiry boundaries, missing/invalid/future origins, overflow, policy changes and redownload age. Protection/retry/migration/UI tests remain unimplemented because those integration stages are held.
