@@ -105,3 +105,29 @@ remain. The earlier single bounded picker-harness retry is historical evidence,
 not permission for another unchanged retry: recurring stale accessibility
 handles require a durable harness fix. No owner-device cleanup, account or
 release actions were performed.
+
+### Deterministic settings-session fixture cleanup
+
+The normal PR run on `fef79c0` passed default checks and emulator acceptance
+but failed one voice-enabled JVM persistence case with two active DataStores
+for the same synthetic file. Dependency insight confirms **resolved DataStore
+1.1.7**, despite the direct 1.1.2 request (Firebase constraints select 1.1.7).
+The [official 1.1.7 sources](https://dl.google.com/dl/android/maven2/androidx/datastore/datastore-core-android/1.1.7/datastore-core-android-1.1.7-sources.jar)
+show SimpleActor's parent-job completion handler closes the storage connection,
+which removes FileStorage's active-file reservation.
+
+A latch-gated regression demonstrates that joining an already-completed job can
+return while another thread is still executing that completion handler.
+The two identical same-file reopen fixtures now use one test scheduler for the
+caller and real DataStore sessions, cancel/join and drain cleanup before reopen.
+Original defaults, persisted values and same-file assertions remain unchanged.
+A bounded 32-write/reopen regression plus final read verifies persistence and
+complete session shutdown, without sleeps, retry loops or exclusions. The
+sound-setting test reuses one store and was not changed.
+
+Independent review found no blocking issue. Full default checks passed with
+99 core and 494 app JVM cases; the separate opt-in voice run passed all 494 app
+cases too, with zero failures/skips. Default/voice lint and APK builds and default
+AndroidTest compilation passed. This is test-only fixture scheduling, not a
+production DataStore lifecycle or dependency change. Final automatic PR checks
+on the committed update remain required; prior failed checks are not waived.
