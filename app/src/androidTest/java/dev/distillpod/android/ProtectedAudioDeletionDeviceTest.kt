@@ -161,7 +161,12 @@ class ProtectedAudioDeletionDeviceTest {
             acquired = false
             awaitUi("partial owner released and actions idle") { vm.audioDeletionBlocks.value[id] == null && vm.busy.value.isEmpty() }
             compose.onNode(delete).performScrollTo().assertIsEnabled().performClick()
-            compose.onNode(hasText("Delete download") and hasAnyAncestor(isDialog())).performClick()
+            val confirmDelete = hasText("Delete download") and hasAnyAncestor(isDialog())
+            awaitUi("allowed delete confirmation opens") {
+                compose.onAllNodes(confirmDelete).fetchSemanticsNodes().size == 1
+            }
+            compose.onNodeWithText("Delete downloaded audio?").assertIsDisplayed()
+            compose.onNode(confirmDelete).assertIsDisplayed().assertIsEnabled().performClick()
             awaitState("allowed deletion persists") { while (dao.episode(id)?.localFile != null) delay(50) }
             assertFalse(audio.exists()); assertFalse(partial.exists())
             assertEquals(1234L, dao.episode(id)!!.positionMs)

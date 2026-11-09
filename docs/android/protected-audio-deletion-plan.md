@@ -59,3 +59,14 @@ the combined revision; the historical default-only pass and old APKs do not
 satisfy those gates. Build and verify new package identities, instrumentation
 target, signatures and immutable hashes before any phone install. No current
 phone acceptance has run, and required failures or unavailable checks block merge.
+
+At 470ceed (identical reviewed tree to 27dcd10), both local default/voice gates
+passed 99 core and 528 app tests each, lint, APK builds, 87 Python tests and all
+security/data checks. The S22 run reached the final allowed deletion, but failed
+because its confirmation button was absent from the semantics tree at the next
+immediate query. The fixture now awaits that dialog under the existing 10-second
+bound, then requires its title and enabled confirmation before one click; actual
+file deletion and metadata/transcript preservation assertions remain unchanged.
+This is synchronization/diagnostic improvement, not a confirmed product fix or a
+passing phone result. The separate ADB cleanup connection failed with Winsock
+10055; no additional device attempt or server restart is implicit in this change.
