@@ -34,4 +34,3 @@ lifecycle, account, permissions, backend, signing, or release configuration.
   a proposed policy is not a waiver.
 
 No release or APK publication is part of this work.
-
