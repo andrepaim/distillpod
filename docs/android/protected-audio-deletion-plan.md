@@ -70,3 +70,12 @@ file deletion and metadata/transcript preservation assertions remain unchanged.
 This is synchronization/diagnostic improvement, not a confirmed product fix or a
 passing phone result. The separate ADB cleanup connection failed with Winsock
 10055; no additional device attempt or server restart is implicit in this change.
+
+The hosted run at 2908331 also failed waiting for the final dialog, with all
+protection owners released and both files retained. The earlier blocked command
+publishes a bottom snackbar; a scrolled row can remain displayed but have its
+touch target covered. The fixture now requires that specific snackbar to appear,
+dismisses it through its existing accessibility action, and waits for it to leave
+before the final real row click. This tests the feedback instead of bypassing it.
+The hypothesis still requires hosted/phone confirmation; no assertions, ownership
+barriers or timeout bounds are relaxed.

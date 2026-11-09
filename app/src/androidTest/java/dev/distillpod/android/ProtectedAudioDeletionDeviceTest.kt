@@ -3,6 +3,7 @@ package dev.distillpod.android
 import android.os.Build
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.lifecycle.ViewModelProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import dev.distillpod.android.data.*
@@ -157,6 +158,14 @@ class ProtectedAudioDeletionDeviceTest {
             awaitUi("blocked action feedback") { compose.onAllNodesWithText(AudioDeletionBlockReason.ACTIVE.feedback).fetchSemanticsNodes().isNotEmpty() }
             recordState()
             retained()
+            // The blocked-action snackbar can cover the scrolled row's touch target.
+            // Observe and dismiss the actual feedback before the next real row click.
+            val blockedSnackbar = SemanticsMatcher.keyIsDefined(SemanticsActions.Dismiss) and
+                (hasText(AudioDeletionBlockReason.ACTIVE.feedback) or hasAnyDescendant(hasText(AudioDeletionBlockReason.ACTIVE.feedback)))
+            awaitUi("blocked action snackbar appears") { compose.onAllNodes(blockedSnackbar).fetchSemanticsNodes().size == 1 }
+            compose.onNode(blockedSnackbar).assertIsDisplayed()
+                .performSemanticsAction(SemanticsActions.Dismiss) { assertTrue(it()) }
+            awaitUi("blocked action snackbar dismissed") { compose.onAllNodes(blockedSnackbar).fetchSemanticsNodes().isEmpty() }
             graph.media.active.release(partial)
             acquired = false
             awaitUi("partial owner released and actions idle") { vm.audioDeletionBlocks.value[id] == null && vm.busy.value.isEmpty() }
