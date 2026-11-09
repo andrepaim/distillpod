@@ -1,6 +1,6 @@
 # Notification access
 
-Settings → Import & notifications shows the notification state reported by
+Settings → Notification access shows the notification state reported by
 Android. It refreshes when the screen resumes and after a permission request,
 including grants and revocations made in system Settings while the screen is
 retained.

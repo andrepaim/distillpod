@@ -45,7 +45,7 @@ During implementation, the sound dependency landed on main in `8fabf40`. The fea
 
 ### Settings and onboarding
 
-Add `headphoneDistill` to `Preferences` and DataStore, default false. Add a Playback & headphones destination with the switch, a short explanation of the command tradeoff, Soundcore setup instructions and the existing confirmation-sound control. Keep the existing sound setting reachable from Import & notifications for compatibility.
+Add `headphoneDistill` to `Preferences` and DataStore, default false. Add a Playback & headphones destination with the switch, a short explanation of the command tradeoff, Soundcore setup instructions and the existing confirmation-sound control. The canonical sound control is in Playback & headphones; the legacy settings:library route remains available for library tasks.
 
 ### Event routing
 
