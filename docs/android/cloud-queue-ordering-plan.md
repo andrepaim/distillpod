@@ -165,3 +165,17 @@ The earlier full default/voice gates each passed99core+537app, lint and APKs,
 but precede the general restoration correction and must not be represented as
 final acceptance. Re-run final combined local checks, targeted emulator tests,
 physical protocol and all five hosted checks on the committed correction.
+
+## Committed runtime validation and runner correction
+
+Commit47289e8 passed both full default and voice local gates:99core+537app each,
+zero failures/skips, lint and APK builds. The hosted build job then exposed an
+outdated shell-bootstrap test expecting7phases after the dedicated shutdown
+phase made8. This was a runner-contract test failure, not an Android test
+failure. The correction verifies the exact phase ordering/exclusions and adds a
+black-box failure-path case: a failed shutdown probe must retain its log, stop
+later phases and still clean the browser fixture. The CI artifact path now
+retains both ordinary and shutdown instrumentation logs. Its retention assertion
+was observed red before the glob correction and green afterward. No Android
+runtime code changes accompany this runner-only amendment; final-head hosted
+checks and physical acceptance remain required.
