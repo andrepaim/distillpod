@@ -2,6 +2,47 @@
 
 The native Gradle project lives at the repository root. Historical reports under `docs/android` retain commands and paths from the earlier `android/` subdirectory; use the root-level paths below for current work.
 
+## Choose validation for the change
+
+Follow the [risk-based validation policy](../AGENTS.md#risk-based-validation) for
+each change. Record a short assessment in the plan and PR: affected behavior,
+hardware/platform and upgrade/data risks, selected checks and their results,
+tested revision, environment/device, and remaining limitations. Explain why
+physical-device validation is or is not required; revisit the assessment when
+the scope or integrated code changes.
+
+Relevant automated checks, review, integration with current `origin/main`, and
+applicable emulator acceptance remain merge requirements. Select tests for the
+affected behavior and regressions using the commands below; existing CI still
+runs unchanged. Pure business logic, low-risk UI organization, and content-free
+reporting can use suitable automated/emulator evidence when the assessment
+supports it. These examples are not blanket exemptions for an issue or area.
+
+Physical-device checks are required for affected behavior that depends on real
+hardware, OEM/platform differences, or conditions an emulator cannot reliably
+establish: Bluetooth/headset/audio routing, background execution and
+battery/power behavior, runtime permissions and notification/system Settings,
+manufacturer-specific behavior, and relevant in-place upgrade/data-preservation
+risks. Keep feature-specific physical acceptance protocols. Synthetic key
+events do not prove actual accessory gestures. Emulator or mocked permission
+fixtures do not establish manufacturer-specific phone behavior; real-phone
+tests establish only the exact platform flows exercised, with their limitations
+recorded.
+A reporting change that affects background work or persisted data needs those
+risks assessed too.
+
+Use compatible, non-destructive owner-phone validation only within task
+authorization. Preserve signing/upgrade compatibility and owner data; never run
+emulator-only fixtures on the phone. Required failed or unavailable checks are
+blockers, not waivers: record the next action and leave affected work unmerged.
+No security, privacy, live-account, production-data, deployment, or release
+protection is relaxed by this choice of validation.
+
+Documentation-only changes use the existing exception: review accuracy and local
+links and run `git diff --check`; no local Android build or device run is needed
+unless build or app behavior also changes. Record that limitation explicitly.
+CI and combined-commit verification still follow repository workflows.
+
 ## Tools
 
 - JDK 17
