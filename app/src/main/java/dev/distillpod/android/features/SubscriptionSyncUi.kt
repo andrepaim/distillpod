@@ -132,11 +132,13 @@ import dev.distillpod.android.sync.SubscriptionSyncStore
                         }}){Text("Keep this phone's choice")}
                         TextButton(onClick={vm.action("resolve-sync"){
                             if(portable) {
-                                vm.graph.portableSync.resolve(key,false)
                                 if(key=="queue_library") {
-                                    vm.graph.playback.acceptCloudQueue {vm.graph.importedQueue.value=it}
+                                    vm.graph.playback.beginCloudQueueChoice(
+                                        resolve={vm.graph.portableSync.resolve(key,false)},
+                                        imported={vm.graph.importedQueue.value=it}).await()
                                     vm.graph.db.sync().view(key)?.let {vm.graph.db.sync().putView(it.copy(active=true))}
                                 }
+                                if(key!="queue_library")vm.graph.portableSync.resolve(key,false)
                                 if(key.startsWith("progress_")) {
                                     val id=local["episodeId"]
                                     if(vm.graph.playback.state.value.episodeId==id && id!=null)vm.graph.db.library().episode(id)?.let {vm.graph.playback.seek(it.positionMs)}

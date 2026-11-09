@@ -35,8 +35,10 @@ import dev.distillpod.android.playback.SkippedMoment
 class PlaybackService : MediaLibraryService() {
     private var session: MediaLibrarySession? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-    private data class Snapshot(val ids: List<String>, val id: String?, val position: Long, val duration: Long, val complete: Boolean, val speed: Float, val at: Long = System.currentTimeMillis(), val boundary: Boolean = false, val playing: Boolean = false, val queueBoundary:Boolean=false, val queueRestored:Boolean=false, val elapsed: Long = android.os.SystemClock.elapsedRealtime())
-    private val writes = Channel<Snapshot>(Channel.UNLIMITED)
+    private sealed interface WriteMessage
+    private data class Barrier(val reply: CompletableDeferred<Unit>): WriteMessage
+    private data class Snapshot(val ids: List<String>, val id: String?, val position: Long, val duration: Long, val complete: Boolean, val speed: Float, val at: Long = System.currentTimeMillis(), val boundary: Boolean = false, val playing: Boolean = false, val queueBoundary:Boolean=false, val queueRestored:Boolean=false, val elapsed: Long = android.os.SystemClock.elapsedRealtime()): WriteMessage
+    private val writes = Channel<WriteMessage>(Channel.UNLIMITED)
     private val syncSession=java.util.UUID.randomUUID().toString()
     private var previousId: String? = null
     private var previousDuration = 0L
@@ -92,6 +94,20 @@ class PlaybackService : MediaLibraryService() {
             openCarVoice = { graph.carVoiceEntry.open() },
             onExternalPlaybackCommand = { graph.voice.cancel(false) },
             diagnostics = graph.diagnostics,
+            queueCommands = setOf(dev.distillpod.android.playback.QueueWriteCommands.BARRIER),
+            onQueueCommand = { _, _ ->
+                val reply = CompletableDeferred<Unit>(scope.coroutineContext[Job])
+                val result = com.google.common.util.concurrent.SettableFuture.create<androidx.media3.session.SessionResult>()
+                scope.launch {
+                    try {
+                        check(writes.trySend(Barrier(reply)).isSuccess) { "Playback writer is unavailable" }
+                        reply.await()
+                        result.set(androidx.media3.session.SessionResult(androidx.media3.session.SessionResult.RESULT_SUCCESS))
+                    } catch (failure: CancellationException) { result.cancel(false) }
+                    catch (failure: Exception) { result.setException(failure) }
+                }
+                result
+            },
             saveMomentWithSource = {id,position,file,source ->
                 val ep=dao.episode(id)
                 graph.captures.save(id,position,file!=null && file==ep?.localFile,source=source)
@@ -206,7 +222,9 @@ class PlaybackService : MediaLibraryService() {
         scope.launch(Dispatchers.IO) {
             graph.ready.await()
             var lastQueue: List<String>? = null
-            for (value in writes) {
+            for (message in writes) {
+                if (message is Barrier) { message.reply.complete(Unit); continue }
+                val value = message as Snapshot
                 try {
                     val ep = value.id?.let { dao.episode(it) }
                     // Diagnostics may play a temporary clip; it must not replace the podcast queue.

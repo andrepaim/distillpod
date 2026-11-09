@@ -203,6 +203,19 @@ class PlaybackRepository(private val context: Context, private val db: AppDataba
             }
         }
     }
+    /** Acknowledges processing, including failed writes; callers must separately verify persisted state. */
+    internal suspend fun awaitQueueWritesProcessed() {
+        val c = controller()
+        val reply = withContext(Dispatchers.Main) { c.sendCustomCommand(QueueWriteCommands.BARRIER, android.os.Bundle.EMPTY) }
+        val result = withContext(Dispatchers.IO) { reply.get(15, TimeUnit.SECONDS) }
+        check(result.resultCode == androidx.media3.session.SessionResult.RESULT_SUCCESS) { "Queue writer barrier failed" }
+    }
+    // Initial extraction of the existing resolve-then-apply operation for the ordering regression.
+    internal suspend fun beginCloudQueueChoice(resolve: suspend () -> Unit, imported: (List<String>) -> Unit): Deferred<Unit> {
+        resolve()
+        acceptCloudQueue(imported)
+        return CompletableDeferred(Unit)
+    }
     suspend fun acceptCloudQueue(imported:(List<String>)->Unit) {
         val all=db.library().episodes().associateBy {it.id};val podcasts=db.library().podcasts().associateBy {it.id}
         val desired=db.library().queue().map {it.episodeId}.filter {it in all}
