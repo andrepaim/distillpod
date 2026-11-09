@@ -24,6 +24,8 @@ import dev.distillpod.android.features.AppViewModel
 import dev.distillpod.android.features.DiagnosticsSettings
 import dev.distillpod.android.features.VoiceSettings
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
@@ -42,7 +44,9 @@ class SettingsSwitchAccessibilityDeviceTest {
         val graph = context.appGraph
         graph.ready.await()
         check(!graph.diagnostics.configured) { "Use a validation build without remote reporting" }
-        return ViewModelProvider(compose.activity, AppViewModel.factory(graph))[AppViewModel::class.java]
+        return withContext(Dispatchers.Main) {
+            ViewModelProvider(compose.activity, AppViewModel.factory(graph))[AppViewModel::class.java]
+        }
     }
 
     private fun show(content: @Composable () -> Unit) {
