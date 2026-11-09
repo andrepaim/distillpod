@@ -5,7 +5,6 @@ import android.content.Context
 import android.content.ContextWrapper
 import android.content.Intent
 import android.os.Looper
-import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.test.core.app.ApplicationProvider
 import androidx.work.Configuration
 import androidx.work.WorkManager
@@ -14,6 +13,7 @@ import androidx.work.testing.WorkManagerTestInitHelper
 import dev.distillpod.android.data.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.test.runTest
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -49,20 +49,15 @@ class AutomaticTranscriptionTest {
         return graph
     }
 
-    @Test fun `setting defaults on and disabled value survives reopening storage`() = runBlocking<Unit> {
+    @Test fun `setting defaults on and disabled value survives reopening storage`() = runTest {
         val folder = Files.createTempDirectory("automatic-transcription-").toFile()
         val file = File(folder, "test.preferences_pb")
-        suspend fun settingsSession(block: suspend (AppSettings) -> Unit) {
-            val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-            try { block(AppSettings(context, PreferenceDataStoreFactory.create(scope = scope) { file })) }
-            finally { scope.coroutineContext[Job]!!.cancelAndJoin() }
-        }
         try {
-            settingsSession {
+            settingsSession(context, file) {
                 assertTrue(it.flow.first().transcribeOnPlayback)
                 it.flag("transcribeOnPlayback", false)
             }
-            settingsSession { assertFalse(it.flow.first().transcribeOnPlayback) }
+            settingsSession(context, file) { assertFalse(it.flow.first().transcribeOnPlayback) }
         } finally { folder.deleteRecursively() }
     }
 
