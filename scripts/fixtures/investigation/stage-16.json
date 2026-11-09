@@ -1,0 +1,171 @@
+[
+  {
+    "body": "distillation.attempt_summary",
+    "attributes": {
+      "correlation_complete": {
+        "type": "boolean",
+        "value": true
+      },
+      "capture_request_id": {
+        "type": "string",
+        "value": "076bbe6c-8e4b-4d66-926d-22f008342fc2"
+      },
+      "takeaway_supported": {
+        "type": "string",
+        "value": "unknown"
+      },
+      "generation_elapsed_ms": {
+        "type": "integer",
+        "value": 0
+      },
+      "candidate_reused": {
+        "type": "boolean",
+        "value": false
+      },
+      "installation_id": {
+        "type": "string",
+        "value": "b9cfb3c7-abbc-40dc-9fa8-f9deb3f7efc7"
+      },
+      "prompt_version": {
+        "type": "integer",
+        "value": 2
+      },
+      "correlation_version": {
+        "type": "integer",
+        "value": 1
+      },
+      "quote_faithful": {
+        "type": "string",
+        "value": "unknown"
+      },
+      "generation_attempted_calls": {
+        "type": "integer",
+        "value": 1
+      },
+      "issue_quote_count": {
+        "type": "integer",
+        "value": -1
+      },
+      "transcript_revision_id": {
+        "type": "string",
+        "value": "148c886d-e200-4452-9b22-bb0782efd4fd"
+      },
+      "issue_incomplete_count": {
+        "type": "integer",
+        "value": -1
+      },
+      "generation_outcome": {
+        "type": "string",
+        "value": "ready"
+      },
+      "relevant": {
+        "type": "string",
+        "value": "unknown"
+      },
+      "issue_unsupported_count": {
+        "type": "integer",
+        "value": -1
+      },
+      "stage_outcome": {
+        "type": "string",
+        "value": "stale_result_suppressed"
+      },
+      "review_attempted_calls": {
+        "type": "integer",
+        "value": 0
+      },
+      "emitted_at_ms": {
+        "type": "integer",
+        "value": 1794181101746
+      },
+      "moment_id": {
+        "type": "string",
+        "value": "5b80707a-b09b-4186-8a5c-90f2f9eaba2c"
+      },
+      "context_expanded": {
+        "type": "boolean",
+        "value": false
+      },
+      "schema_version": {
+        "type": "integer",
+        "value": 1
+      },
+      "execution_id": {
+        "type": "string",
+        "value": "2b63abfb-995e-4679-8134-7931779862e8"
+      },
+      "generation_attempt_id": {
+        "type": "string",
+        "value": "a87467f8-cfc7-46b0-8f8d-16b8f65dbf01"
+      },
+      "operation_id": {
+        "type": "string",
+        "value": "5b80707a-b09b-4186-8a5c-90f2f9eaba2c"
+      },
+      "retry_trigger": {
+        "type": "string",
+        "value": "initial"
+      },
+      "review_elapsed_ms": {
+        "type": "integer",
+        "value": -1
+      },
+      "needs_context": {
+        "type": "string",
+        "value": "unknown"
+      },
+      "review_outcome": {
+        "type": "string",
+        "value": "not_run"
+      },
+      "passage_complete": {
+        "type": "string",
+        "value": "unknown"
+      },
+      "summary_id": {
+        "type": "string",
+        "value": "2b63abfb-995e-4679-8134-7931779862e8"
+      },
+      "outcome_version": {
+        "type": "integer",
+        "value": 1
+      },
+      "generator_model": {
+        "type": "string",
+        "value": "unknown"
+      },
+      "contradictory_review": {
+        "type": "string",
+        "value": "unknown"
+      },
+      "observed_at_ms": {
+        "type": "integer",
+        "value": 1794181101733
+      },
+      "event_id": {
+        "type": "string",
+        "value": "11ebef58-e800-43c3-9dfa-6d47317e13a9"
+      },
+      "stage": {
+        "type": "string",
+        "value": "generation"
+      },
+      "reviewer_model": {
+        "type": "string",
+        "value": "not_run"
+      },
+      "issue_irrelevant_count": {
+        "type": "integer",
+        "value": -1
+      },
+      "test_traffic": {
+        "type": "boolean",
+        "value": false
+      },
+      "quote_omitted": {
+        "type": "string",
+        "value": "unknown"
+      }
+    }
+  }
+]

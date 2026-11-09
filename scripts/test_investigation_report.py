@@ -1,0 +1,414 @@
+import sys,unittest,json,tempfile
+from pathlib import Path
+from uuid import UUID
+from unittest.mock import patch
+sys.path.insert(0,str(Path(__file__).parent/'telemetry'))
+import investigation_report as report
+from export_operations import collect_window,private_write
+def uid(n):return str(UUID(int=n,version=4))
+def row(n,**kw):
+ r=dict(message='distillation.attempt_summary',event_id=uid(n+100),summary_id=uid(n),installation_id=uid(900),schema_version=1,correlation_version=1,capture_request_id=uid(1),moment_id=uid(2),generation_attempt_id=uid(3),execution_id=uid(4),observed_at_ms=n,emitted_at_ms=n+10,outcome_version=1,stage='publication',stage_outcome='published')
+ r.update(kw);return r
+def export(rows,complete=True):return dict(records=rows,observation=dict(complete=complete,start='2026-01-01T00:00:00Z',end='2026-01-02T00:00:00Z',warnings=[]))
+class InvestigationTest(unittest.TestCase):
+ def test_success_replay(self):
+  r=row(10);result=report.investigate(export([r,r]),uid(1))
+  self.assertEqual('observed_published',result['publication']['state']);self.assertEqual(1,len(result['timeline']));self.assertEqual(1,result['duplicates'])
+  self.assertNotIn('success_rate',json.dumps(result))
+ def test_abstention_rejection_missing_terminal(self):
+  for stage,outcome in [('generation','generator_needs_context'),('review','review_rejected')]:
+   result=report.investigate(export([row(10,stage=stage,stage_outcome=outcome)]),uid(1))
+   self.assertEqual(outcome,result['timeline'][0]['fields']['stage_outcome']);self.assertEqual('unknown',result['publication']['state'])
+  self.assertEqual('unknown',report.investigate(export([row(10,message='capture.accepted')]),uid(1))['publication']['state'])
+ def test_context_unknown_measurements(self):
+  result=report.investigate(export([row(10,message='capture.context_summary',context_schema_version=1,context_reason='coverage_missing',coverage_measured=False,segments_measured=False,usable_segment_count=0)]),uid(1))
+  self.assertIn('missing_duration_ms',result['timeline'][0]['unavailable']);self.assertIn('usable_segment_count',result['timeline'][0]['unavailable'])
+ def test_retry_resume_late_summary(self):
+  first=row(10,stage_outcome='request_failed',stage='generation',emitted_at_ms=1000)
+  second=row(20,previous_attempt_id=uid(3),retry_trigger='explicit_retry',candidate_reused=False,model_changed=True,generation_attempt_id=uid(5),execution_id=uid(6))
+  resume=row(30,retry_trigger='review_resume',candidate_reused=True,generation_attempted_calls=0,generation_elapsed_ms=-1,generation_outcome='cached',generation_attempt_id=uid(5),execution_id=uid(7))
+  result=report.investigate(export([resume,second,first]),uid(1))
+  self.assertEqual([10,20,30],[r['observed_at_ms'] for r in result['timeline']]);self.assertEqual(1000,result['timeline'][0]['emitted_at_ms']);self.assertEqual(2,len(result['attempts']));self.assertEqual(2,len(result['attempts'][1]['execution_ids']))
+ def test_no_timestamp_transcript_legacy_join(self):
+  first=row(10,transcript_revision_id=uid(50),attempt_id=uid(51))
+  other=row(11,transcript_revision_id=uid(50),attempt_id=uid(51),capture_request_id=uid(60),moment_id=uid(61),generation_attempt_id=uid(62),execution_id=uid(63))
+  self.assertEqual(1,len(report.investigate(export([first,other]),uid(1))['timeline']))
+ def test_versions_conflicts_gaps(self):
+  r=row(10,outcome_version=2);result=report.investigate(export([r],False),uid(1))
+  self.assertEqual('unknown',result['publication']['state']);self.assertIn('unsupported_outcome_version',result['gaps']);self.assertIn('incomplete_export',result['gaps'])
+  self.assertIn('conflicting_duplicate',report.investigate(export([r,dict(r,stage_outcome='request_failed')]),uid(1))['gaps'])
+ def test_private_output(self):
+  with tempfile.TemporaryDirectory() as d:
+   p=Path(d)/'report.json';private_write(p,{'synthetic':True});self.assertEqual(0o600,p.stat().st_mode & 0o777)
+   link=Path(d)/'link';link.symlink_to(p)
+   with self.assertRaises(ValueError):private_write(link,{})
+ def test_budget(self):
+  result=report.investigate(export([row(10,message='diagnostics.health',budget_policy_version=2,critical_dropped=4),row(11)]),uid(1))
+  self.assertIn('budget_admission_suppression_observed',result['gaps']);self.assertIn('not proof of permanent loss',result['limits'])
+class Response:
+ def __init__(self,data,link=''):self.data=data;self.headers={'Link':link}
+ def __enter__(self):return self
+ def __exit__(self,*args):pass
+ def read(self):return json.dumps(self.data).encode()
+class ExportTest(unittest.TestCase):
+ def collect(self,**kw):return collect_window('secret','synthetic',1,'production','2026-01-01T00:00:00Z','2026-01-02T00:00:00Z',**kw)
+ def test_pages_and_cap(self):
+  link='<https://us.sentry.io/api/0/organizations/synthetic/events/?cursor=two>; rel="next"; results="true"'
+  def pages(request,timeout):
+   return Response({'data':[]}) if 'cursor=' in request.full_url else Response({'data':[row(10)]},link)
+  with patch('export_operations._open_readonly',side_effect=pages):self.assertTrue(self.collect()['observation']['complete'])
+  with patch('export_operations._open_readonly',return_value=Response({'data':[{}]},link)):
+   r=self.collect(max_rows=1);self.assertFalse(r['observation']['complete']);self.assertIn('row_cap',r['observation']['warnings'])
+ def test_api_failure_partial_and_bad_cursor(self):
+  for response in [RuntimeError('secret'),Response({'data':[],'partial':True}),Response({'data':[]},'<https://attacker.invalid/?token=secret>; rel="next"; results="true"'),Response({'data':[]},'broken; rel="next"; results="true"')]:
+   with patch('export_operations._open_readonly',side_effect=response if isinstance(response,Exception) else None,return_value=response):result=self.collect()
+   self.assertFalse(result['observation']['complete']);self.assertNotIn('secret',json.dumps(result))
+ def test_window(self):
+  with self.assertRaises(ValueError):collect_window('secret','org',1,'production','2026-01-01T00:00:00Z','2026-02-01T00:00:00Z')
+
+class ProducerFixtureTest(unittest.TestCase):
+ def test_real_context_producer_envelopes(self):
+  expected={'ready':'ready','missing':'coverage_missing','partial':'coverage_missing',
+            'unknown':'ready','empty':'empty_speech','oversize':'oversized',
+            'source':'source_mismatch','revision':'revision_mismatch'}
+  for name,reason in expected.items():
+   with self.subTest(name=name):
+    items=json.loads((Path(__file__).parent/'fixtures/investigation'/('context-'+name+'.json')).read_text())
+    rows=[report.normalize(i) for i in items]
+    self.assertTrue(rows)
+    result=report.investigate(export(rows),rows[0]['moment_id'])
+    self.assertEqual(1,len(result['timeline']))
+    self.assertEqual(reason,result['timeline'][0]['fields']['context_reason'])
+    self.assertEqual('unknown',result['publication']['state'])
+ def test_stage_fixture_directory_not_empty(self):
+  # Added actual producer stage fixtures are consumed without inventing envelope attributes.
+  files=list((Path(__file__).parent/'fixtures/investigation').glob('stage-*.json'))
+  self.assertTrue(files,'Stage producer fixtures required for end-to-end acceptance')
+  observed=set()
+  for path in files:
+   for item in json.loads(path.read_text()):
+    r=report.normalize(item);observed.add(r['stage_outcome'])
+    result=report.investigate(export([r]),r['capture_request_id'])
+    self.assertEqual(r['stage_outcome'],result['timeline'][0]['fields']['stage_outcome'])
+    if r['stage_outcome'] in ('published','published_without_quote'):
+     self.assertEqual('observed_published',result['publication']['state'])
+    if r.get('retry_trigger')=='review_resume':
+     self.assertEqual(0,r['generation_attempted_calls']);self.assertEqual('cached',r['generation_outcome'])
+  self.assertTrue({'published','generator_needs_context','review_rejected'}<=observed)
+
+class AdditionalEvidenceTest(unittest.TestCase):
+ def test_linked_transcript_not_unrelated_capture(self):
+  link=row(10,message='capture.transcript_link',transcript_id=uid(50))
+  transcript=row(11,message='transcription.completed',operation_id=uid(50))
+  for k in report.IDS:transcript.pop(k,None)
+  unrelated=row(12,capture_request_id=uid(60),moment_id=uid(61),generation_attempt_id=uid(62),execution_id=uid(63),transcript_revision_id=uid(50))
+  result=report.investigate(export([link,transcript,unrelated]),uid(1))
+  self.assertEqual(['capture.transcript_link','transcription.completed'],[r['event'] for r in result['timeline']])
+ def test_unknown_comparison_not_false(self):
+  result=report.investigate(export([row(10)]),uid(1))
+  self.assertIn('model_changed',result['timeline'][0]['unavailable'])
+  self.assertNotIn('model_changed',result['timeline'][0]['fields'])
+ def test_replay_new_event_id_does_not_change_summary(self):
+  first=row(10);later=dict(first,event_id=uid(800),emitted_at_ms=500)
+  result=report.investigate(export([later,first]),uid(1))
+  self.assertEqual(1,result['duplicates']);self.assertEqual(20,result['timeline'][0]['emitted_at_ms'])
+ def test_legacy_unknown_and_no_installed_state_assumption(self):
+  legacy=row(10,correlation_version=0)
+  result=report.investigate(export([legacy]),uid(1))
+  self.assertEqual('unknown',result['publication']['state'])
+  self.assertIn('reference_not_observed_with_supported_correlation',result['gaps'])
+ def test_future_envelope_not_publication(self):
+  result=report.investigate(export([row(10,schema_version=2)]),uid(1))
+  self.assertEqual('unknown',result['publication']['state'])
+  self.assertIn('unsupported_envelope_version',result['gaps'])
+ def test_no_content_projection(self):
+  r=report.normalize(dict(row(10),transcript='sensitive',prompt='sensitive',response='sensitive'))
+  self.assertNotIn('sensitive',json.dumps(r))
+ def test_repeated_cursor_scope_change_page_cap(self):
+  from export_operations import collect_window
+  def collect(**kwargs):return collect_window('secret','synthetic',1,'production','2026-01-01T00:00:00Z','2026-01-02T00:00:00Z',**kwargs)
+  for link,reason,kwargs in [
+   ('<https://us.sentry.io/api/0/organizations/synthetic/events/?cursor=two>; rel="next"; results="true"','repeated_cursor',{}),
+   ('<https://us.sentry.io/api/0/organizations/synthetic/events/?cursor=two&project=999>; rel="next"; results="true"','changed_pagination_scope',{}),
+   ('<https://us.sentry.io/api/0/organizations/synthetic/events/?cursor=two>; rel="next"; results="true"','page_cap',dict(max_pages=1))]:
+   with patch('export_operations._open_readonly',return_value=Response({'data':[]},link)):
+    r=collect(**kwargs)
+   self.assertFalse(r['observation']['complete']);self.assertIn(reason,r['observation']['warnings'])
+ def test_redirect_refused_before_auth_forwarding(self):
+  import urllib.request
+  from export_operations import _NoRedirect
+  request=urllib.request.Request('https://us.sentry.io/',headers={'Authorization':'Bearer synthetic'})
+  self.assertIsNone(_NoRedirect().redirect_request(request,None,302,'',{},'https://other.invalid/'))
+
+class PrivacyProjectionTest(unittest.TestCase):
+ def test_allowed_field_secret_sentinels_are_not_exported(self):
+  sentinel='SECRET_SENTINEL_do_not_retain'
+  r=row(10,reason=sentinel,generator_model=sentinel,reviewer_model=sentinel,
+    retry_trigger=sentinel,operation_release=sentinel,candidate_reused=sentinel,
+    transcript_id=sentinel,generation_attempted_calls=sentinel,
+    stage_outcome=sentinel,source=sentinel,context_reason=sentinel,timestamp=sentinel)
+  e=export([r]);e['observation'].update(warnings=[sentinel,{}],start=sentinel,
+    environment=sentinel,scope=sentinel,secret=sentinel)
+  result=report.investigate(e,uid(1))
+  self.assertNotIn(sentinel,json.dumps(result))
+  self.assertIn('generator_model',result['timeline'][0]['unavailable'])
+  self.assertIn('invalid_observation_metadata',result['gaps'])
+ def test_message_and_malformed_attributes(self):
+  for r in [dict(row(10),message='capture.SECRET_SENTINEL'),{'attributes':['SECRET_SENTINEL']},
+            {'attributes':{'message':{'value':['SECRET_SENTINEL']}}}]:
+   self.assertNotIn('SECRET_SENTINEL',json.dumps(report.normalize(r)))
+ def test_future_fields_never_receive_semantic_interpretation(self):
+  r=row(10,outcome_version=200,stage_outcome='SECRET_SENTINEL',reviewer_model='SECRET_SENTINEL')
+  result=report.investigate(export([r]),uid(1))
+  self.assertEqual('unknown',result['publication']['state'])
+  self.assertNotIn('SECRET_SENTINEL',json.dumps(result))
+  self.assertIn('unsupported_outcome_version',result['gaps'])
+ def test_numeric_boolean_and_identity_validation(self):
+  r=report.normalize(row(10,execution_id='not-a-uuid',issue_quote_count=21,
+      generation_elapsed_ms=86400001,model_changed='false',context_expanded='unknown'))
+  self.assertNotIn('execution_id',r);self.assertNotIn('issue_quote_count',r)
+  self.assertNotIn('generation_elapsed_ms',r);self.assertIs(False,r['model_changed'])
+  self.assertEqual('unknown',r['context_expanded'])
+
+class LifecycleProducerTest(unittest.TestCase):
+ def test_real_capture_cancel_resume_and_operation_summaries(self):
+  items=json.loads((Path(__file__).parent/'fixtures/investigation/lifecycle.json').read_text())
+  rows=[report.normalize(i) for i in items]
+  reference=next(r['capture_request_id'] for r in rows if r.get('capture_request_id'))
+  result=report.investigate(export(rows),reference)
+  self.assertEqual('observed_saved',result['capture_acceptance']['state'])
+  self.assertNotIn('capture_acceptance_unavailable',result['gaps'])
+  events={r['event'] for r in result['timeline']}
+  self.assertTrue({'capture.completed','capture.saved','capture.transcript_link','operation.summary'}<=events)
+  self.assertNotIn('capture.accepted',events)
+  self.assertEqual('observed_published',result['publication']['state'])
+ def test_start_and_input_intent_do_not_prove_save(self):
+  for name in ('capture.started','capture.accepted'):
+   self.assertEqual('unknown',report.investigate(export([row(10,message=name)]),uid(1))['capture_acceptance']['state'])
+
+class RealResumeTest(unittest.TestCase):
+ def test_actual_quota_then_review_resume(self):
+  rows=[report.normalize(i) for p in (Path(__file__).parent/'fixtures/investigation').glob('stage-*.json') for i in json.loads(p.read_text())]
+  published=next(r for r in rows if r['stage_outcome']=='published' and r['retry_trigger']=='review_resume')
+  result=report.investigate(export(rows),published['capture_request_id'])
+  self.assertEqual(['quota','published'],[r['fields']['stage_outcome'] for r in result['timeline']])
+  self.assertEqual(1,len(result['attempts']));self.assertEqual(2,len(result['attempts'][0]['execution_ids']))
+  self.assertEqual(0,result['timeline'][-1]['fields']['generation_attempted_calls'])
+  self.assertEqual('cached',result['timeline'][-1]['fields']['generation_outcome'])
+
+class MissingContextGraphTest(unittest.TestCase):
+ def test_actual_missing_context_does_not_join_unrelated_lifecycle(self):
+  root=Path(__file__).parent/'fixtures/investigation'
+  missing=[report.normalize(i) for i in json.loads((root/'context-missing.json').read_text())]
+  unrelated=[report.normalize(i) for i in json.loads((root/'lifecycle.json').read_text())]
+  result=report.investigate(export(missing+unrelated),missing[0]['moment_id'])
+  self.assertEqual(['capture.context_summary'],[r['event'] for r in result['timeline']])
+  self.assertEqual('coverage_missing',result['timeline'][0]['fields']['context_reason'])
+  self.assertEqual('unknown',result['publication']['state'])
+  self.assertEqual('unknown',result['capture_acceptance']['state'])
+  self.assertIn('stage_evidence_unavailable',result['gaps'])
+
+class ExploreContractTest(unittest.TestCase):
+ def responder(self,drift=False,conflict=False):
+  import urllib.parse,re
+  calls=[]
+  def respond(request,timeout):
+   q=urllib.parse.parse_qs(urllib.parse.urlsplit(request.full_url).query)
+   fields=q['field'];calls.append(q)
+   self.assertLessEqual(len(fields),20)
+   self.assertIn(q['sort'][0],fields)
+   self.assertTrue(all(f in ('message','timestamp') or f.startswith('tag[') for f in fields))
+   source=[row(10),row(11)]
+   if drift and len(calls)>1:source.pop()
+   if conflict and len(calls)>1:source[0]['observed_at_ms']=999
+   if len(calls)%2==0:source.reverse()
+   result=[]
+   for r in source:
+    result.append({f:r.get(re.match(r'tag\[([^,]+),',f).group(1) if f.startswith('tag[') else f) for f in fields})
+   return Response({'data':result})
+  return respond,calls
+ def test_documented_twenty_field_limit_and_typed_joins(self):
+  respond,calls=self.responder()
+  with patch('export_operations._open_readonly',side_effect=respond):
+   result=ExportTest().collect()
+  self.assertTrue(result['observation']['complete'])
+  self.assertGreater(len(calls),1)
+  self.assertEqual(2,len(result['records']))
+  self.assertTrue(all(r['stage_outcome']=='published' for r in result['records']))
+  self.assertEqual({uid(110),uid(111)},{r['event_id'] for r in result['records']})
+ def test_batch_drift_and_conflicts_are_incomplete(self):
+  for kwargs,reason in [(dict(drift=True),'batch_snapshot_mismatch'),(dict(conflict=True),'batch_identity_conflict')]:
+   respond,_=self.responder(**kwargs)
+   with patch('export_operations._open_readonly',side_effect=respond):result=ExportTest().collect()
+   self.assertFalse(result['observation']['complete'])
+   self.assertIn(reason,result['observation']['warnings'])
+
+class CommandLineTest(unittest.TestCase):
+ def test_private_cli_synthetic_report(self):
+  import subprocess,os
+  with tempfile.TemporaryDirectory() as directory:
+   source=Path(directory)/'input.json';target=Path(directory)/'report.json'
+   source.write_text(json.dumps(export([row(10)])))
+   command=[sys.executable,str(Path(__file__).parent/'telemetry/investigation_report.py'),
+            str(source),'--reference',uid(1),'--output',str(target)]
+   result=subprocess.run(command,text=True,capture_output=True,check=True)
+   self.assertNotIn(uid(1),result.stdout+result.stderr)
+   self.assertEqual(0o600,target.stat().st_mode & 0o777)
+   self.assertEqual('observed_published',json.loads(target.read_text())['publication']['state'])
+ def test_late_column_failure_retains_incomplete_evidence(self):
+  respond,calls=ExploreContractTest().responder()
+  def fail_later(request,timeout):
+   if calls:raise RuntimeError('SECRET_SENTINEL')
+   return respond(request,timeout)
+  with patch('export_operations._open_readonly',side_effect=fail_later):
+   result=ExportTest().collect()
+  self.assertFalse(result['observation']['complete'])
+  self.assertIn('api_read_failed',result['observation']['warnings'])
+  self.assertNotIn('SECRET_SENTINEL',json.dumps(result))
+
+class ProducerExportPipelineTest(unittest.TestCase):
+ def fixtures(self):
+  root=Path(__file__).parent/'fixtures/investigation'
+  return [item for path in sorted(root.glob('*.json')) for item in json.loads(path.read_text())]
+ def provider(self,items,fail_after=None):
+  """Synthetic Explore projects real producer values; it never supplies invented app fields."""
+  import urllib.parse,re
+  calls=[]
+  def respond(request,timeout):
+   q=urllib.parse.parse_qs(urllib.parse.urlsplit(request.full_url).query)
+   calls.append(q)
+   if fail_after is not None and len(calls)>fail_after:raise OSError('SECRET_SENTINEL')
+   self.assertLessEqual(len(q['field']),20)
+   result=[]
+   for item in items:
+    attrs={k:v['value'] for k,v in item['attributes'].items()}
+    row={}
+    for field in q['field']:
+     if field=='message':row[field]=item['body']
+     elif field=='timestamp':row[field]='2026-01-01T01:00:00Z'  # simulated provider time only
+     else:
+      key=re.fullmatch(r'tag\[([^,]+),(?:string|number|boolean)\]',field).group(1)
+      row[field]=attrs.get(key)
+    result.append(row)
+   # Changing row order across queries must not change causal joins.
+   if len(calls)%2==0:result.reverse()
+   return Response({'data':result})
+  return respond,calls
+ def test_actual_producer_to_export_to_private_report(self):
+  items=self.fixtures();respond,calls=self.provider(items)
+  with patch('export_operations._open_readonly',side_effect=respond):
+   exported=ExportTest().collect()
+  self.assertTrue(exported['observation']['complete'])
+  self.assertGreater(len(calls),1)
+  stage=next(i for i in items if i['body']=='distillation.attempt_summary'
+             and i['attributes']['stage_outcome']['value']=='published')
+  reference=stage['attributes']['capture_request_id']['value']
+  result=report.investigate(exported,reference)
+  self.assertEqual(['quota','published'],[r['fields']['stage_outcome'] for r in result['timeline']])
+  self.assertEqual(1,len(result['attempts']))
+  self.assertEqual(2,len(result['attempts'][0]['execution_ids']))
+  self.assertEqual('observed_published',result['publication']['state'])
+  self.assertEqual(0,result['timeline'][-1]['fields']['generation_attempted_calls'])
+  missing=next(i for i in items if i['body']=='capture.context_summary'
+               and i['attributes']['context_reason']['value']=='coverage_missing')
+  unknown=report.investigate(exported,missing['attributes']['moment_id']['value'])
+  self.assertEqual('unknown',unknown['publication']['state'])
+  self.assertIn('stage_evidence_unavailable',unknown['gaps'])
+  with tempfile.TemporaryDirectory() as directory:
+   for name,value in [('export',exported),('report',result),('unknown',unknown)]:
+    target=Path(directory)/(name+'.json');private_write(target,value)
+    self.assertEqual(0o600,target.stat().st_mode & 0o777)
+    saved=json.loads(target.read_text())
+    self.assertNotIn('success_rate',json.dumps(saved))
+    self.assertNotIn('SECRET_SENTINEL',json.dumps(saved))
+ def test_actual_producer_pipeline_partial_read_stays_incomplete(self):
+  items=self.fixtures();respond,_=self.provider(items,fail_after=1)
+  with patch('export_operations._open_readonly',side_effect=respond):
+   exported=ExportTest().collect()
+  reference=next(i['attributes']['capture_request_id']['value'] for i in items
+                 if i['body']=='distillation.attempt_summary')
+  result=report.investigate(exported,reference)
+  self.assertFalse(exported['observation']['complete'])
+  self.assertIn('incomplete_export',result['gaps'])
+  self.assertNotIn('SECRET_SENTINEL',json.dumps(result))
+  self.assertNotIn('success_rate',json.dumps(result))
+
+class ContextCoalescingInterpretationTest(unittest.TestCase):
+ def waiting(self):
+  items=json.loads((Path(__file__).parent/'fixtures/investigation/context-missing.json').read_text())
+  return report.normalize(items[0])
+ def test_observed_wait_is_not_a_preparation_denominator(self):
+  waiting=self.waiting()
+  result=report.investigate(export([waiting]),waiting['moment_id'])
+  self.assertEqual(1,len(result['timeline']))
+  self.assertEqual(0,result['duplicates'])
+  self.assertEqual('unknown',result['publication']['state'])
+  self.assertIn('not a preparation count',result['limits'])
+  for key in ('preparation_count','coalesced_wait_count','lost_attempt_count'):
+   self.assertNotIn(key,json.dumps(result))
+ def test_same_metrics_new_event_is_preserved_not_consumer_coalesced(self):
+  first=self.waiting();second=dict(first,event_id=uid(700))
+  result=report.investigate(export([first,second,first]),first['moment_id'])
+  self.assertEqual(2,len(result['timeline']))
+  self.assertEqual(1,result['duplicates'])  # known event replay only, not suppressed callbacks
+ def test_terminal_journal_evidence_does_not_restore_dropped_stage_details(self):
+  waiting=self.waiting()
+  terminal=dict(waiting,message='operation.summary',event_id=uid(701),summary_id=uid(702),
+       feature='distillation',outcome='completed',sequence=1)
+  health=dict(waiting,message='diagnostics.health',event_id=uid(703),budget_policy_version=2,
+       critical_limit=160,critical_used=160,critical_dropped=7)
+  result=report.investigate(export([waiting,terminal,health]),waiting['moment_id'])
+  self.assertEqual('observed_published',result['publication']['state'])
+  self.assertIn('stage_evidence_unavailable',result['gaps'])
+  self.assertIn('budget_admission_suppression_observed',result['gaps'])
+  self.assertIn('best-effort direct details',result['limits'])
+  self.assertNotIn('lost_attempt_count',json.dumps(result))
+
+class EntryReferenceScopeTest(unittest.TestCase):
+ def test_shared_transcript_cannot_seed_unrelated_failed_and_published_captures(self):
+  failed=row(10,stage='generation',stage_outcome='request_failed',transcript_revision_id=uid(50))
+  published=row(11,transcript_revision_id=uid(50),capture_request_id=uid(60),
+      moment_id=uid(61),generation_attempt_id=uid(62),execution_id=uid(63))
+  data=export([failed,published])
+  with self.assertRaisesRegex(ValueError,'capture-scoped'):report.investigate(data,uid(50))
+  self.assertEqual('unknown',report.investigate(data,uid(1))['publication']['state'])
+  self.assertEqual('observed_published',report.investigate(data,uid(60))['publication']['state'])
+ def test_previous_attempt_reference_retains_explicit_ancestry(self):
+  descendant=row(10,previous_attempt_id=uid(70),retry_trigger='explicit_retry')
+  result=report.investigate(export([descendant]),uid(70))
+  self.assertEqual(1,len(result['timeline']))
+  self.assertEqual(uid(3),result['attempts'][0]['generation_attempt_id'])
+ def test_single_transcript_only_reference_is_also_rejected(self):
+  with self.assertRaisesRegex(ValueError,'capture-scoped'):
+   report.investigate(export([row(10,transcript_revision_id=uid(50))]),uid(50))
+
+class CurrentContextTimingTest(unittest.TestCase):
+ def test_real_delayed_context_producer_orders_original_time_through_export(self):
+  items=json.loads((Path(__file__).parent/'fixtures/investigation/context-time-order.json').read_text())
+  self.assertEqual([1234,6000,1000],[i['attributes']['observed_at_ms']['value'] for i in items])
+  respond,_=ProducerExportPipelineTest().provider(items)
+  with patch('export_operations._open_readonly',side_effect=respond):data=ExportTest().collect()
+  result=report.investigate(data,items[0]['attributes']['moment_id']['value'])
+  self.assertEqual([1000,1234,6000],[r['observed_at_ms'] for r in result['timeline']])
+  self.assertEqual(['failed','transcript_required','queued'],[r['fields']['outcome'] for r in result['timeline']])
+  original={i['attributes']['observed_at_ms']['value']:i['attributes']['emitted_at_ms']['value'] for i in items}
+  self.assertGreaterEqual(result['timeline'][0]['emitted_at_ms'],result['timeline'][-1]['emitted_at_ms'])
+  for record in result['timeline']:
+   self.assertEqual(original[record['observed_at_ms']],record['emitted_at_ms'])
+   self.assertEqual(record['emitted_at_ms']-record['observed_at_ms'],record['emission_delay_ms'])
+  self.assertNotIn('original_observation_time_unavailable',result['gaps'])
+  self.assertIn('incomplete_causal_identity',result['gaps'])  # producer had no original capture request
+ def test_historical_missing_time_stays_unavailable(self):
+  items=json.loads((Path(__file__).parent/'fixtures/investigation/legacy-context-missing-time.json').read_text())
+  records=[report.normalize(i) for i in items]
+  self.assertNotIn('observed_at_ms',records[0])
+  result=report.investigate(export(records),records[0]['moment_id'])
+  self.assertIsNone(result['timeline'][0]['observed_at_ms'])
+  self.assertIsNone(result['timeline'][0]['emission_delay_ms'])
+  self.assertIn('original_observation_time_unavailable',result['gaps'])
+ def test_current_context_fixtures_retain_actual_observation_field(self):
+  for name in ('ready','missing','partial','unknown','empty','oversize','source','revision'):
+   items=json.loads((Path(__file__).parent/'fixtures/investigation'/('context-'+name+'.json')).read_text())
+   for item in items:
+    row=report.normalize(item)
+    self.assertEqual(item['attributes']['observed_at_ms']['value'],row['observed_at_ms'])
