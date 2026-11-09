@@ -35,7 +35,7 @@ class AutoSessionTest {
         val scope=CoroutineScope(SupervisorJob()+Dispatchers.Unconfined)
         val ready=CompletableDeferred(Unit)
         val callback=AutoLibraryCallback(context.packageName,db,ready,scope,playbackReady?:ready,voiceEnabled={voice},openCarVoice=openVoice,
-            queueCommands=if(queueHandler==null)emptySet() else setOf(dev.distillpod.android.playback.QueueWriteCommands.BARRIER),
+            queueCommands=if(queueHandler==null)emptySet() else setOf(dev.distillpod.android.playback.QueueWriteCommands.BARRIER,dev.distillpod.android.playback.QueueWriteCommands.IMPORT),
             onQueueCommand=queueHandler)
         val player=ExoPlayer.Builder(context).build()
         val session=MediaLibrarySession.Builder(context,player,callback).build()
@@ -87,18 +87,22 @@ class AutoSessionTest {
         var calls=0
         fixture(queueHandler={_,_->calls++;com.google.common.util.concurrent.Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))}) {callback,session,_ ->
             val context=ApplicationProvider.getApplicationContext<Context>()
-            val command=dev.distillpod.android.playback.QueueWriteCommands.BARRIER
             val ownUid=android.os.Process.myUid()
-            for((name,uid) in listOf("trusted.car" to ownUid,context.packageName to ownUid+1)) {
-                val external=MediaSession.ControllerInfo.createTestOnlyControllerInfo(name,1,uid,1,1,true,Bundle.EMPTY)
-                assertFalse(callback.onConnect(session,external).availableSessionCommands.contains(command))
-                assertEquals(SessionError.ERROR_PERMISSION_DENIED,callback.onCustomCommand(session,external,command,Bundle.EMPTY).get().resultCode)
+            val privateCommands=listOf(dev.distillpod.android.playback.QueueWriteCommands.BARRIER,dev.distillpod.android.playback.QueueWriteCommands.IMPORT)
+            for(command in privateCommands) {
+                for((name,uid) in listOf("trusted.car" to ownUid,context.packageName to ownUid+1)) {
+                    val external=MediaSession.ControllerInfo.createTestOnlyControllerInfo(name,1,uid,1,1,true,Bundle.EMPTY)
+                    assertFalse(callback.onConnect(session,external).availableSessionCommands.contains(command))
+                    assertEquals(SessionError.ERROR_PERMISSION_DENIED,callback.onCustomCommand(session,external,command,Bundle.EMPTY).get().resultCode)
+                }
+                assertEquals("Denied calls must not execute the queue handler",0,calls)
             }
-            assertEquals("Denied calls must not execute the queue handler",0,calls)
-            val own=MediaSession.ControllerInfo.createTestOnlyControllerInfo(context.packageName,1,ownUid,1,1,true,Bundle.EMPTY)
-            assertTrue(callback.onConnect(session,own).availableSessionCommands.contains(command))
-            assertEquals(SessionResult.RESULT_SUCCESS,callback.onCustomCommand(session,own,command,Bundle.EMPTY).get().resultCode)
-            assertEquals(1,calls)
+            for(command in privateCommands) {
+                val own=MediaSession.ControllerInfo.createTestOnlyControllerInfo(context.packageName,1,ownUid,1,1,true,Bundle.EMPTY)
+                assertTrue(callback.onConnect(session,own).availableSessionCommands.contains(command))
+                assertEquals(SessionResult.RESULT_SUCCESS,callback.onCustomCommand(session,own,command,Bundle.EMPTY).get().resultCode)
+            }
+            assertEquals(2,calls)
         }
     }
     @Test fun `selection waits for startup restoration before resolving`() {

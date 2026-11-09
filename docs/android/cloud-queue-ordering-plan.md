@@ -89,3 +89,79 @@ private local diagnostics. The extraction's media-session authorization suite
 passed14tests; Android test compilation and both APK builds passed. These are
 incremental investigation results, not final acceptance. No phone test ran and
 no runtime ordering correction has yet been validated.
+
+## Correction review and incremental evidence
+
+The candidate now sends a same-package/same-UID, opaque single-use cloud-choice
+request into the existing writer channel. Older captured writes finish first;
+resolution and queue activation occur in one Room transaction. Applying the
+chosen order preserves the actual current episode, position, play intent and
+video source. Pending intermediate snapshots retain checkpoint processing but
+cannot publish a queue. Later explicit local edits supersede the older cloud
+choice; the writer establishes its serialized baseline before releasing the
+pending choice and capturing a final boundary. The restored-baseline decision
+function and its regressions are unchanged.
+
+Caller cancellation before ownership prevents resolution. Once processing
+starts, the service owns the short operation; caller cancellation cannot cancel
+its transaction. A resolver CancellationException fails that request while an
+active service writer continues. On failure after commit, the chosen DB queue
+remains and the actual player baseline prevents a source-only boundary from
+publishing the earlier order. Service destruction fails the outstanding request;
+its dedicated emulator lifecycle acceptance passed (see below).
+
+A clear-while-pending test found the existing Room observer restoring an older
+local order while the writer was blocked. A bounded, count-only synthetic trace
+confirmed that restoration (rather than attributing it to controller optimism).
+The observer now refuses restoration during a pending choice and rechecks the
+logical queue revision after each suspended read. Its serialized restored
+baseline remains. Temporary diagnostic logging and one-off failed-fixture
+recovery code were removed; synthetic raw evidence is private.
+
+Seven API35 emulator scenarios passed on candidate source receipt
+c1b5d2ee8d62: older captured write/cloud choice plus later move/clear; clear while
+pending; cancellation before ownership; caller cancellation after ownership;
+resolver rejection with original failure; resolver cancellation without stopping
+the writer; and application rejection after the cloud commit. Incremental local
+checks passed22tests (14media-session,5baseline,3ownership). These results are
+not final-head/full hosted/physical validation. Full default/voice checks,
+service-teardown acceptance, a dedicated offline phone probe and normal CI/merge
+gates remain. A settled ordinary-import case now uses the same real ordering
+entry point and processed-prefix barrier instead of a timing sleep. The obsolete
+unfenced repository import entry point is removed.
+
+## General clear/restoration race
+
+After Actions recovery, main1e45c6e's one recovery retry passed four checks but
+failed ordinary emulator acceptance:83tests,1 RestoredQueueDeviceTest failure,
+`seed cleared`, expected0/controller1/persisted0/actual service1 (paused). No
+unchanged-code retry is being used. A new controlled later-clear regression
+then failed against the first cloud-choice candidate: the actual service did
+not stay empty after an older queued local write/Room emission. This establishes
+a second runtime restoration race; the previous seven-case success did not
+cover this general case.
+
+Automatic restore requests now join the same ordered writer channel. The owner
+re-reads the current persisted queue after preceding writes, checks the local
+queue revision and actual empty-player state, and records restoration through
+the existing serialized restored baseline. It does not directly apply the
+possibly stale Room emission. Explicit imports also wait for startup restoration
+before resolving, preventing startup from reapplying an earlier empty-player
+snapshot over a chosen cloud order. No per-playlist database-baseline comparison
+has been introduced and the existing baseline function/tests are unchanged.
+
+Candidate receipt28e485e044c2 passed11 API35 cases:8 ordering/failure scenarios,
+settled ordinary import, restored-queue clear and existing queue-controls UI.
+A separate instrumentation process then passed actual service destruction:
+queued resolution did not execute and its completion failed with the original
+service-stop cancellation. This separate phase is included in hosted acceptance;
+it cannot strand the closed controller in later ordinary tests. The dedicated
+phone protocol is restricted to package validation.queue75, refuses Internet
+and microphone permissions, requires empty fixture data and runs four offline
+queue/cancellation/clear scenarios. It has not run on the S22. The phone was
+connected but asleep at the last read-only probe.
+
+The earlier full default/voice gates each passed99core+537app, lint and APKs,
+but precede the general restoration correction and must not be represented as
+final acceptance. Re-run final combined local checks, targeted emulator tests,
+physical protocol and all five hosted checks on the committed correction.

@@ -133,10 +133,9 @@ import dev.distillpod.android.sync.SubscriptionSyncStore
                         TextButton(onClick={vm.action("resolve-sync"){
                             if(portable) {
                                 if(key=="queue_library") {
-                                    vm.graph.playback.beginCloudQueueChoice(
+                                    vm.graph.playback.chooseCloudQueue(
                                         resolve={vm.graph.portableSync.resolve(key,false)},
-                                        imported={vm.graph.importedQueue.value=it}).await()
-                                    vm.graph.db.sync().view(key)?.let {vm.graph.db.sync().putView(it.copy(active=true))}
+                                        imported={vm.graph.importedQueue.value=it})
                                 }
                                 if(key!="queue_library")vm.graph.portableSync.resolve(key,false)
                                 if(key.startsWith("progress_")) {

@@ -23,10 +23,27 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 class CloudQueueOrderingDeviceTest {
-    @Test fun olderCapturedQueueCannotRepublishAfterCompletedCloudChoice() = runBlocking<Unit> {
-        check(Build.HARDWARE.contains("ranchu") || Build.FINGERPRINT.contains("generic"))
+    @Test fun olderCapturedQueueCannotRepublishAfterCompletedCloudChoice() = CloudQueueOrderingFixture.scenario("normal")
+    @Test fun failedResolutionPreservesLocalQueueAndOriginalFailure() = CloudQueueOrderingFixture.scenario("failure")
+    @Test fun localClearAcceptedWhileCloudChoiceWaitsWins() = CloudQueueOrderingFixture.scenario("clear")
+    @Test fun localClearCannotBeUndoneByAnOlderQueueFlowEmission() = CloudQueueOrderingFixture.scenario("later-clear")
+    @Test fun failedPlayerApplicationRetainsCommittedCloudOrder() = CloudQueueOrderingFixture.scenario("apply-failure")
+    @Test fun cancelledResolutionDoesNotStopThePersistenceWriter() = CloudQueueOrderingFixture.scenario("resolver-cancel")
+    @Test fun cancellationBeforeWriterOwnershipDoesNotResolve() = CloudQueueOrderingFixture.scenario("cancel")
+    @Test fun cancellationAfterWriterOwnershipDoesNotStrandCommittedChoice() = CloudQueueOrderingFixture.scenario("cancel-running")
+
+}
+
+internal object CloudQueueOrderingFixture {
+    fun scenario(mode:String, offlinePhone:Boolean=false) = runBlocking<Unit> {
         val instrumentation=InstrumentationRegistry.getInstrumentation()
-        val graph=instrumentation.targetContext.appGraph
+        val context=instrumentation.targetContext
+        if(offlinePhone) {
+            check(context.packageName=="dev.distillpod.android.validation.queue75")
+            for(permission in listOf(android.Manifest.permission.INTERNET,android.Manifest.permission.RECORD_AUDIO))
+                check(context.checkSelfPermission(permission)==android.content.pm.PackageManager.PERMISSION_DENIED)
+        } else check(Build.HARDWARE.contains("ranchu") || Build.FINGERPRINT.contains("generic"))
+        val graph=context.appGraph
         graph.ready.await()
         val db=graph.db; val dao=db.library(); val sync=db.sync()
         check(sync.binding()==null) { "Use an unbound disposable fixture application" }
@@ -72,6 +89,9 @@ class CloudQueueOrderingDeviceTest {
                 JSONObject(mapOf("items" to "$c,$b")).toString(),false,2))
             val portable=PortableLibrarySync(db,isolatedDemo=true)
             lateinit var choice:Deferred<Unit>
+            val resolving=CompletableDeferred<Unit>()
+            val release=CompletableDeferred<Unit>()
+            var resolved=false
             var before=0L
             db.withTransaction {
                 // The writer cannot commit the older [a,b] snapshot while this transaction is held.
@@ -79,10 +99,40 @@ class CloudQueueOrderingDeviceTest {
                 withTimeout(10000){while(actual()!=listOf(a,b))delay(25)}
                 before=withContext(Dispatchers.Main){player!!.currentPosition}
                 choice=graph.playback.beginCloudQueueChoice(
-                    resolve={portable.resolve("queue_library",false)},
-                    imported={graph.importedQueue.value=it})
+                    resolve={
+                        resolving.complete(Unit)
+                        if(mode=="cancel-running")withTimeout(15000){release.await()}
+                        if(mode=="failure")error("synthetic resolution failure")
+                        if(mode=="resolver-cancel")throw CancellationException("synthetic resolver cancellation")
+                        portable.resolve("queue_library",false);resolved=true
+                    },
+                    imported={if(mode=="apply-failure")error("synthetic player application failure") else graph.importedQueue.value=it})
+                if(mode=="cancel")choice.cancel()
+                if(mode=="clear") {
+                    graph.playback.clear()
+                    withTimeout(10000){while(actual().isNotEmpty())delay(25)}
+                }
             }
-            withTimeout(15000){choice.await()}
+            if(mode=="cancel-running") {
+                withTimeout(15000){resolving.await()}
+                choice.cancel();release.complete(Unit)
+            }
+            if(mode in listOf("failure","apply-failure")) {
+                try {withTimeout(15000){choice.await()};fail("Expected original resolver failure")}
+                catch(expected:IllegalStateException){assertEquals(if(mode=="failure")"synthetic resolution failure" else "synthetic player application failure",expected.message)}
+            } else if(mode.startsWith("cancel") || mode=="resolver-cancel") {
+                try {choice.await();fail("Caller cancellation must be visible")}
+                catch(expected:CancellationException) {assertTrue(choice.isCancelled)}
+            } else withTimeout(15000){choice.await()}
+            if(mode in listOf("failure","cancel","clear","apply-failure","resolver-cancel")) {
+                graph.playback.awaitQueueWritesProcessed()
+                val expected=if(mode=="clear")emptyList() else listOf(a,b)
+                assertEquals("Actual service order after $mode",expected,actual())
+                assertEquals("Persisted order after $mode",if(mode=="apply-failure")listOf(c,b) else expected,dao.queue().map {it.episodeId})
+                assertEquals(mode in listOf("clear","apply-failure"),resolved)
+                if(mode!="clear")withContext(Dispatchers.Main){assertTrue(player!!.isPlaying)}
+                return@runBlocking
+            }
             withTimeout(10000){while(actual()!=listOf(a,c,b))delay(25)}
             graph.playback.awaitQueueWritesProcessed()
             assertEquals("A processed older boundary must not replace the chosen persisted order",listOf(c,b),dao.queue().map {it.episodeId})
@@ -92,6 +142,22 @@ class CloudQueueOrderingDeviceTest {
                 assertTrue(player!!.isPlaying)
                 assertTrue(player!!.currentPosition>=before)
             }
+            // Later intentional edits still publish, including removal of the temporary active item.
+            graph.playback.move(b,-1)
+            withTimeout(10000){while(actual()!=listOf(a,b,c))delay(25)}
+            graph.playback.awaitQueueWritesProcessed()
+            assertEquals(listOf(a,b,c),dao.queue().map {it.episodeId})
+            if(mode=="later-clear") {
+                db.withTransaction {
+                    graph.playback.move(c,-1)
+                    withTimeout(10000){while(actual()!=listOf(a,c,b))delay(25)}
+                    graph.playback.clear()
+                    withTimeout(10000){while(actual().isNotEmpty())delay(25)}
+                }
+            } else graph.playback.clear()
+            graph.playback.awaitQueueWritesProcessed()
+            assertTrue("Actual service must stay cleared after an older write/Room emission",actual().isEmpty())
+            assertTrue("Persisted queue must stay cleared",dao.queue().isEmpty())
         } catch(failure:Throwable){primary=failure;throw failure}
         finally {
             try {

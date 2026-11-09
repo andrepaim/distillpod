@@ -30,13 +30,13 @@ class QueueSyncPlaybackDeviceTest {
             for(id in listOf("a","b","c"))graph.db.library().putEpisode(EpisodeEntity("$tag-$id",tag,id,"Queue fixture","https://example.test/$id",localFile=file.absolutePath,downloadState="downloaded"))
             graph.playback.play("$tag-a",3000);graph.playback.enqueue("$tag-b")
             withTimeout(10000){graph.playback.state.first {it.episodeId=="$tag-a" && it.playing && it.queue.size==2}}
+            graph.playback.awaitQueueWritesProcessed()
             val before=graph.playback.state.value.positionMs
-            graph.db.withTransaction {
+            graph.playback.chooseCloudQueue(resolve={graph.db.withTransaction {
                 graph.db.library().clearQueue();graph.db.library().insertQueue(listOf(QueueEntryEntity("$tag-c",0),QueueEntryEntity("$tag-b",1)))
-            }
-            graph.playback.acceptCloudQueue {graph.importedQueue.value=it}
+            }},imported={graph.importedQueue.value=it})
             withTimeout(10000){graph.playback.state.first {it.queue==listOf("$tag-a","$tag-c","$tag-b")}}
-            delay(300)
+            graph.playback.awaitQueueWritesProcessed()
             assertEquals("$tag-a",graph.playback.state.value.episodeId)
             assertTrue(graph.playback.state.value.playing)
             assertTrue(graph.playback.state.value.positionMs>=before && graph.playback.state.value.positionMs<before+3000)
@@ -44,7 +44,7 @@ class QueueSyncPlaybackDeviceTest {
         } finally {
             graph.playback.pause();graph.playback.clear()
             withTimeout(10000){graph.playback.state.first {it.queue.isEmpty()}}
-            delay(300)
+            graph.playback.awaitQueueWritesProcessed()
             graph.db.withTransaction {
                 graph.db.library().deletePodcast(tag);graph.db.library().clearQueue();graph.db.library().insertQueue(oldQueue)
                 if(oldSession!=null)graph.db.library().putPlayerSession(oldSession)
