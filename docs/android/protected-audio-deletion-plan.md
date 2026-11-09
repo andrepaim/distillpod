@@ -43,3 +43,19 @@ The confirmation-race fixture now retains processing ownership until the exact d
 Final run 42604143242 failed ProtectedAudioDeletionDeviceTest and QueueControlsDeviceTest with generic 10-second timeout stacks (79 tests, 2 failures). The retained instrumentation artifact preserves exception messages, but not the fixture's println phase messages, so the failing wait and any cleanup masking could not be established.
 Every explicit protected-deletion timed wait now throws a phase-labelled AssertionError with its original cause and last content-free fixture state. The original 10/15-second bounds, predicates, assertions, ownership barrier and protection rules are unchanged. Cleanup errors are suppressed onto the original body failure instead of replacing it.
 Independent read-only review passed; individual and combined instrumentation Kotlin compilation passed at cad434d5caa5f9cd6b8571e1c4fd7574d69f01dd. Includes #54's reviewed equivalent diagnostics df9cd159f461d7b9c2d0f11263ded3e6ffe64356. This is test-only observability, not an established product fix or a passing acceptance result. One normal hosted diagnostic run will provide the next evidence; no unchanged/manual rerun or ADB action was performed.
+
+## Handoff integration
+
+Integrated main 2042306 and reviewed queue revision 5888db1 by ordinary merges.
+The deletion implementation, action handling, ViewModel and device fixture are
+unchanged from handed-off 888ca12. The serialized restored-queue baseline remains
+intact; no per-event database comparison was introduced. That queue revision has
+passed all five hosted checks, but #59 remains unmerged pending phone acceptance.
+
+Deletion affects local files and persisted state, so the limited classification
+change still requires preservation regressions, complete hosted emulator checks
+and the dedicated offline S22 flow. Run both complete default and voice gates on
+the combined revision; the historical default-only pass and old APKs do not
+satisfy those gates. Build and verify new package identities, instrumentation
+target, signatures and immutable hashes before any phone install. No current
+phone acceptance has run, and required failures or unavailable checks block merge.
