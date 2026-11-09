@@ -15,6 +15,24 @@ WorkManager APIs only. Finish with local checks, review and isolated-emulator CI
 physical-device acceptance remains required before merge. The resumed issue
 workflow authorizes non-destructive checks using the isolated validation app.
 
+## Risk assessment
+
+This changes queued WorkManager constraints and cancellation/recovery ordering,
+including migration of pre-existing requests. Platform scheduling and saved
+transcript/checkpoint preservation make physical-device validation necessary;
+this is not a low-risk settings-layout change. No Room schema or installed-app
+identity changes are introduced. The one-time legacy request-identity tradeoff
+below remains an explicit compatibility risk.
+
+Required evidence is the full relevant unit suite (including pause and revision
+races after integration), lint/build checks, isolated emulator acceptance, and
+the three synthetic network-policy cases on the owner's phone using a separate
+validation package. The phone checks cover actual WorkManager records, Settings
+updates and one loopback transfer while preserving the production installation.
+They do not establish carrier billing, long-duration power/OEM scheduling, live
+model downloads or a release-signed in-place upgrade. Those flows are not changed
+or claimed as validated by this fix. Reassess if integration changes these risks.
+
 ## Identity and upgrade behavior
 
 New recovery requests carry both the existing episode tag and a revision tag.
