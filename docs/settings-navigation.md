@@ -48,7 +48,18 @@ phone validation is required solely for this UI organization under the current
 risk policy. This does not waive failed checks or hardware-specific gates if
 later integration changes permission behavior.
 
-The final prerequisite refresh adds policy/evidence documentation and a separate
-pause-race validation fixture, with no production source changes relative to the
-prior integrated Settings revision. Subsequent sync/backup explanation work
-retains the backup and settings:sync routes and owns their callbacks separately.
+The latest main integration includes issue 33's queued transcript network-policy
+fix. That repository implementation and its tests are unchanged from main:
+revision-tagged requests retain identity and scheduling metadata, while legacy
+requests are reconciled under the existing processing/control locks. Its
+background/upgrade behavior has separate, higher-risk validation requirements;
+the Settings-only assessment above does not waive them. Issue 33's scoped
+physical evidence belongs to that unchanged implementation.
+
+DownloadNetworkPolicyDeviceTest still opens settings:storage and exercises the
+same canonical Wi-Fi policy switch, including legacy recovery and retained
+progress. Settings navigation also reaches that page through the preparation
+cross-link. Full combined automated checks and emulator acceptance remain
+required after this integration. NotificationAccess is unchanged. Subsequent
+sync/backup explanation work retains backup and settings:sync routes and owns
+their callbacks separately.

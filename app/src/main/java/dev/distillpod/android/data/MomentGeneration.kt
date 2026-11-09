@@ -52,7 +52,7 @@ object MomentGeneration {
             .put("startMs",it.startMs).put("endMs",it.endMs).put("text",it.text) })).toString()
 
     fun input(json: String): String = JSONObject(json).apply {
-        remove("originalExcerpt");remove("fingerprint");remove("revision");remove("expanded");remove("promptVersion")
+        remove("_diagnostics");remove("originalExcerpt");remove("fingerprint");remove("revision");remove("expanded");remove("promptVersion")
     }.toString()
 
     fun context(json: String): MomentContext {
@@ -87,7 +87,15 @@ object MomentGeneration {
     private fun integer(j: JSONObject, key: String): Int {
         val n = j.get(key); require(n is Number && n.toDouble() == n.toInt().toDouble()) { "Invalid source reference" }; return n.toInt()
     }
-    data class Review(val accepted: Boolean, val quoteFaithful: Boolean, val needsContext: Boolean)
+    data class Review(val accepted: Boolean, val quoteFaithful: Boolean, val needsContext: Boolean,
+        val passageComplete:Boolean, val takeawaySupported:Boolean, val relevant:Boolean,
+        val reportedQuoteFaithful:Boolean, val issueCounts:Map<String,Int>) {
+        val contradictory:Boolean get() = passageComplete && issueCounts.getOrDefault("incomplete",0)>0 ||
+            takeawaySupported && issueCounts.getOrDefault("unsupported",0)>0 ||
+            relevant && issueCounts.getOrDefault("irrelevant",0)>0 ||
+            reportedQuoteFaithful && issueCounts.getOrDefault("quote",0)>0 ||
+            needsContext && passageComplete && takeawaySupported && relevant
+    }
     fun review(answer: String, context: MomentContext): Review {
         val j = jsonObjectAnswer(answer)
         fun bool(key: String): Boolean { val v=j.get(key);require(v is Boolean);return v }
@@ -95,16 +103,17 @@ object MomentGeneration {
         val quote=bool("quoteFaithful");val needs=bool("needsContext")
         val issues=j.getJSONArray("issues");require(issues.length()<=20)
         val kinds=mutableSetOf<String>()
+        val counts=mutableMapOf<String,Int>()
         repeat(issues.length()) { i ->
             val issue=issues.getJSONObject(i);val kind=issue.getString("kind")
-            require(kind in setOf("incomplete","unsupported","irrelevant","quote"));kinds.add(kind)
+            require(kind in setOf("incomplete","unsupported","irrelevant","quote"));kinds.add(kind);counts[kind]=counts.getOrDefault(kind,0)+1
             require(issue.getString("reason").length in 1..1000)
             val refs=issue.getJSONArray("spanIds");require(refs.length() in 1..context.spans.size)
             repeat(refs.length()) { k -> val ref=refs.get(k);require(ref is Number && ref.toDouble()==ref.toInt().toDouble() && ref.toInt() in context.spans.indices) }
         }
         require(complete || "incomplete" in kinds);require(supported || "unsupported" in kinds)
         require(relevant || "irrelevant" in kinds);require(quote || "quote" in kinds)
-        return Review(complete && supported && relevant && kinds.none { it != "quote" } && !needs, quote && "quote" !in kinds, needs)
+        return Review(complete && supported && relevant && kinds.none { it != "quote" } && !needs, quote && "quote" !in kinds, needs, complete, supported, relevant, quote, counts.toMap())
     }
 
     fun source(attempt: MomentAttemptEntity, candidate: Candidate): String {
