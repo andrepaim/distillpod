@@ -96,8 +96,16 @@ class VoiceReadinessDeviceTest {
             }
             await { main { c.isPlaying } }
             var pausedEvents = 0
+            var resumedEvents = 0
+            val seekPositions = mutableListOf<Long>()
+            val rewindPolicies = mutableListOf<Boolean>()
             val listener = object : Player.Listener {
-                override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) { if (!playWhenReady) pausedEvents++ }
+                override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                    if (playWhenReady) resumedEvents++ else pausedEvents++
+                }
+                override fun onPositionDiscontinuity(old: Player.PositionInfo, new: Player.PositionInfo, reason: Int) {
+                    if (reason == Player.DISCONTINUITY_REASON_SEEK) seekPositions += new.positionMs
+                }
             }
             main { c.addListener(listener) }
             var preflight = true; var race = false; var connections = 0; var restores = 0
@@ -109,10 +117,13 @@ class VoiceReadinessDeviceTest {
                     override val episode = lease.episode; override val position = lease.position
                     override suspend fun finish(resume: Boolean) = finish(resume, true)
                     override suspend fun finish(resume: Boolean, allowRewind: Boolean) {
-                        restores++; lease.finish(resume, allowRewind)
+                        restores++; rewindPolicies += allowRewind; lease.finish(resume, allowRewind)
                     }
                 }
             }, { lease ->
+                // Wait for the independent observer to acknowledge pause. Comparing moving
+                // position estimates from two controllers is not an exact restoration oracle.
+                withTimeout(5000) { while (c.playWhenReady) delay(10) }
                 if (race) throw VoiceContextUnavailable(VoiceReadiness.COVERAGE_GAP)
                 VoiceContext.load(graph.db, lease.episode, lease.position)
             }, {
@@ -140,9 +151,14 @@ class VoiceReadinessDeviceTest {
             assertEquals(0, connections); assertEquals(0, restores); assertEquals(0, main { pausedEvents })
             assertTrue(main { c.isPlaying })
             preflight = false; race = true
-            ask(); await { restores == 1 && !voice.state.value.active && main { c.isPlaying } }
+            val seeksBeforeRace = main { seekPositions.size }
+            ask(); await { restores == 1 && !voice.state.value.active && main { c.isPlaying && pausedEvents == 1 && resumedEvents == 1 } }
+            instrumentation.sendStatus(2, android.os.Bundle().apply {
+                putString("stream", "Synthetic readiness restoration: leaseMs=$captured observerMs=${main { c.currentPosition }} pauses=${main { pausedEvents }} resumes=${main { resumedEvents }} seeks=${main { seekPositions.size }} allowRewind=${rewindPolicies.single()}\n")
+            })
             assertEquals(0, connections)
-            assertTrue("Readiness race must not rewind", main { c.currentPosition >= captured })
+            assertEquals(listOf(false), rewindPolicies)
+            assertEquals("Readiness race must not issue a seek", seeksBeforeRace, main { seekPositions.size })
             // Paused state is restored without starting playback.
             main { c.pause(); c.seekTo(60000) }
             await { main { !c.isPlaying && c.currentPosition == 60000L } }
@@ -157,9 +173,11 @@ class VoiceReadinessDeviceTest {
             assertFalse(main { c.playWhenReady }); assertEquals(60000L, main { c.currentPosition })
             // Ordinary successful completion still honors the existing rewind preference.
             main { c.play() }; await { main { c.isPlaying } }
-            ask(); await { restores == 4 && !voice.state.value.active && main { c.isPlaying } }
+            val seeksBeforeSuccess = main { seekPositions.size }
+            ask(); await { restores == 4 && !voice.state.value.active && main { c.isPlaying && seekPositions.size > seeksBeforeSuccess } }
             assertEquals(2, connections)
-            assertTrue(main { c.currentPosition < captured && c.currentPosition >= captured - 3000 })
+            assertEquals(true, rewindPolicies.last())
+            assertEquals("Normal completion must issue the exact configured rewind", captured - 3000, main { seekPositions.last() })
             // User seeks and item replacements revoke the existing lease, never restart playback.
             val seekLease = graph.playback.pauseForVoice({}, 3000)
             main { c.seekTo(30000) }; delay(250); seekLease.finish(true, false)

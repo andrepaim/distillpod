@@ -45,3 +45,19 @@ the exact isolated voice57 package. The dedicated init/manifest builds that
 phone package without Internet or microphone permission; it is never applied
 to production builds. No devices have been used yet; emulator and phone evidence
 remain required. The coordinator owns final current-main integration and merge.
+
+## Physical run and test-oracle correction
+The first physical run on the isolated app at b00949d completed 2 tests:
+visible feedback/retry passed; playback restoration failed at a moving-position
+comparison between two MediaController instances. Preflight-no-pause and actual
+resumption were reached; later retry/rewind/seek/clear scenarios were not reached.
+This result is not a full phone pass. The production package metadata was
+unchanged and both owned test packages were stopped.
+
+The comparison did not record its values and cannot distinguish real seek from
+independent controller position estimates. Production code remains unchanged.
+The revised test waits for observer pause acknowledgement, records content-free
+lease/observer positions and event counts, and checks zero SEEK events plus
+resume policy for readiness restoration. It retains exact paused-position
+assertions and requires the configured rewind's exact SEEK target on normal
+completion. No tolerance was widened; a new phone run is still required.
