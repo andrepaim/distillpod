@@ -127,14 +127,36 @@ class TranscriptionRepository(private val graph: AppGraph,
         }
     }
 
-    internal suspend fun configureNetworkPolicy() = scheduling.withLock { withContext(Dispatchers.IO) {
+    internal suspend fun configureNetworkPolicy() {
+        val hasLegacy = withContext(Dispatchers.IO) {
+            manager.getWorkInfosByTag(TranscriptWorker::class.java.name).get().any { isLegacy(it) }
+        }
+        // Migration may replace legacy requests, so let the active chunk finish
+        // first. This lock also keeps newly-starting workers from becoming writers
+        // between the WorkInfo snapshot and cancellation. Modern updates do not wait.
+        if (hasLegacy) processing.withLock { reconcileNetworkPolicy() }
+        else reconcileNetworkPolicy()
+    }
+
+    private fun isLegacy(info: WorkInfo) = !info.state.isFinished &&
+        info.tags.none { it.startsWith("transcript-revision:") }
+
+    private suspend fun reconcileNetworkPolicy() = controls.withLock { scheduling.withLock { withContext(Dispatchers.IO) {
         val prefs = graph.settings.flow.first()
         for (row in pending()) {
             val ep = dao.episode(row.episodeId) ?: continue
             val network = if (!transcriptionNeedsNetwork(ep, row)) NetworkType.NOT_REQUIRED
                 else if (prefs.wifiOnly) NetworkType.UNMETERED else NetworkType.CONNECTED
-            val start = nextStart(row) ?: continue
-            for (info in manager.getWorkInfosForUniqueWork("transcript:${row.episodeId}:${row.revision}:$start").get()) {
+            val infos = manager.getWorkInfosByTag("transcript:${row.episodeId}").get()
+            val revisionTag = revisionTag(row)
+            // WorkInfo exposes neither input data nor unique names. Legacy requests
+            // cannot safely be assigned the current revision: cancel them instead.
+            // Room retains completed chunks; a single recovery request resumes them.
+            val legacy = infos.filter { isLegacy(it) }
+            for (info in legacy) manager.cancelWorkById(info.id).result.get()
+            val current = infos.filter { !it.state.isFinished && revisionTag in it.tags }
+            if (legacy.isNotEmpty() && current.isEmpty()) enqueueLocked(row, nextStart(row) ?: 0)
+            for (info in current) {
                 if (info.state.isFinished || info.constraints.requiredNetworkType == network) continue
                 val request = OneTimeWorkRequestBuilder<TranscriptWorker>().setId(info.id)
                     .setInputData(workDataOf("episode" to row.episodeId, "revision" to row.revision))
@@ -144,20 +166,25 @@ class TranscriptionRepository(private val graph: AppGraph,
                 manager.updateWork(request).get()
             }
         }
-    } }
+    } } }
+
+    private fun revisionTag(row: TranscriptEntity) = "transcript-revision:${row.episodeId}:${row.revision}"
 
     private suspend fun enqueue(row: TranscriptEntity, start: Long) = scheduling.withLock { withContext(Dispatchers.IO) {
+        enqueueLocked(row, start)
+    } }
+
+    private suspend fun enqueueLocked(row: TranscriptEntity, start: Long) {
         val prefs = graph.settings.flow.first()
-        val ep = dao.episode(row.episodeId) ?: return@withContext
+        val ep = dao.episode(row.episodeId) ?: return
         val needNetwork = transcriptionNeedsNetwork(ep, row)
         graph.diagnostics.event("transcription.queued",row.revision,reason=transcriptionWaitReason(graph.context,prefs,needNetwork) ?: "scheduled",correlation=correlation(row.revision))
         val constraints = Constraints.Builder().setRequiresBatteryNotLow(true).setRequiresCharging(prefs.chargingOnly)
             .apply { if (needNetwork) setRequiredNetworkType(if (prefs.wifiOnly) NetworkType.UNMETERED else NetworkType.CONNECTED) }.build()
         manager.enqueueUniqueWork("transcript:${row.episodeId}:${row.revision}:$start", ExistingWorkPolicy.KEEP,
             OneTimeWorkRequestBuilder<TranscriptWorker>().setInputData(workDataOf("episode" to row.episodeId, "revision" to row.revision))
-                .setConstraints(constraints).addTag("transcript:${row.episodeId}").build()).result.get()
-        Unit
-    } }
+                .setConstraints(constraints).addTag("transcript:${row.episodeId}").addTag(revisionTag(row)).build()).result.get()
+    }
     private suspend fun nextStart(row: TranscriptEntity): Long? {
         if (row.durationMs <= 0) return 0
         val covered = dao.coverage(row.episodeId, row.revision).associateBy { it.startMs }
