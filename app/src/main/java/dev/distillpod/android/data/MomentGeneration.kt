@@ -52,7 +52,7 @@ object MomentGeneration {
             .put("startMs",it.startMs).put("endMs",it.endMs).put("text",it.text) })).toString()
 
     fun input(json: String): String = JSONObject(json).apply {
-        remove("originalExcerpt");remove("fingerprint");remove("revision");remove("expanded");remove("promptVersion")
+        remove("_diagnostics");remove("originalExcerpt");remove("fingerprint");remove("revision");remove("expanded");remove("promptVersion")
     }.toString()
 
     fun context(json: String): MomentContext {

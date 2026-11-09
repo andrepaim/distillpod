@@ -114,6 +114,23 @@ class DiagnosticsTest {
         WorkManagerTestInitHelper.initializeTestWorkManager(context)
     }
     @After fun finish() {Sentry.close()}
+    @Test fun `uncorrelated late raw callback is incomplete and cannot terminate a new execution`() {
+        val d=Diagnostics(context,"https://abc123@o1.ingest.sentry.io/1")
+        d.consent(true)
+        val c=DiagnosticCorrelation(momentId=java.util.UUID.randomUUID().toString(),
+            generationAttemptId=java.util.UUID.randomUUID().toString(),executionId=java.util.UUID.randomUUID().toString())
+        d.event("distillation.started",c.momentId,correlation=c)
+        d.event("distillation.finished",c.momentId,reason="succeeded")
+        d.awaitIdle()
+        val raw=d.queue.files().map {it.readText()}.single {it.contains("distillation.finished")}
+        assertFalse(raw.contains(c.executionId!!))
+        assertFalse(raw.contains(c.generationAttemptId!!))
+        assertTrue(raw.contains("correlation_complete"))
+        assertTrue(raw.contains("observed_at_ms"))
+        assertTrue(raw.contains("emitted_at_ms"))
+        assertEquals("running",d.journal.latest().single {it.operation==c.momentId}.state)
+        d.consent(false)
+    }
     @Test fun `fresh installation does not store or send diagnostics`() {
         val diagnostics=Diagnostics(context,"https://abc123@o1.ingest.sentry.io/1")
         diagnostics.event("diagnostics.test");diagnostics.failure("capture",Exception("secret"))

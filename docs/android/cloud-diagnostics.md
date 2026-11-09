@@ -53,3 +53,7 @@ Provider references: [Android logs](https://docs.sentry.io/platforms/android/log
 ## Issue #34 validation boundary
 
 A deterministic JVM regression floods routine traffic beyond the previous 1,000-item cutoff, then checks a later terminal summary and reporting-gap evidence. Budget tests cover exact limits, independent error/log counters, UTC rollover, restart/consent persistence and legacy migration. Outbox/journal tests cover offline priority retention, pending terminal replay, stable summary identity, no duplicate admission after acknowledgement and consent clearing. These tests do not establish remote ingestion or validate a physical device. Fresh emulator and non-destructive USB-phone acceptance remain merge gates; no device validation is claimed by this change.
+
+Identity, retry ancestry, observation time, and replay semantics are specified in
+[the versioned correlation contract](correlation-contract.md). Missing links are
+explicitly incomplete evidence, not product failures.
