@@ -12,8 +12,8 @@ Implementation plan: reproduce the priority regression, identify requests by an
 explicit revision tag, migrate unidentifiable legacy requests safely, and validate
 checkpoint, cancellation, revision-isolation and active-writer races. Use public
 WorkManager APIs only. Finish with local checks, review and isolated-emulator CI;
-physical-device acceptance remains required before merge and is not authorized
-for this draft.
+physical-device acceptance remains required before merge. The resumed issue
+workflow authorizes non-destructive checks using the isolated validation app.
 
 ## Identity and upgrade behavior
 
@@ -66,4 +66,4 @@ cancelled work, duration-shrunk legacy requests, checkpoint/text preservation,
 an active chunk finishing before migration, and pause with a RUNNING worker
 waiting behind processing. Device acceptance separates modern identity/delay
 preservation from legacy migration expectations. Exact run results and commit
-are recorded in the draft PR. No physical-phone validation is claimed.
+are recorded in the draft PR. Physical-phone results must be recorded against the integrated revision before merge.
