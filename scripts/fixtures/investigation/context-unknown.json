@@ -4,11 +4,7 @@
     "attributes": {
       "correlation_complete": {
         "type": "boolean",
-        "value": true
-      },
-      "capture_request_id": {
-        "type": "string",
-        "value": "bdd6ef5f-4d35-4b8a-91c6-0d424416fa91"
+        "value": false
       },
       "context_reason": {
         "type": "string",
@@ -16,7 +12,7 @@
       },
       "emitted_at_ms": {
         "type": "integer",
-        "value": 1794180813562
+        "value": 1794193495747
       },
       "candidate_reused": {
         "type": "boolean",
@@ -24,11 +20,11 @@
       },
       "installation_id": {
         "type": "string",
-        "value": "aa5c2dfa-ffd6-4a9a-b631-dac9ed2f2c8a"
+        "value": "ce4f3b8a-0008-40a1-83aa-d64a5103c44b"
       },
       "preparation_elapsed_ms": {
         "type": "integer",
-        "value": 6
+        "value": 11
       },
       "correlation_version": {
         "type": "integer",
@@ -36,7 +32,7 @@
       },
       "moment_id": {
         "type": "string",
-        "value": "66826601-8464-4477-904b-290cd07bc4f1"
+        "value": "878a5ede-2c57-42dd-b292-af4a3e8483ce"
       },
       "context_expanded": {
         "type": "boolean",
@@ -52,7 +48,7 @@
       },
       "execution_id": {
         "type": "string",
-        "value": "2ef2cabd-b791-4208-add1-926086a50f5d"
+        "value": "114000ab-d277-4764-a29a-9fb542eef441"
       },
       "expanded_context": {
         "type": "boolean",
@@ -76,11 +72,11 @@
       },
       "generation_attempt_id": {
         "type": "string",
-        "value": "9969309f-bf1e-431a-a6c5-12918f40b63e"
+        "value": "17cd92a1-d298-4f8a-a0c6-17afaded74dc"
       },
       "operation_id": {
         "type": "string",
-        "value": "66826601-8464-4477-904b-290cd07bc4f1"
+        "value": "878a5ede-2c57-42dd-b292-af4a3e8483ce"
       },
       "outcome": {
         "type": "string",
@@ -88,7 +84,7 @@
       },
       "retry_trigger": {
         "type": "string",
-        "value": "initial"
+        "value": "unknown"
       },
       "excluded_right_count": {
         "type": "integer",
@@ -104,7 +100,7 @@
       },
       "transcript_revision_id": {
         "type": "string",
-        "value": "bd9260cc-14b2-480d-b0fe-b2551ee58773"
+        "value": "e2933e45-f96e-44b8-8f92-b5d3612bbf93"
       },
       "context_schema_version": {
         "type": "integer",
@@ -114,13 +110,17 @@
         "type": "integer",
         "value": 120000
       },
+      "observed_at_ms": {
+        "type": "integer",
+        "value": 1794193495741
+      },
       "frozen_context": {
         "type": "boolean",
         "value": true
       },
       "event_id": {
         "type": "string",
-        "value": "159fd4c5-7a4e-41bc-bdf8-c87ac7c1714d"
+        "value": "57a96384-3c06-46ef-bed3-5b20aa621bf6"
       },
       "usable_segment_count": {
         "type": "integer",

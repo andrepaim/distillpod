@@ -10,6 +10,7 @@ from uuid import UUID
 
 IDS = ('capture_request_id','moment_id','generation_attempt_id','execution_id',
        'transcript_revision_id','previous_attempt_id')
+ENTRY_IDS = IDS[:4]+('previous_attempt_id',)
 LINK_IDS = IDS[:4]  # A transcript revision can legitimately be shared by unrelated captures.
 FLAGS = ('context_expanded','transcript_changed','model_changed','prompt_changed','candidate_reused')
 STAGE = ('stage','stage_outcome','generation_outcome','review_outcome','passage_complete',
@@ -175,7 +176,9 @@ def investigate(export,reference):
     records=[r for r in records if r.get('message') and r.get('test_traffic') not in (True,'true')]
     def causal(r):
         return version(r,'correlation_version',1)
-    matches=[r for r in records if causal(r) and any(r.get(k)==reference for k in IDS)]
+    matches=[r for r in records if causal(r) and any(r.get(k)==reference for k in ENTRY_IDS)]
+    if not matches and any(r.get('transcript_revision_id')==reference or r.get('transcript_id')==reference for r in records):
+        raise ValueError('Transcript-only reference requires a capture-scoped capture, moment, attempt or execution ID')
     installations={r.get('installation_id') for r in matches if random_id(r.get('installation_id'))}
     if len(installations)>1:raise ValueError('Ambiguous reference across installations')
     installation=next(iter(installations),None)
@@ -184,7 +187,7 @@ def investigate(export,reference):
     known={k:set() for k in LINK_IDS}
     selected=[]
     # Seed only explicit typed correlation. Never join by timestamp or legacy attempt_id.
-    selected=[r for r in records if causal(r) and any(r.get(k)==reference for k in IDS)]
+    selected=[r for r in records if causal(r) and any(r.get(k)==reference for k in ENTRY_IDS)]
     changed=True
     while changed:
         before=len(selected)

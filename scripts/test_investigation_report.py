@@ -76,7 +76,7 @@ class ProducerFixtureTest(unittest.TestCase):
     items=json.loads((Path(__file__).parent/'fixtures/investigation'/('context-'+name+'.json')).read_text())
     rows=[report.normalize(i) for i in items]
     self.assertTrue(rows)
-    result=report.investigate(export(rows),rows[0]['capture_request_id'])
+    result=report.investigate(export(rows),rows[0]['moment_id'])
     self.assertEqual(1,len(result['timeline']))
     self.assertEqual(reason,result['timeline'][0]['fields']['context_reason'])
     self.assertEqual('unknown',result['publication']['state'])
@@ -201,7 +201,7 @@ class MissingContextGraphTest(unittest.TestCase):
   root=Path(__file__).parent/'fixtures/investigation'
   missing=[report.normalize(i) for i in json.loads((root/'context-missing.json').read_text())]
   unrelated=[report.normalize(i) for i in json.loads((root/'lifecycle.json').read_text())]
-  result=report.investigate(export(missing+unrelated),missing[0]['capture_request_id'])
+  result=report.investigate(export(missing+unrelated),missing[0]['moment_id'])
   self.assertEqual(['capture.context_summary'],[r['event'] for r in result['timeline']])
   self.assertEqual('coverage_missing',result['timeline'][0]['fields']['context_reason'])
   self.assertEqual('unknown',result['publication']['state'])
@@ -311,7 +311,7 @@ class ProducerExportPipelineTest(unittest.TestCase):
   self.assertEqual(0,result['timeline'][-1]['fields']['generation_attempted_calls'])
   missing=next(i for i in items if i['body']=='capture.context_summary'
                and i['attributes']['context_reason']['value']=='coverage_missing')
-  unknown=report.investigate(exported,missing['attributes']['capture_request_id']['value'])
+  unknown=report.investigate(exported,missing['attributes']['moment_id']['value'])
   self.assertEqual('unknown',unknown['publication']['state'])
   self.assertIn('stage_evidence_unavailable',unknown['gaps'])
   with tempfile.TemporaryDirectory() as directory:
@@ -339,7 +339,7 @@ class ContextCoalescingInterpretationTest(unittest.TestCase):
   return report.normalize(items[0])
  def test_observed_wait_is_not_a_preparation_denominator(self):
   waiting=self.waiting()
-  result=report.investigate(export([waiting]),waiting['capture_request_id'])
+  result=report.investigate(export([waiting]),waiting['moment_id'])
   self.assertEqual(1,len(result['timeline']))
   self.assertEqual(0,result['duplicates'])
   self.assertEqual('unknown',result['publication']['state'])
@@ -348,7 +348,7 @@ class ContextCoalescingInterpretationTest(unittest.TestCase):
    self.assertNotIn(key,json.dumps(result))
  def test_same_metrics_new_event_is_preserved_not_consumer_coalesced(self):
   first=self.waiting();second=dict(first,event_id=uid(700))
-  result=report.investigate(export([first,second,first]),first['capture_request_id'])
+  result=report.investigate(export([first,second,first]),first['moment_id'])
   self.assertEqual(2,len(result['timeline']))
   self.assertEqual(1,result['duplicates'])  # known event replay only, not suppressed callbacks
  def test_terminal_journal_evidence_does_not_restore_dropped_stage_details(self):
@@ -357,9 +357,58 @@ class ContextCoalescingInterpretationTest(unittest.TestCase):
        feature='distillation',outcome='completed',sequence=1)
   health=dict(waiting,message='diagnostics.health',event_id=uid(703),budget_policy_version=2,
        critical_limit=160,critical_used=160,critical_dropped=7)
-  result=report.investigate(export([waiting,terminal,health]),waiting['capture_request_id'])
+  result=report.investigate(export([waiting,terminal,health]),waiting['moment_id'])
   self.assertEqual('observed_published',result['publication']['state'])
   self.assertIn('stage_evidence_unavailable',result['gaps'])
   self.assertIn('budget_admission_suppression_observed',result['gaps'])
   self.assertIn('best-effort direct details',result['limits'])
   self.assertNotIn('lost_attempt_count',json.dumps(result))
+
+class EntryReferenceScopeTest(unittest.TestCase):
+ def test_shared_transcript_cannot_seed_unrelated_failed_and_published_captures(self):
+  failed=row(10,stage='generation',stage_outcome='request_failed',transcript_revision_id=uid(50))
+  published=row(11,transcript_revision_id=uid(50),capture_request_id=uid(60),
+      moment_id=uid(61),generation_attempt_id=uid(62),execution_id=uid(63))
+  data=export([failed,published])
+  with self.assertRaisesRegex(ValueError,'capture-scoped'):report.investigate(data,uid(50))
+  self.assertEqual('unknown',report.investigate(data,uid(1))['publication']['state'])
+  self.assertEqual('observed_published',report.investigate(data,uid(60))['publication']['state'])
+ def test_previous_attempt_reference_retains_explicit_ancestry(self):
+  descendant=row(10,previous_attempt_id=uid(70),retry_trigger='explicit_retry')
+  result=report.investigate(export([descendant]),uid(70))
+  self.assertEqual(1,len(result['timeline']))
+  self.assertEqual(uid(3),result['attempts'][0]['generation_attempt_id'])
+ def test_single_transcript_only_reference_is_also_rejected(self):
+  with self.assertRaisesRegex(ValueError,'capture-scoped'):
+   report.investigate(export([row(10,transcript_revision_id=uid(50))]),uid(50))
+
+class CurrentContextTimingTest(unittest.TestCase):
+ def test_real_delayed_context_producer_orders_original_time_through_export(self):
+  items=json.loads((Path(__file__).parent/'fixtures/investigation/context-time-order.json').read_text())
+  self.assertEqual([1234,6000,1000],[i['attributes']['observed_at_ms']['value'] for i in items])
+  respond,_=ProducerExportPipelineTest().provider(items)
+  with patch('export_operations._open_readonly',side_effect=respond):data=ExportTest().collect()
+  result=report.investigate(data,items[0]['attributes']['moment_id']['value'])
+  self.assertEqual([1000,1234,6000],[r['observed_at_ms'] for r in result['timeline']])
+  self.assertEqual(['failed','transcript_required','queued'],[r['fields']['outcome'] for r in result['timeline']])
+  original={i['attributes']['observed_at_ms']['value']:i['attributes']['emitted_at_ms']['value'] for i in items}
+  self.assertGreaterEqual(result['timeline'][0]['emitted_at_ms'],result['timeline'][-1]['emitted_at_ms'])
+  for record in result['timeline']:
+   self.assertEqual(original[record['observed_at_ms']],record['emitted_at_ms'])
+   self.assertEqual(record['emitted_at_ms']-record['observed_at_ms'],record['emission_delay_ms'])
+  self.assertNotIn('original_observation_time_unavailable',result['gaps'])
+  self.assertIn('incomplete_causal_identity',result['gaps'])  # producer had no original capture request
+ def test_historical_missing_time_stays_unavailable(self):
+  items=json.loads((Path(__file__).parent/'fixtures/investigation/legacy-context-missing-time.json').read_text())
+  records=[report.normalize(i) for i in items]
+  self.assertNotIn('observed_at_ms',records[0])
+  result=report.investigate(export(records),records[0]['moment_id'])
+  self.assertIsNone(result['timeline'][0]['observed_at_ms'])
+  self.assertIsNone(result['timeline'][0]['emission_delay_ms'])
+  self.assertIn('original_observation_time_unavailable',result['gaps'])
+ def test_current_context_fixtures_retain_actual_observation_field(self):
+  for name in ('ready','missing','partial','unknown','empty','oversize','source','revision'):
+   items=json.loads((Path(__file__).parent/'fixtures/investigation'/('context-'+name+'.json')).read_text())
+   for item in items:
+    row=report.normalize(item)
+    self.assertEqual(item['attributes']['observed_at_ms']['value'],row['observed_at_ms'])

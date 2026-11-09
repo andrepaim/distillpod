@@ -5,7 +5,7 @@ items** emitted by synthetic JVM producer tests, not hand-authored envelope fiel
 Random IDs, timestamps and model categories here describe fixtures only. No owner's
 activity, device payload, credential, transcript, title, URL, prompt or answer was collected.
 
-Context fixtures were emitted by
+Historical context fixtures were emitted by
 `CaptureContextEvidenceTest` and `ContextPreparationEvidence.fields()` in issue #36,
 source worktree revision `ebb589fbdca4b1dc1fb4c8ca144e457412861712` plus its tested producer
 changes. Cases: ready, missing coverage, partial coverage, unknown duration, empty speech,
@@ -36,3 +36,15 @@ CaptureRepository paused-after-claim/cancel/resume test. A temporary test-only e
 hook was removed after the passing run. This actual stream contains durable capture
 started/completed/saved/link/prepared, distillation execution lifecycle and operation
 summaries. It deliberately contains no capture.accepted (separate input-intent boundary).
+
+Current context-*.json snapshots (including context-time-order.json) are projected
+from green producer fa225edf0180808aa13a377472bb5bf7f0e0a648, with99core+479app, lint and
+app/instrumentation APK checks reported passing by the producer worker. Original
+observed_at_ms is present and distinct from emitted_at_ms. The timing fixture invokes
+the actual serializer with synthetic observations1234,6000,1000 in that emission order;
+no consumer-generated app timestamp or identity is added. Tests preserve genuine missing
+capture_request_id by selecting the real moment_id.
+
+legacy-context-missing-time.json preserves the earlier missing-time snapshot unchanged.
+It must remain unknown rather than be backfilled from emission time. Only producer
+fixture values are refreshed; no unpublished producer code was merged for this refresh.

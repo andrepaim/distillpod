@@ -227,3 +227,29 @@ while detailed stage evidence remains unavailable.
 This consumer clarification does not merge or validate the unpublished producer correction.
 Original observation times absent from historical producer fixtures remain unavailable,
 never reconstructed from emission time.
+
+
+## Capture-scoped entry references and timestamp fixture refresh
+
+The entry reference must identify a capture request, moment, generation attempt or
+execution. A previous_attempt_id may seed its explicitly linked retry descendants when
+the predecessor observation is outside the window. A transcript-only reference is rejected
+and requires a capture-scoped reference, even if only one capture is currently visible.
+Otherwise a shared transcript could incorrectly combine an unrelated failure with another
+capture's publication. Transcript revisions still support explicit dependency expansion
+after the capture-scoped chain is selected; they never seed unrelated capture histories.
+
+Context fixtures are now projected from the green, held producer revision
+`fa225edf0180808aa13a377472bb5bf7f0e0a648` without merging that producer code here.
+The actual producer adds original observed_at_ms separately from emission time and keeps
+timestamps outside wait-coalescing equality. Its delayed-observation test supplies synthetic
+observations 1234, 6000 and 1000 to the real serializer; the last-emitted observation is
+correctly placed first by the consumer. Emission times and monotonic preparation elapsed
+values are retained unchanged. Current fixture provenance supersedes the earlier snapshots
+for those context cases, not the historical validation claims above.
+
+One untouched historical context snapshot remains as legacy-context-missing-time.json.
+It still reports unavailable original time and never derives it from emission time.
+Refreshed fixtures intentionally lack an original capture request in their actual producer
+setup, so tests use the supplied moment identity and retain incomplete_causal_identity.
+No missing identity or timestamp was invented.

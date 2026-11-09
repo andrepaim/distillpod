@@ -4,11 +4,7 @@
     "attributes": {
       "correlation_complete": {
         "type": "boolean",
-        "value": true
-      },
-      "capture_request_id": {
-        "type": "string",
-        "value": "0c28e6dc-ebd1-4d88-a0c8-a782e0e71c54"
+        "value": false
       },
       "context_reason": {
         "type": "string",
@@ -16,7 +12,7 @@
       },
       "emitted_at_ms": {
         "type": "integer",
-        "value": 1794180813675
+        "value": 1794193495851
       },
       "candidate_reused": {
         "type": "boolean",
@@ -24,11 +20,11 @@
       },
       "installation_id": {
         "type": "string",
-        "value": "d501caab-bce7-4a82-9f18-b3982643df4f"
+        "value": "8397779e-d1e1-49d4-a86f-17fff27febb7"
       },
       "preparation_elapsed_ms": {
         "type": "integer",
-        "value": 6
+        "value": 11
       },
       "correlation_version": {
         "type": "integer",
@@ -36,7 +32,7 @@
       },
       "moment_id": {
         "type": "string",
-        "value": "7a4ec937-ae66-46dc-a1eb-115ce1a7c925"
+        "value": "280cb0f0-e71f-46d1-9b02-67fc24c592e9"
       },
       "context_expanded": {
         "type": "boolean",
@@ -52,7 +48,7 @@
       },
       "execution_id": {
         "type": "string",
-        "value": "648f8323-8240-4163-9e1d-5436719761fe"
+        "value": "3c892161-3dcb-4278-8677-2d7e460c6e9d"
       },
       "expanded_context": {
         "type": "boolean",
@@ -76,11 +72,11 @@
       },
       "generation_attempt_id": {
         "type": "string",
-        "value": "c93090fb-d4f9-4d49-b360-0292f6aa4c20"
+        "value": "81eaa763-b3e9-42f6-b031-633eb5af8a88"
       },
       "operation_id": {
         "type": "string",
-        "value": "7a4ec937-ae66-46dc-a1eb-115ce1a7c925"
+        "value": "280cb0f0-e71f-46d1-9b02-67fc24c592e9"
       },
       "outcome": {
         "type": "string",
@@ -88,7 +84,7 @@
       },
       "retry_trigger": {
         "type": "string",
-        "value": "initial"
+        "value": "unknown"
       },
       "excluded_right_count": {
         "type": "integer",
@@ -104,7 +100,7 @@
       },
       "transcript_revision_id": {
         "type": "string",
-        "value": "be152dd8-fc66-48ca-a94e-c673ce0f6d4c"
+        "value": "58f5b693-aa5f-4c66-b1e0-ca3b5f9d19f7"
       },
       "context_schema_version": {
         "type": "integer",
@@ -114,13 +110,17 @@
         "type": "integer",
         "value": 120000
       },
+      "observed_at_ms": {
+        "type": "integer",
+        "value": 1794193495840
+      },
       "frozen_context": {
         "type": "boolean",
         "value": true
       },
       "event_id": {
         "type": "string",
-        "value": "4e0ec161-34b0-4e78-aad5-c151eed11fbe"
+        "value": "077f4090-237d-44dc-ac22-368c5d35571c"
       },
       "usable_segment_count": {
         "type": "integer",
