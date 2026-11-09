@@ -17,6 +17,15 @@ class DeviceResultTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             verify_result('OK (7 tests)\nFAILURES!!!\n')
 
+    def test_progress_is_not_a_test_result_and_cannot_mask_failure(self):
+        progress = ("INSTRUMENTATION_STATUS: stream=phase=runtimeGrant step=dialog-ready\n"
+                    "INSTRUMENTATION_STATUS_CODE: 2\n") * 4
+        with self.assertRaises(ValueError):
+            verify_result(progress)
+        with self.assertRaises(ValueError):
+            verify_result(progress + "INSTRUMENTATION_STATUS_CODE: -2\nOK (1 test)\n")
+        self.assertEqual(1, verify_result(progress + "OK (1 test)\nINSTRUMENTATION_CODE: -1\n"))
+
 
 if __name__ == '__main__':
     unittest.main()
