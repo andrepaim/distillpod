@@ -147,8 +147,9 @@ class MediaRepository(context: Context, private val db: AppDatabase, private val
                     requireRemovable(ep, partial)
                     val file = ep.localFile?.let(::File)
                     require(file == null || file.canonicalFile.parentFile == directory.canonicalFile) { "Invalid audio path" }
-                    if (file != null) check(!file.exists() || file.delete()) { "Could not delete the audio file" }
+                    // A failed partial cleanup must not remove the completed audio first.
                     check(!partial.exists() || partial.delete()) { "Could not delete the partial download" }
+                    if (file != null) check(!file.exists() || file.delete()) { "Could not delete the audio file" }
                     dao.removeDownload(id)
                     dao.downloadProgress(id, "none", 0, 0, null, null, null)
                 }

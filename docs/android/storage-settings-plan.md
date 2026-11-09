@@ -60,3 +60,11 @@ charging control in transcription, refresh controls in library, and #24's
 extracted StorageSettings panel. #23 changes backup/sync callbacks elsewhere
 in ProductApp, with no semantic storage dependency. Re-run combined navigation,
 storage, notification and transcription checks plus exact-head CI after stacking.
+
+### Failure-order regression found during integration review
+A new synthetic regression demonstrated that completed audio could be deleted
+before a failing partial cleanup rolled back database changes. The test failed
+for the expected missing-audio assertion. Cleanup now removes the partial first,
+so that failure leaves completed audio and its metadata intact. This reduces
+the deterministic multi-file failure risk; it does not make filesystem deletion
+and database commit atomic across process death.

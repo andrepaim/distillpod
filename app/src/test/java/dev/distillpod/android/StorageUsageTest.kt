@@ -156,6 +156,19 @@ class StorageUsageTest {
             } finally { outside.delete() }
         }
     }
+    @Test fun failedPartialCleanupDoesNotDeleteCompletedAudio() = runBlocking {
+        fixture { db, media, _ ->
+            val audio = File(media.directory, "e.audio").apply { writeText("completed audio") }
+            val partial = File(media.directory, "e.partial").apply { mkdirs() }
+            val child = File(partial, "fixture").apply { writeText("keep") }
+            db.library().putEpisode(episode().copy(localFile = audio.absolutePath, downloadState = "downloaded"))
+            try {
+                assertTrue(runCatching { media.deleteDownload("e") }.isFailure)
+                assertTrue("Completed audio must survive a failed partial cleanup", audio.exists())
+                assertEquals(audio.absolutePath, db.library().episode("e")!!.localFile)
+            } finally { child.delete(); partial.delete() }
+        }
+    }
     private fun episode() = EpisodeEntity("e", "p", "g", "Episode", "https://example.test/audio",
         downloadState = "paused", downloadedBytes = 3, etag = "old")
     private suspend fun fixture(block: suspend (AppDatabase, MediaRepository, AppSettings) -> Unit) {
