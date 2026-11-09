@@ -56,11 +56,19 @@ class SubscriptionSyncUiDeviceTest {
         withContext(Dispatchers.Main) {
             ViewModelProvider(compose.activity,AppViewModel.factory(graph))[AppViewModel::class.java].root("settings")
         }
-        compose.onNodeWithText("Library sync").assertIsDisplayed().performClick()
-        compose.onNodeWithText("Connect Google to sync public podcast subscriptions, listening progress, completion and saved moments between your phones. Transcripts and other library data still use Backup & Restore.").assertIsDisplayed()
-        if(graph.syncAccount.state.value.configured) {
-            compose.onNodeWithText("Connect Google & sync library").assertIsDisplayed()
-        } else compose.onNodeWithText("Cloud sync is unavailable in this build.").assertIsDisplayed()
+        compose.onNodeWithText("Library sync").performScrollTo().assertIsDisplayed().performClick()
+        // The isolated runner disables cloud sync, so assert the unavailable-build
+        // explanation instead of advertising functionality this build cannot use.
+        compose.onNodeWithText("Library sync is unavailable in this build. Use a backup file to transfer your library.")
+            .performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("local transcription model selection, transcript language and AI model selection", substring = true)
+            .performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Neither transfers audio downloads, model binaries or account secrets.", substring = true)
+            .performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Connecting binds this library to its original Google account.", substring = true)
+            .performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Cloud sync is unavailable in this build.").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Connect Google & sync library").assertDoesNotExist()
         compose.onNodeWithContentDescription("Back").performClick()
         compose.onNodeWithText("ChatGPT").performScrollTo().assertIsDisplayed()
     }

@@ -148,7 +148,7 @@ private fun date(ms: Long) = if (ms <= 0) "" else DateTimeFormatter.ofPattern("d
                     route == "saved" -> SavedPage(vm, captures, episodes, podcasts)
                     route == "shows" -> ShowsPage(vm, podcasts)
                     route == "settings" || route.startsWith("settings:") -> SettingsPage(vm, preferences, account, models, episodes, route.substringAfter(':', "overview"))
-                    route == "backup" -> BackupPage(vm)
+                    route == "backup" -> BackupPage(vm) { vm.open("settings:sync") }
                     route == "player" -> PlayerPage(vm, episodes.firstOrNull { it.id == player.episodeId }, podcasts, player, fullscreenExitRequest) { videoFullscreen = it }
                     route.startsWith("episode:") -> EpisodePage(vm, episodes.firstOrNull { it.id == route.substringAfter(':') }, podcasts, player)
                     route.startsWith("capture:") -> CapturePage(vm, captures.firstOrNull { it.id == route.substringAfter(':') }, episodes)
@@ -559,7 +559,7 @@ private fun captureState(state: String) = when (state) { "waiting_transcript" ->
     if(section=="diagnostics") {DiagnosticsSettings(vm);return}
     LaunchedEffect(account.connected,section) { if (account.connected && section=="ai") vm.graph.account.refreshModels() }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        if(section=="sync") SubscriptionSyncSettings(vm)
+        if(section=="sync") SubscriptionSyncSettings(vm) { vm.open("backup") }
         if(section=="voice") VoiceSettings(vm)
         if(section=="playback") {
             PlaybackHeadphoneSettings(vm, prefs)
