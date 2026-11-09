@@ -29,14 +29,15 @@ done
 main_installed=false
 test_installed=false
 cleanup() {
-    local status=$?
+    local status=$? cleanup_status=0
     if (( status != 0 )) && $main_installed; then
         # Only this synthetic app's content-free foreground-start warning and stack.
         device logcat -d -t 200 -s TranscriptionService:W '*:S' || true
     fi
-    if $test_installed; then device uninstall "$test_app" || true; fi
-    if $main_installed; then device uninstall "$app" || true; fi
-    return "$status"
+    if $test_installed; then device uninstall "$test_app" || cleanup_status=$?; fi
+    if $main_installed; then device uninstall "$app" || cleanup_status=$?; fi
+    if (( status != 0 )); then return "$status"; fi
+    return "$cleanup_status"
 }
 trap cleanup EXIT
 install_apk() {

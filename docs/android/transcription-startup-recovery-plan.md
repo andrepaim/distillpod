@@ -69,3 +69,24 @@ unwanted second pause. Cleanup now consults the captured original execution Job
 inside the same control lock as the persistence decision. It never consults the
 NonCancellable cleanup Job for this decision, and cancellation propagates after
 cleanup. This covers both sides of the classification-to-mutation boundary.
+
+## Resume lifecycle regression found during hosted acceptance
+
+At f552525 the first three startup device cases passed; the real-activity case
+remained queued with the same revision, no network requirement or power/network
+wait, and no running service. Its original 15-second bound and assertions remain.
+
+The one-shot onResume guard could run before the RESUMED lifecycle event when
+graph initialization had already completed. Extracting that exact guard reproduced
+two deterministic failures: an already-ready graph did not recover after resume,
+and initialization completed in the background did not recover on the next resume.
+Register one lifecycle observer during activity creation and use repeatOnLifecycle
+at RESUMED to await readiness and recover once per active interval. Leaving that
+state cancels pending initialization/recovery; destruction cannot start it later.
+All three lifecycle tests passed after the change. Existing bounded retry and
+cancellation/replacement race behavior is unchanged.
+
+Rerun full default/voice gates and all hosted acceptance on the final commit,
+including the real-activity case. Rebuild/verify the offline startup APK pair and
+run the isolated S22 protocol when transport is available. The lifecycle tests do
+not establish historical OEM denial conditions or long-duration scheduling.
