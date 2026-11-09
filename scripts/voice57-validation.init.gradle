@@ -6,7 +6,6 @@ allprojects {
             if (project.hasProperty('distillpodFirebaseConfig')) throw new GradleException('Validation forbids Firebase configuration')
             android.defaultConfig.applicationId = 'dev.distillpod.android.validation.voice57'
             android.defaultConfig.testApplicationId = 'dev.distillpod.android.validation.voice57.test'
-            android.sourceSets.androidTest.java.srcDir('src/validationVoice57/java')
             android.sourceSets.debug.manifest.srcFile('src/validationVoice57/AndroidManifest.xml')
         }
     }

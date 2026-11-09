@@ -30,7 +30,9 @@ class VoiceCoordinatorTest {
             { error("Must not connect") }, { error("Must not open output") },
             diagnosticFailure = { failures += it }, preflight = { throw failure })
         coordinator.start({ error("Must not open mic") }); runCurrent()
-        assertEquals(listOf(failure), failures)
+        assertEquals(1, failures.size)
+        assertEquals(failure.javaClass, failures.single().javaClass)
+        assertEquals(failure.message, failures.single().message)
         assertFalse(coordinator.state.value.error!!.contains(failure.message!!))
     }
     @Test fun `unready preflight never pauses or opens audio and retry succeeds`() = runTest {

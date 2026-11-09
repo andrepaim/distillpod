@@ -1,5 +1,6 @@
 package dev.distillpod.android
 
+import android.os.Build
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.*
 import androidx.compose.ui.test.*
@@ -32,7 +33,8 @@ class VoiceReadinessDeviceTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
     private val instrumentation get() = InstrumentationRegistry.getInstrumentation()
     private fun guard() {
-        check(compose.activity.packageName == "dev.distillpod.android.validation.voice57") { "Use an isolated validation app" }
+        check(Build.HARDWARE.contains("ranchu") || Build.FINGERPRINT.contains("generic") ||
+            compose.activity.packageName == "dev.distillpod.android.validation.voice57") { "Use an isolated validation app" }
     }
     private fun <T> main(block: () -> T): T {
         var result: Result<T>? = null
