@@ -2,7 +2,7 @@
 
 The feedback is two real felt-tip pen strokes on paper, combined into 550 ms. It plays after a new saved-moment transaction commits, independently of transcript preparation and AI generation. App, lock-screen and Android Auto capture paths share that repository hook. Duplicate taps that reuse the recent moment, recovery, import and failed saves do not trigger it.
 
-The default-on setting is **Settings → Import & notifications → Distill confirmation sound**. It is device-local. Playback uses media volume and the current media output, with no audio-focus request or change to podcast playback. A sample that loads too late is skipped.
+The default-on setting is **Settings → Playback & headphones → Moment saved sound**. It is device-local. Playback uses media volume and the current media output, with no audio-focus request or change to podcast playback. A sample that loads too late is skipped.
 
 The owner approved the typewriter preview's level and duration but requested a pen scribble instead. This asset retains exactly 550 ms and matches that preview's whole-clip RMS (−20.54 dBFS). Its peak is −8.44 dBFS, giving more sustained writing texture instead of isolated mechanical spikes. Matching RMS is an objective signal-level check; listening on the S22 remains necessary to judge perceived loudness and character. Device media volume is never changed.
 

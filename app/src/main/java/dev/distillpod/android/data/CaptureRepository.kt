@@ -11,6 +11,7 @@ import org.json.JSONObject
 import java.util.UUID
 import dev.distillpod.core.*
 import dev.distillpod.android.diagnostics.DiagnosticCorrelation
+import dev.distillpod.android.diagnostics.DistillationOutcome
 
 fun jsonObjectAnswer(text: String): JSONObject {
     val stripped = text.trim().removePrefix("```json").removePrefix("```").removeSuffix("```").trim()
@@ -252,12 +253,14 @@ class CaptureRepository(private val db: AppDatabase, private val ai: AiGateway, 
         if(!saved.insight.isNullOrBlank())dao.putMomentVersion(MomentVersionEntity(UUID.randomUUID().toString(),saved.id,momentSnapshot(saved)))
     }
 
+    private class ObsoleteMomentSource:IllegalStateException("The transcript or audio changed. Prepare the source again.")
+
     private suspend fun valid(id: String, attempt: MomentAttemptEntity): DistillationEntity? {
         val current=dao.distillation(id) ?: return null
         if(current.attempt!=attempt.id || current.state !in setOf("running","reviewing") || dao.momentAttempt(attempt.id)?.run!=attempt.run)return null
         val ctx=JSONObject(attempt.contextJson)
-        check(dao.episode(current.episodeId)?.mediaFingerprint==ctx.getString("fingerprint") &&
-            dao.transcript(current.episodeId)?.revision==ctx.getString("revision")) { "The transcript or audio changed. Prepare the source again." }
+        if(dao.episode(current.episodeId)?.mediaFingerprint!=ctx.getString("fingerprint") ||
+            dao.transcript(current.episodeId)?.revision!=ctx.getString("revision"))throw ObsoleteMomentSource()
         return current
     }
 
@@ -276,9 +279,15 @@ class CaptureRepository(private val db: AppDatabase, private val ai: AiGateway, 
         } ?: return
         var execution: String? = null
         val evidence:DiagnosticCorrelation?=claimedEvidence
+        val summary=DistillationOutcome()
+        var parsingResponse=false
+        var awaitingResponse=false
+        var terminalRecorded=false
         try {
             var attempt=acquiredAttempt ?: error("Prepare the source again before generating")
             execution=attempt.run
+            if(attempt.candidateJson.isNotBlank())summary.cached("generation",attempt.model)
+            if(attempt.reviewJson.isNotBlank())summary.cached("review",attempt.reviewModel)
             val context=MomentGeneration.context(attempt.contextJson)
             check(context.spans.isNotEmpty()) { "No usable source context" }
             if(valid(id,attempt)==null)return
@@ -287,8 +296,16 @@ class CaptureRepository(private val db: AppDatabase, private val ai: AiGateway, 
                 if(!db.withTransaction {if(valid(id,attempt)==null)false else {dao.putMomentAttempt(counted);true}})return
                 attempt=counted
                 val started=System.nanoTime()
-                val answer=ai.complete(MomentGeneration.generatePrompt,MomentGeneration.input(attempt.contextJson))
+                val input=MomentGeneration.input(attempt.contextJson)
+                summary.begin("generation")
+                awaitingResponse=true
+                val answer=ai.complete(MomentGeneration.generatePrompt,input)
+                awaitingResponse=false
+                summary.response(answer.model)
+                parsingResponse=true
                 val candidate=MomentGeneration.candidate(answer.text,context)
+                parsingResponse=false
+                summary.generated(candidate.outcome)
                 val next=attempt.copy(candidateJson=answer.text,model=answer.model,generationMs=(System.nanoTime()-started)/1_000_000,
                     state=if(candidate.outcome=="ready")"reviewing" else candidate.outcome)
                 val accepted=db.withTransaction {
@@ -300,10 +317,13 @@ class CaptureRepository(private val db: AppDatabase, private val ai: AiGateway, 
                     true
                 }
                 if(!accepted) {diagnostics?.event("distillation.discarded",saved.id,reason="superseded",correlation=evidence);return}
-                if(candidate.outcome!="ready") { diagnostics?.event("distillation.finished",saved.id,reason=candidate.outcome,correlation=evidence?.copy(modelChanged=correlation(next).modelChanged));return }
+                if(candidate.outcome!="ready") { terminalRecorded=true;diagnostics?.event("distillation.finished",saved.id,reason=candidate.outcome,correlation=evidence?.copy(modelChanged=correlation(next).modelChanged));return }
                 attempt=next
             }
+            parsingResponse=true
             val candidate=MomentGeneration.candidate(attempt.candidateJson,context)
+            parsingResponse=false
+            summary.examining("review")
             if(valid(id,attempt)==null)return
             if(attempt.reviewJson.isBlank()) {
                 val changed=db.withTransaction { val current=valid(id,attempt) ?: return@withTransaction false
@@ -315,13 +335,24 @@ class CaptureRepository(private val db: AppDatabase, private val ai: AiGateway, 
                 val started=System.nanoTime()
                 val input=JSONObject().put("source",JSONObject(MomentGeneration.input(attempt.contextJson))).put("candidate",JSONObject(attempt.candidateJson))
                     .put("selectedPassage",candidate.passage!!.text).put("takeaway",candidate.takeaway).put("quote",candidate.quote ?: JSONObject.NULL)
-                val answer=ai.complete(MomentGeneration.reviewPrompt,input.toString())
-                MomentGeneration.review(answer.text,context)
+                val reviewInput=input.toString()
+                summary.begin("review")
+                awaitingResponse=true
+                val answer=ai.complete(MomentGeneration.reviewPrompt,reviewInput)
+                awaitingResponse=false
+                summary.response(answer.model)
+                parsingResponse=true
+                summary.reviewed(MomentGeneration.review(answer.text,context))
+                parsingResponse=false
                 val next=attempt.copy(reviewJson=answer.text,reviewModel=answer.model,reviewMs=(System.nanoTime()-started)/1_000_000)
                 if(!db.withTransaction { if(valid(id,attempt)==null)false else {dao.putMomentAttempt(next);true} })return
                 attempt=next
             }
+            parsingResponse=true
             val review=MomentGeneration.review(attempt.reviewJson,context)
+            parsingResponse=false
+            summary.reviewed(review)
+            if(review.accepted)summary.publishing()
             val outcome=db.withTransaction {
                 val current=valid(id,attempt) ?: return@withTransaction null
                 if(!review.accepted) {
@@ -340,9 +371,24 @@ class CaptureRepository(private val db: AppDatabase, private val ai: AiGateway, 
                 if(review.accepted)"succeeded" else if(review.needsContext)"needs_context" else "unclear_source"
             }
             if(outcome==null) {diagnostics?.event("distillation.discarded",saved.id,reason="superseded",correlation=evidence);return}
+            terminalRecorded=true
+            if(review.accepted)summary.published(candidate.quote==null || !review.quoteFaithful)
             diagnostics?.event("distillation.finished",saved.id,reason=outcome,correlation=evidence?.copy(modelChanged=correlation(attempt).modelChanged))
             onPortableChanged()
         } catch(error: Exception) {
+            val alreadyTerminal=terminalRecorded
+            // Preserve observed failure even if the ownership-storage check itself fails.
+            if(!terminalRecorded) {
+                if(error is ObsoleteMomentSource)summary.discarded() else summary.fail(when {
+                    error is CancellationException -> "interrupted"
+                    error is QuotaExceeded -> "quota"
+                    error is ReauthorizationRequired -> "auth_failure"
+                    parsingResponse -> "invalid_response"
+                    awaitingResponse -> "request_failed"
+                    else -> "internal_failure"
+                })
+                terminalRecorded=true
+            }
             val owned=withContext(NonCancellable) { db.withTransaction {
                 val current=dao.distillation(id)
                 if(current==null || current.attempt!=saved.attempt || current.state !in setOf("running","reviewing") || dao.momentAttempt(saved.attempt)?.run!=execution)return@withTransaction false
@@ -351,12 +397,20 @@ class CaptureRepository(private val db: AppDatabase, private val ai: AiGateway, 
                     error=if(error is CancellationException)"Generation was interrupted. Your source and any completed candidate are saved." else safeFailure(error)))
                 true
             } }
+            if(!owned && !alreadyTerminal)summary.discarded()
             if(owned) {
                 diagnostics?.failure("distillation",error,saved.id,correlation=evidence)
                 if(error is QuotaExceeded || error is ReauthorizationRequired)diagnostics?.event("distillation.queued",saved.id,
                     reason=if(error is QuotaExceeded)"waiting_quota" else "waiting_auth",correlation=evidence)
             }
             if(error is CancellationException)throw error
+        } finally {
+            // A late result must never masquerade as a published result or a generator abstention.
+            // Diagnostics are best effort and cannot replace the application's return/exception.
+            runCatching {
+                if(!terminalRecorded)summary.discarded()
+                if(summary.finish())diagnostics?.attemptSummary(summary,evidence)
+            }
         }
     }
 }

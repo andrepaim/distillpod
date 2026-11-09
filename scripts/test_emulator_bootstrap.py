@@ -17,7 +17,7 @@ class EmulatorBootstrapTests(unittest.TestCase):
         for name in ["scripts", "bin", "fixtures", "third_party/whisper.cpp/samples"]:
             (self.root / name).mkdir(parents=True, exist_ok=True)
         source = Path(__file__).resolve().parent
-        for name in ["emulator-tests.sh", "android-auto-tests.sh", "voice-device-tests.sh", "device_result.py"]:
+        for name in ["emulator-tests.sh", "android-auto-tests.sh", "voice-device-tests.sh", "notification-device-tests.sh", "device_result.py"]:
             shutil.copy2(source / name, self.root / "scripts" / name)
         for name in ["ggml-tiny.en.bin", "ggml-tiny.bin", "jfk.wav"]:
             (self.root / "fixtures" / name).touch()
@@ -71,7 +71,7 @@ elif cmd[:3]==['shell','am','instrument']:print('INSTRUMENTATION_STATUS_CODE: 0\
         self.assertIn("dev.distillpod.android.YouTubeAcceptanceDeviceTest", excluded)
         self.assertIn("dev.distillpod.android.OwnerVideocastDeviceTest", excluded)
         phases=[call for call in calls if call[:3]==["shell","am","instrument"]]
-        self.assertEqual(4,len(phases))
+        self.assertEqual(7,len(phases))
         self.assertIn("AutoBrowserDeviceTest"," ".join(phases[1]))
         self.assertIn("prepareCheckpoint"," ".join(phases[2]))
         self.assertIn("verifyCheckpoint"," ".join(phases[3]))
@@ -127,3 +127,38 @@ elif cmd[:3]==['shell','am','instrument']:print('INSTRUMENTATION_STATUS_CODE: 0\
         self.assertNotEqual(0, result.returncode)
         self.assertEqual([["shell", "getprop", "ro.kernel.qemu"]], calls)
         self.assertFalse((self.root / "gradle-args").exists())
+
+    def notification_fixture(self, serial="emulator-5554", qemu="1"):
+        env = os.environ.copy()
+        env.update(DISTILLPOD_ADB=str(self.root / "bin/fake-adb"), DISTILLPOD_SERIAL=serial,
+                   DISTILLPOD_NOTIFICATION_LOG=str(self.root / "notification"), PROOF_ROOT=str(self.root),
+                   PROOF_CASE="notification", PROOF_QEMU=qemu)
+        result = subprocess.run(["bash", str(self.root / "scripts/notification-device-tests.sh")],
+                                cwd=self.root, env=env, capture_output=True, text=True, timeout=15)
+        file = self.root / "calls"
+        calls = [json.loads(line) for line in file.read_text().splitlines()] if file.exists() else []
+        return result, calls
+
+    def test_notification_runner_runs_three_phases_with_revocation_between_processes(self):
+        result, calls = self.notification_fixture()
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+        phases = [call for call in calls if call[:3] == ["shell", "am", "instrument"]]
+        self.assertEqual(3, len(phases))
+        for command, phase in zip(phases, ["recovery", "verifyRevoked", "runtimeGrant"]):
+            self.assertEqual("dev.distillpod.android.NotificationAccessDeviceTest", command[command.index("class") + 1])
+            self.assertEqual(phase, command[command.index("notificationPhase") + 1])
+        revokes = [i for i, call in enumerate(calls) if call[:3] == ["shell", "pm", "revoke"]]
+        self.assertEqual(2, len(revokes))
+        self.assertLess(revokes[0], calls.index(phases[0]))
+        self.assertLess(calls.index(phases[0]), revokes[1])
+        self.assertLess(revokes[1], calls.index(phases[1]))
+
+    def test_notification_runner_refuses_phone_before_any_adb_action(self):
+        result, calls = self.notification_fixture(serial="OWNER_PHONE")
+        self.assertNotEqual(0, result.returncode)
+        self.assertEqual([], calls)
+
+    def test_notification_runner_refuses_spoofed_emulator_before_permission_changes(self):
+        result, calls = self.notification_fixture(qemu="0")
+        self.assertNotEqual(0, result.returncode)
+        self.assertEqual([["shell", "getprop", "ro.kernel.qemu"]], calls)
