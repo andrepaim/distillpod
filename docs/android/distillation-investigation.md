@@ -1,5 +1,28 @@
 # Private cloud-only distillation investigation
 
+## Final actual-main integration
+
+Producer #36 is now merged in actual main
+`8a075ed47eaf24530e83ad334bfc90ee42848c13`, whose whole tree is
+`8cea5ddb300e8b2d1c8518a9226b567fbf524ea5`. Integrating that actual main produced
+consumer commit `9aeabf84fd53f1e5d11993f5cebf8c06393bff81`, with whole tree
+`c92adf1cf238062cd58da1f0d9b4f874681b4d66`: exactly the previously validated local
+combined tree, not merely matching selected files. The earlier hold/checkpoint sections
+below describe historical stages and are superseded by this actual-main verification.
+
+All four producer prerequisites are present in this combined code. The current consumer
+delta remains Python scripts, synthetic fixtures and documentation only. Its per-change
+risk assessment is unchanged: no app runtime, background work, permissions, hardware,
+upgrade or app-data changes; no physical-device/local Android emulator checks apply to
+this consumer. Producer-specific validation remains separately recorded by those changes.
+
+The final combined consumer reruns the full Python suite, data/secret guards, compilation,
+documentation links and diff checks. Required automatic CI/security must pass on the exact
+published head; coordinator integration and successful merged-main CI are still necessary
+before closing #38. No live Sentry export, production credential/account availability,
+cloud-field ingestion or real incident explanation is claimed. Historical absent original
+times remain unavailable, and transcript-only entry references remain rejected.
+
 Issue #38 extends the existing Explore exporter. It does not change Sentry configuration,
 deploy a backend, contact a provider, regenerate AI output, inspect a phone, or notify anyone.
 
