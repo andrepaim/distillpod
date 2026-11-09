@@ -72,3 +72,25 @@ physical evidence for permission recovery, OEM behavior, backups/restores or
 other platform mechanisms if a later change affects them. Reassess integration
 with settings organization (#22), preserving its canonical notification route
 and this change's exact sync/backup guidance.
+
+
+## Integration review with main b9d4d16
+
+Settings organization (#22) is now integrated. Its canonical
+`settings:notifications -> NotificationControls -> NotificationAccess` path is
+preserved; the only ProductApp differences from main are the reciprocal
+`backup` and `settings:sync` callbacks. Library import/export does not regain
+notification controls.
+
+Correlation work (#37) removes installation-local `_diagnostics` provenance
+from moment-attempt context on backup export and import, including older backup
+inputs. This does not remove the library text, progress, queue or three
+preferences described in the guidance; the copy does not promise diagnostic
+lineage transfer. The existing LibraryBackupTest regression verifies both
+directions. No change to that stripping or to sync/account behavior is needed.
+
+The change-specific low-platform-risk assessment remains unchanged after
+integrating the already-merged permission, network, diagnostics and pause work.
+Their mechanisms are preserved; this PR adds only guidance/navigation/display
+behavior. Full combined JVM/guard checks and exact-head isolated CI acceptance
+must pass. No physical or live-account evidence is claimed.
