@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.*
-import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.unit.dp
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.room.Room
@@ -27,7 +26,7 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class ManagedBackupsDeviceTest {
-    @get:Rule(order = 0) val compose = createAndroidComposeRule<MainActivity>()
+    @get:Rule(order = 0) val compose = createQueuedAndroidComposeRule<MainActivity>()
     private var diagnostics: BackupCrashDiagnostics? = null
     @get:Rule(order = 1) val crashDiagnostics = object : ExternalResource() {
         override fun before() { diagnostics = BackupCrashDiagnostics() }

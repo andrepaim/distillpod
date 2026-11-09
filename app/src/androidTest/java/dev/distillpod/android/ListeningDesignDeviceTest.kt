@@ -6,7 +6,6 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.test.*
-import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.lifecycle.ViewModelProvider
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
@@ -35,7 +34,7 @@ import java.util.concurrent.TimeUnit
 /** Exercises real UI actions with local fixtures; no account/provider requests. */
 @RunWith(AndroidJUnit4::class)
 class ListeningDesignDeviceTest {
-    @get:Rule val compose = createAndroidComposeRule<MainActivity>()
+    @get:Rule val compose = createQueuedAndroidComposeRule<MainActivity>()
 
     @Test fun listeningNavigationQueueAndLargeTextPreservePlaybackAndOwnerLibrary() = runBlocking<Unit> {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
