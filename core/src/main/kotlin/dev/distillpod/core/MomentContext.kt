@@ -31,7 +31,8 @@ object MomentContexts {
         val end = if (duration > 0) minOf(captureEnd + 15_000, duration) else captureEnd + 15_000
         return TimeRange((captureEnd - if (expanded) 180_000 else 120_000).coerceAtLeast(0).coerceAtMost(end), end)
     }
-    fun build(capture: TimeRange, range: TimeRange, segments: List<SubtitleSegment>): MomentContext {
+    fun build(capture: TimeRange, range: TimeRange, segments: List<SubtitleSegment>,
+        measured: ((TimeRange, List<SubtitleSegment>, List<MomentSpan>) -> Unit)? = null): MomentContext {
         val spans = mutableListOf<MomentSpan>()
         segments.sortedBy { it.range.startMs }.forEachIndexed { index, segment ->
             // Never silently send speech outside the bounded context. Boundary fragments are
@@ -46,6 +47,7 @@ object MomentContexts {
                 start = end; end = iterator.next()
             }
         }
+        measured?.invoke(range, segments, spans)
         require(spans.sumOf { it.text.length + 1 } <= MAX_TEXT) { "This context is too large to distill safely" }
         return MomentContext(capture, range, spans)
     }

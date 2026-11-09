@@ -1,0 +1,151 @@
+[
+  {
+    "body": "capture.context_summary",
+    "attributes": {
+      "correlation_complete": {
+        "type": "boolean",
+        "value": false
+      },
+      "context_reason": {
+        "type": "string",
+        "value": "coverage_missing"
+      },
+      "emitted_at_ms": {
+        "type": "integer",
+        "value": 1794193496525
+      },
+      "candidate_reused": {
+        "type": "boolean",
+        "value": false
+      },
+      "installation_id": {
+        "type": "string",
+        "value": "d4d453c8-7e9a-4e17-a657-380760186507"
+      },
+      "preparation_elapsed_ms": {
+        "type": "integer",
+        "value": 7
+      },
+      "correlation_version": {
+        "type": "integer",
+        "value": 1
+      },
+      "moment_id": {
+        "type": "string",
+        "value": "f78b1c71-88cb-4b77-ab4f-d38ac81481b8"
+      },
+      "context_expanded": {
+        "type": "boolean",
+        "value": false
+      },
+      "schema_version": {
+        "type": "integer",
+        "value": 1
+      },
+      "excluded_left_count": {
+        "type": "integer",
+        "value": 0
+      },
+      "execution_id": {
+        "type": "string",
+        "value": "f78f26ce-32f3-4d21-aaa7-c2cf0fac81e9"
+      },
+      "expanded_context": {
+        "type": "boolean",
+        "value": false
+      },
+      "coverage_complete": {
+        "type": "boolean",
+        "value": false
+      },
+      "input_segment_count": {
+        "type": "integer",
+        "value": 0
+      },
+      "transcript_source": {
+        "type": "string",
+        "value": "whisper"
+      },
+      "coverage_measured": {
+        "type": "boolean",
+        "value": true
+      },
+      "generation_attempt_id": {
+        "type": "string",
+        "value": "d49b1507-aa3d-465d-b7f8-92312addc099"
+      },
+      "operation_id": {
+        "type": "string",
+        "value": "f78b1c71-88cb-4b77-ab4f-d38ac81481b8"
+      },
+      "outcome": {
+        "type": "string",
+        "value": "transcript_required"
+      },
+      "retry_trigger": {
+        "type": "string",
+        "value": "unknown"
+      },
+      "excluded_right_count": {
+        "type": "integer",
+        "value": 0
+      },
+      "usable_span_count": {
+        "type": "integer",
+        "value": 0
+      },
+      "segments_measured": {
+        "type": "boolean",
+        "value": false
+      },
+      "transcript_revision_id": {
+        "type": "string",
+        "value": "8e83b153-d7e9-4439-888c-e978b5bbb068"
+      },
+      "context_schema_version": {
+        "type": "integer",
+        "value": 1
+      },
+      "backward_window_ms": {
+        "type": "integer",
+        "value": 120000
+      },
+      "observed_at_ms": {
+        "type": "integer",
+        "value": 1794193496519
+      },
+      "frozen_context": {
+        "type": "boolean",
+        "value": false
+      },
+      "event_id": {
+        "type": "string",
+        "value": "1fd2a60d-f1b1-49f6-bcfd-79443c183da2"
+      },
+      "usable_segment_count": {
+        "type": "integer",
+        "value": 0
+      },
+      "context_text_units": {
+        "type": "integer",
+        "value": 0
+      },
+      "test_traffic": {
+        "type": "boolean",
+        "value": false
+      },
+      "duration_known": {
+        "type": "boolean",
+        "value": true
+      },
+      "forward_window_ms": {
+        "type": "integer",
+        "value": 15000
+      },
+      "missing_duration_ms": {
+        "type": "integer",
+        "value": 135000
+      }
+    }
+  }
+]

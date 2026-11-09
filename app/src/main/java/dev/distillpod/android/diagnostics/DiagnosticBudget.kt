@@ -66,7 +66,7 @@ internal class DiagnosticBudget(private val prefs: SharedPreferences, private va
         fun lane(name: String, outcome: String? = null): Lane = when {
             name=="diagnostics.health" -> Lane.HEALTH
             name=="operation.summary" && outcome in OperationJournal.TERMINAL+setOf("paused") -> Lane.CRITICAL
-            name in setOf("capture.completed","capture.failed","transcription.completed","transcription.failed",
+            name in setOf("capture.context_summary","capture.completed","capture.failed","transcription.completed","transcription.failed",
                 "transcription.partial","transcription.paused","transcription.cancelled","distillation.finished",
                 "distillation.failed","distillation.cancelled","distillation.attempt_summary") -> Lane.CRITICAL
             else -> Lane.ROUTINE
