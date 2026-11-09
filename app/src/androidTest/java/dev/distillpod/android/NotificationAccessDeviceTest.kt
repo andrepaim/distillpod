@@ -38,7 +38,8 @@ class NotificationAccessDeviceTest {
         context, Manifest.permission.POST_NOTIFICATIONS
     ) == android.content.pm.PackageManager.PERMISSION_GRANTED
     private fun status(step: String, result: String) {
-        instrumentation.sendStatus(0, android.os.Bundle().apply {
+        // Android instrumentation status 2 is in-progress, never a test PASS.
+        instrumentation.sendStatus(2, android.os.Bundle().apply {
             putString("stream", "Notification acceptance: phase=$phase step=$step result=$result runtimeGranted=${granted()} notificationsEnabled=${enabled()}\n")
         })
     }
