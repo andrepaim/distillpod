@@ -68,7 +68,8 @@ class AppGraph(val context: Context) {
                 source=reason.takeIf {it in setOf("phone","car","headphones")} ?: voice.state.value.origin?.name?.lowercase() ?: "background")},
             diagnosticFailure={diagnostics.failure("voice",it,source=voice.state.value.origin?.name?.lowercase() ?: "background")},
             preflight = {
-                val (episode, position) = playback.capture()
+                val (episode, position) = playback.voicePosition()
+                    ?: throw dev.distillpod.android.voice.VoiceContextUnavailable(dev.distillpod.android.voice.VoiceReadiness.EPISODE_UNAVAILABLE)
                 withContext(Dispatchers.IO) { dev.distillpod.android.voice.VoiceContext.check(db, episode, position) }
             })
     }

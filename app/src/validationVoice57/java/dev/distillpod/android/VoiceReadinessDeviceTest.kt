@@ -126,7 +126,7 @@ class VoiceReadinessDeviceTest {
                 override suspend fun drain() {}
                 override fun close() {}
             } }, preflight = {
-                if (preflight) { val (episodeId, position) = graph.playback.capture(); VoiceContext.check(graph.db, episodeId, position) }
+                if (preflight) { val (episodeId, position) = graph.playback.voicePosition() ?: throw VoiceContextUnavailable(VoiceReadiness.EPISODE_UNAVAILABLE); VoiceContext.check(graph.db, episodeId, position) }
             }).also { coordinator = it }
             fun ask() = main { voice.start({ object : VoiceInput {
                 override fun start() { error("Synthetic provider must not start microphone") }
@@ -167,6 +167,14 @@ class VoiceReadinessDeviceTest {
             main { c.setMediaItem(MediaItem.Builder().setMediaId("replacement").setUri(android.net.Uri.fromFile(file)).build(), 10000) }
             delay(250); replaced.finish(true, false)
             assertFalse(main { c.playWhenReady }); assertEquals("replacement", main { c.currentMediaItem?.mediaId })
+            main { c.clearMediaItems() }
+            await { main { c.currentMediaItem == null } }
+            main { graph.voice.start({ error("Empty queue must not open microphone") }) }
+            await { graph.voice.state.value.error != null && !graph.voice.state.value.active }
+            assertEquals(VoiceReadiness.EPISODE_UNAVAILABLE.feedback, graph.voice.state.value.error)
+            assertNull(graph.playback.voicePosition())
+            try { graph.playback.pauseForVoice({}); fail("Cleared queue must be expected readiness") }
+            catch (error: VoiceContextUnavailable) { assertEquals(VoiceReadiness.EPISODE_UNAVAILABLE, error.readiness) }
             main { c.removeListener(listener) }
         } finally {
             main { coordinator?.cancel(false); player?.pause(); player?.clearMediaItems(); player?.release() }
