@@ -239,10 +239,11 @@ class PlaybackRepository(private val context: Context, private val db: AppDataba
             object : dev.distillpod.android.voice.VoiceLease {
                 override val episode = id
                 override val position = position
-                override suspend fun finish(resume: Boolean) = withContext(Dispatchers.Main) {
+                override suspend fun finish(resume: Boolean) = finish(resume, true)
+                override suspend fun finish(resume: Boolean, allowRewind: Boolean) = withContext(Dispatchers.Main) {
                     c.removeListener(listener)
                     if (resume && valid && wasPlaying && c.currentMediaItem?.mediaId == id) {
-                        if (rewindMs > 0) c.seekTo((position - rewindMs.coerceAtMost(3000)).coerceAtLeast(0))
+                        if (allowRewind && rewindMs > 0) c.seekTo((position - rewindMs.coerceAtMost(3000)).coerceAtLeast(0))
                         c.play()
                     }
                 }

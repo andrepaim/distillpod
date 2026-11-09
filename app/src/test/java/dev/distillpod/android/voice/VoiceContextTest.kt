@@ -1,11 +1,27 @@
 package dev.distillpod.android.voice
 
 import dev.distillpod.android.data.SegmentEntity
+import dev.distillpod.android.data.EpisodeEntity
+import dev.distillpod.android.data.TranscriptEntity
 import org.junit.Assert.*
 import org.junit.Test
 
 class VoiceContextTest {
     private fun span(start: Long, end: Long, text: String = "speech") = SegmentEntity("ep", "rev", start, end, text)
+    private val episode = EpisodeEntity("ep", "pod", "guid", "Private title", "https://example.com", mediaFingerprint = "audio")
+    private val transcript = TranscriptEntity("ep", "rev", "audio", "model", "en", state = "partial")
+    @Test fun `readiness explains unavailable context without including source content`() {
+        val spans = listOf(span(1000, 9000))
+        assertEquals(VoiceReadiness.MISSING_TRANSCRIPT, VoiceContext.readiness(episode, null, 10000, spans))
+        assertEquals(VoiceReadiness.STALE_AUDIO, VoiceContext.readiness(episode, transcript.copy(fingerprint = "other"), 10000, spans))
+        assertEquals(VoiceReadiness.STALE_AUDIO, VoiceContext.readiness(episode, transcript.copy(state = "stale"), 10000, spans))
+        assertEquals(VoiceReadiness.ONLINE_ONLY, VoiceContext.readiness(episode, transcript.copy(source = "online"), 10000, spans))
+        assertEquals(VoiceReadiness.EMPTY_SELECTION, VoiceContext.readiness(episode, transcript, 10000, listOf(span(9000, 11000))))
+        assertEquals(VoiceReadiness.COVERAGE_GAP, VoiceContext.readiness(episode, transcript, 25001, spans))
+        assertNull(VoiceContext.readiness(episode, transcript, 24000, spans))
+        assertNull(VoiceContext.readiness(episode, transcript, 10000, spans))
+        VoiceReadiness.entries.forEach { assertFalse(it.feedback.contains(episode.title)) }
+    }
     @Test fun `window excludes future speech and boundary straddling segments`() {
         val selected = VoiceContext.select(180000, listOf(span(0, 1000), span(59000,61000), span(60000,70000), span(179000,181000), span(180000,190000)))
         assertEquals(listOf(60000L), selected.map { it.startMs })

@@ -15,6 +15,14 @@ import org.robolectric.annotation.Config
 @Config(sdk = [34])
 class VoiceSessionUiTest {
     @get:Rule val compose = createComposeRule()
+    @Test fun `readiness feedback is actionable and retry does not suggest credentials`() {
+        var retries = 0
+        compose.setContent { VoiceSessionContent(VoiceState(error = VoiceReadiness.COVERAGE_GAP.feedback), false, {}, {}, { retries++ }) }
+        compose.onNodeWithText(VoiceReadiness.COVERAGE_GAP.feedback).assertIsDisplayed()
+        compose.onNodeWithText("Try again").performScrollTo().performClick()
+        assertEquals(1, retries)
+        compose.onNodeWithContentDescription("Microphone input level").assertDoesNotExist()
+    }
     @Test fun `listening shows actual microphone level and Done`() {
         var done = false
         compose.setContent { VoiceSessionContent(VoiceState("Listening", level = .4f), true, { done = true }, {}, {}) }
