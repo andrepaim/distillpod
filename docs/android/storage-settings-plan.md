@@ -75,3 +75,33 @@ temporarily retain stale partial byte/validator fields. Storage reporting reads
 actual files, and retry uses the on-disk offset: a missing partial restarts at
 zero without Range or If-Range and successful completion refreshes byte state.
 This is explicitly not a claim that two filesystem deletes are transactional.
+
+## Final combined integration evidence (2026-11-09)
+
+Tested revision: `35a9380dd483cc2404d7b8f551287248a0cf32bb`.
+Its tree `2638b07ce75c98494e34d31e0e1f03ae75c7769f` is identical to
+locally tested `5b2e8c77`, and includes actual main
+`4a635110030bb707c65b918491fca01caf026445` with merged #23 backup/sync guidance.
+Canonical notification controls, storage guards and combined reporting paths
+were reviewed; the storage delta remains six files.
+
+Validation passed: 99 core and 492 app JVM tests (zero failures/skips), Android
+lint, debug APK assembly, AndroidTest Kotlin compilation, 87 Python tests,
+repository data guard, release metadata and verified redacted secret scanning.
+The exact-head dispatched [Android CI run 42559561312](https://github.com/andrepaim/distillpod/actions/runs/42559561312)
+and [security run 42559563724](https://github.com/andrepaim/distillpod/actions/runs/42559563724)
+both succeeded. Logs explicitly show
+`StorageSettingsDeviceTest.largeTextStorageShowsActualUsageAndConfirmsSelectedPartialCleanup`
+and `ManagedBackupsDeviceTest.connectOnceBackupAgainRestartAndRestoreHistoricalSnapshotWithoutBrowsing`
+executed and returned status 0. Neither was skipped; no assertions were relaxed.
+
+These successful dispatch runs did not populate the required PR check rollup
+after retargeting to main. Normal automatic PR checks on this documentation
+update remain the final merge gate; no protection bypass is permitted.
+This evidence update changes no production, test or build inputs.
+
+The documented filesystem/database process-death window and concurrency limits
+remain. The earlier single bounded picker-harness retry is historical evidence,
+not permission for another unchanged retry: recurring stale accessibility
+handles require a durable harness fix. No owner-device cleanup, account or
+release actions were performed.
