@@ -1,0 +1,171 @@
+[
+  {
+    "body": "distillation.attempt_summary",
+    "attributes": {
+      "correlation_complete": {
+        "type": "boolean",
+        "value": true
+      },
+      "capture_request_id": {
+        "type": "string",
+        "value": "e3ede625-9b6e-4445-8f26-8a666e521f2b"
+      },
+      "takeaway_supported": {
+        "type": "boolean",
+        "value": true
+      },
+      "generation_elapsed_ms": {
+        "type": "integer",
+        "value": 0
+      },
+      "candidate_reused": {
+        "type": "boolean",
+        "value": false
+      },
+      "installation_id": {
+        "type": "string",
+        "value": "2344fa1a-4a21-42fc-ad8c-531654eebb25"
+      },
+      "prompt_version": {
+        "type": "integer",
+        "value": 2
+      },
+      "correlation_version": {
+        "type": "integer",
+        "value": 1
+      },
+      "quote_faithful": {
+        "type": "boolean",
+        "value": true
+      },
+      "generation_attempted_calls": {
+        "type": "integer",
+        "value": 1
+      },
+      "issue_quote_count": {
+        "type": "integer",
+        "value": 0
+      },
+      "transcript_revision_id": {
+        "type": "string",
+        "value": "7c6fe8e8-b218-4a3a-857e-8cb9b1833186"
+      },
+      "issue_incomplete_count": {
+        "type": "integer",
+        "value": 1
+      },
+      "generation_outcome": {
+        "type": "string",
+        "value": "ready"
+      },
+      "relevant": {
+        "type": "boolean",
+        "value": true
+      },
+      "issue_unsupported_count": {
+        "type": "integer",
+        "value": 0
+      },
+      "stage_outcome": {
+        "type": "string",
+        "value": "review_rejected"
+      },
+      "review_attempted_calls": {
+        "type": "integer",
+        "value": 1
+      },
+      "emitted_at_ms": {
+        "type": "integer",
+        "value": 1794181098145
+      },
+      "moment_id": {
+        "type": "string",
+        "value": "0a3907df-f201-4a4c-810c-075b8213e082"
+      },
+      "context_expanded": {
+        "type": "boolean",
+        "value": false
+      },
+      "schema_version": {
+        "type": "integer",
+        "value": 1
+      },
+      "execution_id": {
+        "type": "string",
+        "value": "4a35ce84-ce82-4552-9083-7bb4d5740711"
+      },
+      "generation_attempt_id": {
+        "type": "string",
+        "value": "b98f141e-57d7-4461-991d-b06a6550272f"
+      },
+      "operation_id": {
+        "type": "string",
+        "value": "0a3907df-f201-4a4c-810c-075b8213e082"
+      },
+      "retry_trigger": {
+        "type": "string",
+        "value": "initial"
+      },
+      "review_elapsed_ms": {
+        "type": "integer",
+        "value": 0
+      },
+      "needs_context": {
+        "type": "boolean",
+        "value": false
+      },
+      "review_outcome": {
+        "type": "string",
+        "value": "review_rejected"
+      },
+      "passage_complete": {
+        "type": "boolean",
+        "value": false
+      },
+      "summary_id": {
+        "type": "string",
+        "value": "4a35ce84-ce82-4552-9083-7bb4d5740711"
+      },
+      "outcome_version": {
+        "type": "integer",
+        "value": 1
+      },
+      "generator_model": {
+        "type": "string",
+        "value": "unknown"
+      },
+      "contradictory_review": {
+        "type": "boolean",
+        "value": false
+      },
+      "observed_at_ms": {
+        "type": "integer",
+        "value": 1794181098132
+      },
+      "event_id": {
+        "type": "string",
+        "value": "bc9a40a7-ddf2-4ea9-a9aa-99e17ca4c904"
+      },
+      "stage": {
+        "type": "string",
+        "value": "review"
+      },
+      "reviewer_model": {
+        "type": "string",
+        "value": "unknown"
+      },
+      "issue_irrelevant_count": {
+        "type": "integer",
+        "value": 0
+      },
+      "test_traffic": {
+        "type": "boolean",
+        "value": false
+      },
+      "quote_omitted": {
+        "type": "string",
+        "value": "unknown"
+      }
+    }
+  }
+]

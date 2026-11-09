@@ -1,0 +1,171 @@
+[
+  {
+    "body": "distillation.attempt_summary",
+    "attributes": {
+      "correlation_complete": {
+        "type": "boolean",
+        "value": true
+      },
+      "capture_request_id": {
+        "type": "string",
+        "value": "83638f13-7a7a-40e2-b620-970b209c3f18"
+      },
+      "takeaway_supported": {
+        "type": "string",
+        "value": "unknown"
+      },
+      "generation_elapsed_ms": {
+        "type": "integer",
+        "value": 0
+      },
+      "candidate_reused": {
+        "type": "boolean",
+        "value": false
+      },
+      "installation_id": {
+        "type": "string",
+        "value": "d492f779-72c1-4a59-9ebf-4640ecc43254"
+      },
+      "prompt_version": {
+        "type": "integer",
+        "value": 2
+      },
+      "correlation_version": {
+        "type": "integer",
+        "value": 1
+      },
+      "quote_faithful": {
+        "type": "string",
+        "value": "unknown"
+      },
+      "generation_attempted_calls": {
+        "type": "integer",
+        "value": 1
+      },
+      "issue_quote_count": {
+        "type": "integer",
+        "value": -1
+      },
+      "transcript_revision_id": {
+        "type": "string",
+        "value": "aad021b5-b23c-4c7f-9908-cb71f31fbd67"
+      },
+      "issue_incomplete_count": {
+        "type": "integer",
+        "value": -1
+      },
+      "generation_outcome": {
+        "type": "string",
+        "value": "ready"
+      },
+      "relevant": {
+        "type": "string",
+        "value": "unknown"
+      },
+      "issue_unsupported_count": {
+        "type": "integer",
+        "value": -1
+      },
+      "stage_outcome": {
+        "type": "string",
+        "value": "quota"
+      },
+      "review_attempted_calls": {
+        "type": "integer",
+        "value": 1
+      },
+      "emitted_at_ms": {
+        "type": "integer",
+        "value": 1794181101078
+      },
+      "moment_id": {
+        "type": "string",
+        "value": "88d762b3-0ab2-4e0d-a10a-f4d284013086"
+      },
+      "context_expanded": {
+        "type": "boolean",
+        "value": false
+      },
+      "schema_version": {
+        "type": "integer",
+        "value": 1
+      },
+      "execution_id": {
+        "type": "string",
+        "value": "857b2584-4195-4ac0-b550-84393010b7ed"
+      },
+      "generation_attempt_id": {
+        "type": "string",
+        "value": "9f399836-c8fe-49b1-98df-c0d9f5a0c662"
+      },
+      "operation_id": {
+        "type": "string",
+        "value": "88d762b3-0ab2-4e0d-a10a-f4d284013086"
+      },
+      "retry_trigger": {
+        "type": "string",
+        "value": "initial"
+      },
+      "review_elapsed_ms": {
+        "type": "integer",
+        "value": 0
+      },
+      "needs_context": {
+        "type": "string",
+        "value": "unknown"
+      },
+      "review_outcome": {
+        "type": "string",
+        "value": "quota"
+      },
+      "passage_complete": {
+        "type": "string",
+        "value": "unknown"
+      },
+      "summary_id": {
+        "type": "string",
+        "value": "857b2584-4195-4ac0-b550-84393010b7ed"
+      },
+      "outcome_version": {
+        "type": "integer",
+        "value": 1
+      },
+      "generator_model": {
+        "type": "string",
+        "value": "gpt-5"
+      },
+      "contradictory_review": {
+        "type": "string",
+        "value": "unknown"
+      },
+      "observed_at_ms": {
+        "type": "integer",
+        "value": 1794181101057
+      },
+      "event_id": {
+        "type": "string",
+        "value": "84fbf096-03b7-4358-bedf-37b800a2ea50"
+      },
+      "stage": {
+        "type": "string",
+        "value": "review"
+      },
+      "reviewer_model": {
+        "type": "string",
+        "value": "unknown"
+      },
+      "issue_irrelevant_count": {
+        "type": "integer",
+        "value": -1
+      },
+      "test_traffic": {
+        "type": "boolean",
+        "value": false
+      },
+      "quote_omitted": {
+        "type": "string",
+        "value": "unknown"
+      }
+    }
+  }
+]
