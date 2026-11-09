@@ -47,6 +47,12 @@ class QueueControlsDeviceTest {
             withTimeout(15000) { graph.playback.state.first { it.queue==expected } }
             withTimeout(15000) { while(dao.queue().map { it.episodeId }!=expected) delay(50) }
         }
+        fun openClearDialog() {
+            // Lazy headers may be disposed when a moved item anchors the scroll position.
+            compose.onNodeWithTag("queue-list").performScrollToNode(hasText("Clear queue"))
+            compose.onNodeWithText("Clear queue").performClick()
+            compose.onNodeWithText("Clear queue and stop playback?").assertIsDisplayed()
+        }
         try {
             graph.settings.flag("transcribeOnPlayback",false)
             withTimeout(10000) { graph.preferences.first { !it.transcribeOnPlayback } }
@@ -93,18 +99,26 @@ class QueueControlsDeviceTest {
             withContext(Dispatchers.Main) {
                 assertEquals(android.net.Uri.fromFile(file),player.currentMediaItem!!.localConfiguration!!.uri)
             }
-            compose.onNodeWithText("Clear queue").performScrollTo().performClick()
+            openClearDialog()
             compose.onNodeWithText("Cancel").performClick()
             assertEquals(3,graph.playback.state.value.queue.size)
             assertTrue(graph.playback.state.value.playing)
-            compose.onNodeWithText("Clear queue").performScrollTo().performClick()
-            androidx.test.uiautomator.UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).pressBack()
-            compose.onNodeWithText("Clear queue and stop playback?").assertDoesNotExist()
+            openClearDialog()
+            val device=androidx.test.uiautomator.UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
+            // Wait for the dialog's actual Android window before injecting an OS Back event.
+            assertTrue(device.wait(androidx.test.uiautomator.Until.hasObject(
+                androidx.test.uiautomator.By.text("Clear queue and stop playback?")),5000))
+            device.pressBack()
+            compose.waitUntil(5000) {
+                compose.onAllNodesWithText("Clear queue and stop playback?").fetchSemanticsNodes().isEmpty()
+            }
+            assertEquals("queue",vm.backStack.value.last())
+            compose.onNodeWithTag("queue-list").assertExists()
             assertEquals(3,graph.playback.state.value.queue.size)
             // Paused seek immediately followed by clear must retain the final position.
             graph.playback.pause();graph.playback.seek(4567)
             val savedDuration=dao.episode(ids[0])!!.durationMs
-            compose.onNodeWithText("Clear queue").performScrollTo().performClick()
+            openClearDialog()
             compose.onNodeWithText("Clear and stop").performClick()
             awaitQueue(emptyList())
             withTimeout(10000) { while(dao.episode(ids[0])!!.positionMs!=4567L) delay(50) }
