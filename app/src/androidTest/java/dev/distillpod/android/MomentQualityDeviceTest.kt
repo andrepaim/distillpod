@@ -2,6 +2,7 @@ package dev.distillpod.android
 
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.lifecycle.ViewModelProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import dev.distillpod.android.ai.*
@@ -42,9 +43,29 @@ class MomentQualityDeviceTest {
             compose.onNodeWithText("Replay source · 0:40").performScrollTo().assertIsDisplayed()
             compose.onNodeWithText("Read source passage").performScrollTo().performClick()
             updated=true;repo.improve(id);repo.run(id)
-            compose.onNodeWithText("Previous versions (1)").performScrollTo().performClick()
-            compose.onNodeWithText("Restore this version").performScrollTo().performClick()
-            withTimeout(5000) { while(dao.distillation(id)?.insight!="Short daily practice helps build a lasting skill.")delay(50) }
+            try {
+                withTimeout(5000) {
+                    while (dao.distillation(id)?.let {
+                        it.state == "succeeded" && it.insight == "Frequent practice supports steady progress."
+                    } != true || dao.momentVersions(id).size != 1) delay(50)
+                }
+                // Versions and the current moment are separate Flow subscriptions.
+                // Seeing history alone does not mean the restore control is actionable.
+                compose.waitUntil(10000) {
+                    compose.onAllNodesWithText("Previous versions (1)").fetchSemanticsNodes().isNotEmpty()
+                }
+                compose.onNodeWithText("Previous versions (1)").performScrollTo().performClick()
+                compose.waitUntil(5000) {
+                    compose.onAllNodesWithText("Restore this version").fetchSemanticsNodes()
+                        .singleOrNull()?.config?.contains(SemanticsProperties.Disabled) == false
+                }
+                compose.onNodeWithText("Restore this version").performScrollTo().assertIsEnabled().performClick()
+                withTimeout(5000) { while(dao.distillation(id)?.insight!="Short daily practice helps build a lasting skill.")delay(50) }
+            } catch (failure: Throwable) {
+                val saved = dao.distillation(id)
+                val busy = saved?.state in setOf("waiting_transcript", "queued", "running", "reviewing")
+                throw AssertionError("Restore acceptance: state=${saved?.state}, busy=$busy, versions=${dao.momentVersions(id).size}, originalRestored=${saved?.insight == "Short daily practice helps build a lasting skill."}", failure)
+            }
             assertNull(dao.distillation(id)!!.quote)
             assertEquals(60000L,dao.distillation(id)!!.endMs)
             compose.activityRule.scenario.recreate()

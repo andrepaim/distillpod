@@ -24,8 +24,8 @@ fail; retries are deliberate. [Source and review behavior](android/contextual-di
 
 | What you see | What to check |
 | --- | --- |
-| A model is needed | Download Tiny or Base in **Settings → Local transcription**. Model downloads are explicit. |
-| Waiting for network or charging | Check **Downloads & storage**, the Wi-Fi/unmetered policy and **Transcribe while charging**. |
+| A model is needed | Download Tiny or Base in **Settings → Transcript preparation**. Model downloads are explicit. |
+| Waiting for network or charging | Check the Wi-Fi/unmetered policy in **Downloads & storage** and **Only transcribe while charging** in **Transcript preparation**. |
 | Paused, failed or partial text | Use the transcript's resume/retry action. Pressing Play does not override an explicit pause or failure. |
 | No useful online match | Lookup is optional and public-source-only. Prepare locally when no suitable existing text is found. |
 | Online text is readable but a moment needs more preparation | Online lookup timing is not used for source-window capture or automatic ad skipping; publisher/local timing is required. |
@@ -50,7 +50,7 @@ which app receives it. The feature does not promise to start a force-stopped app
 Physical accessory behavior still needs device-specific validation.
 [Setup and current limits](android/headphone-distill.md).
 
-For a missing confirmation sound, check **Distill confirmation sound**, media
+For a missing confirmation sound, check **Settings → Playback & headphones → Moment saved sound**, media
 volume and the active media output. Repeated button events may be suppressed;
 look in Saved before assuming a new moment was not kept.
 
