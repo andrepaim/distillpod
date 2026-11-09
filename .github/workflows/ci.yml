@@ -191,10 +191,10 @@ jobs:
           arch: x86_64
           disable-animations: true
           script: |
+            DISTILLPOD_SERIAL=emulator-5554 scripts/startup56-emulator-tests.sh
             DISTILLPOD_SERIAL=emulator-5554 scripts/emulator-tests.sh /tmp/distillpod-fixtures
             JAVA_HOME="$DISTILLPOD_FIREBASE_JAVA" PATH="$DISTILLPOD_FIREBASE_JAVA/bin:$PATH" firebase/node_modules/.bin/firebase --config firebase/firebase.json emulators:exec --only auth,firestore,storage --project demo-distillpod-sync 'env DISTILLPOD_SERIAL=emulator-5554 scripts/sync-device-tests.sh'
             DISTILLPOD_SERIAL=emulator-5554 scripts/voice-device-tests.sh /tmp/distillpod-fixtures
-            DISTILLPOD_SERIAL=emulator-5554 scripts/startup56-emulator-tests.sh
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:

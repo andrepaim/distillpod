@@ -90,3 +90,10 @@ Rerun full default/voice gates and all hosted acceptance on the final commit,
 including the real-activity case. Rebuild/verify the offline startup APK pair and
 run the isolated S22 protocol when transport is available. The lifecycle tests do
 not establish historical OEM denial conditions or long-duration scheduling.
+
+Dedicated startup acceptance now runs before ordinary/cloud/voice emulator
+acceptance in this PR. The separate offline package is still verified, tested
+and removed, and every existing phase remains required. This ensures the four
+startup cases produce evidence even if a later shared fixture fails. The previous
+40b29d3 attempt-2 storage failure prevented those cases from running; it is not
+counted as startup validation. This order change leaves runtime code unchanged.
