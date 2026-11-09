@@ -38,3 +38,8 @@ Normal lint/application/instrumentation builds passed for this fixture correctio
 
 ## Blocked-action completion barrier
 The confirmation-race fixture now retains processing ownership until the exact delete action's busy key is cleared by its finally block, then verifies files and metadata before releasing the owner. Existing disabled-action feedback alone was not a reliable completion signal. Normal lint/application/instrumentation and offline APK builds passed; this is a test-only correction.
+
+## Diagnostic-only follow-up for the generic timeout
+Final run 42604143242 failed ProtectedAudioDeletionDeviceTest and QueueControlsDeviceTest with generic 10-second timeout stacks (79 tests, 2 failures). The retained instrumentation artifact preserves exception messages, but not the fixture's println phase messages, so the failing wait and any cleanup masking could not be established.
+Every explicit protected-deletion timed wait now throws a phase-labelled AssertionError with its original cause and last content-free fixture state. The original 10/15-second bounds, predicates, assertions, ownership barrier and protection rules are unchanged. Cleanup errors are suppressed onto the original body failure instead of replacing it.
+Independent read-only review passed; individual and combined instrumentation Kotlin compilation passed at cad434d5caa5f9cd6b8571e1c4fd7574d69f01dd. Includes #54's reviewed equivalent diagnostics df9cd159f461d7b9c2d0f11263ded3e6ffe64356. This is test-only observability, not an established product fix or a passing acceptance result. One normal hosted diagnostic run will provide the next evidence; no unchanged/manual rerun or ADB action was performed.
