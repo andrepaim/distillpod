@@ -82,5 +82,31 @@ Focused JVM tests cover persistence/replay, dependency changes, generation versu
 execution identity, cancellation, stale and identityless callbacks, and recovery.
 Repository tests cover durable request provenance across duplicate taps,
 preparation and explicit context expansion, and exclusion from AI input.
-Full emulator acceptance and fresh non-destructive phone validation remain
-required before merge; unit tests do not replace those gates.
+### Risk assessment after dependency integration
+
+This change affects local identity/provenance, serialization, consent epochs and
+execution ownership. It does not change Android job scheduling, permissions,
+audio routing, notification behavior, signing identity, application ID, Room
+schema or the portable backup format. It introduces no OEM- or accessory-specific
+behavior. The integrated transcription pause fix is retained: missing-model
+updates re-read current state under the controls lock, while correlation fields
+remain attached to the matching revision/execution.
+
+Persistence and upgrade risks are covered explicitly, not waived because this is
+reporting: journal v1 compatibility, v2 restart/replay and bounded retention,
+portable export/import stripping, disabled-consent captures, revocation across
+in-flight callbacks, and immutable claim/cancel/resume ownership have automated
+regressions. Synchronous journal persistence can add claim latency; no phone
+performance claim is made. A claim observation before transaction commit remains
+attempted/unknown evidence if that commit fails.
+
+Full combined unit tests, lint/APK assembly, repository guards, review and
+exact-head isolated Android CI acceptance are required. These checks exercise
+the changed data/concurrency boundaries and actual Android integration without
+requiring hardware-dependent behavior to be inferred. Under the effective
+risk-based policy, no additional owner-phone check is required for this change.
+The separate unfinished optional phone probe is not evidence and is not part of
+this branch. Live ingestion, OEM background/power behavior, consent UI and a
+real-account in-place upgrade are not newly validated or claimed here; changes
+to those behaviors would require a new risk assessment and applicable device
+checks.
