@@ -44,3 +44,11 @@ cover role/state, one target per diagnostics switch, 200% text, 48dp minimum
 targets and rewind persistence. The opt-in offline accessibility21 build removes
 network/microphone permissions from both packages. Full gates, hosted execution
 and manual TalkBack acceptance are pending; none is replaced by these results.
+
+The first hosted device run rejected the new diagnostics fixture method before
+execution because its expression body inferred a non-Unit return. Both device
+methods now explicitly use runBlocking<Unit>, preserving the same assertions.
+The earlier full local default/voice gates passed 99 core and 523 app tests each,
+lint/APKs, 87 Python tests and security/data checks; those results did not execute
+the device cases. The updated compiled method signatures and full hosted suite
+must pass before counting emulator acceptance.

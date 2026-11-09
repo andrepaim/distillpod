@@ -49,7 +49,7 @@ class SettingsSwitchAccessibilityDeviceTest {
         compose.runOnUiThread { compose.activity.setContent { MaterialTheme { content() } } }
     }
 
-    @Test fun diagnosticsHaveSingleNamedDisabledTargetsAtLargeText() = runBlocking {
+    @Test fun diagnosticsHaveSingleNamedDisabledTargetsAtLargeText() = runBlocking<Unit> {
         val vm = model()
         show {
             val density = LocalDensity.current
@@ -67,7 +67,7 @@ class SettingsSwitchAccessibilityDeviceTest {
         compose.onAllNodes(isToggleable(), useUnmergedTree = true).assertCountEquals(2)
     }
 
-    @Test fun rewindRowTogglesOnceAndPersistsItsOwnPreference() = runBlocking {
+    @Test fun rewindRowTogglesOnceAndPersistsItsOwnPreference() = runBlocking<Unit> {
         val vm = model()
         val preferences = compose.activity.getSharedPreferences("voice", android.content.Context.MODE_PRIVATE)
         val existed = preferences.contains("rewind")
