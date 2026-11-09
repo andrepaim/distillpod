@@ -36,3 +36,8 @@ A full-suite run encountered a pre-body AppGraph cancellation timeout in Automat
 That fixture intends to suppress startup work and exercise explicit repository calls. It now injects a pre-cancelled scope through an internal constructor, asserting an inactive/completed/childless scope and incomplete ready. The public AppGraph(context) constructor retains the same SupervisorJob + Main.immediate scope. Real settings, Room, WorkManager and all transcription assertions are retained; startup/service acceptance still uses normal application construction.
 
 This removes startup-then-shutdown nondeterminism from the repository fixture. It is not proof of a production shutdown defect, and ready is not fabricated.
+
+## Playing-position acceptance oracle
+Hosted diagnostic run 42606815684 identified a test-oracle disagreement: the controller estimated 2084 ms while the service persisted 2010 ms. Media3 1.5.1 extrapolates controller positions from elapsed time and masks controller removal callbacks before the service handles the command. These observations do not establish a playback rewind.
+
+The emulator fixture therefore observes the actual service ExoPlayer removal event and requires Room to match its old position exactly, with a same-player pre-clear progress floor. Paused 4567 ms and successor-removal 3456 ms assertions remain exact. A test-only helper reads the pinned Media3 session registry under its existing lock, releases that lock before player access, requires a unique synthetic episode and an ExoPlayer, and attaches/removes the listener on its application looper. A Media3 upgrade may require updating this explicit test coupling. No production access hook, fallback oracle, relaxed timeout or position tolerance is introduced.
