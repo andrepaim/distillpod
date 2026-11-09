@@ -38,6 +38,8 @@ class AutoLibraryCallback(
     private val onHeadphoneVoice: () -> Unit = {},
     private val diagnostics: dev.distillpod.android.diagnostics.Diagnostics? = null,
     private val saveMomentWithSource: (suspend (String,Long,String?,String)->String)? = null,
+    private val queueCommands: Set<SessionCommand> = emptySet(),
+    private val onQueueCommand: ((SessionCommand,Bundle)->ListenableFuture<SessionResult>)? = null,
 ): MediaLibrarySession.Callback {
     override fun onPlayerCommandRequest(session: MediaSession, controller: MediaSession.ControllerInfo, playerCommand: Int): Int {
         if (controller.packageName != packageName && playerCommand in setOf(Player.COMMAND_PLAY_PAUSE,
@@ -84,6 +86,8 @@ class AutoLibraryCallback(
         val notification=session.isMediaNotificationController(controller)
         val commands=base.availableSessionCommands.buildUpon().add(SessionCommand(DISTILL,Bundle.EMPTY))
         commands.add(PlaybackControls.back).add(PlaybackControls.forward)
+        if (controller.packageName == packageName && controller.uid == android.os.Process.myUid())
+            queueCommands.forEach { commands.add(it) }
         if (!notification && voiceEnabled()) commands.add(dev.distillpod.android.voice.CarVoiceEntry.ASK)
         if (controller.packageName == packageName) commands.add(dev.distillpod.android.voice.CarVoiceEntry.TOKEN)
         return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
@@ -178,6 +182,12 @@ class AutoLibraryCallback(
         }
     }
     override fun onCustomCommand(session:MediaSession,controller:MediaSession.ControllerInfo,customCommand:SessionCommand,args:Bundle):ListenableFuture<SessionResult> {
+        if (customCommand in queueCommands) {
+            if (controller.packageName != packageName || controller.uid != android.os.Process.myUid())
+                return com.google.common.util.concurrent.Futures.immediateFuture(SessionResult(SessionError.ERROR_PERMISSION_DENIED))
+            return onQueueCommand?.invoke(customCommand,args)
+                ?: com.google.common.util.concurrent.Futures.immediateFuture(SessionResult(SessionError.ERROR_NOT_SUPPORTED))
+        }
         if (customCommand == dev.distillpod.android.voice.CarVoiceEntry.TOKEN) {
             val result = if (controller.packageName == packageName) SessionResult(SessionResult.RESULT_SUCCESS,
                 Bundle().apply { putParcelable(dev.distillpod.android.voice.CarVoiceEntry.TOKEN_EXTRA, session.platformToken) })
