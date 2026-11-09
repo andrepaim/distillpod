@@ -62,3 +62,10 @@ pauses then explicitly resumes the same revision, and releases the late rejected
 future at its retry limit. It reproduced an unwanted second pause. Foreground
 error classification now checks coroutine cancellation first, so a cancelled old
 attempt cannot apply its exhausted outcome to the resumed revision.
+
+Review additionally staged cancellation after foreground classification while
+recovery waited for the control mutex. That regression also reproduced an
+unwanted second pause. Cleanup now consults the captured original execution Job
+inside the same control lock as the persistence decision. It never consults the
+NonCancellable cleanup Job for this decision, and cancellation propagates after
+cleanup. This covers both sides of the classification-to-mutation boundary.

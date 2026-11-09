@@ -466,6 +466,43 @@ class AutomaticTranscriptionTest {
         } finally { graph.db.close() }
     }
 
+    @Test fun `cancellation while recovery waits for controls cannot exhaust resumed work`() = runBlocking<Unit> {
+        val graph = isolatedGraph()
+        try {
+            val dao = graph.db.library()
+            val row = TranscriptEntity(episode.id, "locked-recovery", episode.mediaFingerprint, "tiny", "auto")
+            dao.putTranscript(row)
+            val repository = graph.transcription
+            // Hold the real control mutex to stage cancellation after classification but before mutation.
+            val field = TranscriptionRepository::class.java.getDeclaredField("controls").apply { isAccessible = true }
+            val controls = field.get(repository) as kotlinx.coroutines.sync.Mutex
+            val entered = CompletableDeferred<Unit>()
+            val reject = CompletableDeferred<Unit>()
+            val old = launch {
+                repository.process(episode.id, row.revision, TranscriptExecution({ false }, {
+                    entered.complete(Unit)
+                    reject.await()
+                    throw android.app.ForegroundServiceStartNotAllowedException("Synthetic")
+                }, true, 4))
+            }
+            withTimeout(5000) { entered.await() }
+            controls.lock()
+            try {
+                reject.complete(Unit)
+                // Same runBlocking event loop: child runs synchronously through classification
+                // until it suspends on the held control mutex in NonCancellable cleanup.
+                yield()
+                assertTrue(old.isActive)
+                old.cancel()
+                dao.putTranscript(row.copy(state = "paused"))
+                dao.putTranscript(row.copy(state = "queued"))
+            } finally { controls.unlock() }
+            withTimeout(5000) { old.join() }
+            assertEquals("queued", dao.transcript(episode.id)!!.state)
+            assertNull(dao.transcript(episode.id)!!.error)
+        } finally { graph.db.close() }
+    }
+
     @Test fun `foreground rejection retains one constrained recovery job`() = runBlocking<Unit> {
         val rejected = object : ContextWrapper(context) {
             override fun startForegroundService(service: Intent): ComponentName? = throw IllegalStateException("Background start rejected")

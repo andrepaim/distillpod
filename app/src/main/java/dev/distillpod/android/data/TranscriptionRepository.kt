@@ -242,6 +242,7 @@ class TranscriptionRepository(private val graph: AppGraph,
 
     private suspend fun processChunk(id: String, revision: String, execution: TranscriptExecution): TranscriptOutcome {
         var outcome = TranscriptOutcome.COMPLETED
+        val executionJob = currentCoroutineContext().job
         val run = UUID.randomUUID().toString()
         // Pause and initial progress publication share the same lock. A queued pass
         // must not republish STARTING after pause has cleared the live estimate.
@@ -388,8 +389,12 @@ class TranscriptionRepository(private val graph: AppGraph,
                         error !is CancellationException && error !is DeferredForegroundStart) graph.diagnostics.failure("worker", error)
                     // Never restore the worker snapshot after pause, replacement or completion.
                     if (current?.revision == revision && current.state in listOf("queued", "processing")) {
-                        when (error) {
-                            is DeferredForegroundStart -> {
+                        when {
+                            // Use the original Job, not this NonCancellable cleanup context.
+                            // Pause/Resume can win while this catch waits for the control lock.
+                            error is CancellationException || !executionJob.isActive ->
+                                dao.putTranscript(current.copy(state = "queued", error = null))
+                            error is DeferredForegroundStart -> {
                                 val exhausted = execution.runAttemptCount >= MAX_FOREGROUND_START_ATTEMPTS - 1
                                 dao.putTranscript(current.copy(state = if (exhausted) "paused" else "queued",
                                     error = if (exhausted) "Android could not start transcription. Tap Resume to continue from saved chunks." else null))
@@ -397,7 +402,6 @@ class TranscriptionRepository(private val graph: AppGraph,
                                 graph.diagnostics.event(if (exhausted) "transcription.paused" else "transcription.queued", revision, reason = "restricted",
                                     correlation = correlation(revision, run))
                             }
-                            is CancellationException -> dao.putTranscript(current.copy(state = "queued", error = null))
                             else -> {
                                 dao.putTranscript(current.copy(state = "failed", error = safeFailure(error)))
                                 outcome = TranscriptOutcome.FAILED
@@ -408,6 +412,7 @@ class TranscriptionRepository(private val graph: AppGraph,
                 }
             }
             if (error is CancellationException) throw error
+            executionJob.ensureActive()
         } finally {
             withContext(NonCancellable) {
                 val current = dao.transcript(id)
