@@ -39,3 +39,26 @@ or establish long-duration scheduling, model inference, or production upgrade
 compatibility. Record those limits separately from observed recovery results.
 A controlled injected rejection is not evidence that the historical OEM trigger
 has been reproduced. Broad emulator acceptance remains separate.
+
+## Review-driven scheduling fix
+
+A deterministic WorkManager database regression reproduced Resume racing the
+exhausted worker's return: KEEP retained its RUNNING request after the row had
+already become paused. Explicit Resume now awaits cancellation of only that
+revision's tagged requests before publishing queued and dispatching. The test
+requires a fresh request with zero attempts, unchanged charging/network/battery
+constraints, exponential 30-second backoff, preserved checkpoint/revision, and
+another revision left untouched. Cancellation waits for the WorkManager
+operation, not for the old worker to join while the control lock is held.
+
+The dedicated hosted emulator invocation builds the same offline package in
+the existing disposable emulator job, requires all four startup cases, refuses
+physical targets and existing validation packages, verifies manifest identities
+and no INTERNET permission, and cleans up only packages it installed. The
+ordinary emulator suite is unchanged.
+
+A second deterministic regression holds a foreground failure past cancellation,
+pauses then explicitly resumes the same revision, and releases the late rejected
+future at its retry limit. It reproduced an unwanted second pause. Foreground
+error classification now checks coroutine cancellation first, so a cancelled old
+attempt cannot apply its exhausted outcome to the resumed revision.

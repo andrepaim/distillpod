@@ -23,16 +23,21 @@ class TranscriptionStartupDeviceTest {
         val id = "startup-fixture-" + UUID.randomUUID()
         val row = TranscriptEntity(id, id, id, "missing-startup-fixture-model", "auto",
             durationMs = 10000, processedMs = 5000, lookupOnline = true)
+        val audio = java.io.File.createTempFile("startup-fixture-", ".wav", context.cacheDir)
         dao.putPodcast(PodcastEntity(id, "https://example.invalid/" + id, "Synthetic startup fixture"))
         dao.putEpisode(EpisodeEntity(id, id, id, "Synthetic episode", "https://example.invalid/audio",
-            mediaFingerprint = id, durationMs = 10000))
+            mediaFingerprint = id, durationMs = 10000, localFile = audio.absolutePath))
         dao.putTranscript(row)
         dao.putSegments(listOf(SegmentEntity(id, id, 0, 5000, "Synthetic checkpoint", 0)))
         dao.putCoverage(CoverageEntity(id, id, 0, 5000))
         try { block(graph, row) }
         finally {
             graph.transcription.pause(id)
+            withTimeout(15000) {
+                while (dev.distillpod.android.work.TranscriptionService.isRunning) delay(50)
+            }
             dao.deletePodcast(id)
+            audio.delete()
         }
     }
 

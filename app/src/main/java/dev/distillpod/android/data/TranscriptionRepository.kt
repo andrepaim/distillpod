@@ -29,6 +29,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 private const val CHUNK_MS = 120_000L
+private const val MAX_FOREGROUND_START_ATTEMPTS = 5
 enum class TranscriptStage { ONLINE, PUBLISHER, DOWNLOADING, CHECKING_MODEL, DECODING, STARTING, TRANSCRIBING, SAVING, QUEUED }
 data class TranscriptProgress(val revision: String, val run: String, val stage: TranscriptStage,
     val workedMs: Long, val durationMs: Long, val chunkStartMs: Long = 0, val chunkEndMs: Long = 0)
@@ -94,6 +95,12 @@ class TranscriptionRepository(private val graph: AppGraph,
             (old.source == "publisher" && old.state != "partial" || old.model == prefs.model && old.language == prefs.language)) {
             if (old.state == "ready") return
             if (old.state in listOf("processing", "queued") && live.value[id]?.let { it.revision == old.revision && it.stage != TranscriptStage.QUEUED } == true) return
+            // Exhaustion can publish paused before the old worker delivers its result.
+            // Finish cancellation in WorkManager before KEEP sees this unique name again.
+            // Scope to this revision: another revision's work must remain untouched.
+            if (old.state in listOf("paused", "failed")) withContext(Dispatchers.IO) {
+                manager.cancelAllWorkByTag(revisionTag(old)).result.get()
+            }
             live.update { it - id }
             val current = old.copy(state = "queued", error = null, lookupOnline = onlineAllowed && prefs.onlineTranscripts)
             dao.putTranscript(current); dispatch(current); return
@@ -261,6 +268,8 @@ class TranscriptionRepository(private val graph: AppGraph,
             try { execution.foreground() }
             catch (error: Exception) {
                 if (error is CancellationException) throw error
+                // A late failed foreground future must not exhaust a newly resumed revision.
+                currentCoroutineContext().ensureActive()
                 if (error.isForegroundStartRejected()) throw DeferredForegroundStart(error)
                 throw error
             }
@@ -381,7 +390,7 @@ class TranscriptionRepository(private val graph: AppGraph,
                     if (current?.revision == revision && current.state in listOf("queued", "processing")) {
                         when (error) {
                             is DeferredForegroundStart -> {
-                                val exhausted = execution.runAttemptCount >= 4
+                                val exhausted = execution.runAttemptCount >= MAX_FOREGROUND_START_ATTEMPTS - 1
                                 dao.putTranscript(current.copy(state = if (exhausted) "paused" else "queued",
                                     error = if (exhausted) "Android could not start transcription. Tap Resume to continue from saved chunks." else null))
                                 outcome = if (exhausted) TranscriptOutcome.RESUME_REQUIRED else TranscriptOutcome.DEFERRED_START

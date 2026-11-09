@@ -3,6 +3,8 @@ package dev.distillpod.android
 import android.content.ComponentName
 import android.content.Context
 import android.content.ContextWrapper
+import android.os.Looper
+import org.robolectric.Shadows.shadowOf
 import android.content.Intent
 import androidx.test.core.app.ApplicationProvider
 import androidx.work.Configuration
@@ -385,6 +387,82 @@ class AutomaticTranscriptionTest {
             graph.transcription.pause(episode.id)
             assertEquals(androidx.work.ListenableWorker.Result.success(), worker(1).doWork())
             assertEquals("paused", dao.transcript(episode.id)!!.state)
+        } finally { graph.db.close() }
+    }
+
+    @Test fun `explicit resume replaces exhausting running request without cancelling another revision`() = runBlocking<Unit> {
+        val rejected = object : ContextWrapper(context) {
+            override fun startForegroundService(service: Intent): ComponentName? =
+                throw android.app.ForegroundServiceStartNotAllowedException("Synthetic startup rejection")
+        }
+        val graph = isolatedGraph(rejected)
+        try {
+            graph.settings.flag("charging", true)
+            graph.transcription.prepareAutomatically(episode.id)
+            val dao = graph.db.library()
+            val row = dao.transcript(episode.id)!!
+            val manager = WorkManager.getInstance(context) as androidx.work.impl.WorkManagerImpl
+            val name = "transcript:${episode.id}:${row.revision}:0"
+            val old = manager.getWorkInfosForUniqueWork(name).get(5, TimeUnit.SECONDS).single()
+            val specs = manager.workDatabase.workSpecDao()
+            // The real worker has persisted exhaustion but has not delivered its Result.failure yet.
+            specs.setState(androidx.work.WorkInfo.State.RUNNING, old.id.toString())
+            repeat(4) { specs.incrementWorkSpecRunAttemptCount(old.id.toString()) }
+            dao.putTranscript(row.copy(state = "paused", error = "Android could not start transcription. Tap Resume."))
+            dao.putCoverage(CoverageEntity(episode.id, row.revision, 0, 5000))
+            val unrelated = androidx.work.OneTimeWorkRequestBuilder<TranscriptWorker>()
+                .setConstraints(androidx.work.Constraints.Builder().setRequiresCharging(true).build())
+                .addTag("transcript:${episode.id}")
+                .addTag("transcript-revision:${episode.id}:other").build()
+            manager.enqueue(unrelated).result.get(5, TimeUnit.SECONDS)
+
+            graph.transcription.prepare(episode.id)
+            val fresh = manager.getWorkInfosForUniqueWork(name).get(5, TimeUnit.SECONDS).single { !it.state.isFinished }
+            assertNotEquals("Resume must not retain the exhausted RUNNING request", old.id, fresh.id)
+            assertEquals(0, fresh.runAttemptCount)
+            assertTrue(fresh.constraints.requiresCharging())
+            assertTrue(fresh.constraints.requiresBatteryNotLow())
+            assertEquals(androidx.work.NetworkType.UNMETERED, fresh.constraints.requiredNetworkType)
+            assertEquals(androidx.work.BackoffPolicy.EXPONENTIAL, specs.getWorkSpec(fresh.id.toString())!!.backoffPolicy)
+            assertEquals(30000L, specs.getWorkSpec(fresh.id.toString())!!.backoffDelayDuration)
+            // KEEP can prune the cancelled row while replacing the same unique name.
+            val retired = manager.getWorkInfoById(old.id).get()
+            assertTrue(retired == null || retired.state == androidx.work.WorkInfo.State.CANCELLED)
+            assertFalse(manager.getWorkInfoById(unrelated.id).get().state.isFinished)
+            assertEquals(row.revision, dao.transcript(episode.id)!!.revision)
+            assertEquals("queued", dao.transcript(episode.id)!!.state)
+            assertEquals(5000L, dao.coverage(episode.id, row.revision).single().endMs)
+        } finally { graph.db.close() }
+    }
+
+    @Test fun `cancelled foreground rejection cannot repause explicitly resumed revision`() = runBlocking<Unit> {
+        val rejected = object : ContextWrapper(context) {
+            override fun startForegroundService(service: Intent): ComponentName? =
+                throw android.app.ForegroundServiceStartNotAllowedException("Synthetic")
+        }
+        val graph = isolatedGraph(rejected)
+        try {
+            val dao = graph.db.library()
+            val row = TranscriptEntity(episode.id, "cancelled-start", episode.mediaFingerprint, "tiny", "auto")
+            dao.putTranscript(row)
+            val entered = CompletableDeferred<Unit>()
+            val release = CompletableDeferred<Unit>()
+            val old = launch {
+                graph.transcription.process(episode.id, row.revision, TranscriptExecution({ false }, {
+                    withContext(NonCancellable) { entered.complete(Unit); release.await() }
+                    throw android.app.ForegroundServiceStartNotAllowedException("Late failure")
+                }, true, 4))
+            }
+            try {
+                withTimeout(5000) { entered.await() }
+                graph.transcription.pause(episode.id)
+                graph.transcription.prepare(episode.id)
+            } finally { release.complete(Unit) }
+            withTimeout(5000) { old.join() }
+            assertTrue(old.isCancelled)
+            assertEquals(row.revision, dao.transcript(episode.id)!!.revision)
+            assertEquals("queued", dao.transcript(episode.id)!!.state)
+            assertNull(dao.transcript(episode.id)!!.error)
         } finally { graph.db.close() }
     }
 
