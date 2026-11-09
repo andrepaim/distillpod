@@ -3,7 +3,10 @@
 ## Plan and acceptance
 Return a typed, content-free readiness reason for missing transcript, stale/audio
 mismatch, online-only source, empty past-only selection, and coverage gaps.
-Keep partial transcripts eligible when the existing recency/window/size rules pass.
+Keep partial transcripts eligible when the existing 15-second recency rule passes.
+Respect merged PR #65: include the entire valid listened prefix, without restoring
+the old two-minute window or 12,000-character context limit. Transport frames stay
+bounded and acknowledged; provider capacity failures remain separate feedback.
 Read context in a database transaction. Preflight the current playback position
 before pausing, then re-read for the acquired lease before provider/audio work.
 Expected readiness is feedback, not an internal exception report. Retry clears
@@ -28,6 +31,25 @@ Coordinator approval of protocol and exclusive device use precedes device work.
 No emulator-only destructive fixtures on phone. Preserve production app/data.
 Record revision, scenario results and any remaining blockers; no merge until
 required evidence is obtained and coordinator integrates current main.
+
+## Handoff review and full-context integration
+
+The previously uncommitted tests were saved privately before review. Their first
+focused run exposed an incomplete fake-provider reply (completed without audio),
+which the client correctly rejected. The fixture now returns a synthetic PCM
+answer and asserts that playback receives it only after input closes. All 26
+focused context/database/coordinator tests then passed, with no skipped cases.
+Coverage includes an old-prefix gap, long ready partial context, malformed,
+future and unrelated segments, revision changes, the inclusive 15-second boundary,
+full-source acknowledgment before recording, upload cancellation, capacity feedback,
+and resource cleanup before lease restoration.
+
+Current main at 2042306 and the reviewed queue revision 5888db1 were integrated by
+normal merges. Full combined-revision default/voice, hosted and corrected physical
+acceptance remain required; focused tests and the earlier phone run do not replace
+those gates. Physical validation remains mandatory because this change affects
+playback lease acquisition/restoration and its interaction with real Android media
+controllers. Preserve all owner data and use only the dedicated offline package.
 
 ## Execution evidence and integration
 Initial TDD compile failed on the new readiness/preflight/restoration API as
