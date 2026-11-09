@@ -22,7 +22,11 @@ Voice-enabled builds provide the optional **Next track → Ask about the podcast
 
 ## Transcript context
 
-A matching local or publisher transcript must cover the listening moment; uncertain online timings are excluded. Context is bounded to two preceding minutes, with no boundary-straddling future segments. The model may search earlier segments of the same transcript, at most twice, with bounded results. Excerpts are untrusted data. Spoken explanations are not independently verified and are not the text chat's validated JSON/citation output.
+A matching local or publisher transcript must cover the listening moment; uncertain online timings are excluded. Voice receives **all available valid transcript segments ending at or before that position**, in chronological order. There is no two-minute window or local transcript-character cutoff. A segment crossing the position is excluded because its text can contain unheard speech. Partial transcripts remain usable when they cover the selected moment; missing speech is not reconstructed.
+
+The transcript is sent as acknowledged source-data messages, separately from the assistant's instructions, before microphone readiness. Transport chunks preserve the full text and Unicode; they do not select or summarize passages. Provider context truncation is disabled. If the provider rejects the complete context as too long, voice explains the limit and suggests an earlier listening position instead of silently dropping the beginning. The retained `gpt-realtime-2.1-mini` model has a finite context window, and more transcript text can increase input-credit usage and preparation time. The model may still use two bounded keyword searches to locate earlier passages, but these are not its only access to earlier material.
+
+Answers may use general knowledge for explanations, examples, comparisons and reasoning without routine transcript disclaimers. Claims about what a speaker said, quotes and episode timestamps must remain supported by transcript evidence; missing evidence or uncertainty is mentioned when it materially affects the question. Source text remains untrusted data, and later episode content must not be invented. Spoken explanations are not independently verified and are not the text chat's validated JSON/citation output. See [full-context design and validation](voice-full-context.md) for evidence boundaries and prompt evaluation scenarios.
 
 ## Android Auto feasibility
 
