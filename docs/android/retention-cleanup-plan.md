@@ -1,6 +1,6 @@
 # Bulk cleanup and opt-in retention (#60)
 
-Status: coordinator acknowledged independent bulk/pure-rule investigation. Transcript suppression, dependent bulk/schema/scheduler implementation await user clarification; #58 integration also pending.
+Status: the owner confirmed transcript deletion semantics on 2026-11-09: delete local copies, preserve cloud copies and saved insights, and suppress automatic recreation until explicit Prepare or Restore. Bulk deletion, schema and scheduling remain unimplemented and depend on #58 integration plus the safety review below.
 Issue: https://github.com/andrepaim/distillpod/issues/60
 Base inspected: 9528abf. No production/device content is used or deleted in validation.
 
@@ -28,7 +28,7 @@ Existing content has unknown origins: initialize unknown age origins only when t
 
 Transcript cleanup needs serialization with TranscriptionRepository.controls, active jobs, queued work and all transcript writers. Remove transcript row, segments and coverage in one Room transaction; inspect AI/capture dependencies and defer queued/running consumers. Preserve saved outputs. Do not claim atomic file+database deletion: filesystems and SQLite cannot share a transaction. Reconcile partial-file failures and make repeated deletion idempotent.
 
-Confirmed sync risk: FinishedContent.restore can reinsert absent local transcripts, and automatic playback preparation can regenerate them. Determine an explicit local suppression/tombstone contract before changing this path. Do not delete remote artifacts or silently disable user transcription preferences. This remains a design dependency, not an implemented guarantee.
+Confirmed sync risk: FinishedContent.restore can reinsert absent local transcripts, and automatic playback preparation can regenerate them. Implement the confirmed local suppression contract before changing this path. Do not delete remote artifacts or silently disable user transcription preferences. The writer/schema design remains a dependency, not an implemented guarantee.
 
 Proposed scheduler: unique daily WorkManager sweep plus app-open check, serialized and rechecking the latest settings before every item. Protected items remain eligible for the next sweep. Android may delay execution, so describe eligibility rather than promise exact-time deletion. This requires coordinator acknowledgment and physical background validation. Avoid overlapping #56 transcription recovery edits and #54 queue work; integrate their final revisions.
 
@@ -50,7 +50,7 @@ Use TDD for logic, default and voice unit tests/lint/APKs, applicable emulator a
 - `data/ShowAutomation.kt`: incomplete jobs can enqueue new downloads/transcripts when content disappears. Defer cleanup of ongoing jobs and resolve interaction with user automation settings before implementation, rather than silently changing those settings.
 - `data/MediaRepository.kt`: #58 preserves existing serialized deletion and typed guards. ActiveFiles playback/queue/acquire transitions are not an atomic exclusion lease with deletion. A periodic background sweep must resolve this TOCTOU risk before it is safe to ship.
 
-Proposed durable local suppression option: a dedicated per-episode cleanup record, independent for audio and transcript, applies only to passive recreation/import. Explicit user Prepare/Restore/Download can reset that resource marker. It must preserve unrelated sync outputs and remote copies. Alternative (no marker) would recreate deleted text automatically and defeat durable cleanup; present that limitation rather than silently choosing it. Coordinator has requested user clarification. No marker, schema, automatic-sweep or transcript-deletion code has been written.
+Confirmed transcript contract: deletion is local, cloud copies and saved insights remain, and passive import/automatic preparation must not recreate the deleted transcript until explicit user Prepare or Restore. The owner answered “Yes, use those semantics”; this decision no longer needs clarification. A dedicated per-episode local cleanup record remains the proposed implementation, with explicit intent separated from passive restore/conflict resolution. Audio-marker interactions remain part of the existing design review, rather than an implied extension of this transcript decision. No marker, schema, automatic-sweep or transcript-deletion code has been written.
 
 ## Isolated policy increment evidence
 
