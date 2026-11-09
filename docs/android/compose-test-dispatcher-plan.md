@@ -51,3 +51,22 @@ compiled all Android tests. Bare queued configuration and the first Robolectric
 custom-idler attempt failed their effect-start precondition; neither is counted
 as green. Actual Android idler integration and full-suite validation remain
 pending. No original acceptance assertion, bound or diagnostic was removed.
+
+The first hosted implementation passed both new Android cases but failed the
+three affected fixture cases during teardown: Compose's final runTest drained
+queued lifecycle observer removal on the instrumentation thread. Wrap the
+supported ActivityScenarioRule launcher so its existing activity close happens
+first, then drain current cleanup tasks on main before returning to Compose's
+coroutine validation. Preserve a body failure and attach cleanup failures rather
+than replacing either with success. Add an explicit lifecycle collection and
+activity-close Android regression.
+
+A fresh disposable local API35 emulator passed the three focused regressions.
+The original fixtures then revealed two distinct test assumptions: the show
+label also occurs in clickable cards, and UiAutomator does not drain Compose's
+queued picker-launch effect. Match the non-clickable show heading and wait for
+Compose idle at the existing picker boundary. Keep the displayed-heading,
+navigation/playback/queue, picker/grant/history/restore assertions and bounds.
+All six cases subsequently passed together: three regressions, listening flow,
+and both backup flows. These local working-tree results do not replace the
+required final-commit full hosted and merged-main gates.

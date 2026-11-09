@@ -34,7 +34,11 @@ class ManagedBackupsDeviceTest {
     }
     private fun phase(name: String) { diagnostics?.mark(name) }
     private val device get() = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
-    private fun root() = DocumentPickerUi.location(device, By.text("DistillPod test files"))
+    private fun root() {
+        // A queued Compose effect can launch the picker; UiAutomator does not drive that clock.
+        compose.waitForIdle()
+        DocumentPickerUi.location(device, By.text("DistillPod test files"))
+    }
     private fun save() { checkNotNull(device.wait(Until.findObject(By.text(Pattern.compile("Save", Pattern.CASE_INSENSITIVE)).enabled(true)), 10000)).click() }
     private suspend fun show(managed: ManagedBackups, legacy: BackupDocuments, onCreated: (android.net.Uri?) -> Unit = managed::created) {
         phase("show-before-main")

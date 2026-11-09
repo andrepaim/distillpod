@@ -14,6 +14,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -74,5 +75,19 @@ class ComposeMainThreadDeviceTest {
         compose.onNodeWithText("Close fixture").performClick()
         compose.onNodeWithText("Background result").assertDoesNotExist()
         assertEquals(false, show.value)
+    }
+
+    @Test fun lifecycleCollectionCanDisposeAfterBackgroundEmission() {
+        requireEmulator()
+        val value = MutableStateFlow("Before completion")
+        compose.setContent {
+            val text by value.collectAsStateWithLifecycle()
+            Text(text)
+        }
+        compose.onNodeWithText("Before completion").assertIsDisplayed()
+        runBlocking { withContext(Dispatchers.Default) { value.value = "After completion" } }
+        compose.onNodeWithText("After completion").assertIsDisplayed()
+        // Teardown must drain the queued lifecycle observer removal on Android main.
+        compose.activityRule.scenario.close()
     }
 }

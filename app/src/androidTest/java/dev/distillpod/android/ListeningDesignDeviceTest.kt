@@ -99,7 +99,9 @@ class ListeningDesignDeviceTest {
             repeat(2) {
                 compose.onNodeWithContentDescription("View show: Design validation show").performScrollTo().assertHasClickAction().performClick()
                 compose.waitUntil(5000) { vm.backStack.value.last() == "podcast:$id" }
-                compose.onNodeWithText("Design validation show").assertIsDisplayed()
+                // The same show name is also present in the clickable mini-player.
+                compose.onNode(hasText("Design validation show") and !hasClickAction() and
+                    !hasAnyAncestor(hasClickAction())).assertIsDisplayed()
                 withContext(Dispatchers.Main) {
                     assertEquals(beforeShow, c.currentPosition)
                     assertEquals(queueBeforeShow, (0 until c.mediaItemCount).map { c.getMediaItemAt(it).mediaId })
