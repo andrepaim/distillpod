@@ -192,13 +192,9 @@ internal fun VoiceSettings(vm: AppViewModel) {
     Text("Questions and transcript excerpts go to OpenAI and use your API credits. Your key stays encrypted on this phone and is excluded from backups and sync.", style = MaterialTheme.typography.bodySmall)
     HorizontalDivider()
     Text("Answers", style = MaterialTheme.typography.titleMedium)
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.weight(1f)) {
-            Text("Rewind after an answer")
-            Text("Replay the preceding three seconds", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        Switch(checked = rewind, onCheckedChange = { rewind = it; preferences.edit().putBoolean("rewind", it).apply() })
-    }
+    LabeledSettingSwitch("Rewind after an answer", checked = rewind,
+        detail = "Replay the preceding three seconds",
+        onCheckedChange = { rewind = it; preferences.edit().putBoolean("rewind", it).apply() })
     HorizontalDivider()
     Text("Ways to ask", style = MaterialTheme.typography.titleMedium)
     Text("On your phone, use Ask about this in the player.", style = MaterialTheme.typography.bodySmall)
