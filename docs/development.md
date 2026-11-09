@@ -24,7 +24,10 @@ establish: Bluetooth/headset/audio routing, background execution and
 battery/power behavior, runtime permissions and notification/system Settings,
 manufacturer-specific behavior, and relevant in-place upgrade/data-preservation
 risks. Keep feature-specific physical acceptance protocols. Synthetic key
-events or permission fixtures do not prove real accessory or system behavior.
+events do not prove actual accessory gestures. Emulator or mocked permission
+fixtures do not establish manufacturer-specific phone behavior; real-phone
+tests establish only the exact platform flows exercised, with their limitations
+recorded.
 A reporting change that affects background work or persisted data needs those
 risks assessed too.
 
