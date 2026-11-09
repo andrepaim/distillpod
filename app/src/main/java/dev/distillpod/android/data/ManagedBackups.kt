@@ -70,7 +70,7 @@ class ManagedBackups(
                     is SecurityException -> "Access to the backup file was lost. Connect the existing file again."
                     is IllegalArgumentException -> error.message?.take(200) ?: "This backup file is not supported."
                     is java.util.zip.ZipException, is org.json.JSONException -> "This is not a valid backup history. Use Import older backup for a standalone JSON file."
-                    else -> "The backup file is unavailable. Check Drive’s account and connection, or reconnect the file. Any verified recovery copy is kept on this phone."
+                    else -> "The backup file is unavailable. Check the file provider's account and connection, or reconnect the file. Any verified recovery copy is kept on this phone."
                 })
             } finally {
                 withContext(NonCancellable + Dispatchers.IO) { folder.deleteRecursively() }
@@ -85,7 +85,7 @@ class ManagedBackups(
 
     fun create() {
         if (state.value.working || state.value.awaitingDestination) return
-        state.value = state.value.copy(message = "Choose Google Drive and a folder once, then save the suggested file name.", awaitingDestination = true)
+        state.value = state.value.copy(message = "Choose a file provider and folder, then save the suggested file name.", awaitingDestination = true)
         destinations.trySend("DistillPod-backups.zip")
     }
     fun created(uri: Uri?) {
@@ -143,7 +143,7 @@ class ManagedBackups(
             val cached = recovery(selected)
             if (!cached.isFile) throw error
             val snapshots = BackupArchive.read(cached, File(folder, "cached"))
-            state.value = State("Drive is unavailable. Showing the last verified copy kept on this phone.", error = true, location = selected,
+            state.value = State("The backup file is unavailable. Showing the last verified copy kept on this phone.", error = true, location = selected,
                 history = snapshots.map { choice(it.record, true) }, chooseBackup = choose)
         }
     }
@@ -208,13 +208,13 @@ class ManagedBackups(
             }
             throw error
         }
-        // A metadata failure must not delete or roll back a verified cloud backup.
+        // A metadata failure must not delete or roll back a verified provider-file backup.
         val warnings = mutableListOf<String>()
         try { atomicCopy(recovery(selected), archive) } catch (_: IOException) { warnings += "The recovery copy could not be updated on this phone." }
         val connected = selected.copy(initialized = true)
         try { settings.text("managedBackup", connected.json()) } catch (error: Exception) { if (error is CancellationException) throw error; warnings += "Connection details could not be saved. Reconnect this file after restarting." }
         state.value = State((if (recovered) "Backup repaired and saved. " else "Backup saved and checked. ") +
-            "Drive manages cloud upload and sync." + warnings.joinToString(" ", prefix = if (warnings.isEmpty()) "" else " "),
+            "The file provider handles any cloud upload and sync; cloud upload is not verified here." + warnings.joinToString(" ", prefix = if (warnings.isEmpty()) "" else " "),
             error = warnings.isNotEmpty(), location = connected, history = retained.map { choice(it.record) })
     }
     private fun release(uri: Uri) { runCatching { resolver.releasePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION) } }

@@ -51,7 +51,7 @@ class LibraryBackup(private val db: AppDatabase, private val assets: dev.distill
         val createdAt = System.currentTimeMillis()
         val payload = if (preferences == null) tables.toString() else JSONObject().put("library", tables)
             .put("preferences", PortablePreferences.parse(preferences.json()).json()).put("createdAt", createdAt).put("appVersion", appVersion.take(100)).toString()
-        val bytes = JSONObject().put("format", "distillpod-library").put("version", if (preferences == null) 1 else 2).put("databaseSchema", 6)
+        val bytes = JSONObject().put("format", "distillpod-library").put("version", if (preferences == null) 1 else 2).put("databaseSchema", 7)
             .put("createdAt", createdAt).put("payload", payload).put("sha256", sha(payload)).toString().toByteArray(Charsets.UTF_8)
         require(bytes.size <= BACKUP_LIMIT) { "This library exceeds the 32 MB backup limit" }
         PostBackupBundle.pack(bytes, PostBackupBundle.references(tables), assets)
@@ -60,7 +60,7 @@ class LibraryBackup(private val db: AppDatabase, private val assets: dev.distill
     suspend fun preview(input: InputStream): BackupPreview = withContext(Dispatchers.IO) {
         val (bytes, images) = PostBackupBundle.unpack(input.readBytesBounded())
         val root = JSONObject(bytes.toString(Charsets.UTF_8))
-        require(root.optString("format") == "distillpod-library" && root.optInt("version") in 1..2 && root.optInt("databaseSchema") in 1..6) { "This backup format is not supported" }
+        require(root.optString("format") == "distillpod-library" && root.optInt("version") in 1..2 && root.optInt("databaseSchema") in 1..7) { "This backup format is not supported" }
         val original = root.getString("payload")
         require(sha(original) == root.getString("sha256")) { "The backup integrity check failed" }
         val content = if (root.getInt("version") == 2) JSONObject(original) else null
@@ -97,6 +97,10 @@ class LibraryBackup(private val db: AppDatabase, private val assets: dev.distill
             normalized.put("moment_attempts", JSONArray()).put("moment_versions", JSONArray())
             val rows = normalized.getJSONArray("distillations")
             repeat(rows.length()) { rows.getJSONObject(it).put("sourceJson", "") }
+        }
+        if (root.getInt("databaseSchema") < 7) {
+            val rows = normalized.getJSONArray("episodes")
+            repeat(rows.length()) { rows.getJSONObject(it).put("sourceOrder", JSONObject.NULL) }
         }
         db.withTransaction {
             val tables = validated(normalized.toString())
@@ -261,6 +265,9 @@ class LibraryBackup(private val db: AppDatabase, private val assets: dev.distill
     }
 
     private fun portable(table: String, row: JSONObject) {
+        if(table=="moment_attempts") {
+            row.put("contextJson",JSONObject(row.getString("contextJson")).apply {remove("_diagnostics")}.toString())
+        }
         if (table == "post_drafts") {
             val post = SocialResult.parse(row.getString("content"))
             if (post.stage in listOf("queued", "preparing", "researching", "illustrating")) row.put("content",post.copy(stage="failed", attempt=java.util.UUID.randomUUID().toString(), error="Restored from backup. Retry when ready.").json())

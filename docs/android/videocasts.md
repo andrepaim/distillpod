@@ -1,21 +1,20 @@
 # YouTube sources and videocasts
 
-Search publishes Apple podcast results and public YouTube playlist results independently, with provider-specific loading, failures and retries. Results identify
-the playlist owner and are labelled **YouTube · videocast**. It does not hardcode a show, scrape
+Search publishes Apple podcast results and public YouTube channel/playlist results independently, with provider-specific loading, failures and retries. **All**, **Audio**, and **Video** filters keep the two kinds easy to find. Late results append without moving already displayed results. YouTube results identify the channel or playlist explicitly. It does not hardcode a show, scrape
 Spotify, require a paid directory, or create an RSS feed that points to HTML pages.
 
 For Falha de Cobertura, the official Podpah TV playlist is
 https://www.youtube.com/playlist?list=PLaE_mZALZ0V3lAEAvIfZC-aKf2ATIY3uy .
 TV Quase also maintains https://www.youtube.com/playlist?list=PLA2Gd9vTv5MVeugwRKZeYaIn9Q1A7ojJv .
-Choose the publisher in search, or paste its playlist link in the add-feed sheet. A single
-YouTube video URL can also be added. Refresh loads up to the first 200 playlist entries;
+Choose the publisher in search, or paste its channel or playlist link in the add-feed sheet. A single
+YouTube video URL can also be added. Channels use their latest **Videos** tab, newest first. Refresh loads up to the first 200 source entries;
 unavailable, private, upcoming and live entries are excluded when their availability is known.
 This is a bounded initial import, not a complete archive import of longer playlists.
 Flat playlist entries often omit upload dates; those dates remain unknown rather than being
-invented. The current library sorts unknown-date entries by title.
+invented. The library preserves source order for unknown-date entries instead of alphabetizing them. Dated playlist entries sort newest first; undated playlists retain publisher order, which may not be chronological. Archived entries outside the bounded refresh remain available after the current source snapshot.
 
 The player starts in audio mode. For video episodes, **Video** displays the picture above
-the existing playback controls; **Audio** restores audio at the same position. Leaving the
+the existing playback controls; **Audio** restores audio at the same position. The fullscreen button opens an immersive landscape view, including with rotation locked. With system auto-rotate enabled, turning to landscape enters fullscreen and returning upright exits. Back exits fullscreen first. Tap the picture to reveal or hide pause/play, seek, Distill, voice question and exit controls; controls stay visible during pause or interaction. Fullscreen changes the view and window policy while retaining the same MediaController, media item and video surface. Distill saves the current moment without leaving fullscreen; voice uses the existing setup and session sheet. Leaving the
 player or backgrounding the app restores audio mode. Public RSS video enclosures also use
 the video surface. YouTube video uses a separate H.264 track up to 720p with the original
 audio track; auto-dubs have lower priority. Background audio, queue and position remain
@@ -24,7 +23,7 @@ Queue edits preserve the current video selection. Offline YouTube downloads cont
 
 Subscriptions store canonical playlist URLs and episodes store canonical watch URLs. Video
 IDs determine episode identity. Temporary Google CDN URLs are resolved on the loading thread,
-cached in memory for two minutes, and never written to the database, backups or sync records.
+cached only in memory until one minute before the earliest signed URL expiry, with a 30-minute maximum (two minutes if expiry is absent), and never written to the database, backups or sync records.
 Downloads resolve the audio again and validate that the downloaded file has an audio track.
 Playback and downloads use byte ranges of at most 1 MiB: observed audio CDN requests with
 open-ended or 5–10 MiB ranges returned HTTP 403 while 1 MiB ranges succeeded. Downloads
@@ -42,7 +41,7 @@ requirements; the Android app and shared core are distributed under GPL-3.0-only
 YouTube can change extraction or reject requests by network/device. Restricted/DRM content
 and live streams are unsupported. There is no claim that a search result guarantees playback.
 YouTube subscriptions, progress and saved moments remain local under the existing cloud
-protocol: its query-string URL guard rejects canonical playlist/watch URLs. This branch does
+protocol: its query-string URL guard rejects canonical playlist/watch URLs, and the client explicitly keeps queryless channel subscriptions local for compatibility with older RSS-only clients. This branch does
 not change that protocol or the deployed Firebase rules. Local backups and OPML retain the
 canonical URLs; restoring YouTube sources requires a build with this feature. RSS sync keeps
 its existing behavior.
@@ -54,6 +53,8 @@ Extraction has a 40-second total deadline including its single transient retry, 
 Sanitized extraction and mode/output events use the existing opt-in diagnostics. Extraction events have random operation identifiers, categorical reasons and elapsed time; no video identifiers, titles, URLs or extractor output are uploaded. Instrumented acceptance emits marked test logs and does not replace real operation history. Dashboard counts describe observed events, including retries, rather than success-rate denominators.
 
 ## Validation
+
+The current search, ordering, startup and fullscreen work is described in [video experience](video-experience.md).
 
 The historical results below describe the initial implementation. Current integration and S22 delivery evidence is recorded in [videocast delivery](evidence/videocast-delivery.md).
 

@@ -32,5 +32,11 @@ object YouTubeUrl {
     }
     fun watch(id: String): String { require(video.matches(id)); return "https://www.youtube.com/watch?v=$id" }
     fun list(id: String): String { require(playlist.matches(id)); return "https://www.youtube.com/playlist?list=$id" }
-    fun source(raw: String): String? = playlistId(raw)?.let(::list) ?: videoId(raw)?.let(::watch)
+    fun channel(raw: String): String? {
+        val (u, _) = parts(raw) ?: return null
+        if (u.host.equals("youtu.be", true)) return null
+        val match = Regex("/((?:channel/UC[A-Za-z0-9_-]{22})|(?:@[A-Za-z0-9_.-]{1,100}))/?(?:(videos|featured|shorts|streams)/?)?").matchEntire(u.path) ?: return null
+        return "https://www.youtube.com/${match.groupValues[1]}/videos"
+    }
+    fun source(raw: String): String? = playlistId(raw)?.let(::list) ?: videoId(raw)?.let(::watch) ?: channel(raw)
 }

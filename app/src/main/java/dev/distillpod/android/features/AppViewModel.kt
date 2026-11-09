@@ -103,9 +103,14 @@ class AppViewModel(val graph: AppGraph, private val saved: SavedStateHandle) : V
     fun seek(position: Long) = action("seek") { graph.voice.cancel(false); graph.playback.seek(position) }
     fun skip(delta: Long) = action("seek") { graph.voice.cancel(false); graph.playback.skip(delta) }
     fun speed(value: Float) = action("speed") { graph.playback.speed(value) }
-    fun enqueue(id: String, next: Boolean = false) = action("queue") { graph.playback.enqueue(id, next); messages.send(if (next) "Added to play next" else "Added to queue") }
-    fun removeQueue(id: String) = action("queue") { graph.playback.remove(id) }
-    fun moveQueue(id: String, offset: Int) = action("queue") { graph.playback.move(id, offset) }
+    private val queueActions = QueueActions(viewModelScope) { error ->
+        graph.diagnostics.failure("worker", error, source="phone")
+        messages.send(safeFailure(error))
+    }
+    fun clearQueue() = queueActions.submit { graph.voice.cancel(false); graph.playback.clear() }
+    fun enqueue(id: String, next: Boolean = false) = queueActions.submit { graph.playback.enqueue(id, next); messages.send(if (next) "Added to play next" else "Added to queue") }
+    fun removeQueue(id: String) = queueActions.submit { graph.playback.remove(id) }
+    fun moveQueue(id: String, offset: Int) = queueActions.submit { graph.playback.move(id, offset) }
     fun download(id: String) = action("download:$id") { graph.jobs.download(id); messages.send("Download queued") }
     fun pauseDownload(id: String) { graph.jobs.pauseDownload(id) }
     fun deleteDownload(id: String) = action("delete:$id") { graph.media.deleteDownload(id) }
@@ -127,14 +132,16 @@ class AppViewModel(val graph: AppGraph, private val saved: SavedStateHandle) : V
     fun deleteCapture(id: String) = action("capture:$id") { graph.portableSync.deleteMoment(id) }
     fun prepareTranscript(id: String, local: Boolean = false) = action("transcript:$id") { graph.diagnostics.usage("transcription");graph.transcription.prepare(id, local); messages.send("Transcript preparation queued") }
     fun pauseTranscript(id: String) = action("transcript:$id") { graph.transcription.pause(id) }
-    fun captureMoment() = action("distill") {
+    fun captureMoment() = captureMoment(openSaved = true)
+    fun captureMomentInPlayer() = captureMoment(openSaved = false)
+    private fun captureMoment(openSaved: Boolean) = action("distill") {
         graph.diagnostics.event("capture.requested",source="phone")
         val (id, position, file) = graph.playback.captureSource()
         val ep = dao.episode(id) ?: error("Episode is unavailable")
         val saved = graph.captures.capture(id, position, file != null && file == ep.localFile)
         graph.diagnostics.event("capture.accepted",saved,source="phone")
         messages.send("Moment saved at ${timestamp(position)}")
-        open("capture:$saved")
+        if (openSaved) open("capture:$saved")
     }
     fun generateCapture(id: String, confirm: Boolean = false) = action("capture:$id") { graph.diagnostics.usage("distillation");graph.captures.generate(id, confirm) }
     fun improveCapture(id: String, expanded: Boolean = false) = action("capture:$id") { graph.captures.improve(id, expanded) }

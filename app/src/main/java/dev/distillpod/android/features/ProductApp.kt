@@ -31,6 +31,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
@@ -72,6 +73,9 @@ private fun date(ms: Long) = if (ms <= 0) "" else DateTimeFormatter.ofPattern("d
 @Composable fun ProductApp(vm: AppViewModel) {
     val stack by vm.backStack.collectAsStateWithLifecycle()
     val route = stack.last()
+    var videoFullscreen by remember { mutableStateOf(false) }
+    var fullscreenExitRequest by remember { mutableIntStateOf(0) }
+    LaunchedEffect(route) { if (route != "player") videoFullscreen = false }
     val podcasts by vm.podcasts.collectAsStateWithLifecycle()
     val episodes by vm.episodes.collectAsStateWithLifecycle()
     val player by vm.player.collectAsStateWithLifecycle()
@@ -85,7 +89,9 @@ private fun date(ms: Long) = if (ms <= 0) "" else DateTimeFormatter.ofPattern("d
     val snackbar = remember { SnackbarHostState() }
     val screenState = rememberSaveableStateHolder()
     LaunchedEffect(Unit) { for (message in vm.messages) snackbar.showSnackbar(message) }
-    BackHandler(stack.size > 1) { vm.back() }
+    BackHandler(stack.size > 1 || videoFullscreen) {
+        if (videoFullscreen) fullscreenExitRequest++ else vm.back()
+    }
     val title = when {
         route == "library" -> "DistillPod"
         route == "search" -> "Discover"
@@ -95,7 +101,7 @@ private fun date(ms: Long) = if (ms <= 0) "" else DateTimeFormatter.ofPattern("d
         route == "queue" -> "Listening queue"
         route == "settings" -> "Settings"
         route == "shows" -> "Your shows"
-        route.startsWith("settings:") -> when(route.substringAfter(':')) { "diagnostics" -> "Diagnostics"; "sync" -> "Library sync"; "ai" -> "ChatGPT"; "voice" -> "Voice"; "playback" -> "Playback & headphones"; "transcription" -> "Local transcription"; "storage" -> "Downloads & storage"; "library" -> "Import & notifications"; else -> "About DistillPod" }
+        route.startsWith("settings:") -> when(route.substringAfter(':')) { "diagnostics" -> "Privacy & diagnostics"; "notifications" -> "Notification access"; "sync" -> "Library sync"; "ai" -> "ChatGPT"; "voice" -> "Voice"; "playback" -> "Playback & headphones"; "transcription" -> "Transcript preparation"; "storage" -> "Downloads & storage"; "library" -> "Library"; else -> "About DistillPod" }
         route.startsWith("transcript:") -> "Transcript"
         route == "backup" -> "Backup & Restore"
         route == "player" -> "Now playing"
@@ -109,7 +115,7 @@ private fun date(ms: Long) = if (ms <= 0) "" else DateTimeFormatter.ofPattern("d
     DistillTheme {
         BackupDocumentLaunchers(vm)
         Scaffold(containerColor = ink, snackbarHost = { SnackbarHost(snackbar) }, topBar = {
-            TopAppBar(title = { Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold) },
+            if (!videoFullscreen) TopAppBar(title = { Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold) },
                 navigationIcon = { if (stack.size > 1) IconButton(onClick = vm::back) { Icon(Icons.Default.ArrowBack, "Back") } },
                 actions = {
                     if (route == "library" || route.startsWith("podcast:")) IconButton(onClick = { vm.refresh(if (route.startsWith("podcast:")) route.substringAfter(':') else null) }, enabled = "refresh" !in busy) { Icon(Icons.Default.Refresh, "Refresh feeds") }
@@ -130,8 +136,8 @@ private fun date(ms: Long) = if (ms <= 0) "" else DateTimeFormatter.ofPattern("d
                 }
             }
         }) { padding ->
-            Box(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)
-                .then(if (route == "player") Modifier.navigationBarsPadding() else Modifier)) {
+            Box(Modifier.fillMaxSize().then(if (videoFullscreen) Modifier else Modifier.padding(padding).consumeWindowInsets(padding))
+                .then(if (route == "player" && !videoFullscreen) Modifier.navigationBarsPadding() else Modifier)) {
                 screenState.SaveableStateProvider(route) {
                 when {
                     !loaded -> CircularProgressIndicator(Modifier.align(Alignment.Center))
@@ -143,8 +149,8 @@ private fun date(ms: Long) = if (ms <= 0) "" else DateTimeFormatter.ofPattern("d
                     route == "saved" -> SavedPage(vm, captures, episodes, podcasts)
                     route == "shows" -> ShowsPage(vm, podcasts)
                     route == "settings" || route.startsWith("settings:") -> SettingsPage(vm, preferences, account, models, episodes, route.substringAfter(':', "overview"))
-                    route == "backup" -> BackupPage(vm)
-                    route == "player" -> PlayerPage(vm, episodes.firstOrNull { it.id == player.episodeId }, podcasts, player)
+                    route == "backup" -> BackupPage(vm) { vm.open("settings:sync") }
+                    route == "player" -> PlayerPage(vm, episodes.firstOrNull { it.id == player.episodeId }, podcasts, player, fullscreenExitRequest) { videoFullscreen = it }
                     route.startsWith("episode:") -> EpisodePage(vm, episodes.firstOrNull { it.id == route.substringAfter(':') }, podcasts, player)
                     route.startsWith("capture:") -> CapturePage(vm, captures.firstOrNull { it.id == route.substringAfter(':') }, episodes)
                     route.startsWith("transcript:") -> TranscriptPage(vm, episodes.firstOrNull { it.id == route.substringAfter(':') })
@@ -175,7 +181,8 @@ private fun date(ms: Long) = if (ms <= 0) "" else DateTimeFormatter.ofPattern("d
     val subscribed = podcasts.filter { it.subscribed }
     val selected = podcasts.firstOrNull { it.id == podcastId }
     val library = episodes.filter { ep -> if (podcastId != null) ep.podcastId == podcastId else subscribed.any { it.id == ep.podcastId } || ep.localFile != null || ep.lastPlayedAt > 0 }
-    val visible = library.filter { ep -> when (filter) { "downloads" -> ep.localFile != null; "progress" -> ep.positionMs > 0 && !ep.completed; else -> true } }
+    val visible = library.filter { ep -> when (filter) { "downloads" -> ep.localFile != null; "progress" -> ep.positionMs > 0 && !ep.completed; else -> true } }.let { rows -> if (selected?.feedUrl?.let { dev.distillpod.core.YouTubeUrl.source(it) } != null)
+        rows.sortedBy { it.sourceOrder ?: Int.MAX_VALUE } else rows }
     val resume = library.firstOrNull { it.id == player.episodeId && !it.completed }
         ?: library.filter { it.positionMs > 0 && !it.completed }.maxByOrNull { it.lastPlayedAt }
     val showResume = podcastId == null && filter == "all" && resume != null
@@ -312,63 +319,92 @@ private fun date(ms: Long) = if (ms <= 0) "" else DateTimeFormatter.ofPattern("d
 }
 
 @OptIn(ExperimentalLayoutApi::class)
-@Composable private fun PlayerPage(vm: AppViewModel, ep: EpisodeEntity?, podcasts: List<PodcastEntity>, player: PlaybackState) {
+@Composable private fun PlayerPage(vm: AppViewModel, ep: EpisodeEntity?, podcasts: List<PodcastEntity>, player: PlaybackState, fullscreenExitRequest: Int, onFullscreen: (Boolean) -> Unit) {
     if (ep == null) { Empty("Pick an episode", "Choose something from your library to start listening.", "Open library", { vm.root("library") }); return }
     val podcast = podcasts.firstOrNull { it.id == ep.podcastId }
     var dragging by remember(ep.id) { mutableStateOf<Float?>(null) }
     val displayedPosition = dragging?.toLong() ?: player.positionMs
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        if (ep.mimeType?.startsWith("video/") == true) {
-            VideocastPlayer(vm.graph.playback, ep.id) { Cover(ep.imageUrl ?: podcast?.imageUrl, Modifier.size(196.dp)) }
-        } else Cover(ep.imageUrl ?: podcast?.imageUrl, Modifier.size(196.dp))
-        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-            Text(ep.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold, maxLines = 3, overflow = TextOverflow.Ellipsis)
-            Text(podcast?.title ?: "Podcast", color = MaterialTheme.colorScheme.secondary, style = MaterialTheme.typography.bodyMedium)
-        }
-        VoiceControls(vm)
-        PlayerAdControls(vm, ep)
-        val skipped by vm.graph.playbackEvents.lastSkipped.collectAsStateWithLifecycle()
-        if (skipped?.episodeId == ep.id) TextButton(onClick = vm::undoAdSkip) { Text("Ad skipped · Undo and replay") }
-        player.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        Column(Modifier.fillMaxWidth()) {
-            Slider(value = dragging ?: player.positionMs.toFloat().coerceIn(0f, player.durationMs.coerceAtLeast(1).toFloat()), onValueChange = { dragging = it },
-                onValueChangeFinished = { dragging?.let { vm.seek(it.toLong()) }; dragging = null }, valueRange = 0f..player.durationMs.coerceAtLeast(1).toFloat(), enabled = player.durationMs > 0,
-                modifier = Modifier.semantics { contentDescription = "Episode playback position"; stateDescription = "${timestamp(displayedPosition)} of ${timestamp(player.durationMs)}" })
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(timestamp(displayedPosition), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(timeRemaining(player.durationMs, displayedPosition), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = { vm.skip(-10000) }, modifier = Modifier.size(64.dp)) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) { Icon(Icons.Default.Replay, "Back 10 seconds", Modifier.size(28.dp)); Text("10 s", style = MaterialTheme.typography.labelSmall) }
-            }
-            FilledIconButton(onClick = vm::toggle, shape = androidx.compose.foundation.shape.CircleShape, modifier = Modifier.size(76.dp)) { Icon(if (player.playing) Icons.Default.Pause else Icons.Default.PlayArrow, if (player.playing) "Pause" else "Play", Modifier.size(40.dp)) }
-            IconButton(onClick = { vm.skip(30000) }, modifier = Modifier.size(64.dp)) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) { Icon(Icons.Default.Forward30, "Forward 30 seconds", Modifier.size(28.dp)); Text("30 s", style = MaterialTheme.typography.labelSmall) }
-            }
-        }
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(0.dp)) {
-            listOf(1f, 1.25f, 1.5f, 2f).forEach { speed -> FilterChip(selected = player.speed == speed, onClick = { vm.speed(speed) }, label = { Text("${speed.toString().removeSuffix(".0")}×") }) }
-        }
-        Button(onClick = vm::captureMoment, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp), shape = RoundedCornerShape(16.dp)) {
-            Icon(Icons.Default.AutoAwesome, null, Modifier.size(20.dp)); Spacer(Modifier.width(10.dp)); Text("Distill last 60 seconds")
-        }
-        Text("Save the moment now. Generate its insight when the source is ready.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        HorizontalDivider(Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.outline.copy(alpha = .35f))
-        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                Text("Go deeper", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                TranscriptTools(vm, ep)
-                EpisodeUnderstandingTools(vm, ep)
-                DownloadAction(vm, ep)
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = { vm.open("episode:${ep.id}") }) { Text("Episode details") }
-                    OutlinedButton(onClick = { vm.root("queue") }) { Text("Queue") }
+    var fullscreen by remember(ep.id) { mutableStateOf(false) }
+    val busy by vm.busy.collectAsStateWithLifecycle()
+    VoicePlayerHost(vm, showLastAnswer = !fullscreen) { voiceEnabled, voiceActive, ask ->
+        Column(Modifier.fillMaxSize().then(if (fullscreen) Modifier else Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 8.dp)), verticalArrangement = Arrangement.spacedBy(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            if (ep.mimeType?.startsWith("video/") == true) {
+                VideocastPlayer(vm.graph.playback, ep.id, title = ep.title, fullscreenExitRequest = fullscreenExitRequest,
+                    onFullscreen = { fullscreen = it; onFullscreen(it) },
+                    onCapture = vm::captureMomentInPlayer, captureBusy = "distill" in busy,
+                    onVoice = ask, onToggle = vm::toggle, onSeek = vm::seek, voiceEnabled = voiceEnabled, voiceActive = voiceActive) { Cover(ep.imageUrl ?: podcast?.imageUrl, Modifier.size(196.dp)) }
+            } else Cover(ep.imageUrl ?: podcast?.imageUrl, Modifier.size(196.dp))
+            if (!fullscreen) {
+                Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    Text(ep.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                    EpisodeShowLink(podcast, vm::open)
                 }
+                if (voiceEnabled) Button(onClick = ask, enabled = !voiceActive, modifier = Modifier.fillMaxWidth()) {
+                    Icon(Icons.Default.Mic, null); Spacer(Modifier.width(8.dp)); Text("Ask about this")
+                }
+                PlayerAdControls(vm, ep)
+                val skipped by vm.graph.playbackEvents.lastSkipped.collectAsStateWithLifecycle()
+                if (skipped?.episodeId == ep.id) TextButton(onClick = vm::undoAdSkip) { Text("Ad skipped · Undo and replay") }
+                player.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                Column(Modifier.fillMaxWidth()) {
+                    Slider(value = dragging ?: player.positionMs.toFloat().coerceIn(0f, player.durationMs.coerceAtLeast(1).toFloat()), onValueChange = { dragging = it },
+                        onValueChangeFinished = { dragging?.let { vm.seek(it.toLong()) }; dragging = null }, valueRange = 0f..player.durationMs.coerceAtLeast(1).toFloat(), enabled = player.durationMs > 0,
+                        modifier = Modifier.semantics { contentDescription = "Episode playback position"; stateDescription = "${timestamp(displayedPosition)} of ${timestamp(player.durationMs)}" })
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text(timestamp(displayedPosition), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(timeRemaining(player.durationMs, displayedPosition), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = { vm.skip(-10000) }, modifier = Modifier.size(64.dp)) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) { Icon(Icons.Default.Replay, "Back 10 seconds", Modifier.size(28.dp)); Text("10 s", style = MaterialTheme.typography.labelSmall) }
+                    }
+                    FilledIconButton(onClick = vm::toggle, shape = androidx.compose.foundation.shape.CircleShape, modifier = Modifier.size(76.dp)) { Icon(if (player.playing) Icons.Default.Pause else Icons.Default.PlayArrow, if (player.playing) "Pause" else "Play", Modifier.size(40.dp)) }
+                    IconButton(onClick = { vm.skip(30000) }, modifier = Modifier.size(64.dp)) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) { Icon(Icons.Default.Forward30, "Forward 30 seconds", Modifier.size(28.dp)); Text("30 s", style = MaterialTheme.typography.labelSmall) }
+                    }
+                }
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(0.dp)) {
+                    listOf(1f, 1.25f, 1.5f, 2f).forEach { speed -> FilterChip(selected = player.speed == speed, onClick = { vm.speed(speed) }, label = { Text("${speed.toString().removeSuffix(".0")}×") }) }
+                }
+                Button(onClick = vm::captureMoment, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp), shape = RoundedCornerShape(16.dp)) {
+                    Icon(Icons.Default.AutoAwesome, null, Modifier.size(20.dp)); Spacer(Modifier.width(10.dp)); Text("Distill last 60 seconds")
+                }
+                Text("Save the moment now. Generate its insight when the source is ready.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                HorizontalDivider(Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.outline.copy(alpha = .35f))
+                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                        Text("Go deeper", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        TranscriptTools(vm, ep)
+                        EpisodeUnderstandingTools(vm, ep)
+                        DownloadAction(vm, ep)
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(onClick = { vm.open("episode:${ep.id}") }) { Text("Episode details") }
+                            OutlinedButton(onClick = { vm.root("queue") }) { Text("Queue") }
+                        }
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
             }
         }
-        Spacer(Modifier.height(12.dp))
+    }
+}
+
+@Composable internal fun EpisodeShowLink(podcast: PodcastEntity?, onOpen: (String) -> Unit) {
+    if (podcast == null) {
+        Text("Show unavailable", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
+        return
+    }
+    TextButton(
+        onClick = { onOpen("podcast:${podcast.id}") },
+        modifier = Modifier.semantics { contentDescription = "View show: ${podcast.title}" },
+    ) {
+        Column(horizontalAlignment = Alignment.Start) {
+            Text(podcast.title, style = MaterialTheme.typography.bodyMedium)
+            Text("View show", style = MaterialTheme.typography.labelMedium)
+        }
+        Spacer(Modifier.width(8.dp))
+        Icon(Icons.Default.ChevronRight, contentDescription = null)
     }
 }
 
@@ -378,7 +414,7 @@ private fun date(ms: Long) = if (ms <= 0) "" else DateTimeFormatter.ofPattern("d
     val podcast = podcasts.firstOrNull { it.id == ep.podcastId }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Cover(ep.imageUrl ?: podcast?.imageUrl, Modifier.size(96.dp)); Column(Modifier.weight(1f)) { Text(podcast?.title ?: "Podcast", color = MaterialTheme.colorScheme.secondary); Text(date(ep.publishedAt), style = MaterialTheme.typography.bodySmall) }
+            Cover(ep.imageUrl ?: podcast?.imageUrl, Modifier.size(96.dp)); Column(Modifier.weight(1f)) { EpisodeShowLink(podcast, vm::open); Text(date(ep.publishedAt), style = MaterialTheme.typography.bodySmall) }
         }
         Text(ep.title, style = MaterialTheme.typography.headlineSmall)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -395,52 +431,65 @@ private fun date(ms: Long) = if (ms <= 0) "" else DateTimeFormatter.ofPattern("d
 }
 
 @Composable private fun QueuePage(vm: AppViewModel, episodes: List<EpisodeEntity>, podcasts: List<PodcastEntity>, player: PlaybackState) {
-    if (player.queue.isEmpty()) { Empty("Your queue is clear", "Use Play next or Add to queue on an episode.", "Browse library", { vm.root("library") }); return }
-    val currentIndex = player.queue.indexOf(player.episodeId)
-    val upcoming = if (currentIndex >= 0) player.queue.drop(currentIndex + 1) else player.queue
-    val previous = if (currentIndex > 0) player.queue.take(currentIndex) else emptyList()
-    LazyColumn(contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        player.episodeId?.let { current -> episodes.firstOrNull { it.id == current }?.let { ep ->
-            item(key = "current") {
-                SectionHeading(if (player.playing) "Now playing" else "Ready to resume")
-                Spacer(Modifier.height(10.dp))
-                QueueEpisodeCard(vm, ep, podcasts.firstOrNull { it.id == ep.podcastId }, player, null, false, false)
+    QueueContent(episodes, podcasts, player, { vm.root("library") }, { vm.open("episode:$it") },
+        { vm.play(it) }, vm::toggle, vm::moveQueue, vm::clearQueue, vm::removeQueue)
+}
+
+/** Render the same full order used by Media3, including the current item in its actual position. */
+@Composable internal fun QueueContent(
+    episodes: List<EpisodeEntity>, podcasts: List<PodcastEntity>, player: PlaybackState,
+    onBrowse: () -> Unit, onOpen: (String) -> Unit, onPlay: (String) -> Unit, onToggle: () -> Unit,
+    onMove: (String, Int) -> Unit, onClear: () -> Unit, onRemove: (String) -> Unit = {}
+) {
+    // A changed playlist needs a fresh confirmation, rather than clearing unseen new items.
+    var confirmClear by rememberSaveable(player.queue) { mutableStateOf(false) }
+    if (player.queue.isEmpty()) {
+        Empty("Your queue is clear", "Use Play next or Add to queue on an episode.", "Browse library", onBrowse)
+        return
+    }
+    if (confirmClear) AlertDialog(
+        onDismissRequest = { confirmClear = false },
+        title = { Text("Clear queue and stop playback?") },
+        text = { Text("Remove all episodes from the queue, including the current episode. Your listening progress and downloaded files are kept.") },
+        confirmButton = { TextButton(onClick = { confirmClear = false; onClear() }) { Text("Clear and stop") } },
+        dismissButton = { TextButton(onClick = { confirmClear = false }) { Text("Cancel") } }
+    )
+    val byId = episodes.associateBy { it.id }
+    val shows = podcasts.associateBy { it.id }
+    LazyColumn(Modifier.testTag("queue-list"), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item(key = "queue-controls") {
+            SectionHeading("Playback order", "Episodes before the current item remain available to replay.")
+            TextButton(onClick = { confirmClear = true }) { Icon(Icons.Default.ClearAll, null); Text("Clear queue") }
+        }
+        items(player.queue, key = { it }) { id ->
+            val index = player.queue.indexOf(id)
+            byId[id]?.let { ep ->
+                QueueEpisodeCard(ep, shows[ep.podcastId], player, index + 1, index > 0,
+                    index < player.queue.lastIndex, onOpen, onPlay, onToggle, onMove, onRemove)
             }
-        } }
-        item(key = "up-next-heading") { SectionHeading("Up next", "${upcoming.size} ${if (upcoming.size == 1) "episode" else "episodes"} in order") }
-        if (upcoming.isEmpty()) item { Text("Add an episode with Play next or Add to queue to keep listening.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium) }
-        items(upcoming, key = { it }) { id -> episodes.firstOrNull { it.id == id }?.let { ep ->
-            val ordinal = upcoming.indexOf(id)
-            QueueEpisodeCard(vm, ep, podcasts.firstOrNull { it.id == ep.podcastId }, player, ordinal + 1, ordinal > 0, ordinal < upcoming.lastIndex)
-        } }
-        if (previous.isNotEmpty()) item { SectionHeading("Earlier in queue", "Kept here so you can return to it") }
-        items(previous, key = { it }) { id -> episodes.firstOrNull { it.id == id }?.let { ep ->
-            val index = previous.indexOf(id)
-            QueueEpisodeCard(vm, ep, podcasts.firstOrNull { it.id == ep.podcastId }, player, null, index > 0, index < previous.lastIndex)
-        } }
+        }
     }
 }
 
-@Composable private fun QueueEpisodeCard(vm: AppViewModel, ep: EpisodeEntity, podcast: PodcastEntity?, player: PlaybackState, number: Int?, canMoveUp: Boolean, canMoveDown: Boolean) {
+@Composable private fun QueueEpisodeCard(ep: EpisodeEntity, podcast: PodcastEntity?, player: PlaybackState, number: Int?, canMoveUp: Boolean, canMoveDown: Boolean, onOpen: (String) -> Unit, onPlay: (String) -> Unit, onToggle: () -> Unit, onMove: (String, Int) -> Unit, onRemove: (String) -> Unit) {
     val current = player.episodeId == ep.id
-    Card(onClick = { vm.open("episode:${ep.id}") }, colors = CardDefaults.cardColors(containerColor = if (current) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface)) {
+    Card(onClick = { onOpen(ep.id) }, colors = CardDefaults.cardColors(containerColor = if (current) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface)) {
         Column(Modifier.padding(start = 14.dp, top = 14.dp, end = 8.dp, bottom = 4.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 if (number != null) Text(number.toString().padStart(2, '0'), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Cover(ep.imageUrl ?: podcast?.imageUrl, Modifier.size(48.dp))
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    if (current) Text(if (player.playing) "Now playing" else "Ready to resume", style = MaterialTheme.typography.labelSmall)
                     Text(ep.title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 3, overflow = TextOverflow.Ellipsis)
                     Text(podcast?.title ?: "Podcast", maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                IconButton(onClick = { if (current && player.playing) vm.toggle() else vm.play(ep.id) }) { Icon(if (current && player.playing) Icons.Default.Pause else Icons.Default.PlayArrow, "${if (current && player.playing) "Pause" else "Play"} ${ep.title}") }
+                IconButton(onClick = { if (current && player.playing) onToggle() else onPlay(ep.id) }) { Icon(if (current && player.playing) Icons.Default.Pause else Icons.Default.PlayArrow, "${if (current && player.playing) "Pause" else "Play"} ${ep.title}") }
             }
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(timeRemaining(ep.durationMs, if (current) player.positionMs else ep.positionMs), Modifier.weight(1f), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                if (!current) {
-                    IconButton(onClick = { vm.moveQueue(ep.id, -1) }, enabled = canMoveUp) { Icon(Icons.Default.ArrowUpward, "Move ${ep.title} up") }
-                    IconButton(onClick = { vm.moveQueue(ep.id, 1) }, enabled = canMoveDown) { Icon(Icons.Default.ArrowDownward, "Move ${ep.title} down") }
-                }
-                IconButton(onClick = { vm.removeQueue(ep.id) }) { Icon(Icons.Default.Close, "Remove ${ep.title} from queue") }
+                IconButton(onClick = { onMove(ep.id, -1) }, enabled = canMoveUp) { Icon(Icons.Default.ArrowUpward, "Move ${ep.title} up") }
+                IconButton(onClick = { onMove(ep.id, 1) }, enabled = canMoveDown) { Icon(Icons.Default.ArrowDownward, "Move ${ep.title} down") }
+                IconButton(onClick = { onRemove(ep.id) }) { Icon(Icons.Default.Close, "Remove ${ep.title} from queue") }
             }
         }
     }
@@ -542,7 +591,7 @@ private fun captureState(state: String) = when (state) { "waiting_transcript" ->
     if(section=="diagnostics") {DiagnosticsSettings(vm);return}
     LaunchedEffect(account.connected,section) { if (account.connected && section=="ai") vm.graph.account.refreshModels() }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        if(section=="sync") SubscriptionSyncSettings(vm)
+        if(section=="sync") SubscriptionSyncSettings(vm) { vm.open("backup") }
         if(section=="voice") VoiceSettings(vm)
         if(section=="playback") {
             PlaybackHeadphoneSettings(vm, prefs)
@@ -569,9 +618,11 @@ private fun captureState(state: String) = when (state) { "waiting_transcript" ->
         }
         }
         if(section=="transcription") {
-        Text("Local transcription", style = MaterialTheme.typography.titleLarge)
+        Text("Transcript preparation", style = MaterialTheme.typography.titleLarge)
         SettingSwitch("Transcribe when playing", "Automatically prepare transcripts for episodes you play. Uses your download and processing settings. Turning this off leaves existing jobs running; use Pause transcript to stop one.", prefs.transcribeOnPlayback) { vm.flag("transcribeOnPlayback", it) }
         SettingSwitch("Look for existing online transcripts", "Before Whisper, search PodcastTranscript.ai for public shows. Sends the episode title; never uploads audio or starts cloud transcription. Off for unapproved private feeds.", prefs.onlineTranscripts) { vm.flag("onlineTranscripts", it) }
+        SettingSwitch("Only transcribe while charging", "Pause new transcription chunks until power is connected.", prefs.chargingOnly) { vm.flag("charging", it) }
+        TextButton(onClick = { vm.open("settings:storage") }) { Text("Download network policy") }
         Text("Tiny and Base support English and Portuguese. Model files stay on this phone.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         whisperModels.forEach { spec ->
             val status = models.firstOrNull { it.id == spec.id }
@@ -592,20 +643,14 @@ private fun captureState(state: String) = when (state) { "waiting_transcript" ->
         }
         if(section=="storage") {
         SettingSwitch("Wi-Fi / unmetered downloads only", "Applies to queued audio, model downloads and transcript preparation that needs internet. Transfers already in progress continue; retries use your new setting.", prefs.wifiOnly) { vm.flag("wifi", it) }
-        SettingSwitch("Transcribe while charging", "Pause new transcription chunks until power is connected.", prefs.chargingOnly) { vm.flag("charging", it) }
-        SettingSwitch("Refresh subscriptions", "Check your followed feeds periodically when Android permits.", prefs.refresh) { vm.flag("refresh", it) }
-        RefreshIntervalControl(vm, prefs)
-        HorizontalDivider(); Text("Storage", style = MaterialTheme.typography.titleLarge)
-        Text("Downloaded audio: ${fileSize(episodes.filter { it.localFile != null }.sumOf { it.downloadedBytes })}", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text("Audio limit: ${fileSize(prefs.storageLimitBytes)}. Deleting downloads keeps saved insights and listening progress.", style = MaterialTheme.typography.bodySmall)
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf(1L, 2L, 5L).forEach { gb -> FilterChip(selected = prefs.storageLimitBytes == gb * 1024 * 1024 * 1024, onClick = { vm.action("settings") { vm.graph.settings.storage(gb * 1024 * 1024 * 1024) } }, label = { Text("$gb GB") }) } }
-        OutlinedButton(onClick = vm::clearUnusedAudio) { Text("Clear unused audio") }
-        Text("Removes leftover cache files after feed changes. Downloads, resumable partials, queued audio and processing files are kept.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        StorageSettings(vm, prefs, episodes, models)
         }
         if(section=="library") {
-            SettingSwitch("Distill confirmation sound", "Play a pen scribble when a moment is saved. Uses media volume.", prefs.distillSound) {vm.flag("distillSound",it)}
+        SettingSwitch("Refresh subscriptions", "Check your followed feeds periodically when Android permits.", prefs.refresh) { vm.flag("refresh", it) }
+        RefreshIntervalControl(vm, prefs)
             DataControls(vm)
         }
+        if(section=="notifications") { NotificationControls() }
         if(section=="about") {
         Text("DistillPod · $version", style = MaterialTheme.typography.labelLarge)
         LicenseAndSources(version)

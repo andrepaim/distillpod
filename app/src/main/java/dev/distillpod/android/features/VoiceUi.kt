@@ -37,7 +37,17 @@ import kotlinx.coroutines.delay
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun VoiceControls(vm: AppViewModel) {
-    if (!vm.graph.context.resources.getBoolean(R.bool.voice_enabled)) return
+    VoicePlayerHost(vm) { enabled, active, ask ->
+        if (enabled) Button(onClick = ask, enabled = !active, modifier = Modifier.fillMaxWidth()) {
+            Icon(Icons.Default.Mic, null); Spacer(Modifier.width(8.dp)); Text("Ask about this")
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun VoicePlayerHost(vm: AppViewModel, showLastAnswer: Boolean = true, content: @Composable (Boolean, Boolean, () -> Unit) -> Unit) {
+    if (!vm.graph.context.resources.getBoolean(R.bool.voice_enabled)) { content(false, false, {}); return }
     val voice = vm.graph.voice
     val state by voice.state.collectAsStateWithLifecycle()
     var permissionError by remember { mutableStateOf<String?>(null) }
@@ -55,14 +65,19 @@ fun VoiceControls(vm: AppViewModel) {
         lifecycle.addObserver(observer)
         onDispose { lifecycle.removeObserver(observer); voice.cancelFrom(dev.distillpod.android.voice.VoiceOrigin.PHONE, false) }
     }
-    VoicePlayerInteraction(state.copy(error = permissionError ?: state.error), ask, voice::finishQuestion) {
-        voice.cancel(true); permissionError = null
-    }
+    VoicePlayerInteraction(state.copy(error = permissionError ?: state.error), ask, voice::finishQuestion,
+        content = { _, action -> content(true, state.active, action) }, showLastAnswer = showLastAnswer,
+        onCancel = { voice.cancel(true); permissionError = null })
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun VoicePlayerInteraction(state: VoiceState, onAsk: () -> Boolean, onDone: () -> Unit, onCancel: () -> Unit) {
+internal fun VoicePlayerInteraction(state: VoiceState, onAsk: () -> Boolean, onDone: () -> Unit, onCancel: () -> Unit,
+    content: @Composable (Boolean, () -> Unit) -> Unit = { enabled, ask ->
+        Button(onClick = ask, enabled = enabled, modifier = Modifier.fillMaxWidth()) {
+            Icon(Icons.Default.Mic, null); Spacer(Modifier.width(8.dp)); Text("Ask about this")
+        }
+    }, showLastAnswer: Boolean = true) {
     var visible by remember { mutableStateOf(false) }
     var running by remember { mutableStateOf(false) }
     var reviewing by remember { mutableStateOf(false) }
@@ -70,10 +85,8 @@ internal fun VoicePlayerInteraction(state: VoiceState, onAsk: () -> Boolean, onD
     LaunchedEffect(state.active, state.error, running) {
         if (!state.active && running && state.error == null) { delay(650); visible = false; running = false }
     }
-    Button(onClick = { if (onAsk()) { reviewing = false; visible = true } }, enabled = !state.active, modifier = Modifier.fillMaxWidth()) {
-        Icon(Icons.Default.Mic, null); Spacer(Modifier.width(8.dp)); Text("Ask about this")
-    }
-    if (state.answer.isNotBlank() && !state.active) TextButton(onClick = { reviewing = true; running = false; visible = true }) { Text("View last answer") }
+    content(!state.active) { if (onAsk()) { reviewing = false; visible = true } }
+    if (showLastAnswer && state.answer.isNotBlank() && !state.active) TextButton(onClick = { reviewing = true; running = false; visible = true }) { Text("View last answer") }
     if (visible) {
         val dismiss = { onCancel(); visible = false; running = false }
         ModalBottomSheet(onDismissRequest = dismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
@@ -189,7 +202,7 @@ internal fun VoiceSettings(vm: AppViewModel) {
         try { store.clear(); hasKey = false; message = "API key removed" }
         catch (_: Exception) { message = "Could not remove the API key. Try again." }
     }) { Text("Remove API key") }
-    Text("Questions and transcript excerpts go to OpenAI and use your API credits. Your key stays encrypted on this phone and is excluded from backups and sync.", style = MaterialTheme.typography.bodySmall)
+    Text("Questions and the available transcript up to your listening position go to OpenAI and use your API credits. Longer transcripts use more input credits. Your key stays encrypted on this phone and is excluded from backups and sync.", style = MaterialTheme.typography.bodySmall)
     HorizontalDivider()
     Text("Answers", style = MaterialTheme.typography.titleMedium)
     LabeledSettingSwitch("Rewind after an answer", checked = rewind,

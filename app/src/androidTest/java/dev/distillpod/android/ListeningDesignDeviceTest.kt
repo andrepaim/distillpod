@@ -94,9 +94,50 @@ class ListeningDesignDeviceTest {
             await { c.playbackParameters.speed == 1.25f }
             compose.onNodeWithContentDescription("Episode playback position").assertIsDisplayed()
             assertTrue("The full player gives its controls the bottom navigation space", compose.onAllNodesWithText("Library").fetchSemanticsNodes().isEmpty())
+            // Show navigation is pure navigation: preserve the player and its queue.
+            val beforeShow = withContext(Dispatchers.Main) { c.currentPosition }
+            val queueBeforeShow = withContext(Dispatchers.Main) { (0 until c.mediaItemCount).map { c.getMediaItemAt(it).mediaId } }
+            repeat(2) {
+                compose.onNodeWithContentDescription("View show: Design validation show").performScrollTo().assertHasClickAction().performClick()
+                compose.waitUntil(5000) { vm.backStack.value.last() == "podcast:$id" }
+                compose.onNodeWithText("Design validation show").assertIsDisplayed()
+                withContext(Dispatchers.Main) {
+                    assertEquals(beforeShow, c.currentPosition)
+                    assertEquals(queueBeforeShow, (0 until c.mediaItemCount).map { c.getMediaItemAt(it).mediaId })
+                    assertEquals(ids[0], c.currentMediaItem?.mediaId)
+                    assertEquals(1.25f, c.playbackParameters.speed)
+                    assertFalse(c.isPlaying)
+                }
+                if (it == 0) compose.onNodeWithContentDescription("Back").performClick()
+                else UiDevice.getInstance(instrumentation).pressBack()
+                compose.waitUntil(5000) { vm.backStack.value.last() == "player" }
+            }
+            // Selecting a different episode must navigate to that episode's show,
+            // not the currently playing show's destination.
+            val otherShow = "$id-other"
+            dao.putPodcast(PodcastEntity(otherShow, "https://example.test/$otherShow", "Other selected show"))
+            dao.putEpisode(EpisodeEntity(otherShow, otherShow, otherShow, "Other selected episode", "https://example.test/other"))
+            try {
+                compose.waitUntil(5000) { vm.episodes.value.any { it.id == otherShow } && vm.podcasts.value.any { it.id == otherShow } }
+                withContext(Dispatchers.Main) { c.play(); vm.open("episode:$otherShow") }
+                await { c.isPlaying }
+                val playingPosition = withContext(Dispatchers.Main) { c.currentPosition }
+                compose.onNodeWithContentDescription("View show: Other selected show").assertHasClickAction().performClick()
+                compose.waitUntil(5000) { vm.backStack.value.last() == "podcast:$otherShow" }
+                withContext(Dispatchers.Main) {
+                    assertTrue(c.isPlaying)
+                    assertTrue(c.currentPosition >= playingPosition)
+                    assertEquals(ids[0], c.currentMediaItem?.mediaId)
+                    assertEquals(queueBeforeShow, (0 until c.mediaItemCount).map { c.getMediaItemAt(it).mediaId })
+                }
+                compose.onNodeWithContentDescription("Back").performClick()
+                compose.waitUntil(5000) { vm.backStack.value.last() == "episode:$otherShow" }
+                compose.onNodeWithText("Other selected episode").assertIsDisplayed()
+                withContext(Dispatchers.Main) { c.pause(); c.seekTo(beforeShow); vm.back() }
+            } finally { dao.deletePodcast(otherShow) }
             screenshot("player")
             compose.onNodeWithContentDescription("Open queue").performClick()
-            compose.onNodeWithText("Up next").assertIsDisplayed()
+            compose.onNodeWithText("Playback order").assertIsDisplayed()
             // A small emulator may not have composed the last lazy-list row yet.
             compose.onNode(hasScrollAction()).performScrollToNode(hasContentDescription("Move ${titles[2]} up"))
             compose.onNodeWithContentDescription("Move ${titles[2]} up").performClick()
@@ -116,6 +157,7 @@ class ListeningDesignDeviceTest {
                     CompositionLocalProvider(LocalDensity provides Density(graph.context.resources.displayMetrics.density, 1.6f)) { ProductApp(vm) }
                 }
             }
+            compose.onNodeWithContentDescription("View show: Design validation show").performScrollTo().assertIsDisplayed()
             compose.onNodeWithContentDescription("Back 10 seconds").performScrollTo().assertIsDisplayed()
             compose.onNodeWithText("Distill last 60 seconds").performScrollTo().assertIsDisplayed()
             compose.onNodeWithText("Summary & chapters").performScrollTo().assertIsDisplayed()

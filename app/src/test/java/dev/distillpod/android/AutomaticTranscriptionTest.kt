@@ -4,8 +4,6 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.Intent
-import android.os.Looper
-import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.test.core.app.ApplicationProvider
 import androidx.work.Configuration
 import androidx.work.WorkManager
@@ -14,11 +12,11 @@ import androidx.work.testing.WorkManagerTestInitHelper
 import dev.distillpod.android.data.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.test.runTest
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
-import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import java.io.File
 import java.nio.file.Files
@@ -34,14 +32,14 @@ class AutomaticTranscriptionTest {
     private suspend fun isolatedGraph(ctx: Context = context): AppGraph {
         WorkManagerTestInitHelper.initializeTestWorkManager(context,
             Configuration.Builder().setExecutor(SynchronousExecutor()).build())
-        val graph = AppGraph(ctx)
-        graph.scope.cancel()
-        withTimeout(5000) {
-            while (!graph.scope.coroutineContext[Job]!!.isCompleted) {
-                shadowOf(Looper.getMainLooper()).idle()
-                delay(10)
-            }
-        }
+        // This fixture tests explicit repository calls, not app startup or worker recovery.
+        // Cancel before construction so DEFAULT-start graph jobs never begin, even on IO.
+        val isolatedJob = SupervisorJob().apply { cancel() }
+        val graph = AppGraph(ctx, CoroutineScope(isolatedJob + Dispatchers.Main.immediate))
+        assertTrue(graph.scope.coroutineContext[Job]!!.isCompleted)
+        assertFalse(graph.scope.isActive)
+        assertFalse(graph.scope.coroutineContext[Job]!!.children.any())
+        assertFalse(graph.ready.isCompleted)
         graph.settings.flag("transcribeOnPlayback", true)
         graph.settings.flag("onlineTranscripts", false)
         graph.db.library().putPodcast(PodcastEntity(episode.podcastId, "https://example.test/feed", "Show"))
@@ -49,20 +47,15 @@ class AutomaticTranscriptionTest {
         return graph
     }
 
-    @Test fun `setting defaults on and disabled value survives reopening storage`() = runBlocking<Unit> {
+    @Test fun `setting defaults on and disabled value survives reopening storage`() = runTest {
         val folder = Files.createTempDirectory("automatic-transcription-").toFile()
         val file = File(folder, "test.preferences_pb")
-        suspend fun settingsSession(block: suspend (AppSettings) -> Unit) {
-            val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-            try { block(AppSettings(context, PreferenceDataStoreFactory.create(scope = scope) { file })) }
-            finally { scope.coroutineContext[Job]!!.cancelAndJoin() }
-        }
         try {
-            settingsSession {
+            settingsSession(context, file) {
                 assertTrue(it.flow.first().transcribeOnPlayback)
                 it.flag("transcribeOnPlayback", false)
             }
-            settingsSession { assertFalse(it.flow.first().transcribeOnPlayback) }
+            settingsSession(context, file) { assertFalse(it.flow.first().transcribeOnPlayback) }
         } finally { folder.deleteRecursively() }
     }
 
@@ -149,6 +142,71 @@ class AutomaticTranscriptionTest {
             graph.transcription.resumeModel(row.model)
             assertEquals("queued", graph.db.library().transcript(episode.id)!!.state)
             assertEquals(row.revision, graph.db.library().transcript(episode.id)!!.revision)
+        } finally { graph.db.close() }
+    }
+
+    @Test fun `missing model cannot overwrite a pause from an in flight pass`() = runBlocking<Unit> {
+        val graph = isolatedGraph()
+        try {
+            val dao = graph.db.library()
+            val row = TranscriptEntity(episode.id, "pause-before-model", episode.mediaFingerprint, "missing-test-model", "auto")
+            dao.putTranscript(row)
+            val entered = CompletableDeferred<Unit>()
+            val release = CompletableDeferred<Unit>()
+            // Gate the pass before model lookup; pause must cancel it and clear progress
+            // without relying on sleeps or scheduler timing.
+            val worker = launch {
+                graph.transcription.process(episode.id, row.revision, TranscriptExecution({ false }, {
+                    entered.complete(Unit)
+                    release.await()
+                }, false))
+            }
+            try {
+                withTimeout(5000) { entered.await() }
+                graph.transcription.pause(episode.id)
+            } finally { release.complete(Unit) }
+            withTimeout(5000) { worker.join() }
+            assertEquals("paused", dao.transcript(episode.id)!!.state)
+            assertNull(dao.transcript(episode.id)!!.error)
+            assertFalse(graph.transcription.progress.value.containsKey(episode.id))
+        } finally { graph.db.close() }
+    }
+
+    @Test fun `missing model cannot restore superseded or terminal work`() = runBlocking<Unit> {
+        val graph = isolatedGraph()
+        try {
+            val dao = graph.db.library()
+            val row = TranscriptEntity(episode.id, "obsolete-model-check", episode.mediaFingerprint, "missing-test-model", "auto")
+            for (replacement in listOf(
+                // Persist the control result independently of this worker's cancellation,
+                // as when an already-dispatched database write races with user controls.
+                row.copy(state = "paused"),
+                row.copy(revision = "replacement", state = "queued"),
+                row.copy(state = "stale"),
+                row.copy(state = "ready"),
+                row.copy(state = "partial"),
+            )) {
+                dao.putTranscript(row)
+                graph.transcription.process(episode.id, row.revision, TranscriptExecution({ false }, {
+                    dao.putTranscript(replacement)
+                }, false))
+                assertEquals(replacement, dao.transcript(episode.id))
+            }
+        } finally { graph.db.close() }
+    }
+
+    @Test fun `missing model preserves current progress when publisher fallback leaves work queued`() = runBlocking<Unit> {
+        val graph = isolatedGraph()
+        try {
+            val dao = graph.db.library()
+            val row = TranscriptEntity(episode.id, "queued-fallback", episode.mediaFingerprint, "missing-test-model", "auto")
+            val current = row.copy(processedMs = 5000, durationMs = 10000)
+            dao.putTranscript(row)
+            graph.transcription.process(episode.id, row.revision, TranscriptExecution({ false }, {
+                dao.putTranscript(current)
+            }, false))
+            assertEquals(current.copy(state = "waiting_model",
+                error = "Download the selected transcription model in Settings."), dao.transcript(episode.id))
         } finally { graph.db.close() }
     }
 

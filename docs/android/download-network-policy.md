@@ -8,13 +8,22 @@ lookup jobs missing a network constraint are corrected during reconciliation.
 Local-only transcript preparation retains its existing power constraints without
 acquiring a network requirement.
 
-Changing the setting updates WorkManager requests in place. Request IDs, unique
+Changing the setting normally updates WorkManager requests in place. Request IDs, unique
 work names, enqueue time, initial delay, retry history, partial files, HTTP resume
 validators, transcript revisions, and saved checkpoints are retained. Explicitly
 cancelled or finished work is not restarted. Download/model enqueue and policy
 reconciliation are serialized, as are transcription enqueue and reconciliation,
 so an enqueue using an old preference cannot escape a concurrent policy update.
 Startup also reconciles pre-existing work using the saved setting.
+
+**Legacy transcript exception:** requests created before revision tags were added
+cannot be safely identified from public WorkManager metadata. Their first
+reconciliation waits for an active transcript chunk to finish, then replaces
+pending legacy requests with current-revision recovery as needed. This replaces
+legacy IDs, retry/backoff history and initial delays once, but retains transcript
+text and checkpoints. Settings completion and new audio/model enqueues can wait
+during that migration. See [queued transcript policy](transcript-network-policy.md)
+for the compatibility tradeoff, revision isolation and cancellation guarantees.
 
 An **already-running attempt finishes under its original network constraints**.
 Its next attempt, if retried, uses the new policy. This is intentional: updating
@@ -40,8 +49,10 @@ transcription tests cover validated HTTP Range resumption, cancellation closing
 the writer, and transcript checkpoints.
 
 `DownloadNetworkPolicyDeviceTest` uses the real Settings switch to update delayed
-audio/model/transcript requests without replacing them or losing progress. A
-second case runs an actual audio worker against a loopback server, changes the
+audio/model/revision-tagged transcript requests without replacing them or losing
+progress, including capture-priority changes. A separate legacy case verifies
+cancellation without duplicating current-revision recovery or losing checkpoints.
+Another case runs an actual audio worker against a loopback server, changes the
 policy while the server holds the response, and requires exactly one validated
 Range transfer to finish with the full expected file.
 

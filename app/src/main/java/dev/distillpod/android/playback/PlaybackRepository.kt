@@ -40,6 +40,13 @@ internal fun swapCurrentSource(player: Player, desired: MediaItem, position: Lon
 internal fun voicePositionChanged(reason: Int, oldId: String?, newId: String?, oldMs: Long, newMs: Long) =
     reason != Player.DISCONTINUITY_REASON_AUTO_TRANSITION || oldId != newId || oldMs != newMs
 
+/** Source replacements/reorders of the same episode must not checkpoint a removal. */
+internal fun shouldCheckpointRemoval(reason: Int, oldId: String?, newId: String?) =
+    reason == Player.DISCONTINUITY_REASON_REMOVE && oldId != null && oldId != newId
+
+/** Clear-and-stop must also clear play intent so a later enqueue cannot auto-start. */
+internal fun clearPlaybackQueue(player: Player) { player.pause(); player.clearMediaItems() }
+
 fun mediaItem(ep: EpisodeEntity, podcast: PodcastEntity?): MediaItem {
     val file = ep.localFile?.let(::File)?.takeIf { it.isFile }
     return MediaItem.Builder().setMediaId(ep.id).setUri(file?.let(Uri::fromFile) ?: Uri.parse(ep.audioUrl))
@@ -75,15 +82,19 @@ class PlaybackRepository(private val context: Context, private val db: AppDataba
     init {
         future.addListener({
             runCatching { future.get() }.onSuccess { controller ->
+                fun refreshState() {
+                    mutable.value = PlaybackState(controller.currentMediaItem?.mediaId, controller.mediaMetadata.title?.toString() ?: "",
+                        controller.currentPosition.coerceAtLeast(0), controller.duration.coerceAtLeast(0), controller.isPlaying,
+                        controller.playbackParameters.speed, (0 until controller.mediaItemCount).map { controller.getMediaItemAt(it).mediaId }, mutable.value.error)
+                }
                 controller.addListener(object : Player.Listener {
+                    override fun onEvents(player: Player, events: Player.Events) { refreshState() }
                     override fun onPlayerError(error: androidx.media3.common.PlaybackException) { mutable.update { it.copy(error = "Playback stopped. Check your connection or download this episode.") } }
                     override fun onMediaItemTransition(item: MediaItem?, reason: Int) { mutable.update { it.copy(error = null) } }
                 })
                 scope.launch {
                     while (isActive) {
-                        mutable.value = PlaybackState(controller.currentMediaItem?.mediaId, controller.mediaMetadata.title?.toString() ?: "",
-                            controller.currentPosition.coerceAtLeast(0), controller.duration.coerceAtLeast(0), controller.isPlaying,
-                            controller.playbackParameters.speed, (0 until controller.mediaItemCount).map { controller.getMediaItemAt(it).mediaId }, mutable.value.error)
+                        refreshState()
                         delay(500)
                     }
                 }
@@ -167,11 +178,13 @@ class PlaybackRepository(private val context: Context, private val db: AppDataba
         }
     }
     suspend fun remove(id: String) { val c = controller(); withContext(Dispatchers.Main) { val at = (0 until c.mediaItemCount).firstOrNull { c.getMediaItemAt(it).mediaId == id }; if (at != null) c.removeMediaItem(at) } }
-    suspend fun move(id: String, offset: Int) { val c = controller(); withContext(Dispatchers.Main) {
+    suspend fun move(id: String, offset: Int) {
+        if (offset != -1 && offset != 1) return
+        val c = controller(); withContext(Dispatchers.Main) {
         val at = (0 until c.mediaItemCount).firstOrNull { c.getMediaItemAt(it).mediaId == id } ?: return@withContext
         val to = at + offset; if (to in 0 until c.mediaItemCount) c.moveMediaItem(at, to)
     } }
-    suspend fun clear() { val c = controller(); withContext(Dispatchers.Main) { c.clearMediaItems() } }
+    suspend fun clear() { val c = controller(); withContext(Dispatchers.Main) { clearPlaybackQueue(c) } }
     suspend fun synchronizeRestoredQueue() {
         val episodes = db.library().episodes().associateBy { it.id }
         val podcasts = db.library().podcasts().associateBy { it.id }

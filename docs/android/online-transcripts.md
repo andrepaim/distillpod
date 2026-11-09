@@ -7,7 +7,7 @@ November 5, 2026. Implemented on `main`; dated validation is recorded below. Thi
 An explicit **Prepare transcript** action uses these sources:
 
 1. A suitable publisher transcript linked from RSS, retaining the existing publisher behavior.
-2. An existing transcript from PodcastTranscript.ai when **Settings → Local transcription → Look for existing online transcripts** is enabled.
+2. An existing transcript from PodcastTranscript.ai when **Settings → Transcript preparation → Look for existing online transcripts** is enabled.
 3. Local Whisper with the selected model and language.
 
 The setting defaults to off and stays on this installation. It is neither synced nor restored as portable consent. Opening a screen, refreshing a feed, or playing an episode does not trigger a lookup. **Transcribe locally again** bypasses publisher and service lookup. A local resume can check the service again, subject to the retry cache.
