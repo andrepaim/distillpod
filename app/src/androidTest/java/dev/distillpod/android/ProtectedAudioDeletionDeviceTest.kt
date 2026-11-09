@@ -59,8 +59,13 @@ class ProtectedAudioDeletionDeviceTest {
                 ViewModelProvider(compose.activity, AppViewModel.factory(graph))[AppViewModel::class.java]
                     .also { it.root("library") }
             }
-            compose.waitUntil(15000) { compose.onAllNodesWithContentDescription("More actions for Protected audio fixture").fetchSemanticsNodes().isNotEmpty() }
-            compose.onNodeWithContentDescription("More actions for Protected audio fixture").performClick()
+            compose.waitUntil(15000) {
+                vm.episodes.value.any { it.id == id } &&
+                    vm.audioDeletionBlocks.value[id] == AudioDeletionBlockReason.QUEUED
+            }
+            compose.onNode(hasScrollToNodeAction())
+                .performScrollToNode(hasContentDescription("More actions for Protected audio fixture"))
+            compose.onNodeWithContentDescription("More actions for Protected audio fixture").assertIsDisplayed().performClick()
             compose.onNodeWithText("Delete download").assertIsNotEnabled()
             compose.onNodeWithText(AudioDeletionBlockReason.QUEUED.feedback).assertIsDisplayed()
             androidx.test.espresso.Espresso.pressBack()
