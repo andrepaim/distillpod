@@ -17,7 +17,7 @@ class VoiceContextTest {
         assertEquals(VoiceReadiness.STALE_AUDIO, VoiceContext.readiness(episode, transcript.copy(state = "stale"), 10000, spans))
         assertEquals(VoiceReadiness.ONLINE_ONLY, VoiceContext.readiness(episode, transcript.copy(source = "online"), 10000, spans))
         assertEquals(VoiceReadiness.EMPTY_SELECTION, VoiceContext.readiness(episode, transcript, 10000, listOf(span(9000, 11000))))
-        assertEquals(VoiceReadiness.COVERAGE_GAP, VoiceContext.readiness(episode, transcript, 25001, spans))
+        assertEquals(VoiceReadiness.COVERAGE_GAP, VoiceContext.readiness(episode, transcript, 24001, spans))
         assertNull(VoiceContext.readiness(episode, transcript, 24000, spans))
         assertNull(VoiceContext.readiness(episode, transcript, 10000, spans))
         VoiceReadiness.entries.forEach { assertFalse(it.feedback.contains(episode.title)) }
