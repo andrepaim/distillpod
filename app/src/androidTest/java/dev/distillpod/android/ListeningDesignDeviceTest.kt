@@ -137,7 +137,7 @@ class ListeningDesignDeviceTest {
             } finally { dao.deletePodcast(otherShow) }
             screenshot("player")
             compose.onNodeWithContentDescription("Open queue").performClick()
-            compose.onNodeWithText("Up next").assertIsDisplayed()
+            compose.onNodeWithText("Playback order").assertIsDisplayed()
             // A small emulator may not have composed the last lazy-list row yet.
             compose.onNode(hasScrollAction()).performScrollToNode(hasContentDescription("Move ${titles[2]} up"))
             compose.onNodeWithContentDescription("Move ${titles[2]} up").performClick()

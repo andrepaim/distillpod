@@ -190,6 +190,13 @@ class PlaybackService : MediaLibraryService() {
                 snapshot(p.playbackState == Player.STATE_ENDED, events.contains(Player.EVENT_IS_PLAYING_CHANGED) || events.contains(Player.EVENT_PLAY_WHEN_READY_CHANGED))
             }
             override fun onPositionDiscontinuity(oldPosition: Player.PositionInfo, newPosition: Player.PositionInfo, reason: Int) {
+                // Removal callbacks expose the final old position after the current item is gone.
+                // An old-item-only boundary preserves progress without restoring the cleared queue.
+                val removedId = oldPosition.mediaItem?.mediaId
+                if (!restoring && dev.distillpod.android.playback.shouldCheckpointRemoval(reason, removedId, newPosition.mediaItem?.mediaId)) {
+                    writes.trySend(Snapshot(emptyList(), removedId, oldPosition.positionMs.coerceAtLeast(0),
+                        0L, false, player.playbackParameters.speed, boundary=true))
+                }
                 if (reason == Player.DISCONTINUITY_REASON_SEEK) player.currentMediaItem?.mediaId?.let { id ->
                     adSkipping.seek(id, newPosition.positionMs, adConfigs[id]?.ranges ?: emptyList())
                     snapshot(boundary=true)
