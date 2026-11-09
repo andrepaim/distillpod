@@ -253,3 +253,21 @@ It still reports unavailable original time and never derives it from emission ti
 Refreshed fixtures intentionally lack an original capture request in their actual producer
 setup, so tests use the supplied moment identity and retain incomplete_causal_identity.
 No missing identity or timestamp was invented.
+
+
+## Published producer checkpoint
+
+The local consumer now integrates the exact published #36 PR head
+`bd559938e98cbef0eaf650a398622a7f001dd77a`, including main `6484d4e`.
+Its whole tree is `8cea5ddb300e8b2d1c8518a9226b567fbf524ea5`, identical to the
+green fixture-producing `fa225edf` tree. This brings the reviewed coalescing and
+original-observation-time corrections into the local combined candidate; the earlier
+fixture-only/no-producer-merge checkpoint above describes its historical stage.
+
+The consumer adds no Android or workflow changes relative to that producer candidate.
+Its own risk assessment remains read-only API/CLI processing and private POSIX output.
+Producer Android evidence belongs to #36 (reported 99 core and 479 app tests, lint and
+app/instrumentation APK checks); it is not represented as newly run by the consumer task.
+The combined consumer reruns its Python fixture/API/CLI pipeline and security/data/docs
+checks. Publication still waits for #36's actual main merge, equivalence verification and
+required CI on the final consumer head. No production cloud availability is claimed.
