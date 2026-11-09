@@ -59,3 +59,27 @@ Record actual results and limitations separately. Review current origin/main,
 require all five exact-head checks, merge a separate PR normally, and verify all
 five merged-main checks before closing #81. #58 remains blocked until the
 correction is integrated and its actual combined revision is validated.
+
+## Controlled evidence and correction
+
+Five real-Room tests first failed against the unchanged startup upsert: parent
+deletion reproduced SQLite's foreign-key exception; paused, completed and
+replacement revisions incorrectly reached foreground startup; a same-revision
+checkpoint advanced to5678 was overwritten with1234. The gate holds a real DAO
+read result while another real DAO operation changes the row. It introduces no
+synthetic database exception. Original source patches, reports and logs remain
+private. This confirms the startup race, without uniquely identifying the
+historical hosted writer or proving organic production incidence.
+
+Startup now uses a conditional UPDATE requiring the same revision and a queued
+or processing state. It changes only state/error, so it cannot insert a deleted
+row or restore an older checkpoint. A rejected transition exits before progress
+or foreground publication. Existing error handling, retry/cancellation controls,
+queue behavior and public constructor calls remain. Internal DAO injection keeps
+the controlled interleaving testable without changing production dependencies.
+
+The five cases and existing automatic-transcription/service/resume/playback tests
+pass locally. Dedicated guarded Android cases cover the same outcomes using real
+platform Room/SQLite; a later valid request must still reach waiting-model state.
+Those cases establish data/control safety, not historical OEM foreground denial.
+Full configurations, emulator/S22 and hosted/main gates remain pending.

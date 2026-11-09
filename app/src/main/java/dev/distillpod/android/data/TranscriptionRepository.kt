@@ -57,9 +57,12 @@ internal fun TranscriptOutcome.workerResult(): ListenableWorker.Result = when (t
     TranscriptOutcome.RESUME_REQUIRED, TranscriptOutcome.FAILED -> ListenableWorker.Result.failure()
 }
 
-class TranscriptionRepository(private val graph: AppGraph,
-    private val onlineLookup: suspend (EpisodeEntity, TranscriptEntity) -> Boolean = { ep, row -> graph.onlineTranscripts.lookup(ep, row) }) {
-    private val dao = graph.db.library()
+class TranscriptionRepository internal constructor(private val graph: AppGraph,
+    private val dao: LibraryDao,
+    private val onlineLookup: suspend (EpisodeEntity, TranscriptEntity) -> Boolean) {
+    constructor(graph: AppGraph,
+        onlineLookup: suspend (EpisodeEntity, TranscriptEntity) -> Boolean = { ep, row -> graph.onlineTranscripts.lookup(ep, row) }) :
+        this(graph, graph.db.library(), onlineLookup)
     private val manager get() = WorkManager.getInstance(graph.context)
     private val processing = Mutex()
     private val controls = Mutex()
@@ -249,7 +252,9 @@ class TranscriptionRepository(private val graph: AppGraph,
         var row = controls.withLock {
             val current=dao.transcript(id) ?: return@withLock null
             if(current.revision!=revision || current.state !in listOf("queued","processing"))return@withLock null
-            dao.putTranscript(current.copy(state="processing",error=null))
+            // The parent, revision or user state can change after the suspended read.
+            // A conditional update cannot recreate deleted work or rewind its checkpoint.
+            if (dao.beginTranscriptProcessing(id, revision) != 1) return@withLock null
             graph.diagnostics.event("transcription.started",revision,attempt=run,correlation=correlation(revision,run))
             live.update {it+(id to TranscriptProgress(revision,run,TranscriptStage.STARTING,current.processedMs,current.durationMs))}
             current
