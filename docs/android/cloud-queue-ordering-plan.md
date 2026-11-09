@@ -179,3 +179,31 @@ retains both ordinary and shutdown instrumentation logs. Its retention assertion
 was observed red before the glob correction and green afterward. No Android
 runtime code changes accompany this runner-only amendment; final-head hosted
 checks and physical acceptance remain required.
+
+## Progress-oracle follow-up
+
+Hosted6c4cc25 ordinary acceptance ran91cases and failed only the old settled
+import's cached-UI progress assertion (line42); the8new ordering cases and
+RestoredQueueDeviceTest passed. The log did not record either progress value,
+so the original failure cannot be attributed conclusively to the lower or upper
+bound. No unchanged-code retry or runtime fix is being inferred from that gap.
+
+A controlled longer-resolution probe established a defect in the fixed3second
+oracle: actual playback3672→7875ms, cached UI3538→7793ms, elapsed5238ms at1x,
+yet the old bound failed. Audio continued without rewinding. Two initial probes
+were inconclusive readiness timeouts; retained emulator logs showed Android
+audio-focus hardening denying the background test process. General emulator
+scenarios now launch their activity after the emulator guard, while the dedicated
+offline phone protocol retains its existing activity owner. No platform policy,
+permission or security setting is altered.
+
+The settled test now uses the real service/Room protocol and its UI completion
+wrapper, with actual playback ready before measurement and a long public-speech
+clip. Controller queue/current-item/playing propagation is checked separately.
+Actual ExoPlayer progress must not rewind, speed must stay unchanged, and forward
+advance cannot exceed bracketed monotonic elapsed time times speed plus250ms for
+sampling/seek granularity. Both actual and cached positions, elapsed time and
+speed appear in failure diagnostics. The delayed case remains as a regression;
+no sleep is used to hide an ordering race. These are test-only changes; Android
+runtime/core/unit-test sources remain the full-gate validated code. Final-head
+hosted checks and updated phone-protocol validation must still pass.

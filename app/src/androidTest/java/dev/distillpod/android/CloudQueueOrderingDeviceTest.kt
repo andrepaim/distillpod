@@ -4,6 +4,7 @@ import android.os.Build
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.room.withTransaction
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
 import dev.distillpod.android.data.*
 import dev.distillpod.android.sync.*
@@ -14,6 +15,7 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.UUID
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.first
 import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
@@ -26,6 +28,7 @@ class CloudQueueOrderingDeviceTest {
     @Test fun olderCapturedQueueCannotRepublishAfterCompletedCloudChoice() = CloudQueueOrderingFixture.scenario("normal")
     @Test fun failedResolutionPreservesLocalQueueAndOriginalFailure() = CloudQueueOrderingFixture.scenario("failure")
     @Test fun localClearAcceptedWhileCloudChoiceWaitsWins() = CloudQueueOrderingFixture.scenario("clear")
+    @Test fun settledCloudChoiceMayTakeMoreThanThreeSecondsWithoutRewindingAudio() = CloudQueueOrderingFixture.scenario("settled-delay")
     @Test fun localClearCannotBeUndoneByAnOlderQueueFlowEmission() = CloudQueueOrderingFixture.scenario("later-clear")
     @Test fun failedPlayerApplicationRetainsCommittedCloudOrder() = CloudQueueOrderingFixture.scenario("apply-failure")
     @Test fun cancelledResolutionDoesNotStopThePersistenceWriter() = CloudQueueOrderingFixture.scenario("resolver-cancel")
@@ -35,7 +38,7 @@ class CloudQueueOrderingDeviceTest {
 }
 
 internal object CloudQueueOrderingFixture {
-    fun scenario(mode:String, offlinePhone:Boolean=false) = runBlocking<Unit> {
+    fun scenario(mode:String, offlinePhone:Boolean=false) {
         val instrumentation=InstrumentationRegistry.getInstrumentation()
         val context=instrumentation.targetContext
         if(offlinePhone) {
@@ -43,6 +46,13 @@ internal object CloudQueueOrderingFixture {
             for(permission in listOf(android.Manifest.permission.INTERNET,android.Manifest.permission.RECORD_AUDIO))
                 check(context.checkSelfPermission(permission)==android.content.pm.PackageManager.PERMISSION_DENIED)
         } else check(Build.HARDWARE.contains("ranchu") || Build.FINGERPRINT.contains("generic"))
+        if(offlinePhone)runScenario(mode)
+        else ActivityScenario.launch(MainActivity::class.java).use {runScenario(mode)}
+    }
+
+    private fun runScenario(mode:String) = runBlocking<Unit> {
+        val instrumentation=InstrumentationRegistry.getInstrumentation()
+        val context=instrumentation.targetContext
         val graph=context.appGraph
         graph.ready.await()
         val db=graph.db; val dao=db.library(); val sync=db.sync()
@@ -93,20 +103,49 @@ internal object CloudQueueOrderingFixture {
             val release=CompletableDeferred<Unit>()
             var resolved=false
             var before=0L
-            db.withTransaction {
-                // The writer cannot commit the older [a,b] snapshot while this transaction is held.
-                graph.playback.enqueue(b)
-                withTimeout(10000){while(actual()!=listOf(a,b))delay(25)}
-                before=withContext(Dispatchers.Main){player!!.currentPosition}
-                choice=graph.playback.beginCloudQueueChoice(
-                    resolve={
+            var beforeController=0L
+            var beforeAt=0L
+            var beforeSpeed=1f
+            suspend fun beginChoice() {
+                withContext(Dispatchers.Main) {
+                    // Bracket position reads so scheduler pauses cannot underestimate elapsed time.
+                    beforeAt=android.os.SystemClock.elapsedRealtime()
+                    before=player!!.currentPosition
+                    beforeController=graph.playback.state.value.positionMs
+                    beforeSpeed=player!!.playbackParameters.speed
+                }
+                val resolveAction:suspend () -> Unit = {
                         resolving.complete(Unit)
+                        if(mode=="settled-delay") {
+                            try {withTimeout(10000) {
+                                while(withContext(Dispatchers.Main){player!!.currentPosition}<before+4000)delay(25)
+                            }} catch(timeout:TimeoutCancellationException) {
+                                val state=withContext(Dispatchers.Main) {"position=${player!!.currentPosition} playing=${player!!.isPlaying} playWhenReady=${player!!.playWhenReady} state=${player!!.playbackState}"}
+                                throw AssertionError("Delay probe did not advance from $before: $state",timeout)
+                            }
+                        }
                         if(mode=="cancel-running")withTimeout(15000){release.await()}
                         if(mode=="failure")error("synthetic resolution failure")
                         if(mode=="resolver-cancel")throw CancellationException("synthetic resolver cancellation")
                         portable.resolve("queue_library",false);resolved=true
-                    },
-                    imported={if(mode=="apply-failure")error("synthetic player application failure") else graph.importedQueue.value=it})
+                }
+                val importedAction:(List<String>)->Unit = {if(mode=="apply-failure")error("synthetic player application failure") else graph.importedQueue.value=it}
+                if(mode.startsWith("settled")) {
+                    // Exercise the same completion/cancellation wrapper as the UI caller.
+                    graph.playback.chooseCloudQueue(resolveAction,importedAction)
+                    choice=CompletableDeferred(Unit)
+                } else choice=graph.playback.beginCloudQueueChoice(resolveAction,importedAction)
+            }
+            if(mode.startsWith("settled")) {
+                graph.playback.enqueue(b)
+                withTimeout(10000){while(actual()!=listOf(a,b) || !withContext(Dispatchers.Main){player!!.isPlaying})delay(25)}
+                graph.playback.awaitQueueWritesProcessed()
+                beginChoice()
+            } else db.withTransaction {
+                // The writer cannot commit the older [a,b] snapshot while this transaction is held.
+                graph.playback.enqueue(b)
+                withTimeout(10000){while(actual()!=listOf(a,b))delay(25)}
+                beginChoice()
                 if(mode=="cancel")choice.cancel()
                 if(mode=="clear") {
                     graph.playback.clear()
@@ -135,12 +174,21 @@ internal object CloudQueueOrderingFixture {
             }
             withTimeout(10000){while(actual()!=listOf(a,c,b))delay(25)}
             graph.playback.awaitQueueWritesProcessed()
+            withTimeout(10000){graph.playback.state.first {it.episodeId==a && it.playing && it.queue==listOf(a,c,b)}}
             assertEquals("A processed older boundary must not replace the chosen persisted order",listOf(c,b),dao.queue().map {it.episodeId})
             assertEquals(listOf(a,c,b),actual())
+            withTimeout(10000){while(!withContext(Dispatchers.Main){player!!.isPlaying})delay(25)}
             withContext(Dispatchers.Main){
+                val after=player!!.currentPosition
+                val elapsed=android.os.SystemClock.elapsedRealtime()-beforeAt
+                val afterController=graph.playback.state.value.positionMs
+                val evidence="beforeActual=$before afterActual=$after beforeController=$beforeController afterController=$afterController elapsedMs=$elapsed speed=$beforeSpeed"
                 assertEquals(a,player!!.currentMediaItem!!.mediaId)
                 assertTrue(player!!.isPlaying)
-                assertTrue(player!!.currentPosition>=before)
+                assertTrue("Actual audio must not rewind: $evidence",after>=before)
+                val maxAdvance=kotlin.math.ceil(elapsed*beforeSpeed.toDouble()).toLong()+250
+                assertTrue("Actual audio must not jump ahead of elapsed playback: $evidence allowedAdvanceMs=$maxAdvance",after-before<=maxAdvance)
+                assertEquals("Playback speed must survive import: $evidence",beforeSpeed,player!!.playbackParameters.speed,0f)
             }
             // Later intentional edits still publish, including removal of the temporary active item.
             graph.playback.move(b,-1)
