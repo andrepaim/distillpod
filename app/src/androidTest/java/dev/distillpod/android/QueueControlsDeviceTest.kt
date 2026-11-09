@@ -1,6 +1,10 @@
 package dev.distillpod.android
 
 import android.os.Build
+import android.os.Looper
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.session.MediaSession
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.lifecycle.ViewModelProvider
@@ -19,6 +23,7 @@ import java.io.File
 import java.util.UUID
 
 /** Synthetic queue fixture, only on disposable emulators. */
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 @RunWith(AndroidJUnit4::class)
 class QueueControlsDeviceTest {
     @get:Rule val compose=createAndroidComposeRule<MainActivity>()
@@ -163,10 +168,40 @@ class QueueControlsDeviceTest {
             compose.onNodeWithTag("queue-list").performScrollToNode(hasContentDescription("Move Queue item 1 up"))
             compose.onNodeWithContentDescription("Move Queue item 1 up").assertIsNotEnabled()
             compose.onNodeWithContentDescription("Move Queue item 1 down").assertIsNotEnabled()
-            val before=withContext(Dispatchers.Main) { player.currentPosition }
-            graph.playback.clear()
-            awaitQueue(emptyList())
-            awaitProgress(1,">=$before") { it>=before }
+            // MediaController extrapolates positions and masks REMOVE locally before the server
+            // handles it. Observe the actual service ExoPlayer, not that predicted callback.
+            val removed=CompletableDeferred<Long>()
+            val removalListener=object : Player.Listener {
+                override fun onPositionDiscontinuity(oldPosition:Player.PositionInfo,newPosition:Player.PositionInfo,reason:Int) {
+                    if(reason==Player.DISCONTINUITY_REASON_REMOVE && oldPosition.mediaItem?.mediaId==ids[1] && newPosition.mediaItem==null) {
+                        removed.complete(oldPosition.positionMs)
+                    }
+                }
+            }
+            val servicePlayer=withContext(Dispatchers.Main) { fixtureServicePlayer(ids[1]) }
+            var before=-1L
+            var expected=-1L
+            var persisted=-1L
+            try {
+                withContext(Dispatchers.Main) {
+                    assertSame(Looper.myLooper(),servicePlayer.applicationLooper)
+                    assertTrue(servicePlayer.isPlaying)
+                    before=servicePlayer.currentPosition
+                    assertTrue(before>0)
+                    servicePlayer.addListener(removalListener)
+                }
+                graph.playback.clear()
+                awaitQueue(emptyList())
+                phase("persisted playing removal event", { "serviceBeforeMs=$before, removalPositionMs=$expected, persistedPositionMs=$persisted" }) {
+                    withTimeout(10000) {
+                        expected=removed.await()
+                        assertTrue("Service removal must retain its own observed progress",expected>=before)
+                        do { persisted=dao.episode(ids[1])!!.positionMs;if(persisted!=expected)delay(50) } while(persisted!=expected)
+                    }
+                }
+            } finally {
+                withContext(Dispatchers.Main) { servicePlayer.removeListener(removalListener) }
+            }
             assertTrue(file.exists())
             withContext(Dispatchers.Main) { assertFalse(player.playWhenReady) }
             graph.playback.enqueue(ids[2]);awaitQueue(listOf(ids[2]))
@@ -201,4 +236,21 @@ class QueueControlsDeviceTest {
             }
         }
     }
+
+    /** Test-only coupling to pinned Media3 1.5.1; no production access hook or controller fallback. */
+    private fun fixtureServicePlayer(episodeId:String):ExoPlayer {
+        check(Looper.myLooper()==Looper.getMainLooper())
+        val lockField=MediaSession::class.java.getDeclaredField("STATIC_LOCK").apply { isAccessible=true }
+        val sessionsField=MediaSession::class.java.getDeclaredField("SESSION_ID_TO_SESSION_MAP").apply { isAccessible=true }
+        val sessions=synchronized(lockField.get(null)!!) {
+            val registry=sessionsField.get(null) as Map<*,*>
+            registry.values.map { it as MediaSession }
+        }
+        // Never call player methods while holding Media3's registry lock.
+        val matching=sessions.filter { it.player.currentMediaItem?.mediaId==episodeId }
+        check(matching.size==1) { "Expected exactly one service session for the synthetic queue item" }
+        return matching.single().player as? ExoPlayer
+            ?: error("Fixture session must expose the actual ExoPlayer, not a controller")
+    }
+
 }
