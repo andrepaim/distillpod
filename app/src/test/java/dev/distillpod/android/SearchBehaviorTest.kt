@@ -22,6 +22,41 @@ import java.io.File
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
 class SearchBehaviorTest {
+    @Test fun `late exact video matches do not move already displayed audio results`() = runBlocking<Unit> {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val release = CompletableDeferred<Unit>()
+        val audio = candidate.copy(title = "Porta audio")
+        val video = candidate.copy(title = "Porta dos Fundos", feedUrl = "https://www.youtube.com/playlist?list=abcdefghijk")
+        try {
+            val search = PodcastSearch(scope, { emptyList() }, providers = linkedSetOf("apple", "youtube"),
+                findProviders = { _, _, publish ->
+                    publish(ProviderSearchResult("apple", listOf(audio)))
+                    release.await()
+                    publish(ProviderSearchResult("youtube", listOf(video)))
+                })
+            search.submit("Porta dos Fundos")
+            assertEquals(listOf(audio), search.state.value.results)
+            release.complete(Unit); yield()
+            assertEquals(listOf(audio, video), search.state.value.results)
+        } finally { release.complete(Unit); scope.cancel() }
+    }
+
+    @Test fun `late Apple results do not jump ahead of an already displayed video`() = runBlocking<Unit> {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val release = CompletableDeferred<Unit>()
+        val video = candidate.copy(title = "Porta video", feedUrl = "https://www.youtube.com/playlist?list=abcdefghijk")
+        try {
+            val search = PodcastSearch(scope, { emptyList() }, providers = linkedSetOf("apple", "youtube"),
+                findProviders = { _, _, publish ->
+                    publish(ProviderSearchResult("youtube", listOf(video)))
+                    release.await(); publish(ProviderSearchResult("apple", listOf(candidate)))
+                })
+            search.submit("Porta")
+            release.complete(Unit); yield()
+            assertEquals(listOf(video, candidate), search.state.value.results)
+        } finally { release.complete(Unit); scope.cancel() }
+    }
+
     private val candidate = PodcastCandidate("New result", "Creator", "https://example.com/feed", null)
     @Test fun `partial results remain visible and retry only replaces the failed provider`() = runBlocking<Unit> {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)

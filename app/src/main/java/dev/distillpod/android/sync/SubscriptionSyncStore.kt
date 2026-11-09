@@ -39,6 +39,9 @@ class SubscriptionSyncStore(private val db: AppDatabase, private val isolatedDem
         enqueue(podcast,false)
     }
     private suspend fun enqueue(podcast:PodcastEntity,baseline:Boolean) {
+        // Older clients expect RSS. Channel URLs have no query string, so the protocol's
+        // query guard alone cannot keep YouTube subscriptions local.
+        if (dev.distillpod.core.YouTubeUrl.source(podcast.feedUrl) != null) return
         val binding=db.sync().binding() ?: return
         if(db.sync().approved(podcast.id)==null)return
         val key=key(podcast)

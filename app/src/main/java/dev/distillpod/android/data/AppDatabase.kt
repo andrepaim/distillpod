@@ -33,6 +33,7 @@ data class EpisodeEntity(
     val totalBytes: Long = 0, val etag: String? = null, val lastModified: String? = null,
     val mediaFingerprint: String = "", val error: String? = null,
     val webpageUrl: String? = null,
+    val sourceOrder: Int? = null,
 )
 
 @Entity(tableName = "queue", foreignKeys = [ForeignKey(entity = EpisodeEntity::class, parentColumns = ["id"], childColumns = ["episodeId"], onDelete = ForeignKey.CASCADE)], indices = [Index("sortOrder")])
@@ -112,12 +113,12 @@ interface LibraryDao {
     @Query("SELECT * FROM podcasts WHERE feedUrl=:url OR originalFeedUrl=:url LIMIT 1") suspend fun podcastByUrl(url: String): PodcastEntity?
     @Upsert suspend fun putPodcast(value: PodcastEntity)
     @Query("DELETE FROM podcasts WHERE id=:id") suspend fun deletePodcast(id: String)
-    @Query("SELECT * FROM episodes ORDER BY publishedAt DESC, title") fun observeEpisodes(): Flow<List<EpisodeEntity>>
-    @Query("SELECT * FROM episodes ORDER BY publishedAt DESC, title") suspend fun episodes(): List<EpisodeEntity>
-    @Query("SELECT * FROM episodes WHERE podcastId=:id ORDER BY publishedAt DESC") suspend fun episodesForPodcast(id: String): List<EpisodeEntity>
-    @Query("SELECT e.* FROM episodes e INNER JOIN podcasts p ON p.id=e.podcastId WHERE p.subscribed=1 AND e.completed=0 ORDER BY e.publishedAt DESC, e.id LIMIT 1")
+    @Query("SELECT * FROM episodes ORDER BY publishedAt DESC, COALESCE(sourceOrder, 2147483647), title, id") fun observeEpisodes(): Flow<List<EpisodeEntity>>
+    @Query("SELECT * FROM episodes ORDER BY publishedAt DESC, COALESCE(sourceOrder, 2147483647), title, id") suspend fun episodes(): List<EpisodeEntity>
+    @Query("SELECT * FROM episodes WHERE podcastId=:id ORDER BY COALESCE(sourceOrder, 2147483647), publishedAt DESC, title, id") suspend fun episodesForPodcast(id: String): List<EpisodeEntity>
+    @Query("SELECT e.* FROM episodes e INNER JOIN podcasts p ON p.id=e.podcastId WHERE p.subscribed=1 AND e.completed=0 ORDER BY e.publishedAt DESC, COALESCE(e.sourceOrder, 2147483647), e.id LIMIT 1")
     suspend fun autoNewestUnfinished(): EpisodeEntity?
-    @Query("SELECT e.* FROM episodes e INNER JOIN podcasts p ON p.id=e.podcastId WHERE p.subscribed=1 ORDER BY e.publishedAt DESC, e.id LIMIT :limit OFFSET :offset")
+    @Query("SELECT e.* FROM episodes e INNER JOIN podcasts p ON p.id=e.podcastId WHERE p.subscribed=1 ORDER BY e.publishedAt DESC, COALESCE(e.sourceOrder, 2147483647), e.id LIMIT :limit OFFSET :offset")
     suspend fun autoSearchCandidates(limit: Int, offset: Long): List<EpisodeEntity>
     @Query("SELECT * FROM podcasts WHERE subscribed=1 ORDER BY title COLLATE NOCASE, id LIMIT :limit OFFSET :offset")
     suspend fun autoPodcasts(limit: Int, offset: Long): List<PodcastEntity>
@@ -129,7 +130,8 @@ interface LibraryDao {
         ORDER BY CASE WHEN :section='continue' AND e.id=:current THEN 0 ELSE 1 END,
           CASE WHEN :section='queue' THEN q.sortOrder END,
           CASE WHEN :section='continue' THEN e.lastPlayedAt END DESC,
-          e.publishedAt DESC, e.id
+          CASE WHEN :section='show' THEN e.sourceOrder END,
+          e.publishedAt DESC, COALESCE(e.sourceOrder, 2147483647), e.id
         LIMIT :limit OFFSET :offset""")
     suspend fun autoEpisodes(section: String, show: String, current: String?, limit: Int, offset: Long): List<EpisodeEntity>
     @Query("SELECT * FROM episodes WHERE id=:id") suspend fun episode(id: String): EpisodeEntity?
@@ -200,12 +202,17 @@ interface LibraryDao {
 
 @Database(entities = [ShowAutomationEntity::class, EpisodeAutomationEntity::class, EpisodeAdPreferenceEntity::class, MomentAttemptEntity::class, MomentVersionEntity::class, OnlineTranscriptEntity::class, TranscriptLookupEntity::class, PostDraftEntity::class, PodcastEntity::class, EpisodeEntity::class, QueueEntryEntity::class, PlayerSessionEntity::class,
     TranscriptEntity::class, SegmentEntity::class, CoverageEntity::class, DistillationEntity::class, ModelEntity::class,
-    AnalysisEntity::class, AnalysisPartEntity::class, MessageEntity::class, ResearchEntity::class, SuggestionEntity::class, SyncOutboxEntity::class, SyncBindingEntity::class, SyncRemoteEntity::class, SyncPublicFeedEntity::class, SyncViewEntity::class, SyncPreferenceEntity::class, SyncArtifactEntity::class], version = 10, exportSchema = true)
+    AnalysisEntity::class, AnalysisPartEntity::class, MessageEntity::class, ResearchEntity::class, SuggestionEntity::class, SyncOutboxEntity::class, SyncBindingEntity::class, SyncRemoteEntity::class, SyncPublicFeedEntity::class, SyncViewEntity::class, SyncPreferenceEntity::class, SyncArtifactEntity::class], version = 11, exportSchema = true)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun automation(): AutomationDao
     abstract fun library(): LibraryDao
     abstract fun sync(): SyncDao
     companion object {
+        val MIGRATION_10_11 = object : androidx.room.migration.Migration(10, 11) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE episodes ADD COLUMN sourceOrder INTEGER")
+            }
+        }
         val MIGRATION_9_10 = object : androidx.room.migration.Migration(9, 10) {
             override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
                 db.execSQL("CREATE TABLE IF NOT EXISTS show_automation (podcastId TEXT NOT NULL PRIMARY KEY, enabledAt INTEGER NOT NULL, initialized INTEGER NOT NULL)")
@@ -278,6 +285,6 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_moment_versions_momentId ON moment_versions(momentId)")
             }
         }
-        fun open(context: Context): AppDatabase = Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "library.db").addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10).build()
+        fun open(context: Context): AppDatabase = Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "library.db").addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11).build()
     }
 }
