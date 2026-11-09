@@ -35,9 +35,7 @@ class ManagedBackupsDeviceTest {
     private fun phase(name: String) { diagnostics?.mark(name) }
     private val device get() = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
     private fun root() {
-        // A queued Compose effect can launch the picker; UiAutomator does not drive that clock.
-        compose.waitForIdle()
-        DocumentPickerUi.location(device, By.text("DistillPod test files"))
+        DocumentPickerUi.location(device, By.text("DistillPod test files"), synchronizeApp=compose::waitForIdle)
     }
     private fun save() { checkNotNull(device.wait(Until.findObject(By.text(Pattern.compile("Save", Pattern.CASE_INSENSITIVE)).enabled(true)), 10000)).click() }
     private suspend fun show(managed: ManagedBackups, legacy: BackupDocuments, onCreated: (android.net.Uri?) -> Unit = managed::created) {
@@ -157,7 +155,13 @@ class ManagedBackupsDeviceTest {
                     BackupExportLauncher(legacySource) { selected -> uri = selected; legacySource.save(selected) }; BackupScreen(legacySource)
                 } } }
             } }
-            compose.onNodeWithText("Save backup to Google Drive").performClick(); root(); save()
+            phase("legacy-create-scroll-click")
+            compose.onNodeWithText("Save backup to Google Drive").performScrollTo().assertIsDisplayed().assertIsEnabled().performClick()
+            phase("legacy-prepare-await")
+            compose.waitUntil(10000) {legacySource.state.value.awaitingDestination || legacySource.state.value.error}
+            assertFalse(legacySource.state.value.phase,legacySource.state.value.error)
+            phase("legacy-picker-save")
+            root(); save()
             compose.waitUntil(20000) { legacySource.state.value.phase.startsWith("Saved and checked") || legacySource.state.value.error }
             assertFalse(legacySource.state.value.phase, legacySource.state.value.error)
             val name = BackupDocuments.Saved.parse(settings.value("lastBackup").first())!!.name
