@@ -10,6 +10,7 @@ import dev.distillpod.android.features.AppViewModel
 import java.io.File
 import java.util.UUID
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.first
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
@@ -29,7 +30,9 @@ class ProtectedAudioDeletionDeviceTest {
         val graph = context.appGraph
         graph.ready.await()
         val dao = graph.db.library()
-        check(dao.queue().isEmpty()) { "Use an empty validation installation" }
+        check(dao.queue().isEmpty() && graph.playback.state.value.queue.isEmpty()) {
+            "Use an empty validation queue"
+        }
         val id = "protected-audio-" + UUID.randomUUID()
         val audio = File(graph.media.directory, "$id.audio")
         val partial = File(graph.media.directory, "$id.partial")
@@ -49,7 +52,15 @@ class ProtectedAudioDeletionDeviceTest {
             assertEquals(1234L, dao.episode(id)!!.positionMs)
             assertEquals("fixture-etag", dao.episode(id)!!.etag)
         }
+        suspend fun trace(stage: String, vm: AppViewModel) {
+            println("Protected audio fixture $stage: reason=${vm.audioDeletionBlocks.value[id]}, " +
+                "dbQueued=${dao.queue().any { it.episodeId == id }}, " +
+                "controllerQueued=${id in graph.playback.state.value.queue}, " +
+                "activeQueued=${audio.absolutePath in graph.media.active.queued}, " +
+                "transcript=${dao.transcript(id)?.state}")
+        }
         var acquired = false
+        var audioAcquired = false
         try {
             audio.writeText("audio"); partial.writeText("resume")
             dao.putPodcast(PodcastEntity(id, "https://example.test/$id", "Protected audio fixture"))
@@ -76,7 +87,16 @@ class ProtectedAudioDeletionDeviceTest {
             assertTrue(runCatching { graph.media.deleteDownload(id) }.exceptionOrNull() is AudioDeletionBlocked)
             retained()
             check(dao.queue() == listOf(QueueEntryEntity(id, 0)))
-            dao.clearQueue()
+            // The real service restores DAO entries into Media3; deleting only the DAO row
+            // does not release that ownership and the next service checkpoint restores it.
+            withTimeout(10000) { graph.playback.state.first { id in it.queue } }
+            trace("before controller clear", vm)
+            graph.playback.clear()
+            withTimeout(10000) {
+                while (id in graph.playback.state.value.queue || dao.queue().any { it.episodeId == id } ||
+                    graph.media.active.busy(audio.absolutePath)) delay(50)
+            }
+            trace("after controller clear", vm)
             dao.putTranscript(transcript.copy(state = "processing"))
             feedback(AudioDeletionBlockReason.TRANSCRIBING)
             retained()
@@ -85,10 +105,13 @@ class ProtectedAudioDeletionDeviceTest {
             feedback(AudioDeletionBlockReason.DOWNLOADING)
             retained()
             dao.putEpisode(before)
-            graph.media.active.playback = audio.absolutePath
+            // Processing ownership is stable while held; PlaybackService owns its playback pointer.
+            graph.media.active.acquire(audio)
+            audioAcquired = true
             feedback(AudioDeletionBlockReason.ACTIVE)
             retained()
-            graph.media.active.playback = null
+            graph.media.active.release(audio)
+            audioAcquired = false
             compose.waitUntil(10000) { vm.audioDeletionBlocks.value[id] == null }
             compose.onNode(delete).performScrollTo().assertIsEnabled().performClick()
             compose.onNodeWithText("Delete downloaded audio?").assertIsDisplayed()
@@ -112,7 +135,10 @@ class ProtectedAudioDeletionDeviceTest {
             assertEquals(transcript, dao.transcript(id))
         } finally {
             if (acquired) graph.media.active.release(partial)
-            if (graph.media.active.playback == audio.absolutePath) graph.media.active.playback = null
+            if (audioAcquired) graph.media.active.release(audio)
+            // Remove only this fixture from the real controller, including after a failed assertion.
+            graph.playback.remove(id)
+            withTimeout(10000) { graph.playback.state.first { id !in it.queue } }
             dao.deletePodcast(id)
             audio.delete(); partial.delete()
         }
