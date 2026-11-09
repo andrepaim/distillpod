@@ -65,15 +65,17 @@ import dev.distillpod.android.data.PodcastEntity
         SectionHeading("Your library")
         SettingsDestination("Backup & Restore","Save or bring back a portable copy",Icons.Default.Restore){vm.open("backup")}
         SettingsDestination("Library sync","Google account and sync status",Icons.Default.Sync){vm.open("settings:sync")}
-        SectionHeading("Listening & insights")
+        SettingsDestination("Library","Import, export and refresh subscriptions",Icons.Default.ImportExport){vm.open("settings:library")}
+        SectionHeading("Playback & transcripts")
         SettingsDestination("Playback & headphones","Button shortcuts and save feedback",Icons.Default.Headphones){vm.open("settings:playback")}
         if (vm.graph.context.resources.getBoolean(dev.distillpod.android.R.bool.voice_enabled))
             SettingsDestination("Voice","API key and spoken answers",Icons.Default.Mic){vm.open("settings:voice")}
-        SettingsDestination("Local transcription","Models and language · on this phone",Icons.Default.Subtitles){vm.open("settings:transcription")}
+        SettingsDestination("Transcript preparation","Automatic preparation, lookup, models and charging",Icons.Default.Subtitles){vm.open("settings:transcription")}
         SettingsDestination("ChatGPT",if(connected)"Connected · account and AI model" else "Connect for insights and questions",Icons.Default.AutoAwesome){vm.open("settings:ai")}
-        SettingsDestination("Downloads & storage","Network, charging and audio storage",Icons.Default.Download){vm.open("settings:storage")}
-        SettingsDestination("Import & notifications","OPML subscriptions and background progress",Icons.Default.ImportExport){vm.open("settings:library")}
-        SettingsDestination("Diagnostics","Share technical reports and report a problem",Icons.Default.BugReport){vm.open("settings:diagnostics")}
+        SettingsDestination("Downloads & storage","Download network policy, usage and cleanup",Icons.Default.Download){vm.open("settings:storage")}
+        SectionHeading("App access & privacy")
+        SettingsDestination("Notification access","Playback controls and background progress",Icons.Default.Notifications){vm.open("settings:notifications")}
+        SettingsDestination("Privacy & diagnostics","Share technical reports and report a problem",Icons.Default.BugReport){vm.open("settings:diagnostics")}
         TextButton(onClick={vm.open("settings:about")}){Text("About DistillPod")}
     }
 }

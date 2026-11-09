@@ -128,6 +128,34 @@ class StorageUsageTest {
             }
         }
     }
+    @Test fun failedPartialDeletionKeepsResumeMetadata() = runBlocking {
+        fixture { db, media, _ ->
+            db.library().putEpisode(episode())
+            // A non-empty synthetic directory forces File.delete() to fail without permissions changes.
+            val partial = File(media.directory, "e.partial").apply { mkdirs() }
+            val child = File(partial, "fixture").apply { writeText("keep") }
+            try {
+                assertTrue(runCatching { media.discardPausedPartial("e") }.isFailure)
+                val unchanged = db.library().episode("e")!!
+                assertEquals("paused", unchanged.downloadState)
+                assertEquals(3L, unchanged.downloadedBytes)
+                assertEquals("old", unchanged.etag)
+                assertEquals("keep", child.readText())
+            } finally { child.delete(); partial.delete() }
+        }
+    }
+    @Test fun partialCleanupRejectsPathsOutsideMediaDirectory() = runBlocking {
+        fixture { db, media, _ ->
+            val id = "../storage-outside-fixture"
+            db.library().putEpisode(episode().copy(id = id))
+            val outside = File(media.directory.parentFile, "storage-outside-fixture.partial").apply { writeText("keep") }
+            try {
+                assertTrue(runCatching { media.discardPausedPartial(id) }.isFailure)
+                assertEquals("keep", outside.readText())
+                assertEquals("paused", db.library().episode(id)!!.downloadState)
+            } finally { outside.delete() }
+        }
+    }
     private fun episode() = EpisodeEntity("e", "p", "g", "Episode", "https://example.test/audio",
         downloadState = "paused", downloadedBytes = 3, etag = "old")
     private suspend fun fixture(block: suspend (AppDatabase, MediaRepository, AppSettings) -> Unit) {
