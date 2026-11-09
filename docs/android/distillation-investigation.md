@@ -130,3 +130,39 @@ git diff --check
 No owner-phone or live AI/Sentry inspection belongs to this task. Full app gates are separate
 from the Python checks; a passing fixture suite is not evidence of deployed instrumentation
 or a complete real incident.
+
+
+## Reconciliation and risk assessment (2026-11-09)
+
+Current-main policy baseline: `04754ade` (PR #50 risk-based validation, with PR #44).
+The report branch integrates that baseline without merging speculative producer branches.
+
+Affected behavior is a POSIX/WSL Python command-line reader and private file writer:
+Sentry query construction/pagination, selected-field normalization, UUID evidence joins,
+and local JSON output. It changes no Android code, lifecycle, background scheduling,
+permissions, notifications, Bluetooth/audio routing, persisted app schema, backup/sync
+format, signing identity, upgrade path, or owner-device state. Real risks are misleading
+incomplete evidence, cross-incident joins, unsafe credential forwarding, content leakage,
+and output permissions. Synthetic API/error/drift fixtures, real synthetic producer
+envelopes, privacy sentinels, actual CLI/file-mode checks, code review and repository
+security checks directly exercise those risks.
+
+For this consumer, physical-phone and local Android emulator testing are not applicable:
+they cannot establish a Python/API batch-join or POSIX permission property, and no app flow
+is modified. This is a per-change assessment, not a waiver for reporting producers.
+Existing PR Android/emulator/security CI remains unchanged and must pass on the final
+integrated head. No live Sentry read was used as validation; actual authorization/account
+availability is therefore unverified. No credentials or account configuration were changed.
+
+Committed producer schemas were compared read-only against the captured fixture contracts:
+- #34 `a476031`: budget policy 2, same limits/counter semantics as fixture-era `a0d79a7`.
+- #37 `d4663fc`: correlation 1 fields/retry allowlists unchanged from `812c4d5`.
+- #35 `350133c`: outcome 1 fields/models unchanged from fixture producer `6676b03`.
+- #36 `e795e1e`: context schema 1 fields/reasons unchanged from `7d53f9c`.
+
+The corresponding producer source files have no diff across those pairs.
+These comparisons establish compatibility with those committed schemas, not their presence
+on main or successful end-to-end deployment. Keep #38 open until #34/#37/#35/#36 land,
+then compare the actual combined producer definitions, integrate current main again, and
+rerun consumer/security checks and required CI. Any changed event, enum, field type,
+identity or serialization contract requires renewed fixture validation.
