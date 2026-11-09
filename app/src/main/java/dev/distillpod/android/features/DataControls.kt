@@ -15,7 +15,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
     val exportOpml = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/x-opml")) { uri -> uri?.let(vm::exportOpml) }
     val importOpml = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let(vm::importOpml) }
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text("Your library", style = MaterialTheme.typography.titleLarge)
+        TextButton(onClick = { vm.open("settings:sync") }) { Text("Library sync") }
         Text("Keep a portable copy in Google Drive or another location. Restore into this library without replacing existing items.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         OutlinedButton(onClick = { vm.open("backup") }) { Text("Backup & Restore") }
         Text("Podcast subscriptions", style = MaterialTheme.typography.titleMedium)
@@ -24,6 +24,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
             OutlinedButton(onClick = { exportOpml.launch("distillpod-subscriptions.opml") }, enabled = "opml" !in busy) { Text("Export OPML") }
             OutlinedButton(onClick = { importOpml.launch(arrayOf("text/*", "application/xml", "application/octet-stream")) }, enabled = "opml" !in busy) { Text("Import OPML") }
         }
-        NotificationAccess()
     }
+}
+
+/** Canonical notification destination; platform recovery behavior lives in NotificationAccess. */
+@Composable fun NotificationControls() {
+    NotificationAccess()
 }

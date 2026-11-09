@@ -27,6 +27,7 @@ import androidx.work.testing.SynchronousExecutor
 import androidx.work.testing.WorkManagerTestInitHelper
 import dev.distillpod.android.features.AppViewModel
 import dev.distillpod.android.features.DataControls
+import dev.distillpod.android.features.NotificationControls
 import kotlinx.coroutines.*
 import org.junit.After
 import org.junit.Assert.*
@@ -80,7 +81,7 @@ class NotificationAccessTest {
         }
     }
     private fun render() = compose.setContent {
-        MaterialTheme { Column(Modifier.verticalScroll(rememberScrollState())) { DataControls(vm) } }
+        MaterialTheme { Column(Modifier.verticalScroll(rememberScrollState())) { NotificationControls() } }
     }
     private fun enabledText() = compose.onNodeWithText("Notifications are enabled", substring = true)
     private fun resume() {
@@ -94,6 +95,16 @@ class NotificationAccessTest {
             compose.activity.onRequestPermissionsResult(request.requestCode, arrayOf(Manifest.permission.POST_NOTIFICATIONS),
                 intArrayOf(if (granted) PackageManager.PERMISSION_GRANTED else PackageManager.PERMISSION_DENIED))
         }
+    }
+
+    @Test fun `library import controls no longer duplicate notification access`() {
+        compose.setContent {
+            MaterialTheme { Column(Modifier.verticalScroll(rememberScrollState())) { DataControls(vm) } }
+        }
+        compose.onNodeWithText("Import OPML").assertExists()
+        compose.onNodeWithText("Background progress").assertDoesNotExist()
+        compose.onNodeWithText("Enable notifications").assertDoesNotExist()
+        compose.onNodeWithText("Open notification settings").assertDoesNotExist()
     }
 
     @Test fun `an existing notification grant is reflected initially`() {
