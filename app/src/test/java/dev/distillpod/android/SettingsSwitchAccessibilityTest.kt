@@ -22,6 +22,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.viewModelScope
 import androidx.test.core.app.ApplicationProvider
 import androidx.work.Configuration
 import androidx.work.WorkManager
@@ -64,10 +65,11 @@ class SettingsSwitchAccessibilityTest {
         store.put("settings", vm)
     }
 
-    @After fun cleanup() {
+    @After fun cleanup() = runBlocking {
+        val viewModelJob = if (::vm.isInitialized) vm.viewModelScope.coroutineContext.job else null
         store.clear()
         WorkManager.getInstance(application).cancelAllWork().result.get(5, TimeUnit.SECONDS)
-        shadowOf(Looper.getMainLooper()).idle()
+        viewModelJob?.awaitViewModelTeardown()
         graph.db.close()
         WorkManagerTestInitHelper.closeWorkDatabase()
     }
