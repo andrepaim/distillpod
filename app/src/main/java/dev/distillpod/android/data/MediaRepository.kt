@@ -56,6 +56,8 @@ class MediaRepository(context: Context, private val db: AppDatabase, private val
 
     suspend fun ensureDownloaded(id: String, notify: (DownloadProgress) -> Unit = {}): File = episodeTransfers.withLock { downloadEpisode(id, notify) }
 
+    internal suspend fun <T> withDownloadedAudio(id: String, read: suspend (File) -> T): T = read(ensureDownloaded(id))
+
     private suspend fun downloadEpisode(id: String, notify: (DownloadProgress) -> Unit): File = locks.getOrPut("episode:$id") { Mutex() }.withLock {
         val ep = dao.episode(id) ?: error("Episode is no longer available")
         ep.localFile?.let(::File)?.takeIf { it.isFile && it.length() == ep.downloadedBytes && ep.downloadState == "downloaded" }?.let { return@withLock it }
