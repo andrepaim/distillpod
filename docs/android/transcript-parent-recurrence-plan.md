@@ -55,7 +55,7 @@ The marker test first failed with the missing evidence, then passed while
 retaining original exception identity, stack and existing suppressed evidence.
 Cancellation and unrelated exceptions remain unchanged. All application DAO
 transcript upserts now identify their fixed write site on a constraint failure.
-This preserves strict FK behavior and does not catch or suppress failures.
+This preserves strict FK behavior and does not suppress or replace failures.
 
 JVM and platform mutation cases share a private in-memory Room protocol. All
 thirteen cases also fail against the uncorrected source with this shared fixture
