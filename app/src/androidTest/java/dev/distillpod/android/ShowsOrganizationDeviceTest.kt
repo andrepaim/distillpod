@@ -4,6 +4,7 @@ import android.os.Build
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
@@ -129,10 +130,37 @@ class ShowsOrganizationDeviceTest {
         compose.onNodeWithText("Search your shows").performTextReplacement("No such show")
         compose.onNodeWithText("Search your shows").performImeAction()
         compose.onNodeWithText("No matching shows").assertIsDisplayed()
-        compose.onNodeWithText("Reset filters").performClick()
+        compose.onNodeWithText("Reset filters").performScrollTo().assertIsDisplayed().performClick()
         compose.onNodeWithTag("show-format-ALL").assertIsSelected()
+        assertEquals("Reset must retain the Shows route", "shows", vm.backStack.value.last())
+        assertTrue("Reset must clear the empty search result", compose.onAllNodesWithText("No matching shows").fetchSemanticsNodes().isEmpty())
         compose.onNodeWithTag("shows-grid").performScrollToNode(hasText("No episodes yet"))
         compose.onNodeWithText("No episodes yet").assertIsDisplayed()
+    }
+
+    @Test fun resetFromShortViewportRetainsTheShowsGrid() {
+        compose.runOnUiThread {
+            compose.activity.setContent { Box(Modifier.height(400.dp)) { ProductApp(vm) } }
+        }
+        repeat(3) { iteration ->
+            compose.onNodeWithTag("shows-grid").performScrollToIndex(0)
+            compose.onNodeWithText("Search your shows").performClick().performTextReplacement("No such show")
+            compose.onNodeWithText("Search your shows").performImeAction()
+            compose.onNodeWithText("No matching shows").assertIsDisplayed()
+            compose.onNodeWithText("Reset filters").performScrollTo().assertIsDisplayed().performClick()
+            compose.onNodeWithTag("show-format-ALL").assertIsSelected()
+            assertEquals("Reset route at iteration $iteration", "shows", vm.backStack.value.last())
+            assertTrue("Reset must clear the empty search result at iteration $iteration",
+                compose.onAllNodesWithText("No matching shows").fetchSemanticsNodes().isEmpty())
+            try {
+                compose.onNodeWithTag("shows-grid").performScrollToNode(hasText("No episodes yet"))
+                compose.onNodeWithText("No episodes yet").assertIsDisplayed()
+            } catch (failure: Throwable) {
+                throw AssertionError("Reset iteration=$iteration route=${vm.backStack.value.last()} " +
+                    "grids=${compose.onAllNodesWithTag("shows-grid").fetchSemanticsNodes().size} " +
+                    "filter=${vm.shows.value?.preferences?.format} showCount=${vm.shows.value?.shows?.size}", failure)
+            }
+        }
     }
 
     @Test fun narrowPageAtDoubleFontSizeKeepsAllControlsAndCardDetailsReachable() {
