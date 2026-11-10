@@ -41,6 +41,29 @@ testable candidates, not identification of the historical writer.
    assertions. Audit other writers; add bounded diagnostics if the actual hosted
    caller remains unknown. Update the plan when evidence changes scope.
 
+The thirteen controlled Pause, processing-limit, missing-model and cancellation
+cases failed against the old snapshots, including real SQLite failure masking
+the original cancellation. They pass with conditional state-only SQL updates;
+the earlier five startup lifetime and twenty automatic-preparation cases pass.
+The hosted logical caller remains unknown. Add a constant-only write-site marker
+to original constraint exceptions at application transcript write sites, without
+new telemetry, identifiers, content or captured row data. Preserve exception
+identity, cause, original stack and existing suppressed exceptions; test those
+properties and marker privacy before enabling the annotation.
+
+The marker test first failed with the missing evidence, then passed while
+retaining original exception identity, stack and existing suppressed evidence.
+Cancellation and unrelated exceptions remain unchanged. All application DAO
+transcript upserts now identify their fixed write site on a constraint failure.
+This preserves strict FK behavior and does not catch or suppress failures.
+
+JVM and platform mutation cases share a private in-memory Room protocol. All
+thirteen cases also fail against the uncorrected source with this shared fixture
+and pass against the correction. The existing five parent/startup cases pass.
+The tracked offline protocol uses a fresh `lifetime81r2` package namespace and
+removes Internet/microphone permissions; it does not overwrite older validation
+apps. Complete gates and emulator/S22 acceptance remain pending.
+
 ## Risk and completion
 
 Persisted lifetime and automatic/background processing require both default and
