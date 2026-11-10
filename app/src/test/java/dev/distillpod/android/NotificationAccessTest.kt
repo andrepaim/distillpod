@@ -7,7 +7,6 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
-import android.os.Looper
 import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.Column
@@ -20,6 +19,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.viewModelScope
 import androidx.test.core.app.ApplicationProvider
 import dev.distillpod.android.features.AppViewModel
 import dev.distillpod.android.features.DataControls
@@ -27,6 +27,8 @@ import dev.distillpod.android.features.NotificationControls
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.job
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Rule
@@ -78,9 +80,10 @@ class NotificationAccessTest {
         val scope = CoroutineScope(Dispatchers.Main.immediate + Job().apply { cancel() })
         val graph = AppGraph(application, scope)
         val store = ViewModelStore()
+        val vm = AppViewModel(graph, SavedStateHandle())
+        val viewModelJob = vm.viewModelScope.coroutineContext.job
+        store.put("settings", vm)
         try {
-            val vm = AppViewModel(graph, SavedStateHandle())
-            store.put("settings", vm)
             compose.setContent {
                 MaterialTheme { Column(Modifier.verticalScroll(rememberScrollState())) { DataControls(vm) } }
             }
@@ -90,7 +93,7 @@ class NotificationAccessTest {
             compose.onNodeWithText("Open notification settings").assertDoesNotExist()
         } finally {
             store.clear()
-            shadowOf(Looper.getMainLooper()).idle()
+            runBlocking { viewModelJob.awaitViewModelTeardown() }
             graph.db.close()
         }
     }
