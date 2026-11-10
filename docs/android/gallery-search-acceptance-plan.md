@@ -21,3 +21,18 @@ Expected scope is Android acceptance only. No production code, runtime dependenc
 The test-only correction changes how acceptance locates and waits for an existing control; it cannot establish a production UI cause. Appropriate emulator/full hosted evidence is sufficient, with no new physical-device requirement under the risk policy. Reassess if runtime scope changes. Use only the owned disposable emulator and synthetic rows/screenshots; do not install or run these fixtures on the owner phone. Serialize builds/emulator access with the shared locks, use the pinned native revision and `--max-workers=2`, and preserve unrelated worktrees.
 
 Record exact revisions, failed/passed/not-run stages and limits in #102/PR evidence. Historical PR101 success does not replace failed merged-main validation. No release is authorized.
+
+## Baseline and selected correction
+
+The original and newly added 320×400dp gallery cases both passed once on the owned
+API35 emulator at `a41ece9` (10.474 seconds). This is a comparison sample, not a
+local reproduction or proof that the hosted failure was harmless. The exact hosted
+red remains the supported failure evidence.
+
+The selected correction waits for one Shows grid, scrolls its header into view,
+then waits for one editable-action node within that grid and checks visibility
+and enabled state. Label presence is checked separately in the unmerged tree;
+text input/IME/query checks target the actual editor. All original search/result/
+back/clear assertions remain, with additional filtered-count and empty-editor
+checks. Timeouts retain their cause and report cardinality. Production sources
+and ordinary JVM-test inputs remain unchanged.

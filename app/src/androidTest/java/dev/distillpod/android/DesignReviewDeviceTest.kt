@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
@@ -92,6 +94,27 @@ class DesignReviewDeviceTest {
     @Test fun gallerySearchFindsShowsBeyondTheRail() = gallerySearchScenario(false)
     @Test fun gallerySearchRetainsQueryAndClearsAtCompactSize() = gallerySearchScenario(true)
 
+    private fun awaitUnique(matcher: SemanticsMatcher, description: String) {
+        var count = -1
+        try {
+            compose.waitUntil(5000) {
+                count = compose.onAllNodes(matcher).fetchSemanticsNodes().size
+                count == 1
+            }
+        } catch (failure: ComposeTimeoutException) {
+            throw AssertionError("$description: expected one node, observed $count", failure)
+        }
+    }
+
+    private fun showsSearchField(): SemanticsNodeInteraction {
+        val grid = hasTestTag("shows-grid")
+        awaitUnique(grid, "Shows grid readiness")
+        compose.onNode(grid).performScrollToIndex(0)
+        val field = hasSetTextAction() and hasAnyAncestor(grid)
+        awaitUnique(field, "Shows editable search readiness")
+        return compose.onNode(field).assertIsDisplayed().assertIsEnabled()
+    }
+
     private fun gallerySearchScenario(compact: Boolean) = runBlocking<Unit> {
         val dao=compose.activity.applicationContext.appGraph.db.library()
         val ids=(0..29).map {"review-show-$it"}
@@ -103,16 +126,20 @@ class DesignReviewDeviceTest {
                 compose.activity.setContent { Box(Modifier.requiredSize(320.dp, 400.dp)) { ProductApp(vm) } }
             }
             open("shows")
-            compose.onNodeWithText("Search your shows").performTextInput("show 29")
-            compose.onNodeWithText("Search your shows").performImeAction()
+            val search = showsSearchField()
+            compose.onNodeWithText("Search your shows", useUnmergedTree = true).assertExists()
+            search.performTextInput("show 29")
+            search.performImeAction()
+            compose.onNodeWithText("1 show").assertIsDisplayed()
             compose.onNodeWithText("Review show 29").assertIsDisplayed()
             compose.onNodeWithText("Review show 00").assertDoesNotExist()
             shot("shows-search")
             compose.onNodeWithText("Review show 29").performClick()
             compose.onNodeWithContentDescription("Back").performClick()
-            compose.onNodeWithText("Search your shows").assertTextContains("show 29")
+            val restoredSearch = showsSearchField().assertTextContains("show 29")
             compose.onNodeWithContentDescription("Clear show search").performClick()
-            compose.onNodeWithText("Search your shows").performImeAction()
+            restoredSearch.assert(SemanticsMatcher.expectValue(SemanticsProperties.EditableText, AnnotatedString("")))
+            restoredSearch.performImeAction()
             compose.onNodeWithText("Review show 00").assertIsDisplayed()
             shot("shows")
         } finally {ids.forEach {dao.deletePodcast(it)}}
