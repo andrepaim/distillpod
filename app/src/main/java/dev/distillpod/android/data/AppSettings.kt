@@ -27,6 +27,21 @@ data class Preferences(
 )
 
 class AppSettings(context: Context, private val store: androidx.datastore.core.DataStore<androidx.datastore.preferences.core.Preferences> = context.applicationContext.settingsDataStore, private val db:AppDatabase?=null, private val portableChanged:()->Unit={}) {
+    val shows = store.data.map { p -> ShowPreferences(
+        format = ShowFormat.entries.firstOrNull { it.name == p[stringPreferencesKey("showsFormat")] } ?: ShowFormat.ALL,
+        sort = ShowSort.entries.firstOrNull { it.name == p[stringPreferencesKey("showsSort")] } ?: ShowSort.TITLE,
+        pinnedFeeds = p[stringSetPreferencesKey("pinnedShows")].orEmpty().toSet(),
+    ) }
+    suspend fun showFormat(format: ShowFormat) { store.edit { it[stringPreferencesKey("showsFormat")] = format.name } }
+    suspend fun showSort(sort: ShowSort) { store.edit { it[stringPreferencesKey("showsSort")] = sort.name } }
+    suspend fun pinShow(feed: String, pinned: Boolean) {
+        require(feed.isNotBlank())
+        store.edit { p ->
+            val key = stringSetPreferencesKey("pinnedShows")
+            val existing = p[key].orEmpty()
+            p[key] = if (pinned) existing + feed else existing - feed
+        }
+    }
     private val localFlow = store.data.map { p -> Preferences(
         p[stringPreferencesKey("model")] ?: "tiny", p[stringPreferencesKey("language")] ?: "auto",
         p[booleanPreferencesKey("wifi")] ?: true, p[booleanPreferencesKey("charging")] ?: false,

@@ -40,9 +40,16 @@ class DownloadNetworkPolicyTest {
                     else if (name == LibraryWorker::class.java.name || name == TranscriptWorker::class.java.name)
                         HoldingWorker(context, params).also { heldWorkers += it } else null
             }).build())
-        val graph = context.appGraph
-        graph.scope.cancel()
-        settle { graph.scope.coroutineContext[Job]!!.isCompleted }
+        // Policy actions are explicit here; application startup/recovery must not race setup.
+        // Match the existing isolated-graph fixtures: DEFAULT-start jobs never begin.
+        val inactive = SupervisorJob().apply { cancel() }
+        val graph = AppGraph(context, CoroutineScope(inactive + Dispatchers.Main.immediate))
+        assertTrue(inactive.isCompleted)
+        assertFalse(graph.ready.isCompleted)
+        // AppJobs resolves context.appGraph internally: bind the same isolated graph there.
+        // Reflection stays in the JVM fixture; no production injection API is introduced.
+        org.robolectric.util.ReflectionHelpers.setField(context, "graph\$delegate", lazyOf(graph))
+        assertSame("AppJobs must use the fixture graph", graph, context.appGraph)
         graph.ready.complete(Unit)
         graph.settings.flag("refresh", false)
         graph.settings.flag("wifi", true)

@@ -201,6 +201,184 @@ class StorageUsageTest {
             }
         }
     }
+    @Test fun protectedDeletionIsStructuredAndPreservesAllStateUntilOwnershipReleased() = runBlocking {
+        fixture { db, media, _ ->
+            val file = File(media.directory, "e.audio").apply { writeText("audio") }
+            val partial = File(media.directory, "e.partial").apply { writeText("resume") }
+            val before = episode().copy(localFile = file.absolutePath, downloadState = "downloaded", positionMs = 42)
+            db.library().putEpisode(before)
+            db.library().insertQueue(listOf(QueueEntryEntity("e", 0)))
+            val rejection = runCatching { media.deleteDownload("e") }.exceptionOrNull()
+            assertNotNull(rejection)
+            assertEquals("AudioDeletionBlocked", rejection!!::class.java.simpleName)
+            assertEquals(before, db.library().episode("e"))
+            assertEquals("audio", file.readText())
+            assertEquals("resume", partial.readText())
+            assertEquals(listOf(QueueEntryEntity("e", 0)), db.library().queue())
+            db.library().clearQueue()
+            media.deleteDownload("e")
+            assertFalse(file.exists())
+            assertFalse(partial.exists())
+            assertEquals(42L, db.library().episode("e")!!.positionMs)
+        }
+    }
+    @Test fun protectedDeletionShowsActionableFeedbackWithoutUnexpectedFailureReporting() = runBlocking {
+        fixture { db, media, _ ->
+            val file = File(media.directory, "e.audio").apply { writeText("audio") }
+            db.library().putEpisode(episode().copy(localFile = file.absolutePath, downloadState = "downloaded"))
+            media.active.playback = file.absolutePath
+            val reported = mutableListOf<Exception>()
+            val messages = mutableListOf<String>()
+            dev.distillpod.android.features.runAppAction(
+                { media.deleteDownload("e") }, reported::add, { messages.add(it) })
+            assertEquals("Protected deletion must not call the unexpected-error diagnostic sink", emptyList<Exception>(), reported)
+            assertEquals(1, messages.size)
+            assertTrue(messages.single().contains("Stop"))
+            assertEquals("audio", file.readText())
+            media.active.playback = null
+        }
+    }
+    @Test fun everyProtectedOwnerKeepsAudioPartialMetadataAndSavedWork() = runBlocking {
+        fixture { db, media, _ ->
+            val dao = db.library()
+            val audio = File(media.directory, "e.audio").apply { writeText("audio") }
+            val partial = File(media.directory, "e.partial").apply { writeText("resume") }
+            val before = episode().copy(localFile = audio.absolutePath, downloadState = "downloaded",
+                positionMs = 1234, lastModified = "resume-date")
+            val transcript = TranscriptEntity("e", "r", "fingerprint", "tiny", "en", state = "ready")
+            val analysis = AnalysisEntity("e", "r", state = "ready", summary = "Saved insight")
+            dao.putEpisode(before); dao.putTranscript(transcript); dao.putAnalysis(analysis)
+            suspend fun verify(reason: AudioDeletionBlockReason) {
+                val row = dao.episode("e")
+                val work = dao.transcript("e")
+                val queue = dao.queue()
+                val error = runCatching { media.deleteDownload("e") }.exceptionOrNull()
+                assertTrue(error is AudioDeletionBlocked)
+                assertEquals(reason, (error as AudioDeletionBlocked).reason)
+                assertEquals(row, dao.episode("e"))
+                assertEquals(work, dao.transcript("e"))
+                assertEquals(queue, dao.queue())
+                assertEquals(analysis, dao.analysis("e"))
+                assertEquals("audio", audio.readText())
+                assertEquals("resume", partial.readText())
+            }
+            media.active.playback = audio.absolutePath
+            verify(AudioDeletionBlockReason.ACTIVE)
+            media.active.playback = null
+            media.active.acquire(audio)
+            verify(AudioDeletionBlockReason.ACTIVE)
+            media.active.release(audio)
+            media.active.acquire(partial)
+            verify(AudioDeletionBlockReason.ACTIVE)
+            media.active.release(partial)
+            media.active.queued = setOf(audio.absolutePath)
+            verify(AudioDeletionBlockReason.QUEUED)
+            media.active.queued = emptySet()
+            dao.insertQueue(listOf(QueueEntryEntity("e", 0)))
+            verify(AudioDeletionBlockReason.QUEUED)
+            dao.clearQueue()
+            for (state in listOf("queued", "processing")) {
+                dao.putTranscript(transcript.copy(state = state))
+                verify(AudioDeletionBlockReason.TRANSCRIBING)
+            }
+            dao.putTranscript(transcript)
+            for (state in listOf("queued", "downloading")) {
+                dao.putEpisode(before.copy(downloadState = state))
+                verify(AudioDeletionBlockReason.DOWNLOADING)
+            }
+            dao.putEpisode(before)
+            media.deleteDownload("e")
+            assertFalse(audio.exists()); assertFalse(partial.exists())
+            assertEquals(transcript, dao.transcript("e"))
+            assertEquals(analysis, dao.analysis("e"))
+            assertEquals(1234L, dao.episode("e")!!.positionMs)
+        }
+    }
+
+    @Test fun protectedPausedPartialIsStructuredAndRetriesAfterRelease() = runBlocking {
+        fixture { db, media, _ ->
+            val before = episode()
+            db.library().putEpisode(before)
+            val partial = File(media.directory, "e.partial").apply { writeText("old") }
+            media.active.acquire(partial)
+            val reported = mutableListOf<Exception>()
+            val messages = mutableListOf<String>()
+            dev.distillpod.android.features.runAppAction(
+                { media.discardPausedPartial("e") }, reported::add, { messages.add(it) })
+            assertTrue(reported.isEmpty())
+            assertEquals(listOf(AudioDeletionBlockReason.ACTIVE.feedback), messages)
+            assertEquals(before, db.library().episode("e"))
+            assertEquals("old", partial.readText())
+            media.active.release(partial)
+            assertEquals(3L, media.discardPausedPartial("e"))
+            assertFalse(partial.exists())
+        }
+    }
+
+    @Test fun invalidPathAndFileFailuresStillReachUnexpectedErrorReporting() = runBlocking {
+        fixture { db, media, _ ->
+            val dao = db.library()
+            val outside = File(media.directory.parentFile, "unexpected-audio-fixture").apply { writeText("keep") }
+            val partial = File(media.directory, "e.partial").apply { mkdirs() }
+            val child = File(partial, "fixture").apply { writeText("keep partial") }
+            val reported = mutableListOf<Exception>()
+            val messages = mutableListOf<String>()
+            try {
+                // Even a protected episode with an invalid path must not hide malformed data.
+                dao.putEpisode(episode().copy(localFile = outside.absolutePath))
+                media.active.playback = outside.absolutePath
+                dev.distillpod.android.features.runAppAction(
+                    { media.deleteDownload("e") }, reported::add, { messages.add(it) })
+                assertTrue(reported.single() is IllegalArgumentException)
+                assertEquals("Invalid audio path", messages.single())
+                assertEquals("keep", outside.readText())
+                media.active.playback = null
+                val before = episode()
+                dao.putEpisode(before)
+                dev.distillpod.android.features.runAppAction(
+                    { media.discardPausedPartial("e") }, reported::add, { messages.add(it) })
+                assertEquals(2, reported.size)
+                assertTrue(reported.last() is IllegalStateException)
+                assertEquals(before, dao.episode("e"))
+                assertEquals("keep partial", child.readText())
+            } finally { outside.delete(); child.delete(); partial.delete() }
+        }
+    }
+    @Test fun resumedPartialBetweenConfirmationAndDiscardIsExpectedAndUnchanged() = runBlocking {
+        fixture { db, media, _ ->
+            val partial = File(media.directory, "e.partial").apply { writeText("resume") }
+            val reported = mutableListOf<Exception>()
+            val messages = mutableListOf<String>()
+            db.library().putEpisode(episode()) // Confirmation was opened while paused.
+            for (state in listOf("queued", "downloading")) {
+                val resumed = episode().copy(downloadState = state)
+                db.library().putEpisode(resumed)
+                dev.distillpod.android.features.runAppAction(
+                    { media.discardPausedPartial("e") }, reported::add, { messages.add(it) })
+                assertTrue("Resumed work is an expected blocked action", reported.isEmpty())
+                assertEquals(AudioDeletionBlockReason.DOWNLOADING.feedback, messages.last())
+                assertEquals(resumed, db.library().episode("e"))
+                assertEquals("resume", partial.readText())
+            }
+            db.library().putEpisode(episode())
+            assertEquals(6L, media.discardPausedPartial("e"))
+            assertFalse(partial.exists())
+        }
+    }
+
+    @Test fun nonProtectedInvalidPartialStateRemainsUnexpected() = runBlocking {
+        fixture { db, media, _ ->
+            val partial = File(media.directory, "e.partial").apply { writeText("resume") }
+            val before = episode().copy(downloadState = "failed")
+            db.library().putEpisode(before)
+            val reported = mutableListOf<Exception>()
+            dev.distillpod.android.features.runAppAction(
+                { media.discardPausedPartial("e") }, reported::add, {})
+            assertTrue(reported.single() is IllegalArgumentException)
+            assertEquals(before, db.library().episode("e"))
+            assertEquals("resume", partial.readText())
+        }
+    }
     private fun episode() = EpisodeEntity("e", "p", "g", "Episode", "https://example.test/audio",
         downloadState = "paused", downloadedBytes = 3, etag = "old")
     private suspend fun fixture(block: suspend (AppDatabase, MediaRepository, AppSettings) -> Unit) {

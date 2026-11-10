@@ -134,7 +134,7 @@ internal fun VoiceSessionContent(state: VoiceState, running: Boolean, onDone: ()
             Text("${timestamp(elapsed)} · Ask about what you just heard", color = MaterialTheme.colorScheme.onSurfaceVariant)
             Button(onClick = onDone, enabled = elapsed >= 300, modifier = Modifier.fillMaxWidth()) { Text("Done") }
         }
-        if (state.phase == "Preparing") Text("Your podcast is paused. Wait for the tone before speaking.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (state.phase == "Preparing") Text("Checking this moment. Wait for the tone before speaking.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (state.phase == "Answering") Text("Microphone off · Spoken answer", color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (state.answer.isNotBlank()) VoiceAnswerTranscript(state.answer)
         state.error?.let {
@@ -202,16 +202,12 @@ internal fun VoiceSettings(vm: AppViewModel) {
         try { store.clear(); hasKey = false; message = "API key removed" }
         catch (_: Exception) { message = "Could not remove the API key. Try again." }
     }) { Text("Remove API key") }
-    Text("Questions and transcript excerpts go to OpenAI and use your API credits. Your key stays encrypted on this phone and is excluded from backups and sync.", style = MaterialTheme.typography.bodySmall)
+    Text("Questions and the available transcript up to your listening position go to OpenAI and use your API credits. Longer transcripts use more input credits. Your key stays encrypted on this phone and is excluded from backups and sync.", style = MaterialTheme.typography.bodySmall)
     HorizontalDivider()
     Text("Answers", style = MaterialTheme.typography.titleMedium)
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.weight(1f)) {
-            Text("Rewind after an answer")
-            Text("Replay the preceding three seconds", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        Switch(checked = rewind, onCheckedChange = { rewind = it; preferences.edit().putBoolean("rewind", it).apply() })
-    }
+    LabeledSettingSwitch("Rewind after an answer", checked = rewind,
+        detail = "Replay the preceding three seconds",
+        onCheckedChange = { rewind = it; preferences.edit().putBoolean("rewind", it).apply() })
     HorizontalDivider()
     Text("Ways to ask", style = MaterialTheme.typography.titleMedium)
     Text("On your phone, use Ask about this in the player.", style = MaterialTheme.typography.bodySmall)

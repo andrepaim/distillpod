@@ -1,0 +1,14 @@
+// Offline, separately installed startup-recovery probe. Never use for production.
+allprojects {
+    afterEvaluate {
+        if (path == ':app') {
+            if (System.getenv('SENTRY_DSN')) throw new GradleException('Validation requires empty SENTRY_DSN')
+            if (project.hasProperty('distillpodFirebaseConfig')) throw new GradleException('Validation forbids Firebase configuration')
+            android.defaultConfig.applicationId = 'dev.distillpod.android.validation.startup56'
+            android.defaultConfig.testApplicationId = 'dev.distillpod.android.validation.startup56.test'
+            android.sourceSets.androidTest.java.srcDir('src/validationTest/java')
+            android.sourceSets.debug.manifest.srcFile('src/validationStartup56/AndroidManifest.xml')
+            android.sourceSets.androidTest.manifest.srcFile('src/validationStartup56/AndroidManifest.xml')
+        }
+    }
+}

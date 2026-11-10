@@ -31,6 +31,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
@@ -146,7 +147,7 @@ private fun date(ms: Long) = if (ms <= 0) "" else DateTimeFormatter.ofPattern("d
                     route == "posts" || route.startsWith("posts:") -> PostDraftsPage(vm, route.substringAfter(':', "").takeIf { it.isNotBlank() })
                     route.startsWith("post:") -> PostEditorPage(vm, route.substringAfter(':'))
                     route == "saved" -> SavedPage(vm, captures, episodes, podcasts)
-                    route == "shows" -> ShowsPage(vm, podcasts)
+                    route == "shows" -> ShowsPage(vm)
                     route == "settings" || route.startsWith("settings:") -> SettingsPage(vm, preferences, account, models, episodes, route.substringAfter(':', "overview"))
                     route == "backup" -> BackupPage(vm) { vm.open("settings:sync") }
                     route == "player" -> PlayerPage(vm, episodes.firstOrNull { it.id == player.episodeId }, podcasts, player, fullscreenExitRequest) { videoFullscreen = it }
@@ -280,6 +281,8 @@ private fun date(ms: Long) = if (ms <= 0) "" else DateTimeFormatter.ofPattern("d
     }
 }
 @Composable private fun EpisodeMenu(vm: AppViewModel, ep: EpisodeEntity) {
+    val deletionBlocks by vm.audioDeletionBlocks.collectAsState()
+    val blocked = deletionBlocks[ep.id]
     var open by remember { mutableStateOf(false) }
     Box {
         IconButton(onClick = { open = true }) { Icon(Icons.Default.MoreVert, "More actions for ${ep.title}") }
@@ -287,7 +290,11 @@ private fun date(ms: Long) = if (ms <= 0) "" else DateTimeFormatter.ofPattern("d
             DropdownMenuItem(text = { Text("Play next") }, onClick = { vm.enqueue(ep.id, true); open = false })
             DropdownMenuItem(text = { Text("Add to queue") }, onClick = { vm.enqueue(ep.id); open = false })
             DropdownMenuItem(text = { Text(if (ep.completed) "Mark unplayed" else "Mark played") }, onClick = { vm.markCompleted(ep.id, !ep.completed); open = false })
-            if (ep.localFile != null) DropdownMenuItem(text = { Text("Delete download") }, onClick = { vm.deleteDownload(ep.id); open = false })
+            if (ep.localFile != null) {
+                DropdownMenuItem(text = { Text("Delete download") }, enabled = blocked == null,
+                    onClick = { vm.deleteDownload(ep.id); open = false })
+                blocked?.let { DropdownMenuItem(text = { Text(it.feedback) }, enabled = false, onClick = {}) }
+            }
         }
     }
 }
@@ -430,52 +437,65 @@ private fun date(ms: Long) = if (ms <= 0) "" else DateTimeFormatter.ofPattern("d
 }
 
 @Composable private fun QueuePage(vm: AppViewModel, episodes: List<EpisodeEntity>, podcasts: List<PodcastEntity>, player: PlaybackState) {
-    if (player.queue.isEmpty()) { Empty("Your queue is clear", "Use Play next or Add to queue on an episode.", "Browse library", { vm.root("library") }); return }
-    val currentIndex = player.queue.indexOf(player.episodeId)
-    val upcoming = if (currentIndex >= 0) player.queue.drop(currentIndex + 1) else player.queue
-    val previous = if (currentIndex > 0) player.queue.take(currentIndex) else emptyList()
-    LazyColumn(contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        player.episodeId?.let { current -> episodes.firstOrNull { it.id == current }?.let { ep ->
-            item(key = "current") {
-                SectionHeading(if (player.playing) "Now playing" else "Ready to resume")
-                Spacer(Modifier.height(10.dp))
-                QueueEpisodeCard(vm, ep, podcasts.firstOrNull { it.id == ep.podcastId }, player, null, false, false)
+    QueueContent(episodes, podcasts, player, { vm.root("library") }, { vm.open("episode:$it") },
+        { vm.play(it) }, vm::toggle, vm::moveQueue, vm::clearQueue, vm::removeQueue)
+}
+
+/** Render the same full order used by Media3, including the current item in its actual position. */
+@Composable internal fun QueueContent(
+    episodes: List<EpisodeEntity>, podcasts: List<PodcastEntity>, player: PlaybackState,
+    onBrowse: () -> Unit, onOpen: (String) -> Unit, onPlay: (String) -> Unit, onToggle: () -> Unit,
+    onMove: (String, Int) -> Unit, onClear: () -> Unit, onRemove: (String) -> Unit = {}
+) {
+    // A changed playlist needs a fresh confirmation, rather than clearing unseen new items.
+    var confirmClear by rememberSaveable(player.queue) { mutableStateOf(false) }
+    if (player.queue.isEmpty()) {
+        Empty("Your queue is clear", "Use Play next or Add to queue on an episode.", "Browse library", onBrowse)
+        return
+    }
+    if (confirmClear) AlertDialog(
+        onDismissRequest = { confirmClear = false },
+        title = { Text("Clear queue and stop playback?") },
+        text = { Text("Remove all episodes from the queue, including the current episode. Your listening progress and downloaded files are kept.") },
+        confirmButton = { TextButton(onClick = { confirmClear = false; onClear() }) { Text("Clear and stop") } },
+        dismissButton = { TextButton(onClick = { confirmClear = false }) { Text("Cancel") } }
+    )
+    val byId = episodes.associateBy { it.id }
+    val shows = podcasts.associateBy { it.id }
+    LazyColumn(Modifier.testTag("queue-list"), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item(key = "queue-controls") {
+            SectionHeading("Playback order", "Episodes before the current item remain available to replay.")
+            TextButton(onClick = { confirmClear = true }) { Icon(Icons.Default.ClearAll, null); Text("Clear queue") }
+        }
+        items(player.queue, key = { it }) { id ->
+            val index = player.queue.indexOf(id)
+            byId[id]?.let { ep ->
+                QueueEpisodeCard(ep, shows[ep.podcastId], player, index + 1, index > 0,
+                    index < player.queue.lastIndex, onOpen, onPlay, onToggle, onMove, onRemove)
             }
-        } }
-        item(key = "up-next-heading") { SectionHeading("Up next", "${upcoming.size} ${if (upcoming.size == 1) "episode" else "episodes"} in order") }
-        if (upcoming.isEmpty()) item { Text("Add an episode with Play next or Add to queue to keep listening.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium) }
-        items(upcoming, key = { it }) { id -> episodes.firstOrNull { it.id == id }?.let { ep ->
-            val ordinal = upcoming.indexOf(id)
-            QueueEpisodeCard(vm, ep, podcasts.firstOrNull { it.id == ep.podcastId }, player, ordinal + 1, ordinal > 0, ordinal < upcoming.lastIndex)
-        } }
-        if (previous.isNotEmpty()) item { SectionHeading("Earlier in queue", "Kept here so you can return to it") }
-        items(previous, key = { it }) { id -> episodes.firstOrNull { it.id == id }?.let { ep ->
-            val index = previous.indexOf(id)
-            QueueEpisodeCard(vm, ep, podcasts.firstOrNull { it.id == ep.podcastId }, player, null, index > 0, index < previous.lastIndex)
-        } }
+        }
     }
 }
 
-@Composable private fun QueueEpisodeCard(vm: AppViewModel, ep: EpisodeEntity, podcast: PodcastEntity?, player: PlaybackState, number: Int?, canMoveUp: Boolean, canMoveDown: Boolean) {
+@Composable private fun QueueEpisodeCard(ep: EpisodeEntity, podcast: PodcastEntity?, player: PlaybackState, number: Int?, canMoveUp: Boolean, canMoveDown: Boolean, onOpen: (String) -> Unit, onPlay: (String) -> Unit, onToggle: () -> Unit, onMove: (String, Int) -> Unit, onRemove: (String) -> Unit) {
     val current = player.episodeId == ep.id
-    Card(onClick = { vm.open("episode:${ep.id}") }, colors = CardDefaults.cardColors(containerColor = if (current) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface)) {
+    Card(onClick = { onOpen(ep.id) }, colors = CardDefaults.cardColors(containerColor = if (current) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface)) {
         Column(Modifier.padding(start = 14.dp, top = 14.dp, end = 8.dp, bottom = 4.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 if (number != null) Text(number.toString().padStart(2, '0'), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Cover(ep.imageUrl ?: podcast?.imageUrl, Modifier.size(48.dp))
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    if (current) Text(if (player.playing) "Now playing" else "Ready to resume", style = MaterialTheme.typography.labelSmall)
                     Text(ep.title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 3, overflow = TextOverflow.Ellipsis)
                     Text(podcast?.title ?: "Podcast", maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                IconButton(onClick = { if (current && player.playing) vm.toggle() else vm.play(ep.id) }) { Icon(if (current && player.playing) Icons.Default.Pause else Icons.Default.PlayArrow, "${if (current && player.playing) "Pause" else "Play"} ${ep.title}") }
+                IconButton(onClick = { if (current && player.playing) onToggle() else onPlay(ep.id) }) { Icon(if (current && player.playing) Icons.Default.Pause else Icons.Default.PlayArrow, "${if (current && player.playing) "Pause" else "Play"} ${ep.title}") }
             }
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(timeRemaining(ep.durationMs, if (current) player.positionMs else ep.positionMs), Modifier.weight(1f), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                if (!current) {
-                    IconButton(onClick = { vm.moveQueue(ep.id, -1) }, enabled = canMoveUp) { Icon(Icons.Default.ArrowUpward, "Move ${ep.title} up") }
-                    IconButton(onClick = { vm.moveQueue(ep.id, 1) }, enabled = canMoveDown) { Icon(Icons.Default.ArrowDownward, "Move ${ep.title} down") }
-                }
-                IconButton(onClick = { vm.removeQueue(ep.id) }) { Icon(Icons.Default.Close, "Remove ${ep.title} from queue") }
+                IconButton(onClick = { onMove(ep.id, -1) }, enabled = canMoveUp) { Icon(Icons.Default.ArrowUpward, "Move ${ep.title} up") }
+                IconButton(onClick = { onMove(ep.id, 1) }, enabled = canMoveDown) { Icon(Icons.Default.ArrowDownward, "Move ${ep.title} down") }
+                IconButton(onClick = { onRemove(ep.id) }) { Icon(Icons.Default.Close, "Remove ${ep.title} from queue") }
             }
         }
     }

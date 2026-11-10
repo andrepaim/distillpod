@@ -40,6 +40,13 @@ internal fun swapCurrentSource(player: Player, desired: MediaItem, position: Lon
 internal fun voicePositionChanged(reason: Int, oldId: String?, newId: String?, oldMs: Long, newMs: Long) =
     reason != Player.DISCONTINUITY_REASON_AUTO_TRANSITION || oldId != newId || oldMs != newMs
 
+/** Source replacements/reorders of the same episode must not checkpoint a removal. */
+internal fun shouldCheckpointRemoval(reason: Int, oldId: String?, newId: String?) =
+    reason == Player.DISCONTINUITY_REASON_REMOVE && oldId != null && oldId != newId
+
+/** Clear-and-stop must also clear play intent so a later enqueue cannot auto-start. */
+internal fun clearPlaybackQueue(player: Player) { player.pause(); player.clearMediaItems() }
+
 fun mediaItem(ep: EpisodeEntity, podcast: PodcastEntity?): MediaItem {
     val file = ep.localFile?.let(::File)?.takeIf { it.isFile }
     return MediaItem.Builder().setMediaId(ep.id).setUri(file?.let(Uri::fromFile) ?: Uri.parse(ep.audioUrl))
@@ -69,21 +76,26 @@ class PlaybackRepository(private val context: Context, private val db: AppDataba
         }
         require(streams.video != null) { "No compatible video is available for this episode" }
     }) {
+    internal val cloudQueueChoices = CloudQueueChoices()
     private val future = MediaController.Builder(context, SessionToken(context, ComponentName(context, PlaybackService::class.java))).buildAsync()
     private val mutable = MutableStateFlow(PlaybackState())
     val state = mutable.asStateFlow()
     init {
         future.addListener({
             runCatching { future.get() }.onSuccess { controller ->
+                fun refreshState() {
+                    mutable.value = PlaybackState(controller.currentMediaItem?.mediaId, controller.mediaMetadata.title?.toString() ?: "",
+                        controller.currentPosition.coerceAtLeast(0), controller.duration.coerceAtLeast(0), controller.isPlaying,
+                        controller.playbackParameters.speed, (0 until controller.mediaItemCount).map { controller.getMediaItemAt(it).mediaId }, mutable.value.error)
+                }
                 controller.addListener(object : Player.Listener {
+                    override fun onEvents(player: Player, events: Player.Events) { refreshState() }
                     override fun onPlayerError(error: androidx.media3.common.PlaybackException) { mutable.update { it.copy(error = "Playback stopped. Check your connection or download this episode.") } }
                     override fun onMediaItemTransition(item: MediaItem?, reason: Int) { mutable.update { it.copy(error = null) } }
                 })
                 scope.launch {
                     while (isActive) {
-                        mutable.value = PlaybackState(controller.currentMediaItem?.mediaId, controller.mediaMetadata.title?.toString() ?: "",
-                            controller.currentPosition.coerceAtLeast(0), controller.duration.coerceAtLeast(0), controller.isPlaying,
-                            controller.playbackParameters.speed, (0 until controller.mediaItemCount).map { controller.getMediaItemAt(it).mediaId }, mutable.value.error)
+                        refreshState()
                         delay(500)
                     }
                 }
@@ -167,11 +179,13 @@ class PlaybackRepository(private val context: Context, private val db: AppDataba
         }
     }
     suspend fun remove(id: String) { val c = controller(); withContext(Dispatchers.Main) { val at = (0 until c.mediaItemCount).firstOrNull { c.getMediaItemAt(it).mediaId == id }; if (at != null) c.removeMediaItem(at) } }
-    suspend fun move(id: String, offset: Int) { val c = controller(); withContext(Dispatchers.Main) {
+    suspend fun move(id: String, offset: Int) {
+        if (offset != -1 && offset != 1) return
+        val c = controller(); withContext(Dispatchers.Main) {
         val at = (0 until c.mediaItemCount).firstOrNull { c.getMediaItemAt(it).mediaId == id } ?: return@withContext
         val to = at + offset; if (to in 0 until c.mediaItemCount) c.moveMediaItem(at, to)
     } }
-    suspend fun clear() { val c = controller(); withContext(Dispatchers.Main) { c.clearMediaItems() } }
+    suspend fun clear() { val c = controller(); withContext(Dispatchers.Main) { clearPlaybackQueue(c) } }
     suspend fun synchronizeRestoredQueue() {
         val episodes = db.library().episodes().associateBy { it.id }
         val podcasts = db.library().podcasts().associateBy { it.id }
@@ -190,20 +204,32 @@ class PlaybackRepository(private val context: Context, private val db: AppDataba
             }
         }
     }
-    suspend fun acceptCloudQueue(imported:(List<String>)->Unit) {
-        val all=db.library().episodes().associateBy {it.id};val podcasts=db.library().podcasts().associateBy {it.id}
-        val desired=db.library().queue().map {it.episodeId}.filter {it in all}
-        val c=controller()
-        withContext(Dispatchers.Main) {
-            val current=c.currentMediaItem?.mediaId
-            val ids=if(current!=null && current in all)listOf(current)+desired.filter {it!=current} else desired
-            if(ids.isEmpty() || ids==(0 until c.mediaItemCount).map {c.getMediaItemAt(it).mediaId})return@withContext
-            val index=ids.indexOf(current).coerceAtLeast(0)
-            val position=if(current in ids)c.currentPosition.coerceAtLeast(0) else all.getValue(ids[index]).positionMs
-            val playWhenReady=c.playWhenReady
-            imported(ids)
-            c.setMediaItems(ids.map {preserveVideoItem(all.getValue(it),podcasts[all.getValue(it).podcastId],c.currentMediaItem)},index,position)
-            c.prepare();c.playWhenReady=playWhenReady
+    /** Acknowledges processing, including failed writes; callers must separately verify persisted state. */
+    internal suspend fun awaitQueueWritesProcessed() {
+        val c = controller()
+        val reply = withContext(Dispatchers.Main) { c.sendCustomCommand(QueueWriteCommands.BARRIER, android.os.Bundle.EMPTY) }
+        val result = withContext(Dispatchers.IO) { reply.get(15, TimeUnit.SECONDS) }
+        check(result.resultCode == androidx.media3.session.SessionResult.RESULT_SUCCESS) { "Queue writer barrier failed" }
+    }
+    internal suspend fun chooseCloudQueue(resolve: suspend () -> Unit, imported: (List<String>) -> Unit) {
+        val pending=beginCloudQueueChoice(resolve,imported)
+        try { pending.await() }
+        catch(cancelled:CancellationException) {pending.cancel(cancelled);throw cancelled}
+    }
+    internal suspend fun beginCloudQueueChoice(resolve: suspend () -> Unit, imported: (List<String>) -> Unit): Deferred<Unit> {
+        val choice=CloudQueueChoice(resolve=resolve,imported=imported)
+        val token=cloudQueueChoices.register(choice)
+        try {
+            val c=controller()
+            val reply=withContext(Dispatchers.Main) { c.sendCustomCommand(QueueWriteCommands.IMPORT,
+                android.os.Bundle().apply {putString(QueueWriteCommands.TOKEN,token)}) }
+            val result=withContext(Dispatchers.IO) {reply.get(10,TimeUnit.SECONDS)}
+            check(result.resultCode==androidx.media3.session.SessionResult.RESULT_SUCCESS) {"Playback could not accept the queue choice"}
+            return choice.completion
+        } catch(failure:Throwable) {
+            cloudQueueChoices.take(token)
+            choice.completion.completeExceptionally(failure)
+            throw failure
         }
     }
     suspend fun carPlaybackToken(): android.support.v4.media.session.MediaSessionCompat.Token {
@@ -221,7 +247,8 @@ class PlaybackRepository(private val context: Context, private val db: AppDataba
     suspend fun pauseForVoice(changed: () -> Unit, rewindMs: Long = 0): dev.distillpod.android.voice.VoiceLease {
         val c = controller()
         return withContext(Dispatchers.Main) {
-            val id = c.currentMediaItem?.mediaId ?: error("Play an episode first")
+            val id = c.currentMediaItem?.mediaId ?: throw dev.distillpod.android.voice.VoiceContextUnavailable(
+                dev.distillpod.android.voice.VoiceReadiness.EPISODE_UNAVAILABLE)
             val position = c.currentPosition.coerceAtLeast(0)
             val wasPlaying = c.playWhenReady
             c.pause()
@@ -239,14 +266,22 @@ class PlaybackRepository(private val context: Context, private val db: AppDataba
             object : dev.distillpod.android.voice.VoiceLease {
                 override val episode = id
                 override val position = position
-                override suspend fun finish(resume: Boolean) = withContext(Dispatchers.Main) {
+                override suspend fun finish(resume: Boolean) = finish(resume, true)
+                override suspend fun finish(resume: Boolean, allowRewind: Boolean) = withContext(Dispatchers.Main) {
                     c.removeListener(listener)
                     if (resume && valid && wasPlaying && c.currentMediaItem?.mediaId == id) {
-                        if (rewindMs > 0) c.seekTo((position - rewindMs.coerceAtMost(3000)).coerceAtLeast(0))
+                        if (allowRewind && rewindMs > 0) c.seekTo((position - rewindMs.coerceAtMost(3000)).coerceAtLeast(0))
                         c.play()
                     }
                 }
             }
+        }
+    }
+    /** Null is an expected readiness condition; controller failures still propagate. */
+    suspend fun voicePosition(): Pair<String, Long>? {
+        val c = controller()
+        return withContext(Dispatchers.Main) {
+            c.currentMediaItem?.mediaId?.let { it to c.currentPosition.coerceAtLeast(0) }
         }
     }
     suspend fun capture(): Pair<String, Long> { val c = controller(); return withContext(Dispatchers.Main) { (c.currentMediaItem?.mediaId ?: error("Play an episode first")) to c.currentPosition.coerceAtLeast(0) } }

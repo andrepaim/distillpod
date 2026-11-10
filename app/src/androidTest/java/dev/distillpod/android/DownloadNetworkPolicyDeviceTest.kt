@@ -197,7 +197,15 @@ class DownloadNetworkPolicyDeviceTest {
             dao.putEpisode(EpisodeEntity(id, id, id, "Fixture", server.url("/audio").toString(),
                 downloadState = "paused", downloadedBytes = 6, totalBytes = 11, etag = "\"fixture-v1\""))
             graph.jobs.download(id)
-            val request = server.takeRequest(15, TimeUnit.SECONDS) ?: error("No audio request")
+            val request = server.takeRequest(15, TimeUnit.SECONDS) ?: run {
+                val snapshot = try { withTimeout(2000) {
+                    val rows = withContext(Dispatchers.IO) { manager.getWorkInfosForUniqueWork("download:$id").get(1, TimeUnit.SECONDS) }
+                    val states = rows.map { "state=${it.state}, attempts=${it.runAttemptCount}, stop=${it.stopReason}, " +
+                        "network=${it.constraints.requiredNetworkType}, charging=${it.constraints.requiresCharging()}" }
+                    "episode=${dao.episode(id)?.downloadState}, lifecycle=${compose.activity.lifecycle.currentState}, work=$states"
+                } } catch (error: Exception) { "snapshotUnavailable=${error.javaClass.simpleName}" }
+                error("No audio request; $snapshot")
+            }
             assertEquals("bytes=6-", request.getHeader("Range"))
             assertEquals("\"fixture-v1\"", request.getHeader("If-Range"))
             val original = active("download:$id")

@@ -35,8 +35,16 @@ import dev.distillpod.android.playback.SkippedMoment
 class PlaybackService : MediaLibraryService() {
     private var session: MediaLibrarySession? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-    private data class Snapshot(val ids: List<String>, val id: String?, val position: Long, val duration: Long, val complete: Boolean, val speed: Float, val at: Long = System.currentTimeMillis(), val boundary: Boolean = false, val playing: Boolean = false, val queueBoundary:Boolean=false, val elapsed: Long = android.os.SystemClock.elapsedRealtime())
-    private val writes = Channel<Snapshot>(Channel.UNLIMITED)
+    private sealed interface WriteMessage
+    private data class CloudChoice(val choice: dev.distillpod.android.playback.CloudQueueChoice, val revision: Long): WriteMessage
+    private var pendingCloudChoice: CloudChoice? = null
+    private var queueRevision = 0L
+    private var observedQueue = emptyList<String>()
+    private var applyingCloudChoice = false
+    private data class RestoreQueue(val revision: Long): WriteMessage
+    private data class Barrier(val reply: CompletableDeferred<Unit>): WriteMessage
+    private data class Snapshot(val ids: List<String>, val id: String?, val position: Long, val duration: Long, val complete: Boolean, val speed: Float, val at: Long = System.currentTimeMillis(), val boundary: Boolean = false, val playing: Boolean = false, val queueBoundary:Boolean=false, val queueRestored:Boolean=false, val suppressQueue:Boolean=false, val elapsed: Long = android.os.SystemClock.elapsedRealtime()): WriteMessage
+    private val writes = Channel<WriteMessage>(Channel.UNLIMITED)
     private val syncSession=java.util.UUID.randomUUID().toString()
     private var previousId: String? = null
     private var previousDuration = 0L
@@ -92,6 +100,36 @@ class PlaybackService : MediaLibraryService() {
             openCarVoice = { graph.carVoiceEntry.open() },
             onExternalPlaybackCommand = { graph.voice.cancel(false) },
             diagnostics = graph.diagnostics,
+            queueCommands = setOf(dev.distillpod.android.playback.QueueWriteCommands.BARRIER, dev.distillpod.android.playback.QueueWriteCommands.IMPORT),
+            onQueueCommand = { command, args ->
+                if(command==dev.distillpod.android.playback.QueueWriteCommands.IMPORT) {
+                    val choice=graph.playback.cloudQueueChoices.take(args.getString(dev.distillpod.android.playback.QueueWriteCommands.TOKEN))
+                    val accepted=choice!=null && pendingCloudChoice==null
+                    if(accepted) {
+                        val message=CloudChoice(checkNotNull(choice),queueRevision)
+                        pendingCloudChoice=message
+                        if(!writes.trySend(message).isSuccess) {
+                            pendingCloudChoice=null
+                            choice.completion.completeExceptionally(IllegalStateException("Playback writer is unavailable"))
+                        }
+                    } else choice?.completion?.completeExceptionally(IllegalStateException("A cloud queue choice is already running"))
+                    com.google.common.util.concurrent.Futures.immediateFuture(androidx.media3.session.SessionResult(
+                        if(accepted) androidx.media3.session.SessionResult.RESULT_SUCCESS else androidx.media3.session.SessionError.ERROR_INVALID_STATE))
+                } else {
+                    val reply = CompletableDeferred<Unit>(scope.coroutineContext[Job])
+                    val result = com.google.common.util.concurrent.SettableFuture.create<androidx.media3.session.SessionResult>()
+                    val job=scope.launch {
+                        try {
+                            check(writes.trySend(Barrier(reply)).isSuccess) { "Playback writer is unavailable" }
+                            reply.await()
+                            result.set(androidx.media3.session.SessionResult(androidx.media3.session.SessionResult.RESULT_SUCCESS))
+                        } catch (failure: CancellationException) { result.cancel(false) }
+                        catch (failure: Exception) { result.setException(failure) }
+                    }
+                    job.invokeOnCompletion {if(it!=null)result.cancel(false)}
+                    result
+                }
+            },
             saveMomentWithSource = {id,position,file,source ->
                 val ep=dao.episode(id)
                 graph.captures.save(id,position,file!=null && file==ep?.localFile,source=source)
@@ -130,14 +168,14 @@ class PlaybackService : MediaLibraryService() {
                 listOf(pods,episodes.map {listOf(it.id,it.title,it.completed,it.localFile,it.downloadState,it.lastPlayedAt/60000)},queue,current)
             }.distinctUntilChanged().collectLatest {delay(500);session?.let {libraryCallback.libraryChanged(it)}}
         }
-        fun snapshot(complete: Boolean = false, boundary: Boolean = false, queueBoundary:Boolean=false) {
+        fun snapshot(complete: Boolean = false, boundary: Boolean = false, queueBoundary:Boolean=false, queueRestored:Boolean=false) {
             if (restoring) return
             val id = player.currentMediaItem?.mediaId
             transcription.update(id, player.isPlaying)
             graph.activeFiles.playback = player.currentMediaItem?.localConfiguration?.uri?.takeIf { it.scheme == "file" }?.path
             graph.activeFiles.queued = (0 until player.mediaItemCount).mapNotNull { player.getMediaItemAt(it).localConfiguration?.uri?.takeIf { uri -> uri.scheme == "file" }?.path }.toSet()
             writes.trySend(Snapshot((0 until player.mediaItemCount).map { player.getMediaItemAt(it).mediaId }, id,
-                player.currentPosition.coerceAtLeast(0), player.duration.coerceAtLeast(0), complete, player.playbackParameters.speed, boundary=boundary, playing=player.isPlaying,queueBoundary=queueBoundary))
+                player.currentPosition.coerceAtLeast(0), player.duration.coerceAtLeast(0), complete, player.playbackParameters.speed, boundary=boundary, playing=player.isPlaying,queueBoundary=queueBoundary,queueRestored=queueRestored,suppressQueue=pendingCloudChoice!=null))
             previousId = id; previousDuration = player.duration.coerceAtLeast(0); previousPosition = player.currentPosition.coerceAtLeast(0)
         }
         player.addListener(object : Player.Listener {
@@ -171,7 +209,14 @@ class PlaybackService : MediaLibraryService() {
             override fun onRenderedFirstFrame() { graph.diagnostics.event("videocast.first_frame", reason = "ready") }
             override fun onIsPlayingChanged(isPlaying:Boolean) {graph.diagnostics.event("playback.state",reason=if(isPlaying) "playing" else "paused")}
             override fun onTimelineChanged(timeline:androidx.media3.common.Timeline,reason:Int) {
-                if(reason==Player.TIMELINE_CHANGE_REASON_PLAYLIST_CHANGED)snapshot(queueBoundary=true)
+                if(reason==Player.TIMELINE_CHANGE_REASON_PLAYLIST_CHANGED) {
+                    val ids=(0 until player.mediaItemCount).map {player.getMediaItemAt(it).mediaId}
+                    if(ids!=observedQueue) {
+                        if(!restoring && !applyingCloudChoice)queueRevision++
+                        observedQueue=ids
+                    }
+                    snapshot(queueBoundary=true)
+                }
             }
             override fun onMediaItemTransition(item: MediaItem?, reason: Int) {
                 // Video is opt-in for the current episode, including queue auto-advance.
@@ -190,6 +235,13 @@ class PlaybackService : MediaLibraryService() {
                 snapshot(p.playbackState == Player.STATE_ENDED, events.contains(Player.EVENT_IS_PLAYING_CHANGED) || events.contains(Player.EVENT_PLAY_WHEN_READY_CHANGED))
             }
             override fun onPositionDiscontinuity(oldPosition: Player.PositionInfo, newPosition: Player.PositionInfo, reason: Int) {
+                // Removal callbacks expose the final old position after the current item is gone.
+                // An old-item-only boundary preserves progress without restoring the cleared queue.
+                val removedId = oldPosition.mediaItem?.mediaId
+                if (!restoring && dev.distillpod.android.playback.shouldCheckpointRemoval(reason, removedId, newPosition.mediaItem?.mediaId)) {
+                    writes.trySend(Snapshot(emptyList(), removedId, oldPosition.positionMs.coerceAtLeast(0),
+                        0L, false, player.playbackParameters.speed, boundary=true))
+                }
                 if (reason == Player.DISCONTINUITY_REASON_SEEK) player.currentMediaItem?.mediaId?.let { id ->
                     adSkipping.seek(id, newPosition.positionMs, adConfigs[id]?.ranges ?: emptyList())
                     snapshot(boundary=true)
@@ -199,7 +251,97 @@ class PlaybackService : MediaLibraryService() {
         scope.launch(Dispatchers.IO) {
             graph.ready.await()
             var lastQueue: List<String>? = null
-            for (value in writes) {
+            for (message in writes) {
+                if (message is Barrier) { message.reply.complete(Unit); continue }
+                if (message is RestoreQueue) {
+                    try {
+                        playbackReady.await()
+                        // Read the current persisted choice only after older local writes finish.
+                        // A queued Room emission can otherwise resurrect an order already cleared.
+                        val restored=graph.db.withTransaction {
+                            val items=dao.queue().mapNotNull {entry->dao.episode(entry.episodeId)?.let {ep->mediaItem(ep,dao.podcast(ep.podcastId))}}
+                            items to (items.firstOrNull()?.let {dao.episode(it.mediaId)?.positionMs}?:0L)
+                        }
+                        withContext(Dispatchers.Main.immediate) {
+                            if(!restoring && pendingCloudChoice==null && queueRevision==message.revision &&
+                                player.mediaItemCount==0 && restored.first.isNotEmpty()) {
+                                restoring=true
+                                try {player.setMediaItems(restored.first,0,restored.second);player.prepare()}
+                                finally {restoring=false}
+                                snapshot(queueRestored=true)
+                            }
+                        }
+                    } catch(error:Exception) {
+                        currentCoroutineContext().ensureActive()
+                        graph.diagnostics.failure("playback",error)
+                    }
+                    continue
+                }
+                if (message is CloudChoice) {
+                    var committed=false
+                    var importMarker:List<String>?=null
+                    var failure:Throwable?=null
+                    try {
+                        // The startup restore must finish before an explicit choice replaces it.
+                        playbackReady.await()
+                        if(message.choice.start()) {
+                            val data=graph.db.withTransaction {
+                                message.choice.resolve()
+                                val all=dao.episodes().associateBy {it.id}
+                                val desired=dao.queue().map {it.episodeId}.filter {it in all}
+                                graph.db.sync().view("queue_library")?.let {graph.db.sync().putView(it.copy(active=true))}
+                                Triple(all,dao.podcasts().associateBy {it.id},desired)
+                            }
+                            committed=true
+                            val (actual,laterEdit)=withContext(Dispatchers.Main.immediate) {
+                                val later=queueRevision!=message.revision
+                                if(!later) {
+                                    applyingCloudChoice=true
+                                    try {
+                                        val current=player.currentMediaItem?.mediaId
+                                        val ids=if(current!=null && current in data.first)listOf(current)+data.third.filter {it!=current} else data.third
+                                        val existing=(0 until player.mediaItemCount).map {player.getMediaItemAt(it).mediaId}
+                                        if(ids!=existing) {
+                                            val index=ids.indexOf(current).coerceAtLeast(0)
+                                            val position=if(current in ids)player.currentPosition.coerceAtLeast(0) else ids.firstOrNull()?.let {data.first.getValue(it).positionMs}?:0
+                                            val resume=player.playWhenReady
+                                            importMarker=ids
+                                            message.choice.imported(ids)
+                                            player.setMediaItems(ids.map {dev.distillpod.android.playback.preserveVideoItem(data.first.getValue(it),data.second[data.first.getValue(it).podcastId],player.currentMediaItem)},index,position)
+                                            player.prepare();player.playWhenReady=resume
+                                        }
+                                    } finally {
+                                        observedQueue=(0 until player.mediaItemCount).map {player.getMediaItemAt(it).mediaId}
+                                        applyingCloudChoice=false
+                                    }
+                                }
+                                (0 until player.mediaItemCount).map {player.getMediaItemAt(it).mediaId}.filter {it in data.first} to later
+                            }
+                            // A local edit accepted after the cloud command supersedes that choice.
+                            if(laterEdit)graph.collectionSync.queue(actual)
+                            lastQueue=actual
+                        }
+                    } catch(error:Throwable) {
+                        failure=error
+                        if(committed)lastQueue=withContext(NonCancellable+Dispatchers.Main.immediate) {
+                            if(session==null)lastQueue else (0 until player.mediaItemCount).map {player.getMediaItemAt(it).mediaId}
+                        }
+                    } finally {
+                        withContext(NonCancellable+Dispatchers.Main.immediate) {
+                            // A failed apply must not make a later matching local edit look imported.
+                            if(importMarker!=null && graph.importedQueue.value==importMarker)graph.importedQueue.value=null
+                            pendingCloudChoice=null
+                            // Suppressed intermediate snapshots cannot publish. This final boundary
+                            // recovers later local edits (or edits during a rejected/cancelled choice).
+                            if(session!=null)snapshot(queueBoundary=true)
+                        }
+                    }
+                    if(failure!=null)message.choice.completion.completeExceptionally(failure)
+                    else message.choice.completion.complete(Unit)
+                    if(failure is CancellationException)currentCoroutineContext().ensureActive()
+                    continue
+                }
+                val value = message as Snapshot
                 try {
                     val ep = value.id?.let { dao.episode(it) }
                     // Diagnostics may play a temporary clip; it must not replace the podcast queue.
@@ -208,13 +350,13 @@ class PlaybackService : MediaLibraryService() {
                         if (ep != null && (value.playing || value.boundary)) graph.portableSync.checkpoint(ep.id, value.position, value.duration, value.complete, value.at, syncSession, value.elapsed, value.boundary, active=value.playing)
                         if (value.ids.isNotEmpty() || value.id == null) {
                             val known = value.ids.filter { dao.episode(it) != null }.distinct()
-                            val imported=graph.importedQueue.value==known
-                            if(imported)graph.importedQueue.value=null
-                            if(imported)lastQueue=known
-                            else if(lastQueue==null) {
-                                dao.clearQueue();dao.insertQueue(known.mapIndexed {index,id->QueueEntryEntity(id,index)});lastQueue=known
-                            } else if(value.queueBoundary && known!=lastQueue) {
-                                graph.collectionSync.queue(known);lastQueue=known
+                            if(!value.suppressQueue) {
+                                val imported=graph.importedQueue.value==known
+                                if(imported)graph.importedQueue.value=null
+                                val decision=dev.distillpod.android.playback.queuePersistenceDecision(
+                                    lastQueue,known,dao.queue().map {it.episodeId},imported,value.queueBoundary,value.queueRestored)
+                                if(decision.write)graph.collectionSync.queue(known)
+                                lastQueue=decision.baseline
                             }
                             dao.putPlayerSession(PlayerSessionEntity(episodeId = value.id, speed = value.speed))
                         }
@@ -235,22 +377,15 @@ class PlaybackService : MediaLibraryService() {
                 player.setPlaybackSpeed(restore.third?.speed?.coerceIn(0.5f, 3f) ?: 1f)
                 player.prepare()
             }
-            restoring = false; playbackReady.complete(Unit); snapshot()
+            restoring = false; playbackReady.complete(Unit); snapshot(queueRestored=true)
             while (isActive) { snapshot(player.playbackState == Player.STATE_ENDED); delay(1000) }
         }
         scope.launch {
             dao.observeQueue().collect {entries->
-                if(restoring || player.mediaItemCount!=0 || entries.isEmpty())return@collect
-                val restored=withContext(Dispatchers.IO) {
-                    entries.mapNotNull {entry->dao.episode(entry.episodeId)?.let {ep->mediaItem(ep,dao.podcast(ep.podcastId))}}
-                }
-                if(player.mediaItemCount==0 && restored.isNotEmpty()) {
-                    restoring=true
-                    try {
-                        val position=withContext(Dispatchers.IO) {dao.episode(restored.first().mediaId)?.positionMs?:0}
-                        if(player.mediaItemCount==0){player.setMediaItems(restored,0,position);player.prepare()}
-                    } finally {restoring=false}
-                }
+                if(restoring || pendingCloudChoice!=null || player.mediaItemCount!=0 || entries.isEmpty())return@collect
+                // Restore through the same owner as persistence and explicit cloud choices.
+                // The actor re-reads Room; it never applies this possibly stale emission directly.
+                writes.trySend(RestoreQueue(queueRevision))
             }
         }
         scope.launch {
@@ -319,6 +454,8 @@ class PlaybackService : MediaLibraryService() {
         val stoppedElapsed=android.os.SystemClock.elapsedRealtime()
         val serviceJob=scope.coroutineContext[Job]
         session?.let { it.player.release(); it.release() }; session = null
+        pendingCloudChoice?.choice?.completion?.completeExceptionally(CancellationException("Playback service stopped"))
+        pendingCloudChoice=null
         writes.close(); scope.cancel()
         // The application scope can finish the final atomic checkpoint after service jobs stop.
         // Joining prevents an older queued snapshot from overwriting this final position.

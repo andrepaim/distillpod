@@ -23,6 +23,13 @@ class AppViewModel(val graph: AppGraph, private val saved: SavedStateHandle) : V
     val recommendationError = graph.recommendations.error.stateIn(viewModelScope, SharingStarted.Eagerly, "")
     val podcasts = dao.observePodcasts().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     val episodes = dao.observeEpisodes().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    val shows = combine(dao.observePodcasts(), dao.observeEpisodes(), graph.settings.shows) { podcasts, episodes, preferences ->
+        ShowLibraryState(summarizeShows(podcasts, episodes), preferences)
+    }.distinctUntilChanged().flowOn(Dispatchers.Default)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+    fun showFormat(format: ShowFormat) = action("shows-format") { graph.settings.showFormat(format) }
+    fun showSort(sort: ShowSort) = action("shows-sort") { graph.settings.showSort(sort) }
+    fun pinShow(feed: String, pinned: Boolean) = action("show-pin:$feed") { graph.settings.pinShow(feed, pinned) }
     val posts = dao.observePosts().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     val captures = dao.observeDistillations().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     val localTranscripts = dao.observeTranscripts().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
@@ -37,6 +44,14 @@ class AppViewModel(val graph: AppGraph, private val saved: SavedStateHandle) : V
             else cached?.transcript(ep) ?: row
         }
     }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    val audioDeletionBlocks = combine(episodes, localTranscripts, dao.observeQueue(), graph.media.active.changes) {
+        library, local, queue, _ ->
+        val queuedIds = queue.map { it.episodeId }.toSet()
+        val localStates = local.associate { it.episodeId to it.state }
+        library.mapNotNull { ep ->
+            graph.media.deletionBlock(ep, ep.id in queuedIds, localStates[ep.id])?.let { ep.id to it }
+        }.toMap()
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
     val models = dao.observeModels().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     val analyses = dao.observeAnalyses().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     val chat = dao.observeMessages().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
@@ -78,9 +93,11 @@ class AppViewModel(val graph: AppGraph, private val saved: SavedStateHandle) : V
         if (key in busy.value) return
         busy.update { it + key }
         viewModelScope.launch {
-            try { block() }
-            catch (cancelled: CancellationException) { throw cancelled }
-            catch (error: Exception) { graph.diagnostics.failure("worker",error,source="phone");messages.send(safeFailure(error)) }
+            try {
+                runAppAction(block,
+                    reportFailure = { graph.diagnostics.failure("worker", it, source = "phone") },
+                    showMessage = { messages.send(it) })
+            }
             finally { busy.update { it - key } }
         }
     }
@@ -103,9 +120,14 @@ class AppViewModel(val graph: AppGraph, private val saved: SavedStateHandle) : V
     fun seek(position: Long) = action("seek") { graph.voice.cancel(false); graph.playback.seek(position) }
     fun skip(delta: Long) = action("seek") { graph.voice.cancel(false); graph.playback.skip(delta) }
     fun speed(value: Float) = action("speed") { graph.playback.speed(value) }
-    fun enqueue(id: String, next: Boolean = false) = action("queue") { graph.playback.enqueue(id, next); messages.send(if (next) "Added to play next" else "Added to queue") }
-    fun removeQueue(id: String) = action("queue") { graph.playback.remove(id) }
-    fun moveQueue(id: String, offset: Int) = action("queue") { graph.playback.move(id, offset) }
+    private val queueActions = QueueActions(viewModelScope) { error ->
+        graph.diagnostics.failure("worker", error, source="phone")
+        messages.send(safeFailure(error))
+    }
+    fun clearQueue() = queueActions.submit { graph.voice.cancel(false); graph.playback.clear() }
+    fun enqueue(id: String, next: Boolean = false) = queueActions.submit { graph.playback.enqueue(id, next); messages.send(if (next) "Added to play next" else "Added to queue") }
+    fun removeQueue(id: String) = queueActions.submit { graph.playback.remove(id) }
+    fun moveQueue(id: String, offset: Int) = queueActions.submit { graph.playback.move(id, offset) }
     fun download(id: String) = action("download:$id") { graph.jobs.download(id); messages.send("Download queued") }
     fun pauseDownload(id: String) { graph.jobs.pauseDownload(id) }
     fun deleteDownload(id: String) = action("delete:$id") { graph.media.deleteDownload(id) }
