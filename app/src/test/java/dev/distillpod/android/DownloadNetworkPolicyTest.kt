@@ -46,6 +46,10 @@ class DownloadNetworkPolicyTest {
         val graph = AppGraph(context, CoroutineScope(inactive + Dispatchers.Main.immediate))
         assertTrue(inactive.isCompleted)
         assertFalse(graph.ready.isCompleted)
+        // AppJobs resolves context.appGraph internally: bind the same isolated graph there.
+        // Reflection stays in the JVM fixture; no production injection API is introduced.
+        org.robolectric.util.ReflectionHelpers.setField(context, "graph\$delegate", lazyOf(graph))
+        assertSame("AppJobs must use the fixture graph", graph, context.appGraph)
         graph.ready.complete(Unit)
         graph.settings.flag("refresh", false)
         graph.settings.flag("wifi", true)

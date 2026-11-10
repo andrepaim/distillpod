@@ -60,6 +60,14 @@ second test-fixture correction required by validation, with no product change.
 Revalidate both complete local configurations and hosted checks on the combined
 final head. Earlier results remain scoped to their original revision.
 
+The initial isolated graph was incomplete: `AppJobs` resolves `context.appGraph`
+internally. A new identity assertion deterministically failed because it saw a
+second graph. Bind the application's lazy graph delegate to the isolated graph
+using Robolectric reflection in this JVM fixture, then retain that identity
+assertion. This introduces no production test hook. The complete network-policy
+test class passed after that wiring correction; full final-head gates remain
+required. The earlier failed intermediate suite is preserved separately.
+
 References: [UiDevice API](https://developer.android.com/reference/androidx/test/uiautomator/UiDevice),
 [platform input contract](https://developer.android.com/reference/android/app/UiAutomation#injectInputEvent(android.view.InputEvent,boolean)).
 The exact 2.3.0 source was read from Google's Maven sources artifact, rather than
