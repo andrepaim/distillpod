@@ -78,11 +78,17 @@ class SettingsSwitchAccessibilityDeviceTest {
         val original = preferences.getBoolean("rewind", false)
         check(preferences.edit().putBoolean("rewind", false).commit())
         try {
-            show { Column(Modifier.verticalScroll(rememberScrollState())) { VoiceSettings(vm) } }
+            show {
+                val density = LocalDensity.current
+                CompositionLocalProvider(LocalDensity provides Density(density.density, 2f)) {
+                    Column(Modifier.verticalScroll(rememberScrollState())) { VoiceSettings(vm) }
+                }
+            }
             val row = compose.onNode(hasText("Rewind after an answer") and isToggleable())
             row.performScrollTo().assertIsDisplayed().assertIsOff().assertIsEnabled()
                 .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Switch))
             row.assertHeightIsAtLeast(48.dp)
+            compose.onNodeWithText("Replay the preceding three seconds").assertIsDisplayed()
             row.performClick().assertIsOn()
             assertTrue(preferences.getBoolean("rewind", false))
             row.performClick().assertIsOff()
