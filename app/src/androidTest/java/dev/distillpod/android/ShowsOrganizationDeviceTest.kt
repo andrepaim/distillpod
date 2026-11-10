@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.*
@@ -38,6 +37,10 @@ class ShowsOrganizationDeviceTest {
     private lateinit var original: ShowPreferences
     private val ids = listOf("shows-acceptance-a", "shows-acceptance-b", "shows-acceptance-c", "shows-acceptance-empty")
     private val titles = listOf("Shelf Alpha", "Shelf Beta", "Shelf Gamma", "Shelf Empty")
+    private val gridActions = ShowsGridActions(compose) {
+        "route=${vm.backStack.value.lastOrNull()} format=${vm.shows.value?.preferences?.format} " +
+            "sort=${vm.shows.value?.preferences?.sort} shows=${vm.shows.value?.shows?.size}"
+    }
 
     @Before fun prepare() {
         check(Build.FINGERPRINT.contains("generic") || Build.MODEL.contains("sdk")) { "Shows fixture requires an emulator" }
@@ -105,7 +108,7 @@ class ShowsOrganizationDeviceTest {
         compose.onNodeWithText("Shelf Beta").performClick()
         compose.waitUntil(5000) { vm.backStack.value.last() == "podcast:${ids[1]}" }
         compose.onNodeWithContentDescription("Back").performClick()
-        compose.onNodeWithTag("shows-grid").performScrollToIndex(0)
+        gridActions.scrollToIndex(0)
         compose.onNodeWithText("Search your shows").assertTextContains("Shelf")
         // Activity recreation reattaches real settings and keeps the selected controls/pin.
         compose.activityRule.scenario.recreate()
@@ -126,7 +129,7 @@ class ShowsOrganizationDeviceTest {
         compose.onNodeWithContentDescription("Unpin Shelf Beta").performClick()
         awaitPin(1, false)
         assertBefore(0, 1)
-        compose.onNodeWithTag("shows-grid").performScrollToIndex(0)
+        gridActions.scrollToIndex(0)
         compose.onNodeWithText("Search your shows").performTextReplacement("No such show")
         compose.onNodeWithText("Search your shows").performImeAction()
         compose.onNodeWithText("No matching shows").assertIsDisplayed()
@@ -134,7 +137,7 @@ class ShowsOrganizationDeviceTest {
         compose.onNodeWithTag("show-format-ALL").assertIsSelected()
         assertEquals("Reset must retain the Shows route", "shows", vm.backStack.value.last())
         assertTrue("Reset must clear the empty search result", compose.onAllNodesWithText("No matching shows").fetchSemanticsNodes().isEmpty())
-        compose.onNodeWithTag("shows-grid").performScrollToNode(hasText("No episodes yet"))
+        gridActions.scrollToKey(ids[3])
         compose.onNodeWithText("No episodes yet").assertIsDisplayed()
     }
 
@@ -143,7 +146,7 @@ class ShowsOrganizationDeviceTest {
             compose.activity.setContent { Box(Modifier.height(400.dp)) { ProductApp(vm) } }
         }
         repeat(3) { iteration ->
-            compose.onNodeWithTag("shows-grid").performScrollToIndex(0)
+            gridActions.scrollToIndex(0)
             compose.onNodeWithText("Search your shows").performClick().performTextReplacement("No such show")
             compose.onNodeWithText("Search your shows").performImeAction()
             compose.onNodeWithText("No matching shows").assertIsDisplayed()
@@ -153,7 +156,7 @@ class ShowsOrganizationDeviceTest {
             assertTrue("Reset must clear the empty search result at iteration $iteration",
                 compose.onAllNodesWithText("No matching shows").fetchSemanticsNodes().isEmpty())
             try {
-                compose.onNodeWithTag("shows-grid").performScrollToNode(hasText("No episodes yet"))
+                gridActions.scrollToKey(ids[3])
                 compose.onNodeWithText("No episodes yet").assertIsDisplayed()
             } catch (failure: Throwable) {
                 throw AssertionError("Reset iteration=$iteration route=${vm.backStack.value.last()} " +
@@ -173,62 +176,82 @@ class ShowsOrganizationDeviceTest {
         }
         chooseFormat(ShowFormat.VIDEO)
         chooseSort(ShowSort.LATEST_EPISODE)
-        compose.onNodeWithTag("shows-grid").performScrollToNode(hasContentDescription("Pin Shelf Gamma"))
+        gridActions.scrollToKey(ids[2])
         compose.onNodeWithContentDescription("Pin Shelf Gamma").assertIsDisplayed().performClick()
-        compose.onNodeWithTag("shows-grid").performScrollToNode(hasText("Shelf Gamma"))
+        gridActions.scrollToKey(ids[2])
         compose.onNodeWithText("Shelf Gamma", useUnmergedTree = true).performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Audio & video", useUnmergedTree = true).performScrollTo().assertIsDisplayed()
         compose.onNode(hasText("1 unfinished") and hasAnyAncestor(hasTestTag("show-card-${ids[2]}")), useUnmergedTree = true)
             .performScrollTo().assertIsDisplayed()
         screenshot("large-text")
-        compose.onNodeWithTag("shows-grid").performScrollToIndex(0)
+        gridActions.scrollToIndex(0)
         compose.onNodeWithText("Search your shows").performTextReplacement("No such show")
         compose.onNodeWithText("Search your shows").performImeAction()
-        compose.onNodeWithTag("shows-grid").performScrollToNode(hasText("Reset filters"))
+        gridActions.scrollToKey("empty")
         compose.onNodeWithText("Reset filters").assertIsDisplayed().performClick()
         chooseFormat(ShowFormat.ALL)
     }
 
+    @Test fun compactPinAndUnpinKeepTheShowsRouteAndRenderedOrder() {
+        compose.runOnUiThread {
+            compose.activity.setContent { Box(Modifier.width(320.dp).height(400.dp)) { ProductApp(vm) } }
+        }
+        chooseFormat(ShowFormat.ALL)
+        chooseSort(ShowSort.TITLE)
+        repeat(2) {
+            scrollCard(1)
+            compose.onNodeWithContentDescription("Pin Shelf Beta").assertIsDisplayed().performClick()
+            awaitPin(1, true)
+            assertBefore(1, 0)
+            scrollCard(1)
+            compose.onNodeWithContentDescription("Unpin Shelf Beta").assertIsDisplayed().performClick()
+            awaitPin(1, false)
+            assertBefore(0, 1)
+            assertEquals("shows", vm.backStack.value.last())
+        }
+    }
+
     private fun chooseFormat(format: ShowFormat) {
-        compose.onNodeWithTag("shows-grid").performScrollToIndex(0)
+        gridActions.scrollToIndex(0)
         compose.onNodeWithTag("show-format-${format.name}").performScrollTo().performClick()
         compose.waitUntil(5000) { runBlocking { graph.settings.shows.first().format == format } }
         compose.onNodeWithTag("show-format-${format.name}").assertIsSelected()
     }
     private fun chooseSort(sort: ShowSort) {
-        compose.onNodeWithTag("shows-grid").performScrollToNode(hasTestTag("show-sort"))
+        gridActions.scrollToKey("sort")
         compose.onNodeWithTag("show-sort").performClick()
         compose.onNode(hasText(sort.label) and hasAnyAncestor(isPopup())).performClick()
         compose.waitUntil(5000) { runBlocking { graph.settings.shows.first().sort == sort } }
     }
     private fun assertBefore(first: Int, second: Int) {
-        val grid = compose.onNodeWithTag("shows-grid")
-        grid.performScrollToIndex(0)
+        gridActions.scrollToIndex(0)
         val expected = listOf("show-card-${ids[first]}", "show-card-${ids[second]}")
         val seen = mutableListOf<String>()
         // Observe actual visual order while scrolling; CI may only fit one card per row.
         repeat(20) {
-            compose.onAllNodes(SemanticsMatcher("requested show cards") {
+            val nodes = compose.onAllNodes(SemanticsMatcher("requested show cards") {
                 it.config.getOrNull(SemanticsProperties.TestTag) in expected
-            }).fetchSemanticsNodes().filter { it.boundsInRoot.height > 0 && it.boundsInRoot.width > 0 }
-                .sortedWith(compareBy({ it.boundsInRoot.top }, { it.boundsInRoot.left })).forEach { node ->
-                    val tag = node.config[SemanticsProperties.TestTag]
-                    if (tag !in seen) seen += tag
-                }
+            }).fetchSemanticsNodes()
+            val visible = compose.runOnUiThread {
+                nodes.filter { it.boundsInRoot.height > 0 && it.boundsInRoot.width > 0 }
+                    .sortedWith(compareBy({ it.boundsInRoot.top }, { it.boundsInRoot.left }))
+                    .map { it.config[SemanticsProperties.TestTag] }
+            }
+            visible.forEach { tag -> if (tag !in seen) seen += tag }
             if (seen.size == 2) {
                 assertEquals("Rendered show order", expected, seen)
                 return
             }
-            val step = grid.fetchSemanticsNode().boundsInRoot.height / 2
-            grid.performSemanticsAction(SemanticsActions.ScrollBy) { it(0f, step) }
+            gridActions.scrollHalfPage()
         }
         fail("Could not reach both show cards: $seen")
     }
     private fun scrollCard(index: Int) {
-        compose.onNodeWithTag("shows-grid").performScrollToNode(hasTestTag("show-card-${ids[index]}"))
+        gridActions.scrollToKey(ids[index])
     }
     private fun awaitPin(index: Int, pinned: Boolean) {
         compose.waitUntil(5000) { vm.shows.value?.preferences?.pinnedFeeds?.contains("https://example.test/${ids[index]}") == pinned }
+        assertEquals("Pin changes must retain the Shows route", "shows", vm.backStack.value.last())
         scrollCard(index)
         compose.onNodeWithContentDescription("${if (pinned) "Unpin" else "Pin"} ${titles[index]}").assertExists()
     }
