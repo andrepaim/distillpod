@@ -6,7 +6,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.work.testing.WorkManagerTestInitHelper
 import dev.distillpod.android.ai.*
 import dev.distillpod.android.data.*
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.*
 import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
@@ -15,10 +15,30 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import java.io.File
 import java.util.UUID
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.TimeUnit
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk=[34])
 class ContextSummaryOverloadTest {
+    private suspend fun awaitWithMainProgress(barrier: () -> Unit) = withTimeout(5000) {
+        coroutineScope {
+            val waiting = async(Dispatchers.IO) { runInterruptible { barrier() } }
+            while (!waiting.isCompleted) {
+                org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+                delay(1)
+            }
+            waiting.await()
+        }
+    }
+
+    @Test fun `fixture barrier allows already queued main callback to finish`() = runBlocking {
+        val callback = CompletableFuture<Unit>()
+        android.os.Handler(android.os.Looper.getMainLooper()).post { callback.complete(Unit) }
+        awaitWithMainProgress { callback.get(5, TimeUnit.SECONDS) }
+        assertTrue(callback.isDone)
+    }
+
     @Test fun `preparation flood bounds direct logs while retaining later terminal journal for rollover`()=runBlocking {
         val context=ApplicationProvider.getApplicationContext<Context>()
         val prefs=context.getSharedPreferences("diagnostics",0)
@@ -52,9 +72,9 @@ class ContextSummaryOverloadTest {
             val repo=CaptureRepository(db,ai,{true},{preparations++},{},diagnostics=d)
             // Save before consent so the reserve is spent by real preparation results, not save events.
             val id=repo.save("e",60000,true)
-            d.consent(true);d.awaitIdle()
+            d.consent(true);awaitWithMainProgress { d.awaitIdle() }
             // The normal chunk callback rechecks all waiting moments, often with unchanged window coverage.
-            repeat(165) {repo.transcriptUpdated("e");d.awaitIdle()}
+            repeat(165) {repo.transcriptUpdated("e");awaitWithMainProgress { d.awaitIdle() }}
             assertEquals(165,preparations)
             assertEquals(1,payloads("capture.context_summary").size)
             assertEquals(1,prefs.getInt("budget_critical",0))
@@ -62,7 +82,7 @@ class ContextSummaryOverloadTest {
             // Genuinely changing coverage must remain observable and can still reach the hard cap.
             repeat(164) { index ->
                 dao.putCoverage(CoverageEntity("e",revision,0,index+1L))
-                repo.transcriptUpdated("e");d.awaitIdle()
+                repo.transcriptUpdated("e");awaitWithMainProgress { d.awaitIdle() }
             }
             assertEquals(329,preparations)
             assertEquals(0,calls)
@@ -76,8 +96,8 @@ class ContextSummaryOverloadTest {
             dao.putCoverage(CoverageEntity("e",revision,0,200000))
             dao.putSegments(listOf(SegmentEntity("e",revision,40000,60000,
                 "Synthetic thought remains supported by this passage.")))
-            repo.prepareSaved(id);d.awaitIdle()
-            repo.run(id);d.awaitIdle()
+            repo.prepareSaved(id);awaitWithMainProgress { d.awaitIdle() }
+            repo.run(id);awaitWithMainProgress { d.awaitIdle() }
             assertEquals("succeeded",dao.distillation(id)!!.state)
             assertEquals(2,calls)
             assertTrue(payloads("distillation.finished").isEmpty())
