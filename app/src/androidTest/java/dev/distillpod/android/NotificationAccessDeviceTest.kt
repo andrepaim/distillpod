@@ -61,6 +61,20 @@ class NotificationAccessDeviceTest {
                 context.lifecycle.currentState == androidx.lifecycle.Lifecycle.State.RESUMED
         }
     }
+    private fun dialogDiagnostics(id: String, step: String) {
+        // Deliberately omit node text, window titles, screenshots and application data.
+        val button = device.findObject(By.res(Pattern.compile(".*:id/$id")))
+        val windows = instrumentation.uiAutomation.windows.take(8).map { window ->
+            val bounds = Rect().also(window::getBoundsInScreen)
+            "type=${window.type},active=${window.isActive},focused=${window.isFocused},bounds=$bounds"
+        }
+        instrumentation.sendStatus(2, android.os.Bundle().apply {
+            putString("stream", "Notification input: phase=$phase step=$step " +
+                "buttonPresent=${button != null} enabled=${button?.isEnabled} clickable=${button?.isClickable} " +
+                "bounds=${button?.visibleBounds} owner=${button?.applicationPackage} " +
+                "foreground=${device.currentPackageName} windows=$windows\n")
+        })
+    }
     private suspend fun permissionDecision(id: String) {
         val selector = By.res(Pattern.compile(".*:id/$id"))
         data class Target(val owner: String, val bounds: Rect)
@@ -87,10 +101,23 @@ class NotificationAccessDeviceTest {
         }
         check(button.isEnabled && button.isClickable && button.visibleBounds == target.bounds &&
             device.currentPackageName == target.owner) { "phase=$phase dialog input target changed before click" }
-        // Click once only; never substitute a shell grant for the runtime UI.
-        button.click()
-        await("dialog-$id-dismissed", 10000) { !device.hasObject(selector) }
-        activityReturned("dialog-$id-activity-returned")
+        try {
+            dialogDiagnostics(id, "before-tap")
+            check(button.isEnabled && button.isClickable && button.visibleBounds == target.bounds &&
+                device.currentPackageName == target.owner) { "phase=$phase dialog input target changed before injection" }
+            // UiObject2.click() in pinned 2.3.0 discards asynchronous injection results.
+            // UiDevice.click() uses synchronous input and returns its acknowledgement.
+            // One real tap only; permission/UI postconditions still establish the outcome.
+            val accepted = device.click(target.bounds.centerX(), target.bounds.centerY())
+            status("dialog-$id-input-acknowledged", accepted.toString())
+            check(accepted) { "phase=$phase dialog-$id input injection rejected" }
+            await("dialog-$id-dismissed", 10000) { !device.hasObject(selector) }
+            activityReturned("dialog-$id-activity-returned")
+        } catch (failure: Throwable) {
+            try { dialogDiagnostics(id, "tap-failed") }
+            catch (diagnosticFailure: Throwable) { failure.addSuppressed(diagnosticFailure) }
+            throw failure
+        }
     }
     private fun enabled() = NotificationManagerCompat.from(context).areNotificationsEnabled()
     private fun guard() {
