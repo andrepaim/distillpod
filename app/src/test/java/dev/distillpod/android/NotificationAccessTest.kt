@@ -21,15 +21,12 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModelStore
 import androidx.test.core.app.ApplicationProvider
-import androidx.work.Configuration
-import androidx.work.WorkManager
-import androidx.work.testing.SynchronousExecutor
-import androidx.work.testing.WorkManagerTestInitHelper
 import dev.distillpod.android.features.AppViewModel
 import dev.distillpod.android.features.DataControls
 import dev.distillpod.android.features.NotificationControls
-import kotlinx.coroutines.*
-import org.junit.After
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Rule
@@ -38,39 +35,17 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
-import java.util.concurrent.TimeUnit
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
 class NotificationAccessTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
     private val application get() = ApplicationProvider.getApplicationContext<Application>()
-    private lateinit var graph: AppGraph
-    private lateinit var vm: AppViewModel
-    private val store = ViewModelStore()
     private val permissionPrefs get() = application.getSharedPreferences("notification_access", Context.MODE_PRIVATE)
 
-    @Before fun setup() = runBlocking {
-        WorkManagerTestInitHelper.initializeTestWorkManager(application,
-            Configuration.Builder().setExecutor(SynchronousExecutor()).build())
-        shadowOf(application).declareComponentUnbindable(ComponentName(application, PlaybackService::class.java))
-        graph = application.appGraph
-        graph.scope.cancel()
-        withTimeout(5000) { while (!graph.scope.coroutineContext[Job]!!.isCompleted) {
-            shadowOf(Looper.getMainLooper()).idle(); delay(10)
-        } }
-        vm = AppViewModel(graph, SavedStateHandle())
-        store.put("settings", vm)
+    @Before fun setup() {
         permissionPrefs.edit().clear().commit()
         notifications(false)
-    }
-
-    @After fun cleanup() {
-        store.clear()
-        WorkManager.getInstance(application).cancelAllWork().result.get(5, TimeUnit.SECONDS)
-        shadowOf(Looper.getMainLooper()).idle()
-        graph.db.close()
-        WorkManagerTestInitHelper.closeWorkDatabase()
     }
 
     private fun notifications(enabled: Boolean) {
@@ -98,13 +73,26 @@ class NotificationAccessTest {
     }
 
     @Test fun `library import controls no longer duplicate notification access`() {
-        compose.setContent {
-            MaterialTheme { Column(Modifier.verticalScroll(rememberScrollState())) { DataControls(vm) } }
+        // Only this case needs a library ViewModel. Do not start app recovery or bind playback.
+        shadowOf(application).declareComponentUnbindable(ComponentName(application, PlaybackService::class.java))
+        val scope = CoroutineScope(Dispatchers.Main.immediate + Job().apply { cancel() })
+        val graph = AppGraph(application, scope)
+        val store = ViewModelStore()
+        try {
+            val vm = AppViewModel(graph, SavedStateHandle())
+            store.put("settings", vm)
+            compose.setContent {
+                MaterialTheme { Column(Modifier.verticalScroll(rememberScrollState())) { DataControls(vm) } }
+            }
+            compose.onNodeWithText("Import OPML").assertExists()
+            compose.onNodeWithText("Background progress").assertDoesNotExist()
+            compose.onNodeWithText("Enable notifications").assertDoesNotExist()
+            compose.onNodeWithText("Open notification settings").assertDoesNotExist()
+        } finally {
+            store.clear()
+            shadowOf(Looper.getMainLooper()).idle()
+            graph.db.close()
         }
-        compose.onNodeWithText("Import OPML").assertExists()
-        compose.onNodeWithText("Background progress").assertDoesNotExist()
-        compose.onNodeWithText("Enable notifications").assertDoesNotExist()
-        compose.onNodeWithText("Open notification settings").assertDoesNotExist()
     }
 
     @Test fun `an existing notification grant is reflected initially`() {
