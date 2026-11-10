@@ -29,13 +29,14 @@ class ProductionDataTest {
             val repo = PodcastRepository(db, OkHttpClient())
             val id = repo.subscribe(server.url("/feed").toString())
             val original = db.library().episodes().single()
-            db.library().putEpisode(original.copy(positionMs = 12345, completed = false, localFile = "saved.audio", downloadState = "downloaded", mediaFingerprint = "audio-sha"))
+            db.library().putEpisode(original.copy(positionMs = 12345, completed = false, localFile = "saved.audio", downloadState = "downloaded", mediaFingerprint = "audio-sha", localDownloadedAt = 1000))
             db.library().putDistillation(DistillationEntity("capture", original.id, 0, 12345, excerpt = "Saved source"))
             server.enqueue(MockResponse().setBody(rss("Updated")).setHeader("ETag", "\"feed-2\""))
             repo.refresh(id)
             val updated = db.library().episode(original.id)!!
             assertEquals("Updated", updated.title); assertEquals(12345, updated.positionMs)
             assertEquals("saved.audio", updated.localFile); assertEquals("audio-sha", updated.mediaFingerprint)
+            assertEquals(1000L, updated.localDownloadedAt)
             assertEquals("Saved source", db.library().distillations().single().excerpt)
             server.takeRequest()
             assertEquals("\"feed-1\"", server.takeRequest().getHeader("If-None-Match"))
@@ -93,7 +94,7 @@ class ProductionDataTest {
             val dao = db.library()
             dao.putPodcast(PodcastEntity("p", server.url("/feed").toString(), "Show"))
             dao.putEpisode(EpisodeEntity("e", "p", "guid", "Episode", server.url("/old").toString(), positionMs = 23000,
-                downloadState = "paused", downloadedBytes = 100, totalBytes = 200, etag = "\"old\"", lastModified = "old-date", mediaFingerprint = "old-sha"))
+                downloadState = "paused", downloadedBytes = 100, totalBytes = 200, etag = "\"old\"", lastModified = "old-date", mediaFingerprint = "old-sha", localDownloadedAt = 1000))
             dao.putTranscript(TranscriptEntity("e", "r", "old-sha", "tiny", "en", state = "ready"))
             dao.putAnalysis(AnalysisEntity("e", "r", state = "succeeded", summary = "Saved summary"))
             server.enqueue(MockResponse().setBody("""<rss><channel><title>Show</title><item><guid>guid</guid><title>Episode</title><enclosure url="${server.url("/new")}"/></item></channel></rss>"""))
@@ -101,6 +102,7 @@ class ProductionDataTest {
             val episode = dao.episode("e")!!
             assertNull(episode.etag); assertNull(episode.lastModified)
             assertEquals(0L, episode.downloadedBytes); assertEquals(23000L, episode.positionMs)
+            assertEquals(0L, episode.localDownloadedAt)
             assertEquals("stale", dao.transcript("e")!!.state)
             assertEquals("stale", dao.analysis("e")!!.state)
         } }

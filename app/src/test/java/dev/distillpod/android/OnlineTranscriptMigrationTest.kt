@@ -20,7 +20,7 @@ import java.util.UUID
 class OnlineTranscriptMigrationTest {
     @Test fun `all published schemas upgrade with data and safe lookup defaults`() = runBlocking {
         val context = ApplicationProvider.getApplicationContext<Context>()
-        for (version in 1..9) {
+        for (version in 1..11) {
             val name = "lookup-upgrade-${UUID.randomUUID()}.db"
             val file = context.getDatabasePath(name).apply { parentFile!!.mkdirs() }
             try {
@@ -58,9 +58,11 @@ class OnlineTranscriptMigrationTest {
                 }
                 val db = Room.databaseBuilder(context, AppDatabase::class.java, name).addMigrations(AppDatabase.MIGRATION_1_2,
                     AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4, AppDatabase.MIGRATION_4_5,
-                    AppDatabase.MIGRATION_5_6, AppDatabase.MIGRATION_6_7, AppDatabase.MIGRATION_7_8, AppDatabase.MIGRATION_8_9, AppDatabase.MIGRATION_9_10, AppDatabase.MIGRATION_10_11).build()
+                    AppDatabase.MIGRATION_5_6, AppDatabase.MIGRATION_6_7, AppDatabase.MIGRATION_7_8, AppDatabase.MIGRATION_8_9, AppDatabase.MIGRATION_9_10, AppDatabase.MIGRATION_10_11, AppDatabase.MIGRATION_11_12).build()
                 try {
                     assertEquals(23000L, db.library().episode("e")!!.positionMs)
+                    assertEquals(0L, db.library().episode("e")!!.localDownloadedAt)
+                    assertEquals(0L, db.library().transcript("e")!!.localCreatedAt)
                     assertEquals("Saved quote", db.library().distillation("d")!!.excerpt)
                     assertEquals("", db.library().distillation("d")!!.sourceJson)
                     assertTrue(db.library().momentVersions("d").isEmpty())

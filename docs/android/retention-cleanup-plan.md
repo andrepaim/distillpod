@@ -117,16 +117,21 @@ that origin. Repeating completion for the same copy preserves its existing origi
 Transcript writes remain transactional: the same revision preserves its original
 local age (including unknown legacy age), while a new revision starts at the local
 write clock, ignoring timestamps carried by imported/copied objects. Inject clocks
-at DAO boundaries for deterministic tests. Cache lookup uses its existing local
-`retrievedAt`; the future eligibility projection must select the origin belonging
-to the representation/revision it actually previews.
+at DAO boundaries for deterministic tests. Online-cache provenance is a later increment: existing `retrievedAt` can come
+from a backup and must not be mistaken for the current installation's age. The
+future eligibility projection must match each origin to the exact representation
+and revision it previews.
 
 TDD must demonstrate download/redownload/reset behavior, unchanged progress and
 sync/feed metadata updates, same-revision transcript progress/retry/import,
 revision replacement and legacy unknown origins. Upgrade tests cover schemas
 1–11 and preserve progress, saved outputs, queue, content and Off defaults. The
 pure policy still fails closed for unknown/future origins and has no callers.
-No local timestamps enter portable artifacts or sync payloads; assert that contract.
+No local timestamps enter portable artifacts, backups or sync payloads; assert
+that contract. Backups retain their existing wire schema by excluding these two
+local columns from export/validation, and newly inserted transcript rows receive
+the import clock inside the existing merge transaction; skipped/conflicting rows
+retain their local age. Do not infer the import age from backup creation time.
 
 Risk: local Room migration and data age provenance, no file deletion or background
 execution. Require default/voice unit suites, lint/APKs, all hosted selected gates,
@@ -143,3 +148,12 @@ interleavings. Before transcript cleanup, persist suppression and delete both lo
 representations transactionally, distinguish explicit Prepare/Restore at every
 entry point, and reject late writers at their final transaction. Do not claim those
 protections are delivered by age metadata. Keep #60 open after this increment.
+
+Age TDD evidence (before final commit gates): missing fields/clock arguments failed
+compilation as expected (`age-red.log`); the implemented age and all-schema upgrade
+tests passed (6 cases). A separate backup red test failed because export contained
+`localDownloadedAt`; export/import was corrected without changing the portable
+format. The focused suite then passed 107 core and 27 app cases (age, migration,
+backup, finished-content and feed preservation). These focused checks do not replace
+final default/voice, emulator, S22 or hosted validation. Logs remain private under
+`distillpod-tools/issue60-retention`.
