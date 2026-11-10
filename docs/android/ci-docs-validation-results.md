@@ -21,7 +21,7 @@ the returned totals fit within that limit.
 | --- | --- | --- | --- | --- |
 | Previous full PR validation | `4184226452687d754f59f8be155cafd872e31cb8` | 15m07s Android; 13s separate security | 5 across both runs | 28m53s |
 | New full PR validation | `982c67b6a55ff930c96aab0a0d61adfd0debc7c4` | 13m00s, including security | 7 | 25m18s |
-| Documentation-only PR validation | Pending hosted evidence | Pending | Pending | Pending |
+| Documentation-only PR validation | `da0f61be1a9684a67eb69e93ab2bc53d14168fe2` | 19s | 3 | 19s |
 
 Baseline evidence: [Android run](https://github.com/andrepaim/distillpod/actions/runs/42806721375)
 and [security run](https://github.com/andrepaim/distillpod/actions/runs/42806721187),
@@ -37,9 +37,17 @@ these are not identical total workloads. Host scheduling, caches and ordinary
 run variation are uncontrolled. The observed full-run difference does not prove
 a causal speedup, a typical duration, a flake rate or a billing reduction.
 
-The documentation-only row must be completed from the hosted PR before this
-report merges. A local isolated clone selected documentation validation for one
-Markdown change, but that probe does not establish hosted required-check behavior.
+The documentation-only sample is [PR #95](https://github.com/andrepaim/distillpod/pull/95),
+[run 42820026107](https://github.com/andrepaim/distillpod/actions/runs/42820026107),
+attempt 1. The hosted classifier selected `docs` for one changed Markdown file.
+Documentation selection, security and the aggregate gate passed; all four full
+jobs were skipped as planned. GitHub reported the PR mergeable with its existing
+required contexts. This report update requires a fresh passing PR run on its
+final head; the table records the first hosted sample, not that later revision.
+
+The narrow docs route avoided full Android execution in this sample. Comparing
+19 seconds for a Markdown-only workload with the full baseline is illustrative;
+it does not isolate routing from workload differences or predict future timing.
 
 ## Validation contract and limits
 
