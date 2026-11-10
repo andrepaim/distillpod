@@ -49,6 +49,32 @@ The narrow docs route avoided full Android execution in this sample. Comparing
 19 seconds for a Markdown-only workload with the full baseline is illustrative;
 it does not isolate routing from workload differences or predict future timing.
 
+## Combined-main validation and failure handling
+
+The first combined-main [run 42819098246](https://github.com/andrepaim/distillpod/actions/runs/42819098246)
+at `3486684` failed notification runtime-grant acceptance. The aggregate also
+failed, explicitly rejecting the unsuccessful emulator dependency. This is
+observed hosted evidence that a selected failure did not become a green gate;
+it was not an intentionally failed experiment or a documentation omission.
+
+The unchanged permission fixture's failure recurred after its earlier readiness
+fix. [PR #96](https://github.com/andrepaim/distillpod/pull/96) addressed input
+acknowledgement and two JVM fixture waits found during validation. It preserved
+the assertions and bounds; the historical failure causes remain qualified in
+its [plan](notification-tap-recurrence-plan.md). No unchanged retry was used to
+count the failed run as passed.
+
+Combined main `8823737cd2d28d3d7b162a4e1fe58965dc174601` then passed all selected
+full checks in [run 42828876719](https://github.com/andrepaim/distillpod/actions/runs/42828876719),
+including complete emulator acceptance and the aggregate, plus independent
+[push security](https://github.com/andrepaim/distillpod/actions/runs/42828876735).
+Direct pushes intentionally omit the duplicate called scanner. These later
+fixture changes add a JVM case, so the initial equivalent-source timing
+comparison above does not describe an identical workload to this later run.
+The report's final PR revision must pass its own selected documentation checks
+after integration with that healthy main; no later Android rerun is claimed for
+a main push changing only this Markdown report.
+
 ## Validation contract and limits
 
 The real full run preserved the Android default/voice builds, Firebase rules,
