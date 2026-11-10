@@ -47,6 +47,7 @@ class ContextSummaryOverloadTest {
         File(context.noBackupFilesDir,"reliability").deleteRecursively()
         WorkManagerTestInitHelper.initializeTestWorkManager(context)
         val d=Diagnostics(context,"https://abc123@o1.ingest.sentry.io/1")
+        val barrier=DiagnosticBarrierProbe(d)
         val db=Room.inMemoryDatabaseBuilder(context,AppDatabase::class.java).build()
         val dao=db.library()
         val revision=UUID.randomUUID().toString()
@@ -72,9 +73,9 @@ class ContextSummaryOverloadTest {
             val repo=CaptureRepository(db,ai,{true},{preparations++},{},diagnostics=d)
             // Save before consent so the reserve is spent by real preparation results, not save events.
             val id=repo.save("e",60000,true)
-            d.consent(true);awaitWithMainProgress { d.awaitIdle() }
+            d.consent(true);awaitWithMainProgress { barrier.awaitIdle() }
             // The normal chunk callback rechecks all waiting moments, often with unchanged window coverage.
-            repeat(165) {repo.transcriptUpdated("e");awaitWithMainProgress { d.awaitIdle() }}
+            repeat(165) {repo.transcriptUpdated("e");awaitWithMainProgress { barrier.awaitIdle() }}
             assertEquals(165,preparations)
             assertEquals(1,payloads("capture.context_summary").size)
             assertEquals(1,prefs.getInt("budget_critical",0))
@@ -82,7 +83,7 @@ class ContextSummaryOverloadTest {
             // Genuinely changing coverage must remain observable and can still reach the hard cap.
             repeat(164) { index ->
                 dao.putCoverage(CoverageEntity("e",revision,0,index+1L))
-                repo.transcriptUpdated("e");awaitWithMainProgress { d.awaitIdle() }
+                repo.transcriptUpdated("e");awaitWithMainProgress { barrier.awaitIdle() }
             }
             assertEquals(329,preparations)
             assertEquals(0,calls)
@@ -96,8 +97,8 @@ class ContextSummaryOverloadTest {
             dao.putCoverage(CoverageEntity("e",revision,0,200000))
             dao.putSegments(listOf(SegmentEntity("e",revision,40000,60000,
                 "Synthetic thought remains supported by this passage.")))
-            repo.prepareSaved(id);awaitWithMainProgress { d.awaitIdle() }
-            repo.run(id);awaitWithMainProgress { d.awaitIdle() }
+            repo.prepareSaved(id);awaitWithMainProgress { barrier.awaitIdle() }
+            repo.run(id);awaitWithMainProgress { barrier.awaitIdle() }
             assertEquals("succeeded",dao.distillation(id)!!.state)
             assertEquals(2,calls)
             assertTrue(payloads("distillation.finished").isEmpty())

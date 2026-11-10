@@ -89,6 +89,7 @@ class ProtectedAudioDeletionDeviceTest {
             audio.writeText("audio"); partial.writeText("resume")
             dao.putPodcast(PodcastEntity(id, "https://example.test/$id", "Protected audio fixture"))
             dao.putEpisode(before); dao.putTranscript(transcript)
+            val persistedTranscript = dao.transcript(id)!!
             dao.insertQueue(listOf(QueueEntryEntity(id, 0)))
             val vm = withContext(Dispatchers.Main) {
                 ViewModelProvider(compose.activity, AppViewModel.factory(graph))[AppViewModel::class.java]
@@ -179,7 +180,7 @@ class ProtectedAudioDeletionDeviceTest {
             awaitState("allowed deletion persists") { while (dao.episode(id)?.localFile != null) delay(50) }
             assertFalse(audio.exists()); assertFalse(partial.exists())
             assertEquals(1234L, dao.episode(id)!!.positionMs)
-            assertEquals(transcript, dao.transcript(id))
+            assertEquals(persistedTranscript, dao.transcript(id))
         } catch (error: Throwable) {
             bodyFailure = error
             throw error

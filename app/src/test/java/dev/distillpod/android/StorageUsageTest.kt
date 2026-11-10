@@ -245,9 +245,9 @@ class StorageUsageTest {
             val partial = File(media.directory, "e.partial").apply { writeText("resume") }
             val before = episode().copy(localFile = audio.absolutePath, downloadState = "downloaded",
                 positionMs = 1234, lastModified = "resume-date")
-            val transcript = TranscriptEntity("e", "r", "fingerprint", "tiny", "en", state = "ready")
+            val transcript = TranscriptEntity("e", "r", "fingerprint", "tiny", "en", state = "ready", localCreatedAt = 1000)
             val analysis = AnalysisEntity("e", "r", state = "ready", summary = "Saved insight")
-            dao.putEpisode(before); dao.putTranscript(transcript); dao.putAnalysis(analysis)
+            dao.putEpisode(before); dao.putTranscript(transcript, createdAt = 1000); dao.putAnalysis(analysis)
             suspend fun verify(reason: AudioDeletionBlockReason) {
                 val row = dao.episode("e")
                 val work = dao.transcript("e")

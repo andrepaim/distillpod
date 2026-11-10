@@ -37,7 +37,7 @@ class TranscriptParentLifetimeDeviceTest {
         val episode = EpisodeEntity(tag, tag, "fixture", "Synthetic lifetime fixture",
             "https://example.test/audio", mediaFingerprint = "fixture", durationMs = 10000)
         val row = TranscriptEntity(episode.id, "original", "fixture", "missing-lifetime-model", "en",
-            processedMs = 1234, lookupOnline = false)
+            processedMs = 1234, lookupOnline = false, localCreatedAt = 1000)
         val fetched = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()
         val first = AtomicBoolean(true)
@@ -59,7 +59,7 @@ class TranscriptParentLifetimeDeviceTest {
             }
             dao.putPodcast(PodcastEntity(episode.podcastId, "https://example.test/feed", "Synthetic lifetime fixture"))
             dao.putEpisode(episode)
-            dao.putTranscript(row)
+            dao.putTranscript(row, createdAt = 1000)
             val work = async {
                 runCatching { repository.process(episode.id, row.revision,
                     TranscriptExecution({ false }, { foregroundStarts++ }, false)) }
@@ -73,7 +73,7 @@ class TranscriptParentLifetimeDeviceTest {
             try {
                 withTimeout(5000) { fetched.await() }
                 if (change == "deleted") dao.deletePodcast(episode.podcastId)
-                else dao.putTranscript(replacement)
+                else dao.putTranscript(replacement, createdAt = 1000)
             } finally { release.complete(Unit) }
             assertEquals(TranscriptOutcome.COMPLETED, withTimeout(5000) { work.await() }.getOrThrow())
             if (change == "checkpoint") {

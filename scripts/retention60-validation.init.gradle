@@ -1,0 +1,13 @@
+// Separately installed offline schema/age validation; never target the production app.
+allprojects {
+    afterEvaluate {
+        if (path == ':app') {
+            if (System.getenv('SENTRY_DSN')) throw new GradleException('Validation requires empty SENTRY_DSN')
+            if (project.hasProperty('distillpodFirebaseConfig')) throw new GradleException('Validation forbids Firebase configuration')
+            android.defaultConfig.applicationId = 'dev.distillpod.android.validation.retention60'
+            android.defaultConfig.testApplicationId = 'dev.distillpod.android.validation.retention60.test'
+            android.sourceSets.debug.manifest.srcFile('src/validationRetention60/AndroidManifest.xml')
+            android.sourceSets.androidTest.manifest.srcFile('src/validationRetention60/AndroidManifest.xml')
+        }
+    }
+}
