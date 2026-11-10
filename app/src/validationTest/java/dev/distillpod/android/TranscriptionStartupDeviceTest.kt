@@ -23,12 +23,12 @@ class TranscriptionStartupDeviceTest {
         val dao = graph.db.library()
         val id = "startup-fixture-" + UUID.randomUUID()
         val row = TranscriptEntity(id, id, id, "missing-startup-fixture-model", "auto",
-            durationMs = 10000, processedMs = 5000, lookupOnline = true)
+            durationMs = 10000, processedMs = 5000, lookupOnline = true, localCreatedAt = 1000)
         val audio = java.io.File.createTempFile("startup-fixture-", ".wav", context.cacheDir)
         dao.putPodcast(PodcastEntity(id, "https://example.invalid/" + id, "Synthetic startup fixture"))
         dao.putEpisode(EpisodeEntity(id, id, id, "Synthetic episode", "https://example.invalid/audio",
             mediaFingerprint = id, durationMs = 10000, localFile = audio.absolutePath))
-        dao.putTranscript(row)
+        dao.putTranscript(row, createdAt = 1000)
         dao.putSegments(listOf(SegmentEntity(id, id, 0, 5000, "Synthetic checkpoint", 0)))
         dao.putCoverage(CoverageEntity(id, id, 0, 5000))
         var failure: Throwable? = null
@@ -98,9 +98,9 @@ class TranscriptionStartupDeviceTest {
             val dao = graph.db.library()
             for (replacement in listOf(row.copy(state = "paused"), row.copy(revision = "new"),
                 row.copy(state = "ready"), row.copy(state = "stale"), row.copy(state = "partial"))) {
-                dao.putTranscript(row)
+                dao.putTranscript(row, createdAt = 1000)
                 val result = graph.transcription.process(row.episodeId, row.revision, TranscriptExecution({ false }, {
-                    dao.putTranscript(replacement)
+                    dao.putTranscript(replacement, createdAt = 1000)
                     throw ForegroundServiceStartNotAllowedException("Synthetic")
                 }, true))
                 assertEquals(TranscriptOutcome.COMPLETED, result)

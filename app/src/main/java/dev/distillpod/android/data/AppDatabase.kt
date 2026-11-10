@@ -34,6 +34,7 @@ data class EpisodeEntity(
     val mediaFingerprint: String = "", val error: String? = null,
     val webpageUrl: String? = null,
     val sourceOrder: Int? = null,
+    @ColumnInfo(defaultValue = "0") val localDownloadedAt: Long = 0,
 )
 
 @Entity(tableName = "queue", foreignKeys = [ForeignKey(entity = EpisodeEntity::class, parentColumns = ["id"], childColumns = ["episodeId"], onDelete = ForeignKey.CASCADE)], indices = [Index("sortOrder")])
@@ -49,6 +50,7 @@ data class TranscriptEntity(
     val durationMs: Long = 0, val processedMs: Long = 0, val error: String? = null,
     @ColumnInfo(defaultValue = "0") val lookupOnline: Boolean = false,
     @ColumnInfo(defaultValue = "0") val replaceOnline: Boolean = false,
+    @ColumnInfo(defaultValue = "0") val localCreatedAt: Long = 0,
 )
 
 @Entity(tableName = "segments", primaryKeys = ["episodeId", "revision", "startMs", "ordinal"],
@@ -142,9 +144,9 @@ interface LibraryDao {
     @Query("UPDATE episodes SET completed=:complete WHERE id=:id") suspend fun markCompleted(id: String, complete: Boolean)
     @Query("UPDATE episodes SET downloadState=:state, downloadedBytes=:bytes, totalBytes=:total, etag=:etag, lastModified=:modified, error=:error WHERE id=:id")
     suspend fun downloadProgress(id: String, state: String, bytes: Long, total: Long, etag: String?, modified: String?, error: String?)
-    @Query("UPDATE episodes SET localFile=:file, mediaFingerprint=:fingerprint, downloadState='downloaded', downloadedBytes=:bytes, totalBytes=:bytes, error=NULL WHERE id=:id")
-    suspend fun downloadComplete(id: String, file: String, fingerprint: String, bytes: Long)
-    @Query("UPDATE episodes SET localFile=NULL, downloadState='none', downloadedBytes=0, error=NULL WHERE id=:id") suspend fun removeDownload(id: String)
+    @Query("UPDATE episodes SET localDownloadedAt=CASE WHEN localFile=:file THEN localDownloadedAt ELSE MAX(0,:completedAt) END, localFile=:file, mediaFingerprint=:fingerprint, downloadState='downloaded', downloadedBytes=:bytes, totalBytes=:bytes, error=NULL WHERE id=:id")
+    suspend fun downloadComplete(id: String, file: String, fingerprint: String, bytes: Long, completedAt: Long = System.currentTimeMillis())
+    @Query("UPDATE episodes SET localFile=NULL, localDownloadedAt=0, downloadState='none', downloadedBytes=0, error=NULL WHERE id=:id") suspend fun removeDownload(id: String)
     @Query("SELECT * FROM queue ORDER BY sortOrder") suspend fun queue(): List<QueueEntryEntity>
     @Query("SELECT * FROM queue ORDER BY sortOrder") fun observeQueue(): Flow<List<QueueEntryEntity>>
     @Query("DELETE FROM queue") suspend fun clearQueue()
@@ -155,7 +157,19 @@ interface LibraryDao {
     @Query("SELECT * FROM transcripts") suspend fun transcripts(): List<TranscriptEntity>
     @Query("UPDATE episodes SET durationMs=:duration WHERE id=:id") suspend fun duration(id: String, duration: Long)
     @Query("SELECT * FROM transcripts WHERE episodeId=:id") suspend fun transcript(id: String): TranscriptEntity?
-    @Upsert suspend fun putTranscript(value: TranscriptEntity)
+    /** Local age belongs to a revision, never to progress or a portable object's timestamp. */
+    @Transaction
+    suspend fun putTranscript(value: TranscriptEntity, createdAt: Long = System.currentTimeMillis()) {
+        val old = transcript(value.episodeId)
+        writeTranscript(value.copy(localCreatedAt = if (old?.revision == value.revision) old.localCreatedAt else createdAt.coerceAtLeast(0)))
+    }
+    // Room primitive; all application writes use the transactional entry point above.
+    @Upsert suspend fun writeTranscript(value: TranscriptEntity)
+    @Query("UPDATE transcripts SET state='processing', error=NULL WHERE episodeId=:id AND revision=:revision AND state IN ('queued','processing')")
+    suspend fun beginTranscriptProcessing(id: String, revision: String): Int
+    /** A late state transition must neither recreate work nor restore a stale checkpoint. */
+    @Query("UPDATE transcripts SET state=:state, error=:error WHERE episodeId=:id AND revision=:revision AND state IN (:fromStates)")
+    suspend fun transitionTranscriptState(id: String, revision: String, fromStates: List<String>, state: String, error: String?): Int
     @Query("SELECT * FROM segments WHERE episodeId=:id AND revision=:revision ORDER BY startMs,ordinal") suspend fun segments(id: String, revision: String): List<SegmentEntity>
     @Query("SELECT * FROM segments WHERE episodeId=:id AND revision=:revision AND endMs>:start AND startMs<:end ORDER BY startMs,ordinal") suspend fun window(id: String, revision: String, start: Long, end: Long): List<SegmentEntity>
     @Upsert suspend fun putSegments(values: List<SegmentEntity>)
@@ -202,12 +216,18 @@ interface LibraryDao {
 
 @Database(entities = [ShowAutomationEntity::class, EpisodeAutomationEntity::class, EpisodeAdPreferenceEntity::class, MomentAttemptEntity::class, MomentVersionEntity::class, OnlineTranscriptEntity::class, TranscriptLookupEntity::class, PostDraftEntity::class, PodcastEntity::class, EpisodeEntity::class, QueueEntryEntity::class, PlayerSessionEntity::class,
     TranscriptEntity::class, SegmentEntity::class, CoverageEntity::class, DistillationEntity::class, ModelEntity::class,
-    AnalysisEntity::class, AnalysisPartEntity::class, MessageEntity::class, ResearchEntity::class, SuggestionEntity::class, SyncOutboxEntity::class, SyncBindingEntity::class, SyncRemoteEntity::class, SyncPublicFeedEntity::class, SyncViewEntity::class, SyncPreferenceEntity::class, SyncArtifactEntity::class], version = 11, exportSchema = true)
+    AnalysisEntity::class, AnalysisPartEntity::class, MessageEntity::class, ResearchEntity::class, SuggestionEntity::class, SyncOutboxEntity::class, SyncBindingEntity::class, SyncRemoteEntity::class, SyncPublicFeedEntity::class, SyncViewEntity::class, SyncPreferenceEntity::class, SyncArtifactEntity::class], version = 12, exportSchema = true)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun automation(): AutomationDao
     abstract fun library(): LibraryDao
     abstract fun sync(): SyncDao
     companion object {
+        val MIGRATION_11_12 = object : androidx.room.migration.Migration(11, 12) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE episodes ADD COLUMN localDownloadedAt INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE transcripts ADD COLUMN localCreatedAt INTEGER NOT NULL DEFAULT 0")
+            }
+        }
         val MIGRATION_10_11 = object : androidx.room.migration.Migration(10, 11) {
             override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE episodes ADD COLUMN sourceOrder INTEGER")
@@ -285,6 +305,6 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_moment_versions_momentId ON moment_versions(momentId)")
             }
         }
-        fun open(context: Context): AppDatabase = Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "library.db").addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11).build()
+        fun open(context: Context): AppDatabase = Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "library.db").addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12).build()
     }
 }

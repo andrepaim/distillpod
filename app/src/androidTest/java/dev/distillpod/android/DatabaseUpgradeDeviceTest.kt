@@ -1,6 +1,7 @@
 package dev.distillpod.android
 
 import android.content.ContentValues
+import android.os.Build
 import android.database.sqlite.SQLiteDatabase
 import androidx.room.Room
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -25,9 +26,12 @@ class DatabaseUpgradeDeviceTest {
     @Test fun schemaEightUpgradesWithoutLosingSavedMoments() = upgradeFixture(8)
     @Test fun schemaNineUpgradesWithoutActivatingAutomation() = upgradeFixture(9)
     @Test fun schemaTenUpgradesWithoutChangingExistingLibrary() = upgradeFixture(10)
+    @Test fun schemaElevenUpgradesWithUnknownLocalAges() = upgradeFixture(11)
     private fun upgradeFixture(from: Int) = runBlocking {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
+        check(context.packageName == "dev.distillpod.android.validation.retention60" ||
+            Build.HARDWARE.contains("ranchu") || Build.FINGERPRINT.contains("generic")) { "Use the isolated retention validation app" }
         val name = "migration-test-${UUID.randomUUID()}.db"
         val file = context.getDatabasePath(name).apply { parentFile!!.mkdirs() }
         try {
@@ -51,7 +55,10 @@ class DatabaseUpgradeDeviceTest {
                     old.insertOrThrow(table, null, content)
                 }
                 insert("podcasts", mapOf("id" to "p", "feedUrl" to "https://example.test/feed", "title" to "Upgrade fixture", "subscribed" to 1))
-                insert("episodes", mapOf("id" to "e", "podcastId" to "p", "guid" to "guid", "title" to "Episode", "audioUrl" to "https://example.test/audio", "positionMs" to 23000))
+                insert("episodes", mapOf("id" to "e", "podcastId" to "p", "guid" to "guid", "title" to "Episode", "audioUrl" to "https://example.test/audio", "positionMs" to 23000, "localFile" to "/synthetic/legacy.audio", "downloadState" to "downloaded", "downloadedBytes" to 123, "completed" to 1, "lastPlayedAt" to 9000))
+                insert("queue", mapOf("episodeId" to "e", "sortOrder" to 0))
+                insert("player_session", mapOf("id" to 0, "episodeId" to "e", "speed" to 1))
+                insert("transcripts", mapOf("episodeId" to "e", "revision" to "r", "state" to "ready"))
                 insert("distillations", mapOf("id" to "d", "episodeId" to "e", "excerpt" to "Saved source", "state" to "succeeded"))
                 insert("messages", mapOf("id" to "m", "episodeId" to "e", "role" to "assistant", "text" to "Saved reply", "state" to "succeeded") + if (from >= 2) mapOf("sourcesJson" to "[]") else emptyMap())
                 if(from>=3)insert("sync_outbox",mapOf("operationId" to "old-operation","uid" to "alice","generation" to "g1","entityKey" to "subscription_old","baseVersion" to 6,"payload" to "{}"))
@@ -62,10 +69,20 @@ class DatabaseUpgradeDeviceTest {
                 if(from>=6)insert("sync_views",mapOf("entityKey" to "subscription_old","version" to 7,"sessionId" to "retained-session"))
                 old.version = from
             }
-            val upgraded = Room.databaseBuilder(context, AppDatabase::class.java, name).addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4, AppDatabase.MIGRATION_4_5, AppDatabase.MIGRATION_5_6, AppDatabase.MIGRATION_6_7, AppDatabase.MIGRATION_7_8, AppDatabase.MIGRATION_8_9, AppDatabase.MIGRATION_9_10, AppDatabase.MIGRATION_10_11).build()
+            val upgraded = Room.databaseBuilder(context, AppDatabase::class.java, name).addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4, AppDatabase.MIGRATION_4_5, AppDatabase.MIGRATION_5_6, AppDatabase.MIGRATION_6_7, AppDatabase.MIGRATION_7_8, AppDatabase.MIGRATION_8_9, AppDatabase.MIGRATION_9_10, AppDatabase.MIGRATION_10_11, AppDatabase.MIGRATION_11_12).build()
             try {
                 assertEquals(if(from>=3)listOf("old-operation") else emptyList<String>(),upgraded.sync().pending("alice", "g1"))
                 if(from>=4)assertEquals(7L,upgraded.sync().view("subscription_old")!!.version)
+                assertEquals("/synthetic/legacy.audio", upgraded.library().episode("e")!!.localFile)
+                assertEquals("downloaded", upgraded.library().episode("e")!!.downloadState)
+                assertEquals(123L, upgraded.library().episode("e")!!.downloadedBytes)
+                assertTrue(upgraded.library().episode("e")!!.completed)
+                assertEquals(9000L, upgraded.library().episode("e")!!.lastPlayedAt)
+                assertEquals(listOf(dev.distillpod.android.data.QueueEntryEntity("e", 0)), upgraded.library().queue())
+                assertEquals("e", upgraded.library().playerSession()!!.episodeId)
+                assertEquals(0L, upgraded.library().episode("e")!!.localDownloadedAt)
+                assertEquals(0L, upgraded.library().transcript("e")!!.localCreatedAt)
+                assertEquals("r", upgraded.library().transcript("e")!!.revision)
                 assertEquals(23000L, upgraded.library().episode("e")!!.positionMs)
                 assertNull(upgraded.library().episode("e")!!.sourceOrder)
                 assertEquals("Saved source", upgraded.library().distillation("d")!!.excerpt)

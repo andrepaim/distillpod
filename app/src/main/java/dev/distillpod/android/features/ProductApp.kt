@@ -147,7 +147,7 @@ private fun date(ms: Long) = if (ms <= 0) "" else DateTimeFormatter.ofPattern("d
                     route == "posts" || route.startsWith("posts:") -> PostDraftsPage(vm, route.substringAfter(':', "").takeIf { it.isNotBlank() })
                     route.startsWith("post:") -> PostEditorPage(vm, route.substringAfter(':'))
                     route == "saved" -> SavedPage(vm, captures, episodes, podcasts)
-                    route == "shows" -> ShowsPage(vm, podcasts)
+                    route == "shows" -> ShowsPage(vm)
                     route == "settings" || route.startsWith("settings:") -> SettingsPage(vm, preferences, account, models, episodes, route.substringAfter(':', "overview"))
                     route == "backup" -> BackupPage(vm) { vm.open("settings:sync") }
                     route == "player" -> PlayerPage(vm, episodes.firstOrNull { it.id == player.episodeId }, podcasts, player, fullscreenExitRequest) { videoFullscreen = it }
@@ -281,6 +281,8 @@ private fun date(ms: Long) = if (ms <= 0) "" else DateTimeFormatter.ofPattern("d
     }
 }
 @Composable private fun EpisodeMenu(vm: AppViewModel, ep: EpisodeEntity) {
+    val deletionBlocks by vm.audioDeletionBlocks.collectAsState()
+    val blocked = deletionBlocks[ep.id]
     var open by remember { mutableStateOf(false) }
     Box {
         IconButton(onClick = { open = true }) { Icon(Icons.Default.MoreVert, "More actions for ${ep.title}") }
@@ -288,7 +290,11 @@ private fun date(ms: Long) = if (ms <= 0) "" else DateTimeFormatter.ofPattern("d
             DropdownMenuItem(text = { Text("Play next") }, onClick = { vm.enqueue(ep.id, true); open = false })
             DropdownMenuItem(text = { Text("Add to queue") }, onClick = { vm.enqueue(ep.id); open = false })
             DropdownMenuItem(text = { Text(if (ep.completed) "Mark unplayed" else "Mark played") }, onClick = { vm.markCompleted(ep.id, !ep.completed); open = false })
-            if (ep.localFile != null) DropdownMenuItem(text = { Text("Delete download") }, onClick = { vm.deleteDownload(ep.id); open = false })
+            if (ep.localFile != null) {
+                DropdownMenuItem(text = { Text("Delete download") }, enabled = blocked == null,
+                    onClick = { vm.deleteDownload(ep.id); open = false })
+                blocked?.let { DropdownMenuItem(text = { Text(it.feedback) }, enabled = false, onClick = {}) }
+            }
         }
     }
 }

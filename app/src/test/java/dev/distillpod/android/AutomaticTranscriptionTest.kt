@@ -82,8 +82,8 @@ class AutomaticTranscriptionTest {
             val dao = graph.db.library()
             for (state in listOf("ready", "queued", "processing", "waiting_model", "paused", "failed", "partial")) {
                 val old = TranscriptEntity(episode.id, "saved-$state", episode.mediaFingerprint, "base", "pt",
-                    state = state, processedMs = 5000, error = "Keep this state")
-                dao.putTranscript(old)
+                    state = state, processedMs = 5000, error = "Keep this state", localCreatedAt = 1000)
+                dao.putTranscript(old, createdAt = 1000)
                 dao.putSegments(listOf(SegmentEntity(episode.id, old.revision, 0, 5000, "Saved text", 0)))
                 graph.transcription.prepareAutomatically(episode.id)
                 assertEquals(state, old, dao.transcript(episode.id))
@@ -178,7 +178,7 @@ class AutomaticTranscriptionTest {
         val graph = isolatedGraph()
         try {
             val dao = graph.db.library()
-            val row = TranscriptEntity(episode.id, "obsolete-model-check", episode.mediaFingerprint, "missing-test-model", "auto")
+            val row = TranscriptEntity(episode.id, "obsolete-model-check", episode.mediaFingerprint, "missing-test-model", "auto", localCreatedAt = 1000)
             for (replacement in listOf(
                 // Persist the control result independently of this worker's cancellation,
                 // as when an already-dispatched database write races with user controls.
@@ -188,9 +188,9 @@ class AutomaticTranscriptionTest {
                 row.copy(state = "ready"),
                 row.copy(state = "partial"),
             )) {
-                dao.putTranscript(row)
+                dao.putTranscript(row, createdAt = 1000)
                 graph.transcription.process(episode.id, row.revision, TranscriptExecution({ false }, {
-                    dao.putTranscript(replacement)
+                    dao.putTranscript(replacement, createdAt = 1000)
                 }, false))
                 assertEquals(replacement, dao.transcript(episode.id))
             }
@@ -201,9 +201,9 @@ class AutomaticTranscriptionTest {
         val graph = isolatedGraph()
         try {
             val dao = graph.db.library()
-            val row = TranscriptEntity(episode.id, "queued-fallback", episode.mediaFingerprint, "missing-test-model", "auto")
+            val row = TranscriptEntity(episode.id, "queued-fallback", episode.mediaFingerprint, "missing-test-model", "auto", localCreatedAt = 1000)
             val current = row.copy(processedMs = 5000, durationMs = 10000)
-            dao.putTranscript(row)
+            dao.putTranscript(row, createdAt = 1000)
             graph.transcription.process(episode.id, row.revision, TranscriptExecution({ false }, {
                 dao.putTranscript(current)
             }, false))
@@ -216,8 +216,8 @@ class AutomaticTranscriptionTest {
         val graph = isolatedGraph()
         try {
             val dao = graph.db.library()
-            val row = TranscriptEntity(episode.id, "active-download", episode.mediaFingerprint, "tiny", "auto", lookupOnline = true)
-            dao.putTranscript(row)
+            val row = TranscriptEntity(episode.id, "active-download", episode.mediaFingerprint, "tiny", "auto", lookupOnline = true, localCreatedAt = 1000)
+            dao.putTranscript(row, createdAt = 1000)
             lateinit var repository: TranscriptionRepository
             repository = TranscriptionRepository(graph, onlineLookup = { _, _ ->
                 // Reproduce the window between downloadComplete and the chunk adopting the file hash.
@@ -287,12 +287,12 @@ class AutomaticTranscriptionTest {
         val graph = isolatedGraph()
         try {
             val dao = graph.db.library()
-            val row = TranscriptEntity(episode.id, "guarded-start", episode.mediaFingerprint, "tiny", "auto")
+            val row = TranscriptEntity(episode.id, "guarded-start", episode.mediaFingerprint, "tiny", "auto", localCreatedAt = 1000)
             for (replacement in listOf(row.copy(state = "paused"), row.copy(state = "ready"),
                 row.copy(state = "partial"), row.copy(state = "stale"), row.copy(revision = "new"))) {
-                dao.putTranscript(row)
+                dao.putTranscript(row, createdAt = 1000)
                 val outcome = graph.transcription.process(episode.id, row.revision, TranscriptExecution({ false }, {
-                    dao.putTranscript(replacement)
+                    dao.putTranscript(replacement, createdAt = 1000)
                     throw android.app.ForegroundServiceStartNotAllowedException("Synthetic")
                 }, true))
                 assertEquals(replacement, dao.transcript(episode.id))

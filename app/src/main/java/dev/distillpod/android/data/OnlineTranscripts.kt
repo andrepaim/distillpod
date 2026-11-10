@@ -185,7 +185,7 @@ class OnlineTranscriptRepository(private val db: AppDatabase, private val settin
             dao.deleteSegments(ep.id); dao.deleteCoverage(ep.id)
             dao.putSegments(segments)
             dao.putCoverage(CoverageEntity(ep.id, online.revision, 0, online.durationMs))
-            dao.putTranscript(online.transcript(ep))
+            dao.putTranscriptAt(online.transcript(ep), TranscriptWriteSite.ONLINE_ADOPTION)
             true
         }
     }

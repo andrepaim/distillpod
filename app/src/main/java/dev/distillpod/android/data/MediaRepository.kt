@@ -10,6 +10,9 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -30,11 +33,15 @@ data class AudioStorageUsage(
 
 class ActiveFiles {
     private val processing = ConcurrentHashMap<String, AtomicInteger>()
+    private val revision = MutableStateFlow(0L)
+    val changes = revision.asStateFlow()
     @Volatile var playback: String? = null
+        set(value) { if (field != value) { field = value; revision.update { it + 1 } } }
     @Volatile var queued: Set<String> = emptySet()
+        set(value) { if (field != value) { field = value; revision.update { it + 1 } } }
     fun busy(path: String): Boolean = path == playback || path in queued || (processing[path]?.get() ?: 0) > 0
-    fun acquire(file: File) { processing.getOrPut(file.absolutePath) { AtomicInteger() }.incrementAndGet() }
-    fun release(file: File) { processing[file.absolutePath]?.decrementAndGet() }
+    fun acquire(file: File) { processing.getOrPut(file.absolutePath) { AtomicInteger() }.incrementAndGet(); revision.update { it + 1 } }
+    fun release(file: File) { processing[file.absolutePath]?.decrementAndGet(); revision.update { it + 1 } }
 }
 
 class MediaRepository(context: Context, private val db: AppDatabase, private val settings: AppSettings,
@@ -81,7 +88,7 @@ class MediaRepository(context: Context, private val db: AppDatabase, private val
                 require(latest.audioUrl == ep.audioUrl) { "The episode audio changed during download. Please retry." }
                 dao.downloadComplete(id, target.absolutePath, result.sha256, result.bytes)
                 if (latest.mediaFingerprint != result.sha256) {
-                    dao.transcript(id)?.let { dao.putTranscript(it.copy(state = "stale", error = "Audio changed. Prepare the transcript again.")) }
+                    dao.transcript(id)?.let { dao.putTranscriptAt(it.copy(state = "stale", error = "Audio changed. Prepare the transcript again."), TranscriptWriteSite.DOWNLOAD_FINGERPRINT) }
                     dao.analysis(id)?.let { dao.putAnalysis(it.copy(state = "stale", error = "Audio changed. Analyze the new transcript.")) }
                 }
             }
@@ -112,13 +119,21 @@ class MediaRepository(context: Context, private val db: AppDatabase, private val
 
     private suspend fun requireRemovable(ep: EpisodeEntity, partial: File) {
         require(partial.canonicalFile.parentFile == directory.canonicalFile) { "Invalid audio path" }
-        val paths = listOfNotNull(ep.localFile, partial.absolutePath)
-        require(paths.none(active::busy) &&
-            dao.queue().none { it.episodeId == ep.id } &&
-            dao.transcript(ep.id)?.state !in listOf("queued", "processing") &&
-            ep.downloadState !in listOf("queued", "downloading")) {
-            "This audio is playing, queued or being transcribed. Stop that work before deleting it."
-        }
+        val file = ep.localFile?.let(::File)
+        require(file == null || file.canonicalFile.parentFile == directory.canonicalFile) { "Invalid audio path" }
+        deletionBlock(ep, dao.queue().any { it.episodeId == ep.id }, dao.transcript(ep.id)?.state)
+            ?.let { throw AudioDeletionBlocked(it) }
+    }
+
+    // Readiness is advisory; deletion always repeats these checks under its existing locks/transaction.
+    fun deletionBlock(ep: EpisodeEntity, queued: Boolean, transcriptState: String?): AudioDeletionBlockReason? {
+        val paths = listOfNotNull(ep.localFile, File(directory, "${ep.id}.partial").absolutePath)
+        return audioDeletionBlockReason(
+            active = paths.any(active::busy),
+            queued = queued || paths.any { it in active.queued },
+            transcribing = transcriptState in listOf("queued", "processing"),
+            downloading = ep.downloadState in listOf("queued", "downloading"),
+        )
     }
 
     suspend fun discardPausedPartial(id: String): Long = episodeTransfers.withLock {
@@ -126,9 +141,9 @@ class MediaRepository(context: Context, private val db: AppDatabase, private val
             withContext(Dispatchers.IO) {
                 db.withTransaction {
                     val ep = dao.episode(id) ?: error("Episode is no longer available")
-                    require(ep.downloadState == "paused" && ep.localFile == null) { "Only a paused partial download can be discarded." }
                     val partial = File(directory, "$id.partial")
                     requireRemovable(ep, partial)
+                    require(ep.downloadState == "paused" && ep.localFile == null) { "Only a paused partial download can be discarded." }
                     val bytes = partial.length()
                     check(!partial.exists() || partial.delete()) { "Could not discard the partial download" }
                     dao.downloadProgress(id, "none", 0, 0, null, null, null)
@@ -146,7 +161,6 @@ class MediaRepository(context: Context, private val db: AppDatabase, private val
                     val partial = File(directory, "$id.partial")
                     requireRemovable(ep, partial)
                     val file = ep.localFile?.let(::File)
-                    require(file == null || file.canonicalFile.parentFile == directory.canonicalFile) { "Invalid audio path" }
                     // A failed partial cleanup must not remove the completed audio first.
                     check(!partial.exists() || partial.delete()) { "Could not delete the partial download" }
                     if (file != null) check(!file.exists() || file.delete()) { "Could not delete the audio file" }

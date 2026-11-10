@@ -32,12 +32,17 @@ class FinishedContentTest {
         assertEquals("r1",value.getJSONObject("transcript").getString("revision"))
         assertEquals("sha",value.getJSONObject("transcript").getString("fingerprint"))
         assertEquals("Completed transcript",value.getJSONArray("segments").getJSONObject(0).getString("text"))
+        assertFalse(value.toString().contains("localCreatedAt"))
+        assertFalse(value.toString().contains("localDownloadedAt"))
     }
     @Test fun `fresh library restores finished content without computation or credentials`()=fixture {_,content ->
         val artifact=content.snapshot("e")!!
         val restored=Room.inMemoryDatabaseBuilder(ApplicationProvider.getApplicationContext<android.content.Context>(),AppDatabase::class.java).build()
         try {
+            val beforeImport = System.currentTimeMillis()
             assertTrue(FinishedContent(restored).restore(artifact))
+            assertTrue(restored.library().transcript("e")!!.localCreatedAt in beforeImport..System.currentTimeMillis())
+            assertEquals(0L, restored.library().episode("e")!!.localDownloadedAt)
             assertEquals("ready",restored.library().transcript("e")!!.state)
             assertEquals("Completed transcript",restored.library().segments("e","r1").single().text)
             assertNull(restored.library().episode("e")!!.localFile)

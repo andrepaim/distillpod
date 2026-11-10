@@ -247,7 +247,8 @@ class PlaybackRepository(private val context: Context, private val db: AppDataba
     suspend fun pauseForVoice(changed: () -> Unit, rewindMs: Long = 0): dev.distillpod.android.voice.VoiceLease {
         val c = controller()
         return withContext(Dispatchers.Main) {
-            val id = c.currentMediaItem?.mediaId ?: error("Play an episode first")
+            val id = c.currentMediaItem?.mediaId ?: throw dev.distillpod.android.voice.VoiceContextUnavailable(
+                dev.distillpod.android.voice.VoiceReadiness.EPISODE_UNAVAILABLE)
             val position = c.currentPosition.coerceAtLeast(0)
             val wasPlaying = c.playWhenReady
             c.pause()
@@ -265,14 +266,22 @@ class PlaybackRepository(private val context: Context, private val db: AppDataba
             object : dev.distillpod.android.voice.VoiceLease {
                 override val episode = id
                 override val position = position
-                override suspend fun finish(resume: Boolean) = withContext(Dispatchers.Main) {
+                override suspend fun finish(resume: Boolean) = finish(resume, true)
+                override suspend fun finish(resume: Boolean, allowRewind: Boolean) = withContext(Dispatchers.Main) {
                     c.removeListener(listener)
                     if (resume && valid && wasPlaying && c.currentMediaItem?.mediaId == id) {
-                        if (rewindMs > 0) c.seekTo((position - rewindMs.coerceAtMost(3000)).coerceAtLeast(0))
+                        if (allowRewind && rewindMs > 0) c.seekTo((position - rewindMs.coerceAtMost(3000)).coerceAtLeast(0))
                         c.play()
                     }
                 }
             }
+        }
+    }
+    /** Null is an expected readiness condition; controller failures still propagate. */
+    suspend fun voicePosition(): Pair<String, Long>? {
+        val c = controller()
+        return withContext(Dispatchers.Main) {
+            c.currentMediaItem?.mediaId?.let { it to c.currentPosition.coerceAtLeast(0) }
         }
     }
     suspend fun capture(): Pair<String, Long> { val c = controller(); return withContext(Dispatchers.Main) { (c.currentMediaItem?.mediaId ?: error("Play an episode first")) to c.currentPosition.coerceAtLeast(0) } }

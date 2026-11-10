@@ -26,18 +26,12 @@ import kotlinx.coroutines.withContext
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
         Text("Help investigate problems",style=MaterialTheme.typography.headlineSmall)
         Text("Send technical events and error reports to Sentry, including app version, operation stages and network state. Audio, transcripts, questions, answers and credentials are excluded.")
-        Row(horizontalArrangement=Arrangement.spacedBy(12.dp)) {
-            Text("Share diagnostics",Modifier.weight(1f))
-            Switch(checked=enabled,enabled=!busy && diagnostics.configured,onCheckedChange={allow ->
+        LabeledSettingSwitch("Share diagnostics",checked=enabled,enabled=!busy && diagnostics.configured,onCheckedChange={allow ->
                 busy=true;scope.launch { withContext(Dispatchers.IO){diagnostics.consent(allow)};enabled=diagnostics.enabled;busy=false }
             })
-        }
-        Row(horizontalArrangement=Arrangement.spacedBy(12.dp)) {
-            Text("Share usage statistics",Modifier.weight(1f))
-            Switch(checked=usage,enabled=!busy && diagnostics.configured,onCheckedChange={allow ->
+        LabeledSettingSwitch("Share usage statistics",checked=usage,enabled=!busy && diagnostics.configured,onCheckedChange={allow ->
                 busy=true;scope.launch {withContext(Dispatchers.IO){diagnostics.usageConsent(allow)};usage=diagnostics.usageEnabled;busy=false}
             })
-        }
         Text("Optional counts of feature use and phone, headphone or car triggers. Independent of diagnostics and library sync. No podcast content is sent.",style=MaterialTheme.typography.bodySmall)
         Text(health,style=MaterialTheme.typography.bodySmall)
         Text(if(diagnostics.configured)status else "Cloud reporting is not configured in this build.")

@@ -22,11 +22,11 @@ class TranscriptionPauseDeviceTest {
         graph.ready.await()
         val dao = graph.db.library()
         val id = "pause-fixture-" + UUID.randomUUID()
-        val row = TranscriptEntity(id, id, id, "missing-pause-fixture-model", "auto")
+        val row = TranscriptEntity(id, id, id, "missing-pause-fixture-model", "auto", localCreatedAt = 1000)
         dao.putPodcast(PodcastEntity(id, "https://example.invalid/" + id, "Synthetic pause fixture"))
         dao.putEpisode(EpisodeEntity(id, id, id, "Synthetic episode", "https://example.invalid/audio",
             mediaFingerprint = id, durationMs = 10000))
-        dao.putTranscript(row)
+        dao.putTranscript(row, createdAt = 1000)
         dao.putSegments(listOf(SegmentEntity(id, id, 0, 5000, "Synthetic saved text", 0)))
         dao.putCoverage(CoverageEntity(id, id, 0, 5000))
         try { block(graph, row) }
@@ -42,10 +42,10 @@ class TranscriptionPauseDeviceTest {
             for (current in listOf(row.copy(state = "paused"),
                 row.copy(revision = "replacement", state = "queued"),
                 row.copy(state = "stale"), row.copy(state = "ready"), row.copy(state = "partial"))) {
-                dao.putTranscript(row)
+                dao.putTranscript(row, createdAt = 1000)
                 graph.transcription.process(row.episodeId, row.revision, TranscriptExecution({ false }, {
                     // Commit a newer control result after the worker captured its starting row.
-                    dao.putTranscript(current)
+                    dao.putTranscript(current, createdAt = 1000)
                 }, false))
                 assertEquals(current, dao.transcript(row.episodeId))
                 assertEquals("Synthetic saved text", dao.segments(row.episodeId, row.revision).single().text)
@@ -89,7 +89,7 @@ class TranscriptionPauseDeviceTest {
             val dao = graph.db.library()
             val current = row.copy(processedMs = 5000, durationMs = 10000)
             graph.transcription.process(row.episodeId, row.revision, TranscriptExecution({ false }, {
-                dao.putTranscript(current)
+                dao.putTranscript(current, createdAt = 1000)
             }, false))
             assertEquals(current.copy(state = "waiting_model",
                 error = "Download the selected transcription model in Settings."), dao.transcript(row.episodeId))

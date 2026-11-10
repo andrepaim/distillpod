@@ -20,6 +20,7 @@ import kotlinx.coroutines.CancellationException
     episodes: List<EpisodeEntity>,
     models: List<ModelEntity>,
 ) {
+    val deletionBlocks by vm.audioDeletionBlocks.collectAsState()
     var refresh by remember { mutableIntStateOf(0) }
     var usage by remember { mutableStateOf<AudioStorageUsage?>(null) }
     var unavailable by remember { mutableStateOf(false) }
@@ -75,29 +76,32 @@ import kotlinx.coroutines.CancellationException
         val downloads = episodes.filter { it.localFile != null || it.downloadState in listOf("paused", "queued", "downloading", "failed") }
         if (downloads.isEmpty()) Text("No downloads to manage.")
         downloads.forEach { ep ->
+            val blocked = deletionBlocks[ep.id]
             Column(Modifier.testTag("storage-download-${ep.id}"), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(ep.title, style = MaterialTheme.typography.titleSmall)
                 Text(ep.downloadState.replaceFirstChar { it.uppercase() }, style = MaterialTheme.typography.bodySmall)
+                blocked?.let { Text(it.feedback, style = MaterialTheme.typography.bodySmall) }
                 TextButton(onClick = { vm.open("episode:${ep.id}") }) { Text("Open episode") }
                 if (ep.localFile != null) {
-                    TextButton(onClick = { selectedId = ep.id; discardPartial = false }) { Text("Delete download") }
+                    TextButton(enabled = blocked == null, onClick = { selectedId = ep.id; discardPartial = false }) { Text("Delete download") }
                 } else if (ep.downloadState == "paused") {
-                    TextButton(onClick = { selectedId = ep.id; discardPartial = true }) { Text("Discard paused partial") }
+                    TextButton(enabled = blocked == null, onClick = { selectedId = ep.id; discardPartial = true }) { Text("Discard paused partial") }
                     TextButton(onClick = { vm.download(ep.id) }) { Text("Resume download") }
                 }
             }
         }
     }
     selectedId?.let { id ->
+        val blocked = deletionBlocks[id]
         val title = episodes.firstOrNull { it.id == id }?.title ?: "This episode"
         AlertDialog(
             onDismissRequest = { selectedId = null },
             title = { Text(if (discardPartial) "Discard paused download?" else "Delete downloaded audio?") },
-            text = { Text("$title\n\n" + if (discardPartial)
+            text = { Text(blocked?.feedback ?: ("$title\n\n" + if (discardPartial)
                 "The partial audio will be removed. Downloading again starts from the beginning. Saved insights and listening progress are kept."
-                else "The downloaded audio will be removed from this phone. You can download it again. Saved insights and listening progress are kept.") },
+                else "The downloaded audio will be removed from this phone. You can download it again. Saved insights and listening progress are kept.")) },
             confirmButton = {
-                TextButton(onClick = {
+                TextButton(enabled = blocked == null, onClick = {
                     val partial = discardPartial
                     selectedId = null
                     vm.action("storage") {
