@@ -44,6 +44,14 @@ class AppViewModel(val graph: AppGraph, private val saved: SavedStateHandle) : V
             else cached?.transcript(ep) ?: row
         }
     }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    val audioDeletionBlocks = combine(episodes, localTranscripts, dao.observeQueue(), graph.media.active.changes) {
+        library, local, queue, _ ->
+        val queuedIds = queue.map { it.episodeId }.toSet()
+        val localStates = local.associate { it.episodeId to it.state }
+        library.mapNotNull { ep ->
+            graph.media.deletionBlock(ep, ep.id in queuedIds, localStates[ep.id])?.let { ep.id to it }
+        }.toMap()
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
     val models = dao.observeModels().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     val analyses = dao.observeAnalyses().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     val chat = dao.observeMessages().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
@@ -85,9 +93,11 @@ class AppViewModel(val graph: AppGraph, private val saved: SavedStateHandle) : V
         if (key in busy.value) return
         busy.update { it + key }
         viewModelScope.launch {
-            try { block() }
-            catch (cancelled: CancellationException) { throw cancelled }
-            catch (error: Exception) { graph.diagnostics.failure("worker",error,source="phone");messages.send(safeFailure(error)) }
+            try {
+                runAppAction(block,
+                    reportFailure = { graph.diagnostics.failure("worker", it, source = "phone") },
+                    showMessage = { messages.send(it) })
+            }
             finally { busy.update { it - key } }
         }
     }
