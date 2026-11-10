@@ -134,7 +134,7 @@ internal fun VoiceSessionContent(state: VoiceState, running: Boolean, onDone: ()
             Text("${timestamp(elapsed)} · Ask about what you just heard", color = MaterialTheme.colorScheme.onSurfaceVariant)
             Button(onClick = onDone, enabled = elapsed >= 300, modifier = Modifier.fillMaxWidth()) { Text("Done") }
         }
-        if (state.phase == "Preparing") Text("Your podcast is paused. Wait for the tone before speaking.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (state.phase == "Preparing") Text("Checking this moment. Wait for the tone before speaking.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (state.phase == "Answering") Text("Microphone off · Spoken answer", color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (state.answer.isNotBlank()) VoiceAnswerTranscript(state.answer)
         state.error?.let {
