@@ -32,3 +32,20 @@ their own physical gates. A runtime/data-handling discovery would change this
 assessment and require fresh non-destructive device acceptance. No release or
 production app/data/settings actions. Passing later tests alone does not prove
 which asynchronous operation caused the original timeout; document that gap.
+
+## Controlled result
+
+The new explicit-gate regression failed before the fixture change with
+"Fixture returned before its owned cleanup finished". The test uses an owned
+worker's suspended non-cancellable finalizer and verifies that fixture return,
+Room close and file deletion wait for that finalizer. Teardown now cancels and
+joins the owned scope under a five-second cleanup bound before resource release.
+A cleanup failure is suppressed onto an existing body failure, preserving the
+original exception; resources are not closed while owned cleanup remains active.
+The original operation wait remains15seconds with content-free phase/state
+suppressed diagnostics. All11focused backup tests then passed.
+
+This confirms the fixture lifetime defect and its correction. It does not
+uniquely attribute the original creation timeout to that defect. Complete and
+hosted validation are still pending; a future timeout should retain the new
+operation phase and state for follow-up. Application runtime code is unchanged.
