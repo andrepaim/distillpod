@@ -1,8 +1,8 @@
 # Bulk cleanup and opt-in retention (#60)
 
-Status: the owner confirmed transcript deletion semantics on 2026-11-09: delete local copies, preserve cloud copies and saved insights, and suppress automatic recreation until explicit Prepare or Restore. Bulk deletion, schema and scheduling remain unimplemented and depend on #58 integration plus the safety review below.
+Status: the owner confirmed transcript deletion semantics on 2026-11-09: delete local copies, preserve cloud copies and saved insights, and suppress automatic recreation until explicit Prepare or Restore. Main `d303258` and #58 are integrated as `a6493bc`. Bulk deletion and scheduling remain unimplemented. The first app increment records local age provenance without enabling cleanup.
 Issue: https://github.com/andrepaim/distillpod/issues/60
-Base inspected: 9528abf. No production/device content is used or deleted in validation.
+Current base inspected: `d303258`. No production/device content is used or deleted in validation.
 
 ## Scope and acceptance
 
@@ -14,7 +14,7 @@ Add separate clear-all local episode audio and local transcript controls, with a
 2. Explicit local timestamp persistence, safe migration and pure retention eligibility logic with injected time. Keep #60 open.
 3. Local opt-in settings, confirmed policy changes, serialized deferred sweep, cancellation/retry behavior and complete integrated acceptance. Close #60 only after all acceptance and combined-main CI pass.
 
-## Proposed timer semantics (pending acknowledgment)
+## Chosen timer semantics
 
 Each rule independently offers Off, 1, 7, 30 or 90 days. One day means 24 elapsed wall-clock hours, not a calendar-day boundary. At exactly origin + days the item is eligible. Invalid, missing or future origins fail closed. Arithmetic must not overflow.
 
@@ -30,7 +30,7 @@ Transcript cleanup needs serialization with TranscriptionRepository.controls, ac
 
 Confirmed sync risk: FinishedContent.restore can reinsert absent local transcripts, and automatic playback preparation can regenerate them. Implement the confirmed local suppression contract before changing this path. Do not delete remote artifacts or silently disable user transcription preferences. The writer/schema design remains a dependency, not an implemented guarantee.
 
-Proposed scheduler: unique daily WorkManager sweep plus app-open check, serialized and rechecking the latest settings before every item. Protected items remain eligible for the next sweep. Android may delay execution, so describe eligibility rather than promise exact-time deletion. This requires coordinator acknowledgment and physical background validation. Avoid overlapping #56 transcription recovery edits and #54 queue work; integrate their final revisions.
+Proposed scheduler: unique daily WorkManager sweep plus app-open check, serialized and rechecking the latest settings before every item. Protected items remain eligible for the next sweep. Android may delay execution, so describe eligibility rather than promise exact-time deletion. This is the planned scheduling choice; it requires physical background validation before shipping. Avoid overlapping #56 transcription recovery edits and #54 queue work; integrate their final revisions.
 
 ## Risk assessment and validation
 
@@ -55,8 +55,8 @@ Confirmed transcript contract: deletion is local, cloud copies and saved insight
 ## Preparation and import intent review
 
 Read-only review against current main `a7422e9` on 2026-11-09, including #56's
-startup cancellation/retry changes. This branch has not yet integrated that main
-revision or #58. These are implementation requirements, not implemented behavior.
+startup cancellation/retry changes. That historical review is retained below; main through `d303258` and #58 are now
+integrated. These are implementation requirements, not implemented behavior.
 
 | Entry point | Required treatment after local transcript cleanup |
 | --- | --- |
@@ -100,3 +100,46 @@ planning update does not enable cleanup or add a scheduler/schema migration.
 The pure `core/RetentionPolicy.kt` increment has no callers and performs no deletion, persistence, scheduling or setting changes. It requires explicit timestamps and current time as inputs. Defaults are disabled. Eight regression tests cover off/independent settings, never-played audio, earliest audio deadline, exact expiry boundaries, missing/invalid/future origins, overflow, policy changes and redownload age. Protection/retry/migration/UI tests remain unimplemented because those integration stages are held.
 
 TDD red: `/tmp/distillpod-issue60-red.log`, compileTestKotlin fails only because RetentionPolicy does not yet exist. Green: full core suite passed, including all 8 new retention tests; `/tmp/distillpod-issue60-green.log`. Repository data-guard regression tests (4), secret-rule regression check and git diff --check also passed. No Android APK, emulator, physical-device or CI check has run for #60. This pure increment does not exercise those paths; all remain required before integrated feature completion.
+
+## First app increment: local age provenance (2026-11-10)
+
+This independently verifiable increment records when a local audio copy finishes
+and when a transcript revision is first created/imported. It adds nullable-free
+`localDownloadedAt` / `localCreatedAt` columns with zero meaning unknown, schema
+12 and an additive 11→12 migration. Old content retains unknown origins; neither
+publication dates, last-played values nor cloud timestamps become local ages.
+There are no cleanup callers, settings, deletion, suppression or scheduler changes
+in this increment. Completed-playback provenance remains a later increment.
+
+`LibraryDao.downloadComplete` records its supplied completion clock atomically
+with the new file identity; removing a download or changing its enclosure resets
+that origin. Repeating completion for the same copy preserves its existing origin.
+Transcript writes remain transactional: the same revision preserves its original
+local age (including unknown legacy age), while a new revision starts at the local
+write clock, ignoring timestamps carried by imported/copied objects. Inject clocks
+at DAO boundaries for deterministic tests. Cache lookup uses its existing local
+`retrievedAt`; the future eligibility projection must select the origin belonging
+to the representation/revision it actually previews.
+
+TDD must demonstrate download/redownload/reset behavior, unchanged progress and
+sync/feed metadata updates, same-revision transcript progress/retry/import,
+revision replacement and legacy unknown origins. Upgrade tests cover schemas
+1–11 and preserve progress, saved outputs, queue, content and Off defaults. The
+pure policy still fails closed for unknown/future origins and has no callers.
+No local timestamps enter portable artifacts or sync payloads; assert that contract.
+
+Risk: local Room migration and data age provenance, no file deletion or background
+execution. Require default/voice unit suites, lint/APKs, all hosted selected gates,
+applicable database/feed/sync emulator tests, and the current migration fixture on
+the S22 in an offline separately identified package with synthetic databases only.
+Verify hashes, signer, package and instrumentation target before installation;
+production package/data remain untouched. Device evidence validates SQLite
+migration on the affected platform; it does not establish future background or
+whole-app production-upgrade behavior. Those later increments retain their gates.
+
+Before enabling audio cleanup, replace advisory busy checks with an exclusion
+contract for deletion and playback/processing acquisition, tested under controlled
+interleavings. Before transcript cleanup, persist suppression and delete both local
+representations transactionally, distinguish explicit Prepare/Restore at every
+entry point, and reject late writers at their final transaction. Do not claim those
+protections are delivered by age metadata. Keep #60 open after this increment.
