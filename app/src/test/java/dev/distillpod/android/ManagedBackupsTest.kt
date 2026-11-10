@@ -17,6 +17,9 @@ import java.io.IOException
 import java.util.UUID
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -47,12 +50,19 @@ class ManagedBackupsTest {
             return ParcelFileDescriptor.open(file, ParcelFileDescriptor.parseMode(mode))
         }
     }
-    private suspend fun done(backups: ManagedBackups) = withTimeout(15000) { backups.state.first { !it.working } }
-    private suspend fun fixture(block: suspend (Context, AppDatabase, AppSettings, CoroutineScope, ManagedBackups, Provider, Uri, File, CompletableDeferred<BackupPreview>) -> Unit) {
+    private suspend fun done(backups: ManagedBackups, phase: String) = try {
+        withTimeout(15000) { backups.state.first { !it.working } }
+    } catch (timeout: TimeoutCancellationException) {
+        val state = backups.state.value
+        timeout.addSuppressed(AssertionError("Backup fixture phase=$phase, working=${state.working}, " +
+            "error=${state.error}, connected=${state.location != null}, history=${state.history.size}"))
+        throw timeout
+    }
+    private suspend fun fixture(dispatcher: CoroutineDispatcher = Dispatchers.IO, block: suspend (Context, AppDatabase, AppSettings, CoroutineScope, ManagedBackups, Provider, Uri, File, CompletableDeferred<BackupPreview>) -> Unit) {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val folder = File(context.cacheDir, "managed-test-${UUID.randomUUID()}").apply { mkdirs() }
         val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val scope = CoroutineScope(SupervisorJob() + dispatcher)
         val settings = AppSettings(context, PreferenceDataStoreFactory.create(scope = scope) { File(folder, "test.preferences_pb") })
         val provider = Provider(File(folder, "cloud.zip").apply { createNewFile() })
         provider.attachInfo(context, android.content.pm.ProviderInfo().apply {
@@ -64,29 +74,86 @@ class ManagedBackupsTest {
         context.grantUriPermission(context.packageName, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
         val preview = CompletableDeferred<BackupPreview>()
         val backups = ManagedBackups(context, LibraryBackup(db), settings, scope) { preview.complete(it) }
+        var bodyFailure: Throwable? = null
         try {
             db.library().putPodcast(PodcastEntity("show", "https://example.test/feed", "Fixture"))
             db.library().putEpisode(EpisodeEntity("episode", "show", "guid", "Episode", "https://example.test/audio", positionMs = 12000))
             block(context, db, settings, scope, backups, provider, uri, folder, preview)
-        } finally { scope.cancel(); db.close(); folder.deleteRecursively() }
+        } catch (error: Throwable) {
+            bodyFailure = error
+            throw error
+        } finally {
+            try {
+                withContext(NonCancellable) {
+                    // State can finish before operation/finalizer cleanup; keep its resources alive.
+                    withTimeout(5000) { scope.coroutineContext[Job]!!.cancelAndJoin() }
+                    db.close()
+                    folder.deleteRecursively()
+                }
+            } catch (cleanupFailure: Throwable) {
+                val original = bodyFailure
+                if (original != null) original.addSuppressed(cleanupFailure) else throw cleanupFailure
+            }
+        }
+    }
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test fun `fixture keeps its database and files until owned cleanup finishes`() = runTest {
+        val cleanupStarted = CompletableDeferred<Unit>()
+        val releaseCleanup = CompletableDeferred<Unit>()
+        val cleanupFinished = CompletableDeferred<Unit>()
+        var database: AppDatabase? = null
+        var directory: File? = null
+        var owned: Job? = null
+        val call = async {
+            fixture(StandardTestDispatcher(testScheduler)) { _, db, _, scope, _, _, _, folder, _ ->
+                database = db
+                directory = folder
+                owned = scope.launch(start = CoroutineStart.UNDISPATCHED) {
+                    try { awaitCancellation() }
+                    finally {
+                        withContext(NonCancellable) {
+                            cleanupStarted.complete(Unit)
+                            releaseCleanup.await()
+                            cleanupFinished.complete(Unit)
+                        }
+                    }
+                }
+            }
+        }
+        try {
+            cleanupStarted.await()
+            runCurrent()
+            assertFalse("Fixture returned before its owned cleanup finished", call.isCompleted)
+            assertTrue("Database closed while owned cleanup was suspended", database!!.isOpen)
+            assertTrue("Fixture files removed while owned cleanup was suspended", directory!!.isDirectory)
+            releaseCleanup.complete(Unit)
+            call.await()
+            assertTrue(cleanupFinished.isCompleted)
+            assertFalse(database!!.isOpen)
+            assertFalse(directory!!.exists())
+        } finally {
+            releaseCleanup.complete(Unit)
+            call.join()
+            owned?.join()
+        }
     }
     @Test fun `remembered file keeps two dated snapshots and restores an older snapshot without a picker`() = runBlocking {
         fixture { context, db, settings, scope, backups, provider, uri, folder, preview ->
-            backups.created(uri); done(backups)
+            backups.created(uri); done(backups, "created")
             assertFalse(backups.state.value.message, backups.state.value.error)
             assertEquals(1, backups.state.value.history.size)
             val older = backups.state.value.history.single()
             db.library().putEpisode(db.library().episode("episode")!!.copy(positionMs = 24000))
-            backups.backup(); done(backups)
+            backups.backup(); done(backups, "backup")
             assertEquals(2, backups.state.value.history.size)
             assertTrue(backups.destinations.tryReceive().isFailure)
             assertTrue(context.contentResolver.persistedUriPermissions.any { it.uri == uri && it.isReadPermission && it.isWritePermission })
             val restarted = ManagedBackups(context, LibraryBackup(db), settings, scope) { preview.complete(it) }
-            restarted.refresh(choose = true); done(restarted)
+            restarted.refresh(choose = true); done(restarted, "refresh")
             assertEquals(2, restarted.state.value.history.size)
             assertTrue(restarted.state.value.history.none { it.local })
             assertTrue(restarted.state.value.chooseBackup)
-            restarted.preview(older.id, false); done(restarted)
+            restarted.preview(older.id, false); done(restarted, "preview")
             val target = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
             try {
                 LibraryBackup(target).merge(withTimeout(10000) { preview.await() })
@@ -97,11 +164,11 @@ class ManagedBackupsTest {
     }
     @Test fun `truncated cloud update rolls back to a verified previous history`() = runBlocking {
         fixture { _, _, settings, _, backups, provider, uri, folder, _ ->
-            backups.created(uri); done(backups)
+            backups.created(uri); done(backups, "created")
             val previousHash = BackupArchive.hash(provider.file)
             val connection = settings.value("managedBackup").first()
             provider.corruptNextWrite = true
-            backups.backup(); done(backups)
+            backups.backup(); done(backups, "backup")
             assertTrue(backups.state.value.error)
             assertEquals(previousHash, BackupArchive.hash(provider.file))
             assertEquals(1, BackupArchive.read(provider.file, File(folder, "check")).size)
@@ -110,26 +177,26 @@ class ManagedBackupsTest {
     }
     @Test fun `lost Drive access exposes a marked local recovery copy without overwriting anything`() = runBlocking {
         fixture { _, _, _, _, backups, provider, uri, _, preview ->
-            backups.created(uri); done(backups)
+            backups.created(uri); done(backups, "created")
             val previousHash = BackupArchive.hash(provider.file)
             provider.readsFail = true
-            backups.refresh(choose = true); done(backups)
+            backups.refresh(choose = true); done(backups, "refresh")
             assertTrue(backups.state.value.error)
             val cached = backups.state.value.history.single()
             assertTrue(cached.local)
-            backups.preview(cached.id, true); done(backups)
+            backups.preview(cached.id, true); done(backups, "preview")
             assertEquals(1, withTimeout(10000) { preview.await() }.episodes)
-            backups.backup(); done(backups)
+            backups.backup(); done(backups, "backup")
             assertTrue(backups.state.value.error)
             assertEquals(previousHash, BackupArchive.hash(provider.file))
         }
     }
     @Test fun `invalid existing file never replaces a working connection or library`() = runBlocking {
         fixture { _, db, settings, _, backups, provider, uri, _, _ ->
-            backups.created(uri); done(backups)
+            backups.created(uri); done(backups, "created")
             val connection = settings.value("managedBackup").first()
             provider.file.writeText("not a backup")
-            backups.connect(uri); done(backups)
+            backups.connect(uri); done(backups, "connect")
             assertTrue(backups.state.value.error)
             assertEquals(connection, settings.value("managedBackup").first())
             assertEquals(12000L, db.library().episode("episode")!!.positionMs)
@@ -138,12 +205,12 @@ class ManagedBackupsTest {
     }
     @Test fun `reconnecting a valid history does not write to its cloud file`() = runBlocking {
         fixture { context, db, _, scope, backups, provider, uri, folder, _ ->
-            backups.created(uri); done(backups)
+            backups.created(uri); done(backups, "created")
             val hash = BackupArchive.hash(provider.file)
             provider.writesFail = true
             val newSettings = AppSettings(context, PreferenceDataStoreFactory.create(scope = scope) { File(folder, "fresh.preferences_pb") })
             val connected = ManagedBackups(context, LibraryBackup(db), newSettings, scope) {}
-            connected.connect(uri); done(connected)
+            connected.connect(uri); done(connected, "connect")
             assertFalse(connected.state.value.message, connected.state.value.error)
             assertEquals(1, connected.state.value.history.size)
             assertEquals(hash, BackupArchive.hash(provider.file))
@@ -151,9 +218,9 @@ class ManagedBackupsTest {
     }
     @Test fun `damaged cloud history is repaired from recovery and gains a new snapshot`() = runBlocking {
         fixture { _, db, _, _, backups, provider, uri, folder, _ ->
-            backups.created(uri); done(backups)
+            backups.created(uri); done(backups, "created")
             provider.file.writeText("power loss during cloud update")
-            backups.backup(); done(backups)
+            backups.backup(); done(backups, "backup")
             assertFalse(backups.state.value.message, backups.state.value.error)
             assertTrue(backups.state.value.message.startsWith("Backup repaired"))
             assertEquals(2, BackupArchive.read(provider.file, File(folder, "repaired")).size)
@@ -162,9 +229,9 @@ class ManagedBackupsTest {
     }
     @Test fun `forgetting a connection revokes access without deleting cloud or local library data`() = runBlocking {
         fixture { context, db, settings, _, backups, provider, uri, _, _ ->
-            backups.created(uri); done(backups)
+            backups.created(uri); done(backups, "created")
             val hash = BackupArchive.hash(provider.file)
-            backups.disconnect(); done(backups)
+            backups.disconnect(); done(backups, "disconnect")
             assertEquals("", settings.value("managedBackup").first())
             assertNull(backups.state.value.location)
             assertTrue(context.contentResolver.persistedUriPermissions.none { it.uri == uri })
@@ -174,7 +241,7 @@ class ManagedBackupsTest {
     }
     @Test fun `a future history version is never overwritten with an older recovery copy`() = runBlocking {
         fixture { _, _, _, _, backups, provider, uri, folder, _ ->
-            backups.created(uri); done(backups)
+            backups.created(uri); done(backups, "created")
             val future = File(folder, "future.zip")
             java.util.zip.ZipFile(provider.file).use { input -> java.util.zip.ZipOutputStream(future.outputStream()).use { output ->
                 input.entries().asSequence().forEach { entry ->
@@ -188,7 +255,7 @@ class ManagedBackupsTest {
             } }
             future.copyTo(provider.file, overwrite = true)
             val hash = BackupArchive.hash(provider.file)
-            backups.backup(); done(backups)
+            backups.backup(); done(backups, "backup")
             assertTrue(backups.state.value.error)
             assertTrue(backups.state.value.message.contains("not supported"))
             assertEquals(hash, BackupArchive.hash(provider.file))
