@@ -10,9 +10,13 @@ Add separate clear-all local episode audio and local transcript controls, with a
 
 ## Proposed increments
 
-1. Bulk cleanup repository APIs, confirmation UI and synthetic regression/device tests. Depend on #58 typed AudioDeletionBlocked feedback without changing its protection boundary. Keep #60 open.
-2. Explicit local timestamp persistence, safe migration and pure retention eligibility logic with injected time. Keep #60 open.
-3. Local opt-in settings, confirmed policy changes, serialized deferred sweep, cancellation/retry behavior and complete integrated acceptance. Close #60 only after all acceptance and combined-main CI pass.
+1. Local download/transcript age provenance and additive migration, with no cleanup enabled (current increment).
+2. Audio ownership exclusion, confirmed bulk audio APIs/UI and synthetic race/device acceptance. Preserve #58 guards and queue baseline.
+3. Transactional local transcript suppression, explicit Prepare/Restore intent, final-writer/import races, and confirmed bulk transcript UI. Preserve cloud and saved outputs.
+4. Actual completed-playback provenance, independent opt-in rules, unknown-age grace, confirmed policy changes, deferred sweeps and integrated acceptance.
+
+Each increment requires a current-head PR and applicable gates. Keep #60 open until
+all requested behavior and acceptance criteria pass.
 
 ## Chosen timer semantics
 
@@ -157,3 +161,15 @@ format. The focused suite then passed 107 core and 27 app cases (age, migration,
 backup, finished-content and feed preservation). These focused checks do not replace
 final default/voice, emulator, S22 or hosted validation. Logs remain private under
 `distillpod-tools/issue60-retention`.
+
+The first full voice gate at `7086b50` ran 584 app tests: nine whole-record
+expectations failed only on the newly recorded age (expected zero); the other
+575 passed. Existing cancellation, startup and protected-deletion fixtures now
+supply fixed local clocks and retain their full record assertions. Their focused
+suite passed after that adjustment. Default/lint/APK stages of that failed driver
+are not counted as passed. Final gates must run again on the corrected commit.
+
+Additional final-write boundary found: `LibraryBackup.merge` uses validated raw
+SQL rather than `LibraryDao.putTranscript`. The age increment handles its import
+clock explicitly. The later suppression increment must also guard this raw import
+transaction, including preview-to-merge races; DAO interception alone is insufficient.
