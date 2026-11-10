@@ -1,7 +1,23 @@
 import { mkdir, open, readFile, rename, lstat, rm } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { existsSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { Failure, requireThat } from "./protocol.js";
+export function privateStateOutsideCheckout(
+  directory: string,
+  packageRoot: string,
+): boolean {
+  let root = resolve(packageRoot);
+  for (let parent = root; ; parent = dirname(parent)) {
+    if (existsSync(join(parent, ".git"))) {
+      root = parent;
+      break;
+    }
+    if (parent === dirname(parent)) break;
+  }
+  const candidate = resolve(directory);
+  return candidate !== root && !candidate.startsWith(root + "/");
+}
 export class State {
   constructor(public directory: string) {
     requireThat(

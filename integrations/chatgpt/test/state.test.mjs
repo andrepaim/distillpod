@@ -91,3 +91,34 @@ test("different account cannot apply a journal", () =>
       (e) => e.code === "account_mismatch",
     );
   }));
+
+test("installed runtime accepts a sibling private state but a source checkout does not", async () => {
+  const { privateStateOutsideCheckout } = await import("../dist/state.js");
+  const { mkdir } = await import("node:fs/promises");
+  const base = await mkdtemp(join(tmpdir(), "distillpod-layout-"));
+  try {
+    const runtime = join(base, "share", "integration", "version");
+    await mkdir(runtime, { recursive: true });
+    assert.equal(
+      privateStateOutsideCheckout(
+        join(base, "share", "private-state"),
+        runtime,
+      ),
+      true,
+    );
+    assert.equal(
+      privateStateOutsideCheckout(join(runtime, "private-state"), runtime),
+      false,
+    );
+    await mkdir(join(base, ".git"));
+    assert.equal(
+      privateStateOutsideCheckout(
+        join(base, "share", "private-state"),
+        runtime,
+      ),
+      false,
+    );
+  } finally {
+    await rm(base, { recursive: true, force: true });
+  }
+});

@@ -2,7 +2,7 @@
 import { parseArgs } from "node:util";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { State } from "./state.js";
+import { State, privateStateOutsideCheckout } from "./state.js";
 import { Auth } from "./auth.js";
 import { Cloud, type Config } from "./firestore.js";
 import { Operations } from "./operations.js";
@@ -46,7 +46,7 @@ async function main() {
   const config = JSON.parse(await readFile(values.config, "utf8")) as Config;
   const directory = resolve(values["private-state"]);
   requireThat(
-    !directory.startsWith(resolve(import.meta.dirname, "../../..") + "/"),
+    privateStateOutsideCheckout(directory, resolve(import.meta.dirname, "..")),
     "configuration",
     "Private state must be outside the integration checkout",
   );
