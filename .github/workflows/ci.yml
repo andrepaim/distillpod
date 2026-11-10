@@ -99,6 +99,8 @@ jobs:
     name: Android build validation
     runs-on: ubuntu-24.04
     timeout-minutes: 35
+    env:
+      GRADLE_OPTS: -Dorg.gradle.caching=true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -112,6 +114,8 @@ jobs:
         with:
           log-accepted-android-sdk-licenses: false
       - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+        with:
+          cache-read-only: ${{ github.event_name != 'push' || github.ref != 'refs/heads/main' || inputs.build_release == true }}
       - name: Install pinned native tools
         run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0' 'ndk;27.2.12479018' 'cmake;3.22.1'
       - name: Validate release tooling
@@ -140,7 +144,7 @@ jobs:
           trap 'rm -f "$config_file"' EXIT
           umask 077
           printf '%s' "$FIREBASE_CONFIG_JSON" > "$config_file"
-          ./gradlew --no-daemon :app:lintRelease :app:assembleRelease -PdistillpodVoiceEnabled=true "-PdistillpodFirebaseConfig=$config_file"
+          ./gradlew --no-daemon --no-build-cache :app:lintRelease :app:assembleRelease -PdistillpodVoiceEnabled=true "-PdistillpodFirebaseConfig=$config_file"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
@@ -187,6 +191,8 @@ jobs:
     name: Isolated Android acceptance
     runs-on: ubuntu-24.04
     timeout-minutes: 35
+    env:
+      GRADLE_OPTS: -Dorg.gradle.caching=true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -211,6 +217,8 @@ jobs:
         with:
           log-accepted-android-sdk-licenses: false
       - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+        with:
+          cache-read-only: ${{ github.event_name != 'push' || github.ref != 'refs/heads/main' || inputs.build_release == true }}
       - name: Install cloud emulator tools
         run: npm ci --prefix firebase --ignore-scripts --no-audit --no-fund
       - name: Prepare verified public inference fixtures
