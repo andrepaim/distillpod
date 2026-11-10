@@ -9,6 +9,7 @@ interface VoiceLease {
     val episode: String
     val position: Long
     suspend fun finish(resume: Boolean)
+    suspend fun finish(resume: Boolean, allowRewind: Boolean) = finish(resume)
 }
 interface VoiceInput : AutoCloseable {
     fun start()
@@ -38,6 +39,7 @@ class VoiceCoordinator(
     private val output: () -> VoiceOutput,
     private val diagnosticEvent: (String,String) -> Unit = {_,_->},
     private val diagnosticFailure: (Throwable) -> Unit = {},
+    private val preflight: suspend () -> Unit = {},
 ) {
     private val mutable = MutableStateFlow(VoiceState())
     val state = mutable.asStateFlow()
@@ -53,10 +55,13 @@ class VoiceCoordinator(
         job = scope.launch(start = CoroutineStart.LAZY) {
             var lease: VoiceLease? = null
             var outcome="failed"
+            var allowRewind = true
             var textReported=false
             var audioReported=false
             try {
                 withTimeout(90_000) {
+                    if (!diagnostic) preflight()
+                    ensureActive()
                     lease = pause { cancel(false) }
                     val source = if (diagnostic) "" else context(lease!!)
                     prepareAudio().use {
@@ -97,6 +102,10 @@ class VoiceCoordinator(
             } catch (cancelled: CancellationException) {
                 if (cancelled is TimeoutCancellationException) {diagnosticEvent("voice.failed","timeout");mutable.value = mutable.value.copy(error = "Voice request timed out")}
                 else {outcome="cancelled";throw cancelled}
+            } catch (unavailable: VoiceContextUnavailable) {
+                allowRewind = false
+                diagnosticEvent("voice.failed", unavailable.readiness.reason)
+                mutable.value = mutable.value.copy(error = unavailable.readiness.feedback)
             } catch (error: Exception) {
                 diagnosticFailure(error)
                 if (error is HeadsetDisconnected) resume = false
@@ -109,7 +118,7 @@ class VoiceCoordinator(
             } finally {
                 connection = null
                 mutable.value = mutable.value.copy(phase = "Finishing", level = 0f)
-                try { withContext(NonCancellable) { lease?.finish(resume) }
+                try { withContext(NonCancellable) { lease?.finish(resume, allowRewind) }
                     if(lease!=null)diagnosticEvent("voice.resumed",if(resume)"resume_requested" else "resume_cancelled")
                 } catch(error:Exception) {outcome="failed";diagnosticEvent("voice.resume_failed","resume_failed");diagnosticFailure(error);throw error}
                 finally { diagnosticEvent("voice.finished",outcome); mutable.value = mutable.value.copy(phase = "Idle", origin = null); job = null }
