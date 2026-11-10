@@ -44,6 +44,22 @@ compilation/lint, disposable emulator acceptance and full hosted checks establis
 fixture behavior; actual production/OEM permission validation is not claimed.
 No settings, protection, credentials, release or backend changes.
 
+## Validation-driven scope update
+
+The first voice gate passed 99 core and 576 app tests, lint and both APKs. The
+owned API35 emulator passed all three permission phases. The default JVM gate
+then failed waiting for `DownloadNetworkPolicyTest`'s application-graph shutdown
+before its policy assertions (one of 576 app cases failed). Preserve that red
+log/XML; no specific stuck child was captured, so its exact cause is unproven.
+
+That fixture starts uncontrolled application recovery only to cancel it before
+setup. Use the existing pre-cancelled-scope construction pattern from
+`AutomaticTranscriptionTest` and `TranscriptParentLifetimeTest`, so those unwanted
+startup jobs never begin. Retain every policy assertion and timeout. This is a
+second test-fixture correction required by validation, with no product change.
+Revalidate both complete local configurations and hosted checks on the combined
+final head. Earlier results remain scoped to their original revision.
+
 References: [UiDevice API](https://developer.android.com/reference/androidx/test/uiautomator/UiDevice),
 [platform input contract](https://developer.android.com/reference/android/app/UiAutomation#injectInputEvent(android.view.InputEvent,boolean)).
 The exact 2.3.0 source was read from Google's Maven sources artifact, rather than
