@@ -68,6 +68,18 @@ assertion. This introduces no production test hook. The complete network-policy
 test class passed after that wiring correction; full final-head gates remain
 required. The earlier failed intermediate suite is preserved separately.
 
+The next complete voice suite passed all policy cases but failed
+`ContextSummaryOverloadTest` at its first five-second diagnostics executor barrier.
+Robolectric reported queued main work; no executor stack was captured at failure.
+A new controlled callback test reproduced how the blocking fixture wait prevents
+main-looper progress. Await the same barrier off-main while advancing queued main
+work, with a five-second outer bound and interruptible cancellation. Both that
+regression and the real diagnostics flood test passed in the focused class run.
+Keep the original event counts, budget/privacy/journal assertions, production
+diagnostics implementation and barrier timeout. This establishes fixture progress
+behavior without claiming a proven cause for the earlier historical timeout.
+Full combined default/voice and hosted validation are still required.
+
 References: [UiDevice API](https://developer.android.com/reference/androidx/test/uiautomator/UiDevice),
 [platform input contract](https://developer.android.com/reference/android/app/UiAutomation#injectInputEvent(android.view.InputEvent,boolean)).
 The exact 2.3.0 source was read from Google's Maven sources artifact, rather than
