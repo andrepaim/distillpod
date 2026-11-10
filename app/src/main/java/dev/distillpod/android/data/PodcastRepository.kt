@@ -206,6 +206,7 @@ class PodcastRepository(private val db: AppDatabase, private val http: OkHttpCli
                 imageUrl = item.imageUrl, sourceOrder = item.sourceOrder ?: base.sourceOrder, publishedAt = item.publishedAt?.let { runCatching { Instant.parse(it).toEpochMilli() }.getOrDefault(0) } ?: base.publishedAt,
                 durationMs = item.durationMs ?: base.durationMs, mimeType = item.mimeType, transcriptUrl = item.transcriptUrl, transcriptType = item.transcriptType,
                 localFile = if (changed) null else base.localFile, downloadState = if (changed) "none" else base.downloadState,
+                localDownloadedAt = if (changed) 0 else base.localDownloadedAt,
                 downloadedBytes = if (changed) 0 else base.downloadedBytes, totalBytes = if (changed) 0 else base.totalBytes,
                 etag = if (changed) null else base.etag, lastModified = if (changed) null else base.lastModified,
                 error = if (changed) null else base.error,

@@ -12,6 +12,7 @@ import kotlinx.coroutines.withContext
 private const val BACKUP_LIMIT = 32 * 1024 * 1024
 private val backupTables = listOf("podcasts", "episodes", "transcripts", "online_transcripts", "segments", "transcript_coverage", "distillations",
     "analyses", "analysis_parts", "messages", "research", "suggestions", "queue", "player_session", "post_drafts", "moment_attempts", "moment_versions")
+private val localAgeColumns = mapOf("episodes" to "localDownloadedAt", "transcripts" to "localCreatedAt")
 data class BackupPreview internal constructor(internal val payload: String, val counts: Map<String, Int>, val conflicts: Int,
     val createdAt: Long = 0, val appVersion: String = "Unknown (older backup)", val preferences: PortablePreferences? = null, internal val assets: Map<String, ByteArray> = emptyMap()) {
     val episodes get() = counts["episodes"] ?: 0
@@ -19,10 +20,14 @@ data class BackupPreview internal constructor(internal val payload: String, val 
 }
 
 /** A bounded, versioned data transfer. Only allowlisted library tables enter this format. */
-class LibraryBackup(private val db: AppDatabase, private val assets: dev.distillpod.android.sharing.PostAssets? = null) {
+class LibraryBackup(private val db: AppDatabase, private val assets: dev.distillpod.android.sharing.PostAssets? = null,
+    private val now: () -> Long = System::currentTimeMillis) {
     private data class Column(val name: String, val type: String, val required: Boolean, val primary: Boolean)
     private fun columns(table: String): List<Column> = db.openHelper.readableDatabase.query("PRAGMA table_info(`$table`)").use { cursor ->
-        buildList { while (cursor.moveToNext()) add(Column(cursor.getString(1), cursor.getString(2), cursor.getInt(3) != 0, cursor.getInt(5) != 0)) }
+        buildList { while (cursor.moveToNext()) {
+            val name = cursor.getString(1)
+            if (name != localAgeColumns[table]) add(Column(name, cursor.getString(2), cursor.getInt(3) != 0, cursor.getInt(5) != 0))
+        } }
     }
     private fun sha(text: String) = MessageDigest.getInstance("SHA-256").digest(text.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
 
@@ -35,7 +40,7 @@ class LibraryBackup(private val db: AppDatabase, private val assets: dev.distill
                 while (cursor.moveToNext()) {
                     require(++count <= 100000) { "This library exceeds the backup record limit" }
                     val row = JSONObject()
-                    cursor.columnNames.forEachIndexed { i, name -> row.put(name, when (cursor.getType(i)) {
+                    cursor.columnNames.forEachIndexed { i, name -> if (name != localAgeColumns[table]) row.put(name, when (cursor.getType(i)) {
                         Cursor.FIELD_TYPE_NULL -> JSONObject.NULL
                         Cursor.FIELD_TYPE_INTEGER -> cursor.getLong(i)
                         Cursor.FIELD_TYPE_FLOAT -> cursor.getDouble(i)
@@ -129,6 +134,7 @@ class LibraryBackup(private val db: AppDatabase, private val assets: dev.distill
         // blobs, but can never commit a post pointing to an absent image or remove a concurrent image.
         mapExistingIdentities(tables)
         var inserted = 0
+        val importedAt = now().coerceAtLeast(0)
         var queueOrder = db.library().queue().maxOfOrNull { it.sortOrder } ?: -1
         for (table in backupTables) {
             val cols = columns(table)
@@ -149,6 +155,9 @@ class LibraryBackup(private val db: AppDatabase, private val assets: dev.distill
                     if (table == "queue") row.put("sortOrder", ++queueOrder)
                     val values = cols.map { column -> if (row.isNull(column.name)) null else row.get(column.name) }.toTypedArray()
                     db.openHelper.writableDatabase.execSQL("INSERT INTO `$table` (${cols.joinToString { "`${it.name}`" }}) VALUES (${cols.joinToString { "?" }})", values)
+                    // Only the newly inserted local revision receives an age; conflicts remain untouched.
+                    if (table == "transcripts") db.openHelper.writableDatabase.execSQL(
+                        "UPDATE transcripts SET localCreatedAt=? WHERE episodeId=?", arrayOf(importedAt, row.getString("episodeId")))
                     inserted++
                 }
             }

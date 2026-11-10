@@ -30,6 +30,25 @@ class LibraryBackupTest {
         dao.putPlayerSession(PlayerSessionEntity(episodeId = "episode", speed = 1.5f))
         dao.putModel(ModelEntity("tiny", "ready", 77691713))
     }
+    @Test fun `local age metadata stays off the portable wire and imports use the receiving clock`() = runBlocking {
+        val source = database(); val target = database()
+        try {
+            seed(source)
+            source.library().putEpisode(source.library().episode("episode")!!.copy(localDownloadedAt = 1000))
+            val bytes = LibraryBackup(source).export()
+            val tables = JSONObject(JSONObject(bytes.toString(Charsets.UTF_8)).getString("payload"))
+            assertFalse(tables.getJSONArray("episodes").getJSONObject(0).has("localDownloadedAt"))
+            assertFalse(tables.getJSONArray("transcripts").getJSONObject(0).has("localCreatedAt"))
+            val backup = LibraryBackup(target, now = { 4000 })
+            val preview = backup.preview(bytes.inputStream())
+            backup.merge(preview)
+            val imported = target.library().transcript("episode")!!
+            assertEquals(4000L, imported.localCreatedAt)
+            assertEquals(0L, target.library().episode("episode")!!.localDownloadedAt)
+            backup.merge(backup.preview(bytes.inputStream()))
+            assertEquals(imported, target.library().transcript("episode"))
+        } finally { source.close(); target.close() }
+    }
     @Test fun `backup export and import strip installation local correlation provenance`()=runBlocking {
         val source=database();val target=database()
         try {

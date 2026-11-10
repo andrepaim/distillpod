@@ -20,7 +20,7 @@ import java.util.UUID
 class OnlineTranscriptMigrationTest {
     @Test fun `all published schemas upgrade with data and safe lookup defaults`() = runBlocking {
         val context = ApplicationProvider.getApplicationContext<Context>()
-        for (version in 1..9) {
+        for (version in 1..11) {
             val name = "lookup-upgrade-${UUID.randomUUID()}.db"
             val file = context.getDatabasePath(name).apply { parentFile!!.mkdirs() }
             try {
@@ -51,16 +51,27 @@ class OnlineTranscriptMigrationTest {
                         old.insertOrThrow(table, null, content)
                     }
                     insert("podcasts", mapOf("id" to "p", "feedUrl" to "https://example.test/feed", "title" to "Show"))
-                    insert("episodes", mapOf("id" to "e", "podcastId" to "p", "guid" to "guid", "title" to "Episode", "audioUrl" to "https://example.test/audio", "positionMs" to 23000))
+                    insert("episodes", mapOf("id" to "e", "podcastId" to "p", "guid" to "guid", "title" to "Episode", "audioUrl" to "https://example.test/audio", "positionMs" to 23000, "localFile" to "/synthetic/legacy.audio", "downloadState" to "downloaded", "downloadedBytes" to 123, "completed" to 1, "lastPlayedAt" to 9000))
+                    insert("queue", mapOf("episodeId" to "e", "sortOrder" to 0))
+                    insert("player_session", mapOf("id" to 0, "episodeId" to "e", "speed" to 1))
                     insert("transcripts", mapOf("episodeId" to "e", "revision" to "r", "state" to "ready"))
                     insert("distillations", mapOf("id" to "d", "episodeId" to "e", "excerpt" to "Saved quote", "state" to "succeeded"))
                     old.version = version
                 }
                 val db = Room.databaseBuilder(context, AppDatabase::class.java, name).addMigrations(AppDatabase.MIGRATION_1_2,
                     AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4, AppDatabase.MIGRATION_4_5,
-                    AppDatabase.MIGRATION_5_6, AppDatabase.MIGRATION_6_7, AppDatabase.MIGRATION_7_8, AppDatabase.MIGRATION_8_9, AppDatabase.MIGRATION_9_10, AppDatabase.MIGRATION_10_11).build()
+                    AppDatabase.MIGRATION_5_6, AppDatabase.MIGRATION_6_7, AppDatabase.MIGRATION_7_8, AppDatabase.MIGRATION_8_9, AppDatabase.MIGRATION_9_10, AppDatabase.MIGRATION_10_11, AppDatabase.MIGRATION_11_12).build()
                 try {
                     assertEquals(23000L, db.library().episode("e")!!.positionMs)
+                    assertEquals("/synthetic/legacy.audio", db.library().episode("e")!!.localFile)
+                    assertEquals("downloaded", db.library().episode("e")!!.downloadState)
+                    assertEquals(123L, db.library().episode("e")!!.downloadedBytes)
+                    assertTrue(db.library().episode("e")!!.completed)
+                    assertEquals(9000L, db.library().episode("e")!!.lastPlayedAt)
+                    assertEquals(listOf(QueueEntryEntity("e", 0)), db.library().queue())
+                    assertEquals("e", db.library().playerSession()!!.episodeId)
+                    assertEquals(0L, db.library().episode("e")!!.localDownloadedAt)
+                    assertEquals(0L, db.library().transcript("e")!!.localCreatedAt)
                     assertEquals("Saved quote", db.library().distillation("d")!!.excerpt)
                     assertEquals("", db.library().distillation("d")!!.sourceJson)
                     assertTrue(db.library().momentVersions("d").isEmpty())
