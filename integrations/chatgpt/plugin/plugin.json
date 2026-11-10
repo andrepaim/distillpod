@@ -1,0 +1,6 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "distillpod",
+  "version": "0.1.0",
+  "description": "Use the local DistillPod CLI to read a synced library, subscribe to public RSS shows and manage the shared queue."
+}

@@ -1,0 +1,36 @@
+name: ChatGPT plugin
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: chatgpt-plugin-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  client:
+    name: CLI and Firestore interoperability
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            integrations/chatgpt/package-lock.json
+            firebase/package-lock.json
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad
+        with:
+          distribution: temurin
+          java-version: '21'
+      - run: npm ci --prefix integrations/chatgpt --ignore-scripts --no-audit --no-fund
+      - run: npm test --prefix integrations/chatgpt
+      - run: npm ci --prefix firebase --ignore-scripts --no-audit --no-fund
+      - run: firebase/node_modules/.bin/firebase --config firebase/firebase.json emulators:exec --only auth,firestore --project demo-distillpod-sync 'npm run test:emulator --prefix integrations/chatgpt'

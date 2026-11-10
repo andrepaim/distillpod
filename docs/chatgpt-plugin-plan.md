@@ -1,13 +1,14 @@
 # DistillPod plugin for ChatGPT Work, Codex and dots
 
-Status: proposed implementation plan, not an implemented integration.
+Status: implementation in progress on PR #93; CLI/plugin code is present.
+Live authentication, host installation and Android acceptance remain unverified.
 Prepared November 10, 2026 against `origin/main` at
 `6a7f8b3328841d737bd54757aeb923d8dc426676`.
 
-The current request authorizes writing this plan. It does not start implementation,
-change cloud configuration, install a plugin, access the owner's live library,
-publish a package or release an APK. Follow [AGENTS.md](../AGENTS.md) when the
-implementation is authorized. Recheck the baseline before each increment.
+The owner subsequently authorized implementation on the same PR. This permits
+implementation and isolated validation, while cloud configuration, live-account
+actions and publication retain the authorization boundaries below. Follow
+[AGENTS.md](../AGENTS.md) and recheck the baseline before each increment.
 
 ## 1. Outcome and scope
 
@@ -94,7 +95,7 @@ flowchart LR
     CLI --> Private[Local credential store / operation journal]
 ```
 
-Proposed repository layout; these paths do not exist yet:
+Implemented repository layout (compiled output is ignored):
 
 ```text
 integrations/chatgpt/
@@ -373,7 +374,7 @@ or a successful direct CLI command alone does not validate all three surfaces.
 
 Each increment gets its own plan refinement, branch/worktree, review and relevant
 checks. Do not create all implementation branches in advance. Add implementation
-issues only when separately requested; this document is the current work product.
+issues only when separately requested; implementation continues on PR #93.
 
 | Increment | Deliverable and exit criteria | Dependencies |
 | --- | --- | --- |
@@ -500,3 +501,32 @@ decide whether to invest in broader content access or cloud-only dot execution.
 These gates are not permission requests to perform the current documentation task.
 No secrets, personal-library exports or live installation identifiers belong in this
 document or its eventual public issues/PRs.
+
+## Implementation checkpoint — November 10, 2026
+
+The TypeScript client and skills-only package now exist under
+[integrations/chatgpt](../integrations/chatgpt/README.md). A separate workflow
+executes unit and Auth/Firestore emulator tests without changing Android CI.
+The client uses ordinary Firebase user tokens and existing rules, supports bounded
+reads, public RSS discovery, prepared subscription/queue operations, receipt-based
+retry and explicit conflicts. The plugin skill passed its frontmatter validator.
+
+Current evidence: Node 22/TypeScript compilation, local unit/contract tests, real
+Auth/Firestore emulator REST transactions, access-denial tests and a CLI subprocess
+queue round trip. This is not Android cross-client or physical-device evidence.
+A transient emulator failure with transaction IDs in GET query parameters led to
+using the documented batchGet request-body transaction form; the affected tests
+then passed. Raw emulator logs stay local and are ignored.
+
+Remaining completion gates: desktop OAuth client/provider/key compatibility and
+real refresh/logout, actual Work/Codex/dot plugin installation, broader Kotlin/CLI
+identity/signature fixtures, CLI-to-Android bidirectional acceptance and physical
+background/playback/conflict tests. No production OAuth configuration has been
+identified or changed. PR #93 must remain unmerged until required evidence exists.
+
+Deliberate initial limitations to reconcile before full acceptance: explicit POSIX
+private-file credential storage instead of an OS vault, a 5,000-record maximum
+read budget without continuation cursors, journals retained until logout rather
+than automatic seven-day cleanup, and POSIX-only host support. Failure exit codes
+currently share a nonzero status while JSON codes distinguish causes. These are
+visible limitations, not claims that every planned milestone has passed.
