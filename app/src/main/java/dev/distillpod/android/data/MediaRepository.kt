@@ -56,7 +56,18 @@ class MediaRepository(context: Context, private val db: AppDatabase, private val
 
     suspend fun ensureDownloaded(id: String, notify: (DownloadProgress) -> Unit = {}): File = episodeTransfers.withLock { downloadEpisode(id, notify) }
 
-    internal suspend fun <T> withDownloadedAudio(id: String, read: suspend (File) -> T): T = read(ensureDownloaded(id))
+    internal suspend fun <T> withDownloadedAudio(id: String, read: suspend (File) -> T): T {
+        // Select and mark the same copy before deletion can take the transfer lock.
+        val file = episodeTransfers.withLock {
+            downloadEpisode(id) {}.also(active::acquire)
+        }
+        try {
+            currentCoroutineContext().ensureActive()
+            return read(file)
+        } finally {
+            active.release(file)
+        }
+    }
 
     private suspend fun downloadEpisode(id: String, notify: (DownloadProgress) -> Unit): File = locks.getOrPut("episode:$id") { Mutex() }.withLock {
         val ep = dao.episode(id) ?: error("Episode is no longer available")

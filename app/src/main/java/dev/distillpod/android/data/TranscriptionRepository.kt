@@ -317,78 +317,84 @@ class TranscriptionRepository internal constructor(private val graph: AppGraph,
                 return TranscriptOutcome.COMPLETED
             }
             report(TranscriptStage.DOWNLOADING)
-            val source = graph.media.ensureDownloaded(id)
-            val ep = dao.episode(id) ?: return TranscriptOutcome.COMPLETED
-            if (row.fingerprint != ep.mediaFingerprint) { row = row.copy(fingerprint = ep.mediaFingerprint); dao.putTranscriptAt(row, TranscriptWriteSite.AUDIO_FINGERPRINT) }
-            graph.activeFiles.acquire(source); graph.activeFiles.acquire(modelPath)
-            val wave = File.createTempFile("transcription-", ".wav", graph.context.cacheDir)
-            try {
-                report(TranscriptStage.CHECKING_MODEL)
-                val model = graph.media.verifiedModel(row.model)
-                val start = nextStart(row) ?: run {
-                    graph.db.withTransaction {
-                        dao.putTranscriptAt(row.copy(state = "ready"), TranscriptWriteSite.CHUNK_COMPLETE)
-                        dao.deselectOnline(id)
-                    }
-                    graph.captures.transcriptUpdated(id); return TranscriptOutcome.COMPLETED
-                }
-                val decodeStart = (start - 2000).coerceAtLeast(0)
-                report(TranscriptStage.DECODING, start = start, end = start + CHUNK_MS)
-                val decoded = withContext(Dispatchers.IO) { AudioClipDecoder().decodeChunk(source, wave, decodeStart, CHUNK_MS + start - decodeStart, execution.stopped) }
-                val duration = decoded.sourceDurationMs
-                require(duration > 0) { "This source has no reliable duration. Use a timed publisher transcript or another audio source." }
-                dao.duration(id, duration)
-                val end = minOf(start + CHUNK_MS, duration)
-                val samples = withContext(Dispatchers.IO) { readWhisperWave(wave.readBytes()) }
-                val saved = dao.coverage(id, revision)
-                val savedMs = saved.sumOf { it.endMs - it.startMs }
-                val savedInChunk = saved.filter { it.startMs == start }.sumOf { it.endMs - it.startMs }
-                report(TranscriptStage.STARTING, workedMs = savedMs, durationMs = duration, start = start, end = end)
-                val text = nativeTranscribe(model, samples, row.language, graph.activeFiles) { percent ->
-                    report(TranscriptStage.TRANSCRIBING, transcribingAudioMs(savedMs, savedInChunk, start, end,
-                        decoded.startMs, decoded.endMs, percent).coerceAtMost(duration))
-                }
-                report(TranscriptStage.SAVING)
-                val raw = JSONArray(text)
-                val previous = dao.window(id, row.revision, (start - 6000).coerceAtLeast(0), start).joinToString(" ") { it.text }
-                var first = true
-                val segments = (0 until raw.length()).mapNotNull { index ->
-                    val segment = raw.getJSONObject(index)
-                    val a = decoded.startMs + segment.getLong("startMs")
-                    val b = decoded.startMs + segment.getLong("endMs")
-                    if (b <= start || a >= end) return@mapNotNull null
-                    var body = segment.getString("text").trim()
-                    if (first && a < start) body = trimRepeatedOverlap(previous, body)
-                    first = false
-                    if (body.isBlank()) null else SegmentEntity(id, row.revision, a.coerceAtLeast(start), b.coerceAtMost(end).coerceAtLeast(a.coerceAtLeast(start)), body, index)
-                }
-                graph.db.withTransaction {
-                    currentCoroutineContext().ensureActive()
-                    val current = dao.transcript(id) ?: return@withTransaction
-                    if (current.revision != revision || current.state in listOf("paused", "stale") || dao.episode(id)?.mediaFingerprint != ep.mediaFingerprint) return@withTransaction
-                    dao.putSegments(segments)
-                    // Actual EOS can leave a small codec-padding tail in container duration.
-                    // It has been decoded and contains no further speech; do not rerun that tail.
-                    val coverageEnd = if (decoded.sourceEnded && duration - decoded.endMs in 0..1000) end else minOf(end, decoded.endMs + 1)
-                    require(coverageEnd > start) { "The audio ended before this window could be decoded. Completed chunks are saved." }
-                    dao.putCoverage(CoverageEntity(id, revision, start, coverageEnd))
-                    val processed = dao.coverage(id, revision).sumOf { it.endMs - it.startMs }
-                    dao.putTranscriptAt(current.copy(fingerprint = ep.mediaFingerprint, durationMs = duration, processedMs = processed, state = "queued", error = null), TranscriptWriteSite.CHUNK_PROGRESS)
-                }
-                graph.captures.transcriptUpdated(id)
-                val current = dao.transcript(id) ?: return TranscriptOutcome.COMPLETED
-                if (current.revision == revision && current.state !in listOf("paused", "stale")) {
-                    val next = nextStart(current)
-                    require(next != start) { "This audio window could not be decoded completely. Completed chunks are saved." }
-                    if (next == null) {
+            return graph.media.withDownloadedAudio(id) audio@{ source ->
+                val ep = dao.episode(id) ?: return@audio TranscriptOutcome.COMPLETED
+                if (row.fingerprint != ep.mediaFingerprint) { row = row.copy(fingerprint = ep.mediaFingerprint); dao.putTranscriptAt(row, TranscriptWriteSite.AUDIO_FINGERPRINT) }
+                graph.activeFiles.acquire(modelPath)
+                var temporaryWave: File? = null
+                try {
+                    val wave = File.createTempFile("transcription-", ".wav", graph.context.cacheDir)
+                        .also { temporaryWave = it }
+                    report(TranscriptStage.CHECKING_MODEL)
+                    val model = graph.media.verifiedModel(row.model)
+                    val start = nextStart(row) ?: run {
                         graph.db.withTransaction {
-                            dao.putTranscriptAt(current.copy(state = "ready", processedMs = duration), TranscriptWriteSite.TRANSCRIPT_COMPLETE)
+                            dao.putTranscriptAt(row.copy(state = "ready"), TranscriptWriteSite.CHUNK_COMPLETE)
                             dao.deselectOnline(id)
                         }
+                        graph.captures.transcriptUpdated(id); return@audio TranscriptOutcome.COMPLETED
                     }
-                    if(next!=null && execution.reschedule) enqueue(current, next)
+                    val decodeStart = (start - 2000).coerceAtLeast(0)
+                    report(TranscriptStage.DECODING, start = start, end = start + CHUNK_MS)
+                    val decoded = withContext(Dispatchers.IO) { AudioClipDecoder().decodeChunk(source, wave, decodeStart, CHUNK_MS + start - decodeStart, execution.stopped) }
+                    val duration = decoded.sourceDurationMs
+                    require(duration > 0) { "This source has no reliable duration. Use a timed publisher transcript or another audio source." }
+                    dao.duration(id, duration)
+                    val end = minOf(start + CHUNK_MS, duration)
+                    val samples = withContext(Dispatchers.IO) { readWhisperWave(wave.readBytes()) }
+                    val saved = dao.coverage(id, revision)
+                    val savedMs = saved.sumOf { it.endMs - it.startMs }
+                    val savedInChunk = saved.filter { it.startMs == start }.sumOf { it.endMs - it.startMs }
+                    report(TranscriptStage.STARTING, workedMs = savedMs, durationMs = duration, start = start, end = end)
+                    val text = nativeTranscribe(model, samples, row.language, graph.activeFiles) { percent ->
+                        report(TranscriptStage.TRANSCRIBING, transcribingAudioMs(savedMs, savedInChunk, start, end,
+                            decoded.startMs, decoded.endMs, percent).coerceAtMost(duration))
+                    }
+                    report(TranscriptStage.SAVING)
+                    val raw = JSONArray(text)
+                    val previous = dao.window(id, row.revision, (start - 6000).coerceAtLeast(0), start).joinToString(" ") { it.text }
+                    var first = true
+                    val segments = (0 until raw.length()).mapNotNull { index ->
+                        val segment = raw.getJSONObject(index)
+                        val a = decoded.startMs + segment.getLong("startMs")
+                        val b = decoded.startMs + segment.getLong("endMs")
+                        if (b <= start || a >= end) return@mapNotNull null
+                        var body = segment.getString("text").trim()
+                        if (first && a < start) body = trimRepeatedOverlap(previous, body)
+                        first = false
+                        if (body.isBlank()) null else SegmentEntity(id, row.revision, a.coerceAtLeast(start), b.coerceAtMost(end).coerceAtLeast(a.coerceAtLeast(start)), body, index)
+                    }
+                    graph.db.withTransaction {
+                        currentCoroutineContext().ensureActive()
+                        val current = dao.transcript(id) ?: return@withTransaction
+                        if (current.revision != revision || current.state in listOf("paused", "stale") || dao.episode(id)?.mediaFingerprint != ep.mediaFingerprint) return@withTransaction
+                        dao.putSegments(segments)
+                        // Actual EOS can leave a small codec-padding tail in container duration.
+                        // It has been decoded and contains no further speech; do not rerun that tail.
+                        val coverageEnd = if (decoded.sourceEnded && duration - decoded.endMs in 0..1000) end else minOf(end, decoded.endMs + 1)
+                        require(coverageEnd > start) { "The audio ended before this window could be decoded. Completed chunks are saved." }
+                        dao.putCoverage(CoverageEntity(id, revision, start, coverageEnd))
+                        val processed = dao.coverage(id, revision).sumOf { it.endMs - it.startMs }
+                        dao.putTranscriptAt(current.copy(fingerprint = ep.mediaFingerprint, durationMs = duration, processedMs = processed, state = "queued", error = null), TranscriptWriteSite.CHUNK_PROGRESS)
+                    }
+                    graph.captures.transcriptUpdated(id)
+                    val current = dao.transcript(id) ?: return@audio TranscriptOutcome.COMPLETED
+                    if (current.revision == revision && current.state !in listOf("paused", "stale")) {
+                        val next = nextStart(current)
+                        require(next != start) { "This audio window could not be decoded completely. Completed chunks are saved." }
+                        if (next == null) {
+                            graph.db.withTransaction {
+                                dao.putTranscriptAt(current.copy(state = "ready", processedMs = duration), TranscriptWriteSite.TRANSCRIPT_COMPLETE)
+                                dao.deselectOnline(id)
+                            }
+                        }
+                        if(next!=null && execution.reschedule) enqueue(current, next)
+                    }
+                } finally {
+                    try { temporaryWave?.delete() } finally { graph.activeFiles.release(modelPath) }
                 }
-            } finally { wave.delete(); graph.activeFiles.release(source); graph.activeFiles.release(modelPath) }
+                TranscriptOutcome.COMPLETED
+            }
         } catch (error: Exception) {
             withContext(NonCancellable) {
                 controls.withLock {
