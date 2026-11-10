@@ -1,8 +1,8 @@
 # Bulk cleanup and opt-in retention (#60)
 
-Status: the owner confirmed transcript deletion semantics on 2026-11-09: delete local copies, preserve cloud copies and saved insights, and suppress automatic recreation until explicit Prepare or Restore. Main `d303258` and #58 are integrated as `a6493bc`. Bulk deletion and scheduling remain unimplemented. The first app increment records local age provenance without enabling cleanup.
+Status: the owner confirmed transcript deletion semantics on 2026-11-09: delete local copies, preserve cloud copies and saved insights, and suppress automatic recreation until explicit Prepare or Restore. The local age-provenance increment is merged in PR #101 as `ce94bce`. It records local origins and adds schema 12 without enabling cleanup. Bulk deletion, suppression, policy UI and scheduling remain unimplemented; #60 stays open. #58 is integrated.
 Issue: https://github.com/andrepaim/distillpod/issues/60
-Current base inspected: `d303258`. No production/device content is used or deleted in validation.
+Age increment base inspected: `d303258`; repaired combined main verified: `70a3dab`. No production/device content is used or deleted in validation.
 
 ## Scope and acceptance
 
@@ -54,7 +54,7 @@ Use TDD for logic, default and voice unit tests/lint/APKs, applicable emulator a
 - `data/ShowAutomation.kt`: incomplete jobs can enqueue new downloads/transcripts when content disappears. Defer cleanup of ongoing jobs and resolve interaction with user automation settings before implementation, rather than silently changing those settings.
 - `data/MediaRepository.kt`: #58 preserves existing serialized deletion and typed guards. ActiveFiles playback/queue/acquire transitions are not an atomic exclusion lease with deletion. A periodic background sweep must resolve this TOCTOU risk before it is safe to ship.
 
-Confirmed transcript contract: deletion is local, cloud copies and saved insights remain, and passive import/automatic preparation must not recreate the deleted transcript until explicit user Prepare or Restore. The owner answered “Yes, use those semantics”; this decision no longer needs clarification. A dedicated per-episode local cleanup record remains the proposed implementation, with explicit intent separated from passive restore/conflict resolution. Audio-marker interactions remain part of the existing design review, rather than an implied extension of this transcript decision. No marker, schema, automatic-sweep or transcript-deletion code has been written.
+Confirmed transcript contract: deletion is local, cloud copies and saved insights remain, and passive import/automatic preparation must not recreate the deleted transcript until explicit user Prepare or Restore. The owner answered “Yes, use those semantics”; this decision no longer needs clarification. A dedicated per-episode local cleanup record remains the proposed implementation, with explicit intent separated from passive restore/conflict resolution. Audio-marker interactions remain part of the existing design review, rather than an implied extension of this transcript decision. Local suppression, automatic sweeps and transcript deletion remain unimplemented. The separate age-only schema 12 increment records origins; it does not implement cleanup.
 
 ## Preparation and import intent review
 
@@ -96,19 +96,19 @@ design review: checking `busy` and then deleting does not exclude a concurrent
 playback/queue/processing acquisition. A last-moment boolean check alone does
 not resolve that race. Define and test one exclusion contract for deletion and
 all affected acquisitions, without blocking the media main thread on file I/O.
-This and #58 integration remain prerequisites to deletion implementation; this
-planning update does not enable cleanup or add a scheduler/schema migration.
+#58 is integrated. Ownership exclusion remains a prerequisite to deletion
+implementation; age provenance does not establish that exclusion.
 
 ## Isolated policy increment evidence
 
-The pure `core/RetentionPolicy.kt` increment has no callers and performs no deletion, persistence, scheduling or setting changes. It requires explicit timestamps and current time as inputs. Defaults are disabled. Eight regression tests cover off/independent settings, never-played audio, earliest audio deadline, exact expiry boundaries, missing/invalid/future origins, overflow, policy changes and redownload age. Protection/retry/migration/UI tests remain unimplemented because those integration stages are held.
+The pure `core/RetentionPolicy.kt` increment has no callers and performs no deletion, persistence, scheduling or setting changes. It requires explicit timestamps and current time as inputs. Defaults are disabled. Eight regression tests cover off/independent settings, never-played audio, earliest audio deadline, exact expiry boundaries, missing/invalid/future origins, overflow, policy changes and redownload age. At that initial checkpoint, protection/retry/migration/UI integration tests were not yet implemented. Age-specific upgrade evidence is now recorded below; cleanup integration remains pending.
 
-TDD red: `/tmp/distillpod-issue60-red.log`, compileTestKotlin fails only because RetentionPolicy does not yet exist. Green: full core suite passed, including all 8 new retention tests; `/tmp/distillpod-issue60-green.log`. Repository data-guard regression tests (4), secret-rule regression check and git diff --check also passed. No Android APK, emulator, physical-device or CI check has run for #60. This pure increment does not exercise those paths; all remain required before integrated feature completion.
+TDD red: `/tmp/distillpod-issue60-red.log`, compileTestKotlin fails only because RetentionPolicy does not yet exist. Green: full core suite passed, including all 8 new retention tests; `/tmp/distillpod-issue60-green.log`. Repository data-guard regression tests (4), secret-rule regression check and git diff --check also passed. At that initial pure-policy checkpoint, no Android APK, emulator, physical-device or CI check had run for #60. That pure increment did not exercise those paths. Subsequent age-only evidence is recorded below; remaining cleanup behavior retains its own validation gates.
 
 ## First app increment: local age provenance (2026-11-10)
 
 This independently verifiable increment records when a local audio copy finishes
-and when a transcript revision is first created/imported. It adds nullable-free
+and when a transcript revision is first created/imported. It adds two non-null
 `localDownloadedAt` / `localCreatedAt` columns with zero meaning unknown, schema
 12 and an additive 11→12 migration. Old content retains unknown origins; neither
 publication dates, last-played values nor cloud timestamps become local ages.
@@ -173,3 +173,52 @@ Additional final-write boundary found: `LibraryBackup.merge` uses validated raw
 SQL rather than `LibraryDao.putTranscript`. The age increment handles its import
 clock explicitly. The later suppression increment must also guard this raw import
 transaction, including preview-to-merge races; DAO interception alone is insufficient.
+
+## Delivered age increment and evidence
+
+[PR #101](https://github.com/andrepaim/distillpod/pull/101) merged as
+`ce94bce69a408a9ff7f71118adae7f49edd936b6`, with the same tree as final tested head
+`da44fc6343500ad494e84d1da244972dcd4dcd06`. Schema 12 adds only
+`episodes.localDownloadedAt` and `transcripts.localCreatedAt`; all existing
+columns, tables and constraints are preserved. Portable backup columns/format
+remain unchanged. Unknown legacy ages stay zero; progress/retries retain age;
+new local copies/revisions and newly inserted imports use the receiving clock.
+No policy settings, deletion callers or scheduler are enabled.
+
+- Default and voice local gates at `cbf4420`: each 107 core and 584 app tests,
+  zero failures/errors/skips, lint and main/test APKs passed. Final `da44fc6`
+  changes only two opt-in test harnesses; all other tracked inputs are identical.
+  Both default/voice main and test APKs reproduced byte for byte on the final head.
+- Four startup and three pause probes passed on the owned API35 emulator on
+  `da44fc6`, retaining complete record/state/checkpoint assertions with fixed clocks.
+- Nineteen affected ordinary API35 cases passed, followed by twelve offline
+  age/schema fixtures on the emulator and twelve on the SM-S908E / Android 16
+  (API36). Final-head offline main/test APKs reproduced the S22-tested pair exactly.
+  No new phone execution is claimed after the harness-only change. Only those
+  isolated packages were removed; production package metadata was unchanged.
+- Final [PR CI](https://github.com/andrepaim/distillpod/actions/runs/42855461486)
+  passed all seven selected jobs. Hosted reports show 107 core and 584 app cases
+  with no failures/ignored cases; complete startup, ordinary, cloud, notification
+  and voice acceptance passed. The earlier run `42853491189` failed one startup
+  zero-age expectation and stopped before later acceptance; its remaining build
+  was superseded/cancelled. It is not counted as passed.
+- 111 Python cases, repository data guard and corrected secret rules passed;
+  their inputs are unchanged by the final harness-only update. Final full-history
+  Gitleaks scanned 363 commits with no findings.
+
+Initial merged-main `ce94bce` failed gallery acceptance in
+[42858095533](https://github.com/andrepaim/distillpod/actions/runs/42858095533).
+[Issue #102 / PR #103](https://github.com/andrepaim/distillpod/pull/103) repaired
+that separate test target/readiness path. Repaired combined main `70a3dab` passed
+all selected [Android checks](https://github.com/andrepaim/distillpod/actions/runs/42866830087)
+and independent [security](https://github.com/andrepaim/distillpod/actions/runs/42866829944),
+including ordinary109 and complete later acceptance. The called-security
+placeholder is intentionally skipped on direct main push; independent security
+passed. Age/runtime and S22 fixture sources are unchanged by that test-only repair;
+no new S22 execution is claimed for it.
+
+These device fixtures establish synthetic SQLite migration, local-clock and
+rollback behavior. They do not establish a production APK upgrade, future cleanup,
+background scheduling or OEM playback ownership behavior. Those later increments
+retain their own risk assessments and physical gates. #60 remains open until all
+requested cleanup acceptance criteria pass. This work did not create a release.
