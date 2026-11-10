@@ -1,7 +1,8 @@
 # DistillPod plugin for ChatGPT Work, Codex and dots
 
 Status: implementation in progress on PR #93; CLI/plugin code is present.
-Live authentication, host installation and Android acceptance remain unverified.
+Owner-authorized desktop login/read/refresh and local Codex plugin installation
+are verified; Work/dot execution and Android acceptance remain unverified.
 Prepared November 10, 2026 against `origin/main` at
 `6a7f8b3328841d737bd54757aeb923d8dc426676`.
 
@@ -304,8 +305,9 @@ Each existing-protocol entity commit must atomically:
 5. Increment the root sequence and entity version, write the entity, corresponding
    change record and receipt using the current wire format.
 
-Use user-authenticated REST transactions and current rules, with bounded retry of
-transaction contention only. Do not reinterpret a stale queue replacement as an
+Use user-authenticated optimistic atomic commits and current rules. Guard the
+root and existing entity with exact updateTime preconditions, and new entity,
+change and receipt documents with exists:false. Bound retries of contention. Do not reinterpret a stale queue replacement as an
 authorized overwrite. An unknown commit outcome first queries its receipt; it
 must not generate a new operation ID and blindly replay. Keep journal records for
 unknown/unfinished operations; expire completed journal entries after seven days
@@ -518,11 +520,12 @@ A transient emulator failure with transaction IDs in GET query parameters led to
 using the documented batchGet request-body transaction form; the affected tests
 then passed. Raw emulator logs stay local and are ignored.
 
-Remaining completion gates: desktop OAuth client/provider/key compatibility and
-real refresh/logout, actual Work/Codex/dot plugin installation, broader Kotlin/CLI
+Remaining completion gates: logout/relogin, actual Work/dot plugin execution, broader Kotlin/CLI
 identity/signature fixtures, CLI-to-Android bidirectional acceptance and physical
-background/playback/conflict tests. No production OAuth configuration has been
-identified or changed. PR #93 must remain unmerged until required evidence exists.
+background/playback/conflict tests. During owner-authorized setup, a supplied Desktop OAuth client and a separate
+authentication-only API key were configured privately. Live login, bounded reads
+and refresh preserving the account identity passed. Existing Android/browser keys
+were retained. PR #93 must remain unmerged until required evidence exists.
 
 Deliberate initial limitations to reconcile before full acceptance: explicit POSIX
 private-file credential storage instead of an OS vault, a 5,000-record maximum
@@ -530,3 +533,38 @@ read budget without continuation cursors, journals retained until logout rather
 than automatic seven-day cleanup, and POSIX-only host support. Failure exit codes
 currently share a nonzero status while JSON codes distinguish causes. These are
 visible limitations, not claims that every planned milestone has passed.
+
+### Installed runtime smoke test
+
+The CLI is installed in a stable private workstation directory and Codex reports
+the local skills-only plugin installed and enabled. The first installed login
+revealed an overly broad checkout-path guard. A failing installed-layout test
+was added, then the guard was corrected to identify an actual Git checkout or
+the package directory. All 15 unit tests pass, and the installed CLI subsequently
+completed live desktop Google/Firebase sign-in and read-only library access.
+Normal token refresh was exercised by expiring only its local expiry marker;
+the refreshed session retained the same identity. No raw library records, local
+credential paths, account identifiers or tokens are included in public evidence.
+Live queue/subscription mutation and phone application remain separate gates.
+
+### Live write compatibility correction
+
+During the owner-authorized queue-order test, live user-token beginTransaction
+returned permission denied before document reads, despite passing in the emulator.
+The deployed rules matched the checked-in rules exactly. Receipt and queue reads
+confirmed that this failed attempt made no change. No rules, IAM grants or account
+protocol were changed to work around the rejection.
+
+A regression test reproduces denial of server transaction setup. The writer now
+uses optimistic atomic commits with exact root/entity updateTime preconditions
+and exists:false on new companions. Every protocol mutation advances the root,
+so a concurrent protocol write invalidates the read assumptions and requires a
+retry. Stale entity versions still produce an explicit conflict; receipt retries
+retain the original operation identity. All 15 unit/contract tests and seven
+Auth/Firestore emulator tests passed after the correction.
+
+The same prepared operation then committed with the ordinary Firebase user token.
+A live read-back verified the explicitly authorized shared-queue reorder. Phone
+application is pending owner observation; cloud success is not device acceptance.
+No personal titles, source URLs, operation/account identifiers or record exports
+are stored in this public record.

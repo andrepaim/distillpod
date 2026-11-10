@@ -43,7 +43,7 @@ before(async () => {
     }),
   });
 });
-test("actual REST transaction obeys rules, creates receipt and retry is idempotent", async () => {
+test("actual REST atomic commit obeys rules, creates receipt and retry is idempotent", async () => {
   const m = {
     id: "operation1",
     generation: "g1",

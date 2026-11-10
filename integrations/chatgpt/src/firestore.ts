@@ -89,7 +89,7 @@ export class Cloud {
     if (r.status === 404 && method === "GET") return null;
     if (!r.ok) {
       const code =
-        r.status === 409
+        r.status === 409 || r.status === 412
           ? "contention"
           : r.status === 401
             ? "auth_required"
@@ -177,37 +177,39 @@ export class Cloud {
       "invalid_data",
       "Invalid operation identity",
     );
+    const db = this.root.split("/documents/")[0];
     for (let attempt = 0; attempt < 4; attempt++) {
-      const db = this.root.split("/documents/")[0];
-      const { transaction } = await this.request(
-        `${db}/documents:beginTransaction`,
-        {},
-      );
       let observed = -1;
       try {
-        const h = await this.head(transaction);
-        observed = h.sequence;
+        // Firebase user-token clients use optimistic commits. A root updateTime
+        // precondition covers every entity read because all sync writes advance
+        // this root; entity and create preconditions protect each companion too.
+        const root = await this.request(this.root);
+        const h = root?.fields
+          ? decode({ mapValue: { fields: root.fields } })
+          : null;
         requireThat(
-          h.generation === m.generation,
+          h?.active &&
+            h.generation === m.generation &&
+            [1, 2, 3].includes(h.protocol) &&
+            Number.isSafeInteger(h.sequence) &&
+            typeof root.updateTime === "string",
           "account_mismatch",
-          "Library generation changed",
+          "Existing active matching library required",
         );
+        observed = h.sequence;
         validateMutation(m.key, m.payload, h.protocol);
-        const entity = await this.get(
-          `${this.root}/entities/${m.key}`,
-          transaction,
-        );
-        const receipt = await this.get(
-          `${this.root}/receipts/${m.id}`,
-          transaction,
-        );
+        const document = await this.request(`${this.root}/entities/${m.key}`);
+        const entity = document?.fields
+          ? decode({ mapValue: { fields: document.fields } })
+          : null;
+        const receipt = await this.get(`${this.root}/receipts/${m.id}`);
         if (receipt) {
           requireThat(
             receipt.signature === signature(m),
             "operation_mismatch",
             "Operation ID reused with different content",
           );
-          await this.request(`${db}/documents:rollback`, { transaction });
           return receipt;
         }
         requireThat(
@@ -231,26 +233,37 @@ export class Cloud {
           sequence,
           generation: m.generation,
         };
-        const update = (name: string, value: any) => ({
+        const update = (name: string, value: any, currentDocument: any) => ({
           update: { name, fields: encode(value).mapValue.fields },
+          currentDocument,
         });
         await this.request(`${db}/documents:commit`, {
-          transaction,
           writes: [
             {
-              ...update(this.root, { sequence }),
+              ...update(
+                this.root,
+                { sequence },
+                { updateTime: root.updateTime },
+              ),
               updateMask: { fieldPaths: ["sequence"] },
             },
-            update(`${this.root}/entities/${m.key}`, data),
-            update(`${this.root}/changes/${sequence}`, { ...data, key: m.key }),
-            update(`${this.root}/receipts/${m.id}`, result),
+            update(
+              `${this.root}/entities/${m.key}`,
+              data,
+              document
+                ? { updateTime: document.updateTime }
+                : { exists: false },
+            ),
+            update(
+              `${this.root}/changes/${sequence}`,
+              { ...data, key: m.key },
+              { exists: false },
+            ),
+            update(`${this.root}/receipts/${m.id}`, result, { exists: false }),
           ],
         });
         return result;
       } catch (e) {
-        await this.request(`${db}/documents:rollback`, { transaction }).catch(
-          () => {},
-        );
         if (
           e instanceof Failure &&
           attempt < 3 &&

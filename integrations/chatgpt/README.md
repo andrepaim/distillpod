@@ -1,8 +1,9 @@
 # DistillPod for ChatGPT Work, Codex and dots
 
 Implementation on PR #93. The Node client and skills-only plugin use the current
-Firestore protocol. Live desktop Google sign-in, installed-host plugin execution
-and Android/device interoperability remain acceptance gates; see the
+Firestore protocol. Desktop Google sign-in/read/refresh and local Codex plugin registration have
+passed on the owner workstation. Actual Work/dot execution, logout/relogin and
+Android/device interoperability remain acceptance gates; see the
 [plan](../../docs/chatgpt-plugin-plan.md).
 
 ## Install on the execution computer
@@ -46,7 +47,7 @@ distillpod --config /private/client.json --private-state /private/distillpod aut
 The command prints a Google authorization URL to stderr. Open it in the system
 browser on the same computer. A loopback listener validates the callback and a
 verified Google ID token; Firebase sign-in uses `autoCreate:false` to avoid creating
-an unrelated account. Provider/client compatibility still needs live validation.
+an unrelated account. Provider/client compatibility passed on the owner workstation; other client configurations still need validation.
 Never paste tokens or passwords into chat. A private sign-in handoff may be needed
 when the agent cannot safely launch the user's browser.
 
@@ -113,6 +114,6 @@ in the isolated fixture. Never point fixtures at owner data.
 
 Unit tests cover ordering, stable identity, private destinations, bounded feed
 parsing, journal recovery, private filesystem state and account mismatch. Emulator
-tests cover transactions, receipts, stale edits, access denial and cloud reads.
+tests cover atomic optimistic commits, receipts, stale edits, access denial and cloud reads.
 Full Android cross-client and physical playback/background acceptance remains
 required before declaring the feature complete or merging PR #93.
