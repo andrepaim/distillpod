@@ -43,6 +43,86 @@ links and run `git diff --check`; no local Android build or device run is needed
 unless build or app behavior also changes. Record that limitation explicitly.
 CI and combined-commit verification still follow repository workflows.
 
+## Bounded issue overlap
+
+Follow the [issue loop](../AGENTS.md#default-issue-handling-loop) and
+[parallel-development safeguards](../AGENTS.md#parallel-development). Editing
+this policy does not authorize a new issue run. Sequential work remains the
+fallback whenever safe overlap cannot be established.
+
+A session may own at most two issues: one under
+active implementation and one independent issue awaiting remote CI. Do not
+start another issue merely because work is blocked, ready to merge, or handed
+to a worker. Claim before implementation and refresh dependencies and other
+sessions' ownership before selecting work. Separate branches/worktrees start
+from current `origin/main`; dependent work cannot borrow stale validation from
+another branch or be treated as independent.
+
+For each owned issue, keep a tracker checkpoint with owner, state,
+branch/worktree, exact tested revision, PR link (or no PR yet), completed and
+pending validation, and the next action. Use these states:
+
+- **Active implementation:** planning, editing, reviewing or local validation.
+  Only one issue may occupy this state per session.
+- **Awaiting CI:** remote checks are pending on the recorded PR head or merged
+  revision. A second independent eligible issue may be implemented while waiting.
+- **Ready to merge:** required branch checks and applicable device evidence have
+  passed. Enter the coordinated integration lane before starting further work;
+  passing an old base is not permission to merge.
+- **Blocked:** a concrete dependency, permission, device or failed validation gate
+  prevents progress. Preserve edits and evidence, state the next action, and
+  release ownership explicitly before replacing this issue with other work.
+- **Complete:** acceptance criteria, review, current-main integration, applicable
+  device validation, PR merge and successful combined-commit CI are recorded.
+  Neither awaiting CI nor a merged PR awaiting its checks is complete.
+
+Serialize shared local Gradle, emulator and phone resources across sessions,
+recording the current holder and handoff. Do not run builds in another session's
+worktree or interrupt its tests. One session at a time holds the merge/integration
+lane from current-main reconciliation through required combined-main CI. Before
+merging, fetch main, integrate intervening changes, review the combined diff and
+rerun the checks relevant to that exact result. Respect normal branch protection;
+this policy does not enable a GitHub merge queue or bypass any gate.
+
+Failed CI or a main regression takes priority. Park the second issue with its
+worktree and edits intact, record its revision and next step, and focus on the
+failure or coordinate with its owner. Preserve failed evidence; do not retry
+unchanged to obtain green or weaken assertions. If repair needs a separate issue,
+release a parked claim first so the two-issue limit is retained. Resume only after
+rechecking ownership, dependencies, main and exact-revision validation. On session
+interruption, leave both checkpoints and resource ownership clear; the resuming
+session must verify current claims and CI rather than trusting prior status.
+Report incomplete issues and blockers when stopping.
+
+### Policy walkthroughs
+
+1. **Independent issues:** A awaits PR CI on revision A1. Claim independent B in a
+   separate current-main worktree and implement B while resources are available.
+   When A becomes ready, checkpoint B and integrate A in the single lane. Keep A
+   awaiting CI until combined-main checks pass; B must then reconcile that main.
+2. **Dependent issues:** B requires A's behavior or measurements. B is not an
+   independent second issue. Complete A and recheck B's readiness before claiming
+   it under this policy; a branch based on unmerged A does not satisfy this rule.
+3. **Main advances:** Another session merges C while A's branch checks run. A1's
+   green checks do not validate A plus C. Integrate current main, reassess risk,
+   review and rerun relevant checks on the combined revision before merging A.
+4. **CI fails:** A fails while B is being implemented. Preserve B's changes and
+   checkpoint it, then diagnose A using the failed evidence. Do not start C or
+   integrate B around an unresolved main regression. Release a parked claim before
+   claiming a separate repair issue, and retain the original acceptance gates.
+5. **Device unavailable:** A requires physical validation that cannot succeed.
+   Mark A blocked, record the device/scenario and next action, preserve its branch
+   and release ownership when handing it off. Do not mark it awaiting CI or merge
+   with emulator-only evidence. Continue only with eligible independent work.
+6. **Session interruption:** A is merged but its CI is pending, and B has edits.
+   Record A's merged revision/check link and B's worktree/revision/remaining work.
+   On resume, check actual CI and ownership, coordinate any held resources, and
+   refresh main before proceeding. A is not complete merely because it merged.
+
+All release authorization, data-preservation, security/privacy and physical-device
+requirements remain unchanged. Documentation-only policy changes use accuracy,
+local-link and diff checks; they do not require Android or phone execution.
+
 ## Tools
 
 - JDK 17
