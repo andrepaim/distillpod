@@ -1,6 +1,9 @@
 # Gradle task-output caching (#89)
 
-Base: main `02f124b9535602a9e3914fdaa84b8f84267ca5a2`.
+Current base: main `621647fdb1c40fb83221deafacc201690615e1a4`.
+The earlier `02f124b` experiment failed an uncached diagnostics barrier check;
+its private checkouts, logs and unpublished CI changes are preserved. No valid
+Android timing comparison or cache gain came from that experiment.
 Keep this session on one active issue. PR #93/plugin and release drafts remain
 owned elsewhere. No release or device action is part of this increment.
 
@@ -32,6 +35,30 @@ Startup validation also changes package IDs/manifests/sources and must remain
 isolated from ordinary APKs when sharing task cache entries.
 
 ## Test-first validation and measurements
+
+### Resumption after the diagnostic increment
+
+#97 remains open: PR #100 added bounded failure diagnostics, not a root-cause
+fix. Current main also contains the subsequently validated retention-age and
+gallery acceptance changes. This is a new current-source experiment, not an
+unchanged retry of the failed baseline. If the new uncached baseline fails,
+preserve its original failure and attached worker snapshot, stop the cache
+benchmark and reassess #97 before publishing any claimed improvement.
+
+Exclude every Gradle `Test` task's outputs from the build cache with the pinned
+Gradle 8.13 `TaskOutputs.doNotCacheIf` API. Compilation, resources and other
+supported build tasks can reuse outputs; fresh CI workspaces must execute JVM
+tests. Ordinary same-workspace UP-TO-DATE behavior remains intact. Prove this
+with actual `:core:test` tasks in fresh checkouts: first demonstrate the unwanted
+FROM-CACHE test result, then require executed tests with reused compilation
+after the policy. Require executed app tests in the full cold/warm comparison.
+No test assertions, timeouts, phase selection or CI protections are weakened.
+
+Use new private experiment directories and a dedicated cache; never overwrite
+the old failed experiment. Inspect packaging/signing task cacheability instead
+of assuming APK bytes are reusable across runner debug identities. No signing
+keys or owner configuration are copied into experiments or caches. Record
+non-cacheable tasks and limitations. Benchmark APKs are inspected, not installed.
 
 1. Before editing CI, assert real output-cache reuse with the current disabled
    invocation and record the expected red result, using public synthetic inputs
@@ -70,3 +97,4 @@ Primary references: [Gradle8.13 cache contract](https://github.com/gradle/gradle
 [pinned action cache contract](https://github.com/gradle/actions/blob/8da46b539cd8fe6ab27ca75128919a18d757604c/docs/setup-gradle.md),
 [pinned action inputs](https://github.com/gradle/actions/blob/8da46b539cd8fe6ab27ca75128919a18d757604c/setup-gradle/action.yml),
 and [AGP8.9 compatibility](https://developer.android.com/build/releases/agp-8-9-0-release-notes).
+The exclusion API is documented in the [pinned Gradle 8.13 TaskOutputs source](https://github.com/gradle/gradle/blob/v8.13.0/subprojects/core-api/src/main/java/org/gradle/api/tasks/TaskOutputs.java).
