@@ -126,10 +126,10 @@ jobs:
         run: |
           python3 scripts/fetch_youtube_extractor.py --output app/build/generated/youtube/res/raw/ytdlp.bin
           ./gradlew --no-daemon :core:test :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
+      - name: Stage default debug APK
+        run: install -D -m 0444 app/build/outputs/apk/debug/app-debug.apk "$RUNNER_TEMP/distillpod-default-debug/app-debug.apk"
       - name: Validate opt-in voice configuration
-        run: |
-          ./gradlew --no-daemon :app:testDebugUnitTest :app:lintDebug :app:assembleDebug -PdistillpodVoiceEnabled=true
-          ./gradlew --no-daemon :app:assembleDebug
+        run: ./gradlew --no-daemon :app:testDebugUnitTest :app:lintDebug :app:assembleDebug -PdistillpodVoiceEnabled=true
       - name: Build unsigned distribution candidate
         if: inputs.build_release == true
         env:
@@ -156,7 +156,8 @@ jobs:
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: distillpod-debug-test-build
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: ${{ runner.temp }}/distillpod-default-debug/app-debug.apk
+          if-no-files-found: error
           retention-days: 7
           compression-level: 0
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

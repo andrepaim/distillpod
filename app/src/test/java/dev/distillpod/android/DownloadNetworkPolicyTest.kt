@@ -5,6 +5,7 @@ import android.content.ComponentName
 import android.os.Looper
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.viewModelScope
 import androidx.test.core.app.ApplicationProvider
 import androidx.work.*
 import androidx.work.testing.SynchronousExecutor
@@ -58,6 +59,7 @@ class DownloadNetworkPolicyTest {
         shadowOf(context as android.app.Application).declareComponentUnbindable(ComponentName(context, PlaybackService::class.java))
         val vm = AppViewModel(graph, SavedStateHandle())
         val store = ViewModelStore().apply { put("settings", vm) }
+        val viewModelJob = vm.viewModelScope.coroutineContext.job
         try { block(graph, vm) }
         catch (error: Throwable) {
             org.robolectric.shadows.ShadowLog.getLogs().filter { it.tag.startsWith("WM-") }.forEach {
@@ -68,7 +70,7 @@ class DownloadNetworkPolicyTest {
         finally {
             store.clear()
             manager.cancelAllWork().result.get(5, TimeUnit.SECONDS)
-            shadowOf(Looper.getMainLooper()).idle()
+            viewModelJob.awaitViewModelTeardown()
             graph.db.close()
             WorkManagerTestInitHelper.closeWorkDatabase()
         }
