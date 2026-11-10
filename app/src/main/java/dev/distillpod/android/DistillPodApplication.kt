@@ -66,7 +66,12 @@ class AppGraph internal constructor(val context: Context, val scope: CoroutineSc
                 communication = voice.state.value.origin == dev.distillpod.android.voice.VoiceOrigin.HEADPHONES && android.os.Build.VERSION.SDK_INT >= 31) { voice.cancel(false) } },
             diagnosticEvent={name,reason -> diagnostics.event(name,reason=reason,
                 source=reason.takeIf {it in setOf("phone","car","headphones")} ?: voice.state.value.origin?.name?.lowercase() ?: "background")},
-            diagnosticFailure={diagnostics.failure("voice",it,source=voice.state.value.origin?.name?.lowercase() ?: "background")})
+            diagnosticFailure={diagnostics.failure("voice",it,source=voice.state.value.origin?.name?.lowercase() ?: "background")},
+            preflight = {
+                val (episode, position) = playback.voicePosition()
+                    ?: throw dev.distillpod.android.voice.VoiceContextUnavailable(dev.distillpod.android.voice.VoiceReadiness.EPISODE_UNAVAILABLE)
+                withContext(Dispatchers.IO) { dev.distillpod.android.voice.VoiceContext.check(db, episode, position) }
+            })
     }
     val ai by lazy { dev.distillpod.android.ai.ChatGptGateway(account.session, settings) }
     val onlineTranscripts by lazy { OnlineTranscriptRepository(this) }
