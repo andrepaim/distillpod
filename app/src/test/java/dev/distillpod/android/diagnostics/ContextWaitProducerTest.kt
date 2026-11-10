@@ -27,6 +27,7 @@ class ContextWaitProducerTest {
         File(context.noBackupFilesDir,"reliability").deleteRecursively()
         WorkManagerTestInitHelper.initializeTestWorkManager(context)
         val d=Diagnostics(context,"https://abc123@o1.ingest.sentry.io/1")
+        val barrier=DiagnosticBarrierProbe(d)
         val db=Room.inMemoryDatabaseBuilder(context,AppDatabase::class.java).build()
         val dao=db.library()
         var revision=UUID.randomUUID().toString()
@@ -44,8 +45,8 @@ class ContextWaitProducerTest {
             dao.putTranscript(TranscriptEntity("e",revision,"synthetic","tiny","en",state="ready",durationMs=200000))
             val repo=CaptureRepository(db,ai,{true},{},{},diagnostics=d)
             val id=repo.save("e",60000,true)
-            d.consent(true);d.awaitIdle()
-            repeat(200) {repo.transcriptUpdated("e");d.awaitIdle()}
+            d.consent(true);barrier.awaitIdle()
+            repeat(200) {repo.transcriptUpdated("e");barrier.awaitIdle()}
             assertEquals(1,payloads("capture.context_summary").size)
             assertEquals(1,prefs.getInt("budget_critical",0))
             assertEquals(0,calls)
@@ -54,41 +55,41 @@ class ContextWaitProducerTest {
             var saved=dao.distillation(id)!!
             var attempt=dao.momentAttempt(saved.attempt)!!
             dao.putMomentAttempt(attempt.copy(run=UUID.randomUUID().toString()))
-            repo.prepareSaved(id);d.awaitIdle()
+            repo.prepareSaved(id);barrier.awaitIdle()
             assertEquals(2,payloads("capture.context_summary").size)
             attempt=dao.momentAttempt(saved.attempt)!!.copy(id=UUID.randomUUID().toString())
             dao.putMomentAttempt(attempt);dao.putDistillation(saved.copy(attempt=attempt.id))
-            repo.prepareSaved(id);d.awaitIdle()
+            repo.prepareSaved(id);barrier.awaitIdle()
             assertEquals(3,payloads("capture.context_summary").size)
 
             // Same missing duration but changed capture bounds still merits evidence.
             saved=dao.distillation(id)!!
             dao.putDistillation(saved.copy(startMs=saved.startMs+1))
-            repo.prepareSaved(id);d.awaitIdle()
+            repo.prepareSaved(id);barrier.awaitIdle()
             assertEquals(4,payloads("capture.context_summary").size)
             revision=UUID.randomUUID().toString()
             dao.putTranscript(dao.transcript("e")!!.copy(revision=revision))
-            repo.transcriptUpdated("e");d.awaitIdle()
+            repo.transcriptUpdated("e");barrier.awaitIdle()
             assertEquals(5,payloads("capture.context_summary").size)
 
             d.consent(false);assertTrue(d.queue.files().isEmpty())
-            d.consent(true);d.awaitIdle()
-            repo.prepareSaved(id);d.awaitIdle();repo.prepareSaved(id);d.awaitIdle()
+            d.consent(true);barrier.awaitIdle()
+            repo.prepareSaved(id);barrier.awaitIdle();repo.prepareSaved(id);barrier.awaitIdle()
             assertEquals(1,payloads("capture.context_summary").size)
             // Usage consent also clears the shared outbox, so cached insertion evidence must reset.
-            d.usageConsent(false);d.awaitIdle()
-            repo.prepareSaved(id);d.awaitIdle()
+            d.usageConsent(false);barrier.awaitIdle()
+            repo.prepareSaved(id);barrier.awaitIdle()
             assertEquals(1,payloads("capture.context_summary").size)
 
             // A changed wait whose outbox insertion fails must remain eligible after storage recovers.
             revision=UUID.randomUUID().toString()
             dao.putTranscript(dao.transcript("e")!!.copy(revision=revision))
             directory.deleteRecursively();directory.writeText("Synthetic unavailable outbox")
-            try {repo.prepareSaved(id);d.awaitIdle()}
+            try {repo.prepareSaved(id);barrier.awaitIdle()}
             finally {directory.delete();directory.mkdirs()}
-            repo.prepareSaved(id);d.awaitIdle()
+            repo.prepareSaved(id);barrier.awaitIdle()
             assertEquals(1,payloads("capture.context_summary").size)
-            repo.prepareSaved(id);d.awaitIdle()
+            repo.prepareSaved(id);barrier.awaitIdle()
             assertEquals(1,payloads("capture.context_summary").size)
 
             // Denied admission is not cached; it retries and becomes eligible after budget rollover.
@@ -96,21 +97,21 @@ class ContextWaitProducerTest {
             dao.putTranscript(dao.transcript("e")!!.copy(revision=revision))
             prefs.edit().putInt("budget_critical",160).commit()
             val dropped=prefs.getLong("critical_dropped",0)
-            repeat(2) {repo.prepareSaved(id);d.awaitIdle()}
+            repeat(2) {repo.prepareSaved(id);barrier.awaitIdle()}
             assertEquals(dropped+2,prefs.getLong("critical_dropped",0))
             assertEquals(1,payloads("capture.context_summary").size)
             prefs.edit().putLong("budget_day",-1).commit()
             d.flushSummaries()
-            repo.prepareSaved(id);d.awaitIdle()
+            repo.prepareSaved(id);barrier.awaitIdle()
             assertEquals(2,payloads("capture.context_summary").size)
 
             // Unchanged routine rechecks must leave critical admission for actual later outcomes.
-            repeat(200) {repo.transcriptUpdated("e");d.awaitIdle()}
+            repeat(200) {repo.transcriptUpdated("e");barrier.awaitIdle()}
             dao.putCoverage(CoverageEntity("e",revision,0,200000))
             dao.putSegments(listOf(SegmentEntity("e",revision,40000,60000,"Synthetic source sentence.")))
-            repo.prepareSaved(id);d.awaitIdle()
+            repo.prepareSaved(id);barrier.awaitIdle()
             assertEquals("queued",dao.distillation(id)!!.state)
-            repo.run(id);d.awaitIdle()
+            repo.run(id);barrier.awaitIdle()
             assertEquals("needs_context",dao.distillation(id)!!.state)
             assertEquals(1,calls)
             assertEquals(1,payloads("distillation.finished").size)
