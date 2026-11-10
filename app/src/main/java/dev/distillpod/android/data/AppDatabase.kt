@@ -167,6 +167,9 @@ interface LibraryDao {
     @Upsert suspend fun writeTranscript(value: TranscriptEntity)
     @Query("UPDATE transcripts SET state='processing', error=NULL WHERE episodeId=:id AND revision=:revision AND state IN ('queued','processing')")
     suspend fun beginTranscriptProcessing(id: String, revision: String): Int
+    /** A late state transition must neither recreate work nor restore a stale checkpoint. */
+    @Query("UPDATE transcripts SET state=:state, error=:error WHERE episodeId=:id AND revision=:revision AND state IN (:fromStates)")
+    suspend fun transitionTranscriptState(id: String, revision: String, fromStates: List<String>, state: String, error: String?): Int
     @Query("SELECT * FROM segments WHERE episodeId=:id AND revision=:revision ORDER BY startMs,ordinal") suspend fun segments(id: String, revision: String): List<SegmentEntity>
     @Query("SELECT * FROM segments WHERE episodeId=:id AND revision=:revision AND endMs>:start AND startMs<:end ORDER BY startMs,ordinal") suspend fun window(id: String, revision: String, start: Long, end: Long): List<SegmentEntity>
     @Upsert suspend fun putSegments(values: List<SegmentEntity>)

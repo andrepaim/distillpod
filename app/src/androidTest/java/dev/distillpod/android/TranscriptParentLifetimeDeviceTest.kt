@@ -24,7 +24,7 @@ class TranscriptParentLifetimeDeviceTest {
 
     private fun staleStartup(change: String) = runBlocking<Unit> {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val phone = context.packageName == "dev.distillpod.android.validation.lifetime81"
+        val phone = context.packageName in setOf("dev.distillpod.android.validation.lifetime81", "dev.distillpod.android.validation.lifetime81r2")
         check(phone || Build.HARDWARE.contains("ranchu") || Build.FINGERPRINT.contains("generic")) {
             "Physical execution requires the dedicated lifetime validation app"
         }

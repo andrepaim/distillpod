@@ -88,7 +88,7 @@ class MediaRepository(context: Context, private val db: AppDatabase, private val
                 require(latest.audioUrl == ep.audioUrl) { "The episode audio changed during download. Please retry." }
                 dao.downloadComplete(id, target.absolutePath, result.sha256, result.bytes)
                 if (latest.mediaFingerprint != result.sha256) {
-                    dao.transcript(id)?.let { dao.putTranscript(it.copy(state = "stale", error = "Audio changed. Prepare the transcript again.")) }
+                    dao.transcript(id)?.let { dao.putTranscriptAt(it.copy(state = "stale", error = "Audio changed. Prepare the transcript again."), TranscriptWriteSite.DOWNLOAD_FINGERPRINT) }
                     dao.analysis(id)?.let { dao.putAnalysis(it.copy(state = "stale", error = "Audio changed. Analyze the new transcript.")) }
                 }
             }

@@ -69,7 +69,7 @@ class FinishedContent(private val db:AppDatabase,private val isolatedDemo:Boolea
             if(oldTranscript!=null && oldTranscript.revision==revision && oldTranscript.state=="ready") {
                 require(dao.segments(id,revision)==segments) {"An immutable transcript revision changed"}
             } else {
-                dao.deleteSegments(id);dao.deleteCoverage(id);dao.putTranscript(transcript);dao.putSegments(segments);coverage.forEach {dao.putCoverage(it)}
+                dao.deleteSegments(id);dao.deleteCoverage(id);dao.putTranscriptAt(transcript, TranscriptWriteSite.FINISHED_CONTENT);dao.putSegments(segments);coverage.forEach {dao.putCoverage(it)}
             }
             if(analysis!=null && (dao.analysis(id)==null || replaceRevision))dao.putAnalysis(analysis)
             for(message in messages) {

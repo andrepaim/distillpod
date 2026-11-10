@@ -198,7 +198,7 @@ class PodcastRepository(private val db: AppDatabase, private val http: OkHttpCli
             val old = saved[item.guid]
             val changed = old != null && old.audioUrl != item.audioUrl
             if (changed) {
-                dao.transcript(old!!.id)?.let { dao.putTranscript(it.copy(state = "stale", error = "The audio enclosure changed. Prepare the current source again.")) }
+                dao.transcript(old!!.id)?.let { dao.putTranscriptAt(it.copy(state = "stale", error = "The audio enclosure changed. Prepare the current source again."), TranscriptWriteSite.FEED_ENCLOSURE) }
                 dao.analysis(old.id)?.let { dao.putAnalysis(it.copy(state = "stale", error = "The audio enclosure changed. Analyze the current source again.")) }
             }
             val base = old ?: EpisodeEntity(item.id, podcastId, item.guid, item.title, item.audioUrl)

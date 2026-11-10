@@ -1,0 +1,13 @@
+// Separately installed offline transcript lifetime protocol; never target production.
+allprojects {
+    afterEvaluate {
+        if (path == ':app') {
+            if (System.getenv('SENTRY_DSN')) throw new GradleException('Validation requires empty SENTRY_DSN')
+            if (project.hasProperty('distillpodFirebaseConfig')) throw new GradleException('Validation forbids Firebase configuration')
+            android.defaultConfig.applicationId = 'dev.distillpod.android.validation.lifetime81r2'
+            android.defaultConfig.testApplicationId = 'dev.distillpod.android.validation.lifetime81r2.test'
+            android.sourceSets.debug.manifest.srcFile('src/validationLifetime81/AndroidManifest.xml')
+            android.sourceSets.androidTest.manifest.srcFile('src/validationLifetime81/AndroidManifest.xml')
+        }
+    }
+}
