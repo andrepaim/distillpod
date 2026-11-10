@@ -201,7 +201,7 @@ jobs:
           name: emulator-test-results
           path: |
             /tmp/distillpod-notification-*.log
-            /tmp/distillpod-instrumentation.log
+            /tmp/distillpod-instrumentation*.log
             /tmp/distillpod-sync-device.log*
             /tmp/distillpod-voice-device.log
             /tmp/distillpod-startup56-device.log

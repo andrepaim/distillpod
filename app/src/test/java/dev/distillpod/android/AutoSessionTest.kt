@@ -22,7 +22,9 @@ import java.util.concurrent.TimeUnit
 @Config(sdk=[34])
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 class AutoSessionTest {
-    private fun fixture(playbackReady:CompletableDeferred<Unit>?=null,voice:Boolean=false,openVoice:()->Boolean={false},block:(AutoLibraryCallback,MediaLibrarySession,MediaSession.ControllerInfo)->Unit) {
+    private fun fixture(playbackReady:CompletableDeferred<Unit>?=null,voice:Boolean=false,openVoice:()->Boolean={false},
+        queueHandler:((SessionCommand,Bundle)->com.google.common.util.concurrent.ListenableFuture<SessionResult>)?=null,
+        block:(AutoLibraryCallback,MediaLibrarySession,MediaSession.ControllerInfo)->Unit) {
         val context=ApplicationProvider.getApplicationContext<Context>()
         val db=Room.inMemoryDatabaseBuilder(context,AppDatabase::class.java).build()
         runBlocking {
@@ -32,7 +34,9 @@ class AutoSessionTest {
         }
         val scope=CoroutineScope(SupervisorJob()+Dispatchers.Unconfined)
         val ready=CompletableDeferred(Unit)
-        val callback=AutoLibraryCallback(context.packageName,db,ready,scope,playbackReady?:ready,voiceEnabled={voice},openCarVoice=openVoice)
+        val callback=AutoLibraryCallback(context.packageName,db,ready,scope,playbackReady?:ready,voiceEnabled={voice},openCarVoice=openVoice,
+            queueCommands=if(queueHandler==null)emptySet() else setOf(dev.distillpod.android.playback.QueueWriteCommands.BARRIER,dev.distillpod.android.playback.QueueWriteCommands.IMPORT),
+            onQueueCommand=queueHandler)
         val player=ExoPlayer.Builder(context).build()
         val session=MediaLibrarySession.Builder(context,player,callback).build()
         val controller=MediaSession.ControllerInfo.createTestOnlyControllerInfo("android.auto.test",1,1000,1,1,true,Bundle.EMPTY)
@@ -78,6 +82,28 @@ class AutoSessionTest {
     @Test fun `untrusted external controllers cannot connect`()=fixture {c,s,_ ->
         val caller=MediaSession.ControllerInfo.createTestOnlyControllerInfo("untrusted",1,1000,1,1,false,Bundle.EMPTY)
         assertFalse(c.onConnect(s,caller).isAccepted)
+    }
+    @Test fun `queue writer commands cannot dispatch through trusted or spoofed external callers`() {
+        var calls=0
+        fixture(queueHandler={_,_->calls++;com.google.common.util.concurrent.Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))}) {callback,session,_ ->
+            val context=ApplicationProvider.getApplicationContext<Context>()
+            val ownUid=android.os.Process.myUid()
+            val privateCommands=listOf(dev.distillpod.android.playback.QueueWriteCommands.BARRIER,dev.distillpod.android.playback.QueueWriteCommands.IMPORT)
+            for(command in privateCommands) {
+                for((name,uid) in listOf("trusted.car" to ownUid,context.packageName to ownUid+1)) {
+                    val external=MediaSession.ControllerInfo.createTestOnlyControllerInfo(name,1,uid,1,1,true,Bundle.EMPTY)
+                    assertFalse(callback.onConnect(session,external).availableSessionCommands.contains(command))
+                    assertEquals(SessionError.ERROR_PERMISSION_DENIED,callback.onCustomCommand(session,external,command,Bundle.EMPTY).get().resultCode)
+                }
+                assertEquals("Denied calls must not execute the queue handler",0,calls)
+            }
+            for(command in privateCommands) {
+                val own=MediaSession.ControllerInfo.createTestOnlyControllerInfo(context.packageName,1,ownUid,1,1,true,Bundle.EMPTY)
+                assertTrue(callback.onConnect(session,own).availableSessionCommands.contains(command))
+                assertEquals(SessionResult.RESULT_SUCCESS,callback.onCustomCommand(session,own,command,Bundle.EMPTY).get().resultCode)
+            }
+            assertEquals(2,calls)
+        }
     }
     @Test fun `selection waits for startup restoration before resolving`() {
         val restored=CompletableDeferred<Unit>()
