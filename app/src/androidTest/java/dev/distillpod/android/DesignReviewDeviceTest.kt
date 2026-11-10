@@ -2,6 +2,10 @@ package dev.distillpod.android
 
 import androidx.compose.ui.test.*
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.requiredSize
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
@@ -85,11 +89,19 @@ class DesignReviewDeviceTest {
             compose.onNodeWithContentDescription("Back").performClick()
         }
     }
-    @Test fun gallerySearchFindsShowsBeyondTheRail()=runBlocking<Unit> {
+    @Test fun gallerySearchFindsShowsBeyondTheRail() = gallerySearchScenario(false)
+    @Test fun gallerySearchRetainsQueryAndClearsAtCompactSize() = gallerySearchScenario(true)
+
+    private fun gallerySearchScenario(compact: Boolean) = runBlocking<Unit> {
         val dao=compose.activity.applicationContext.appGraph.db.library()
         val ids=(0..29).map {"review-show-$it"}
         try {
             ids.forEachIndexed {i,id->dao.putPodcast(PodcastEntity(id,"https://example.test/$id","Review show ${i.toString().padStart(2,'0')}",author="Independent voices"))}
+            if (compact) withContext(Dispatchers.Main) {
+                val graph = compose.activity.applicationContext.appGraph
+                val vm = ViewModelProvider(compose.activity, AppViewModel.factory(graph))[AppViewModel::class.java]
+                compose.activity.setContent { Box(Modifier.requiredSize(320.dp, 400.dp)) { ProductApp(vm) } }
+            }
             open("shows")
             compose.onNodeWithText("Search your shows").performTextInput("show 29")
             compose.onNodeWithText("Search your shows").performImeAction()
