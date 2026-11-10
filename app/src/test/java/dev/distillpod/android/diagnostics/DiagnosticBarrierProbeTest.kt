@@ -22,7 +22,11 @@ class DiagnosticBarrierProbeTest {
         try {
             probe.executor.execute { entered.countDown(); release.await() }
             assertTrue(entered.await(5, TimeUnit.SECONDS))
-            probe.executor.submit { }
+            probe.worker.get().name = "PRIVATE_SYNTHETIC_THREAD_NAME"
+            probe.executor.submit(object : Runnable {
+                override fun run() {}
+                override fun toString() = "PRIVATE_SYNTHETIC_QUEUED_CONTENT"
+            })
             try {
                 probe.awaitIdle { throw original }
                 fail("The original barrier failure must propagate")
@@ -32,6 +36,7 @@ class DiagnosticBarrierProbeTest {
                 assertTrue(evidence, evidence.contains("active=1 queue=1"))
                 assertTrue(evidence, evidence.contains("worker:"))
                 assertTrue(evidence, evidence.contains("CountDownLatch.await"))
+                assertFalse(evidence, evidence.contains("PRIVATE_SYNTHETIC"))
             }
         } finally {
             release.countDown()
