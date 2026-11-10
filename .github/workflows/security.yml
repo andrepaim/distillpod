@@ -1,8 +1,8 @@
 name: Repository security
 
 on:
-  pull_request:
-    branches: [main]
+  # PR scans are invoked by ci.yml so its required gate can verify the result.
+  workflow_call:
   push:
     branches: [main]
   workflow_dispatch:

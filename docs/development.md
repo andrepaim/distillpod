@@ -128,8 +128,39 @@ GitHub evaluates any non-documentation path. The filter deliberately does not
 ignore entire directories: Kotlin, Java, C++, scripts, HTML/CSS/JavaScript,
 workflow YAML, Gradle files, app resources, Firebase rules/configuration, and
 submodule changes remain eligible, including code added under `docs/`.
-Pull requests, manual dispatch and reusable calls are not path-filtered.
-The independent security workflow still scans documentation changes.
+Pull requests always start the workflow, then `scripts/ci_validation.py` reads
+its complete Git base/head diff. A narrow allowlist recognizes known root
+Markdown, Markdown/PNG/MP4 under `docs/`, historical JSON/JSONL/TXT evidence,
+the Firebase/investigation README files and the Manrope license. Other paths,
+including plugin/integration content, app resources, code under `docs/`, scripts,
+workflows, executable files, symlinks and submodules select full validation.
+Both sides of renames/deletions are inspected without GitHub's 300-file API
+limit. Missing, shallow or ambiguous Git evidence fails visibly.
+
+Documentation-only PRs run the routing/gate regressions, incremental local-link
+and Markdown-anchor checks, whitespace checks and repository security. Link
+checks cover changed Markdown sources and unchanged inbound links to changed or
+deleted targets; existing unrelated historical link failures are outside that
+incremental scope. Conventional inline/reference/image and HTML links are
+supported; external URLs are not fetched and non-Markdown fragments are not
+validated. Targets cannot escape the repository. Android/Firebase/native/
+emulator jobs are intentionally omitted only for this validated route.
+
+The existing required `Kotlin, lint and APK` context is now an always-running
+aggregate gate. Actual full Android builds run as `Android build validation`.
+The gate requires the classifier, PR security scan and every selected full job
+to succeed; failed/cancelled or unexpectedly skipped dependencies do not pass.
+Existing required context names and branch-protection settings are preserved.
+PR security uses the reusable security workflow so the gate verifies its result
+without a duplicate PR scan. Standalone main-push, scheduled and manual security
+scans remain; direct pushes retain their independent security result, which must
+also pass. Manual and reusable validation always remain full, including a
+reusable PR caller with default/false inputs. The release validation/artifact
+contract and all default/voice/startup/cloud/teardown acceptance phases remain.
+
+See [the routing plan and evidence](android/ci-docs-validation-plan.md).
+The main-push native filter is unchanged and retains the limitation below; a
+lightweight PR route is not permission to omit validation for unknown changes.
 
 **GitHub limitation:** native path filters evaluate at most 300 changed files.
 In a larger mixed push, a code file outside that set can be missed. Do not rely

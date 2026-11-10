@@ -34,7 +34,42 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  plan:
+    name: Select validation and check documentation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      mode: ${{ steps.select.outputs.mode }}
+      docs_validated: ${{ steps.select.outputs.docs_validated }}
+      checkout_sha: ${{ steps.select.outputs.checkout_sha }}
+      changed_count: ${{ steps.select.outputs.changed_count }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Test validation routing and documentation checks
+        run: |
+          python3 -m unittest discover -s scripts -p 'test_ci_validation.py'
+          python3 -m unittest discover -s scripts -p 'test_docs_validation.py'
+      - name: Select from the complete PR diff
+        id: select
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          WORKFLOW_INPUTS_CONTEXT: ${{ toJSON(inputs) }}
+        run: python3 scripts/ci_validation.py select
+
+  security:
+    name: Repository security
+    # Direct pushes already start security.yml, including documentation-only pushes.
+    # Reusable calls inherit caller events, but have a nonempty inputs contract.
+    if: github.event_name != 'push' || toJSON(inputs) != '{}'
+    uses: ./.github/workflows/security.yml
+
   firebase:
+    needs: plan
+    if: needs.plan.outputs.mode == 'full'
     name: Firebase protocol and security rules
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -58,8 +93,10 @@ jobs:
           npm --prefix firebase run test:emulator
           npm --prefix firebase run test:storage
 
-  android:
-    name: Kotlin, lint and APK
+  android_build:
+    needs: plan
+    if: needs.plan.outputs.mode == 'full'
+    name: Android build validation
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     steps:
@@ -128,6 +165,8 @@ jobs:
           compression-level: 0
 
   native:
+    needs: plan
+    if: needs.plan.outputs.mode == 'full'
     name: Native bridge validation
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -143,6 +182,8 @@ jobs:
           ctest --test-dir /tmp/distillpod-native --output-on-failure
 
   emulator:
+    needs: plan
+    if: needs.plan.outputs.mode == 'full'
     name: Isolated Android acceptance
     runs-on: ubuntu-24.04
     timeout-minutes: 35
@@ -206,3 +247,20 @@ jobs:
             /tmp/distillpod-voice-device.log
             /tmp/distillpod-startup56-device.log
           retention-days: 14
+
+  android:
+    # Preserve this required context; it now verifies all selected dependencies.
+    name: Kotlin, lint and APK
+    if: always()
+    needs: [plan, security, android_build, firebase, native, emulator]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Require successful selected validation
+        env:
+          WORKFLOW_INPUTS_CONTEXT: ${{ toJSON(inputs) }}
+          VALIDATION_NEEDS: ${{ toJSON(needs) }}
+        run: python3 scripts/ci_validation.py gate
