@@ -15,3 +15,17 @@ Acceptance and TDD:
 - Review and current-main integration, normal PR merge and exact merged-main CI. No release metadata or publication action.
 
 Risks include deleting a queued/read copy, leaked leases preventing cleanup, queue ordering changes, losing video intent, blocking the player looper and fallback configuration mismatch. A short registry monitor covers counters only. Playback and IO scheduling remain on their current loopers. #60 stays open for bulk controls, transcript suppression and retention/scheduler work after this prerequisite.
+
+## Design review before integration
+
+Preparing selections must not wait behind an unrelated network download.
+Register the per-copy generation before stat on IO, without episodeTransfers.
+Removal revokes that generation and blocks selection while reserved. Queue
+admission verifies its identity. Failed stat retires only the matching unowned
+generation. Weak generation references allow abandoned request tags to expire.
+
+Fallback substitution happens at queue admission, before media source creation.
+A late loader for a removed, revoked copy fails its open with a bounded IO error.
+It must not reinterpret extractor offsets against a different remote encoding.
+A valid queued item retains ownership, so this case belongs to removed-source
+cancellation. Real playback tests must cover it.
