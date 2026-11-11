@@ -25,6 +25,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.coroutines.CoroutineContext
+import kotlin.coroutines.ContinuationInterceptor
 import kotlinx.coroutines.*
 import org.json.JSONArray
 import org.json.JSONObject
@@ -76,7 +77,7 @@ class AnalysisLifecycleInvestigationTest {
 
     private data class OwnedViewModel(val vm: AppViewModel, val store: ViewModelStore, val job: Job)
 
-    private inner class Fixture(val label: String, val fail: Boolean) {
+    private inner class Fixture(val label: String, val fail: Boolean, val ready: Boolean) {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val workerJobs = WorkerJobs()
         val workers = Collections.synchronizedList(mutableListOf<UnderstandingWorker>())
@@ -92,13 +93,16 @@ class AnalysisLifecycleInvestigationTest {
         suspend fun start() {
             WorkManagerTestInitHelper.initializeTestWorkManager(context, Configuration.Builder()
                 .setExecutor(SynchronousExecutor())
+                .setTaskExecutor(SynchronousExecutor())
                 .setWorkerCoroutineContext(workerJobs)
                 .setWorkerFactory(object : WorkerFactory() {
                     override fun createWorker(context: Context, name: String, params: WorkerParameters): ListenableWorker {
                         check(name == UnderstandingWorker::class.java.name) { "Unexpected worker class in isolated investigation: $name" }
                         return UnderstandingWorker(context, params).also { workers += it }
                     }
-                }).build())
+                }).build(), WorkManagerTestInitHelper.ExecutorsMode.PRESERVE_EXECUTORS)
+            assertSame("Worker coroutine observation must survive test initialization", workerJobs,
+                WorkManagerImpl.getInstance(context).configuration.workerCoroutineContext[ContinuationInterceptor])
             val inactive = SupervisorJob().apply { cancel() }
             graph = AppGraph(context, CoroutineScope(inactive + Dispatchers.Main.immediate))
             assertTrue(inactive.isCompleted)
@@ -109,7 +113,7 @@ class AnalysisLifecycleInvestigationTest {
             assertSame(graph, context.appGraph)
             assertSame(understanding, graph.understanding)
             shadowOf(context as Application).declareComponentUnbindable(ComponentName(context, PlaybackService::class.java))
-            graph.ready.complete(Unit)
+            if(ready) graph.ready.complete(Unit)
         }
 
         suspend fun seed(suffix: String): String {
@@ -177,6 +181,7 @@ class AnalysisLifecycleInvestigationTest {
                     workerJobs.jobs.all { it.isCompleted } && !WorkManagerImpl.getInstance(context).processor.hasWork() &&
                     episodeIds.all { id -> work(id).all { it.state.isFinished } }
             }
+            if(workers.isNotEmpty()) assertTrue("Worker coroutine completion check must not be vacuous", workerJobs.jobs.isNotEmpty())
             for(model in models) model.job.awaitViewModelTeardown()
             // Only after coroutine/collector completion may either database close.
             graph.db.close()
@@ -195,8 +200,8 @@ class AnalysisLifecycleInvestigationTest {
         }
     }
 
-    private suspend fun fixture(label: String, fail: Boolean = false, body: suspend Fixture.() -> Unit) {
-        val fixture = Fixture(label, fail)
+    private suspend fun fixture(label: String, fail: Boolean = false, ready: Boolean = true, body: suspend Fixture.() -> Unit) {
+        val fixture = Fixture(label, fail, ready)
         var failure: Throwable? = null
         try { fixture.start(); fixture.body() }
         catch(problem: Throwable) { failure = problem }
@@ -274,6 +279,30 @@ class AnalysisLifecycleInvestigationTest {
             assertNotNull(dao.analysis(id)!!.error)
             assertEquals("ready", dao.transcript(id)!!.state)
             observe("explicit-pause-cancelled-provider-and-worker", id)
+        }
+    }
+
+    @Test fun `actual worker cancellation before provider entry unwinds an observed worker coroutine`() = runBlocking {
+        fixture("cancel-before-provider", ready = false) {
+            val id = seed("before-provider")
+            val original = model()
+            original.vm.analyze(id)
+            settle { work(id).any { it.state == WorkInfo.State.RUNNING } && workerJobs.jobs.any { it.isActive } &&
+                "analysis:$id" !in original.vm.busy.value }
+            assertFalse(graph.ready.isCompleted)
+            assertFalse(provider.entered.isCompleted)
+            assertEquals(0, provider.calls.get())
+            assertTrue(provider.jobs.isEmpty())
+            assertEquals("queued", dao.analysis(id)!!.state)
+            original.vm.pauseAnalysis(id)
+            settle { "analysis:$id" !in original.vm.busy.value && dao.analysis(id)?.state == "failed" }
+            terminal(id)
+            assertTrue(workerJobs.jobs.isNotEmpty())
+            assertTrue(workerJobs.jobs.all { it.isCompleted })
+            assertTrue(work(id).all { it.state == WorkInfo.State.CANCELLED })
+            assertEquals("failed", dao.analysis(id)!!.state)
+            assertEquals(0, provider.calls.get())
+            observe("worker-cancelled-before-provider-entry", id, mapOf("providerNeverEntered" to true))
         }
     }
 

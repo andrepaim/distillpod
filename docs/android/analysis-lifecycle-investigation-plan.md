@@ -66,3 +66,22 @@ background quota, locking or OEM behavior. UI Create-button/account-gating is
 not exercised by a ViewModel-level accepted-request experiment. Never infer the
 user's original outcome from these controls or missing telemetry. Root retains
 required investigation acceptance and any later validation/integration decision.
+
+## Initial observation and fixture correction
+
+Initial local revision `b488062` ran four controls successfully. It recorded
+real worker/provider/persisted-state behavior, but the configured worker Job
+recorder saw zero Jobs. Its all-completed check was therefore vacuous and is
+not accepted as full worker-unwind evidence. Provider Jobs were captured and
+completed; original observations/XML/receipt remain private with this limit.
+
+Pinned WorkManager 2.10.1 inspection showed legacy test initialization clones
+Configuration when its task executor is default; the pinned copy constructor
+does not copy workerCoroutineContext. The corrected harness explicitly selects
+SynchronousExecutor/task executor and PRESERVE_EXECUTORS, asserts the configured
+worker dispatcher survives initialization, and requires nonempty actual-worker
+Job capture before closing databases. The dispatcher still delegates worker
+scheduling to Default. An added control holds graph.ready before provider entry
+and cancels the actual worker, proving completion observation does not depend
+on entering the fake provider. This is a routine investigation-fixture change,
+not a product behavior fix or unchanged retry.
