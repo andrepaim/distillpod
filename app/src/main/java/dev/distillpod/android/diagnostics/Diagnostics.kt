@@ -17,14 +17,17 @@ import java.util.UUID
 import java.util.concurrent.TimeUnit
 
 /** This is the only application boundary allowed to call Sentry. Never accept content fields. */
-class Diagnostics(private val context: Context, private val dsn:String = context.getString(dev.distillpod.android.R.string.diagnostics_dsn)) {
+class Diagnostics internal constructor(private val context: Context, private val dsn:String,
+    fileForce: DiagnosticFileForce) {
+    constructor(context: Context, dsn:String = context.getString(dev.distillpod.android.R.string.diagnostics_dsn)) :
+        this(context, dsn, NativeDiagnosticFileForce)
     private val prefs=context.getSharedPreferences("diagnostics",Context.MODE_PRIVATE)
-    internal val queue=DiagnosticQueue(java.io.File(context.noBackupFilesDir,"diagnostics"),onDrop={prefs.edit().putLong("dropped",prefs.getLong("dropped",0)+1).commit()})
+    internal val queue=DiagnosticQueue.withFileForce(java.io.File(context.noBackupFilesDir,"diagnostics"),fileForce,onDrop={prefs.edit().putLong("dropped",prefs.getLong("dropped",0)+1).commit()})
     private val lock=Any()
     private val budget=DiagnosticBudget(prefs)
     private val contextWaits=ContextWaitCoalescer()
     private val admissionLane=ThreadLocal<DiagnosticBudget.Lane>()
-    internal val journal=OperationJournal(java.io.File(context.noBackupFilesDir,"reliability/journal"),release=context.packageManager.getPackageInfo(context.packageName,0).versionName ?: "unknown")
+    internal val journal=OperationJournal.withFileForce(java.io.File(context.noBackupFilesDir,"reliability/journal"),fileForce,release=context.packageManager.getPackageInfo(context.packageName,0).versionName ?: "unknown")
     private val persisted=ThreadLocal<Boolean>()
     private val timings=mutableMapOf<String,Long>()
     private var voiceOperation:String?=null

@@ -16,7 +16,7 @@ import java.io.File
 @Config(sdk=[34])
 class DiagnosticsTest {
     @Test fun `owner acceptance emits marked logs without replacing real operation history`() {
-        val d=Diagnostics(context,"https://abc123@o1.ingest.sentry.io/1")
+        val d=Diagnostics(context,"https://abc123@o1.ingest.sentry.io/1",RecordingDiagnosticFileForce())
         val barrier=DiagnosticBarrierProbe(d)
         val operation=java.util.UUID.randomUUID().toString()
         dev.distillpod.android.sync.SubscriptionCloudAccess.instrumentation=true
@@ -32,7 +32,7 @@ class DiagnosticsTest {
         } finally {d.consent(false);dev.distillpod.android.sync.SubscriptionCloudAccess.instrumentation=false}
     }
     @Test fun `routine exhaustion preserves terminal outcomes and reporting gaps`() {
-        val d=Diagnostics(context,"https://abc123@o1.ingest.sentry.io/1")
+        val d=Diagnostics(context,"https://abc123@o1.ingest.sentry.io/1",RecordingDiagnosticFileForce())
         val barrier=DiagnosticBarrierProbe(d)
         d.consent(true);barrier.awaitIdle()
         repeat(1005) { d.event("transcription.stage",reason="transcribing");barrier.awaitIdle() }
@@ -47,7 +47,7 @@ class DiagnosticsTest {
         d.consent(false)
     }
     @Test fun `terminal summaries replay after rollover and acknowledge once while offline`() {
-        val d=Diagnostics(context,"https://abc123@o1.ingest.sentry.io/1")
+        val d=Diagnostics(context,"https://abc123@o1.ingest.sentry.io/1",RecordingDiagnosticFileForce())
         val barrier=DiagnosticBarrierProbe(d)
         d.consent(true);barrier.awaitIdle()
         val prefs=context.getSharedPreferences("diagnostics",0)
@@ -78,7 +78,7 @@ class DiagnosticsTest {
         q.clear();assertTrue(q.files().isEmpty())
     }
     @Test fun `repeated flush batches denied summary accounting without hiding terminal rows`() {
-        val d=Diagnostics(context,"https://abc123@o1.ingest.sentry.io/1")
+        val d=Diagnostics(context,"https://abc123@o1.ingest.sentry.io/1",RecordingDiagnosticFileForce())
         val barrier=DiagnosticBarrierProbe(d)
         d.consent(true);barrier.awaitIdle()
         val prefs=context.getSharedPreferences("diagnostics",0)
@@ -98,7 +98,7 @@ class DiagnosticsTest {
         assertTrue(prefs.getStringSet("suppressed_summaries",emptySet()).orEmpty().isEmpty())
     }
     @Test fun `concurrent recovery and executor flush do not re-admit acknowledged summaries`() {
-        val d=Diagnostics(context,"https://abc123@o1.ingest.sentry.io/1")
+        val d=Diagnostics(context,"https://abc123@o1.ingest.sentry.io/1",RecordingDiagnosticFileForce())
         val barrier=DiagnosticBarrierProbe(d)
         d.consent(true);barrier.awaitIdle()
         repeat(30){d.journal.transition("transcription",java.util.UUID.randomUUID().toString(),"completed")}
@@ -123,7 +123,7 @@ class DiagnosticsTest {
     }
     @After fun finish() {Sentry.close()}
     @Test fun `uncorrelated late raw callback is incomplete and cannot terminate a new execution`() {
-        val d=Diagnostics(context,"https://abc123@o1.ingest.sentry.io/1")
+        val d=Diagnostics(context,"https://abc123@o1.ingest.sentry.io/1",RecordingDiagnosticFileForce())
         val barrier=DiagnosticBarrierProbe(d)
         d.consent(true)
         val c=DiagnosticCorrelation(momentId=java.util.UUID.randomUUID().toString(),
@@ -141,14 +141,14 @@ class DiagnosticsTest {
         d.consent(false)
     }
     @Test fun `fresh installation does not store or send diagnostics`() {
-        val diagnostics=Diagnostics(context,"https://abc123@o1.ingest.sentry.io/1")
+        val diagnostics=Diagnostics(context,"https://abc123@o1.ingest.sentry.io/1",RecordingDiagnosticFileForce())
         val barrier=DiagnosticBarrierProbe(diagnostics)
         diagnostics.event("diagnostics.test");diagnostics.failure("capture",Exception("secret"))
         barrier.awaitIdle()
         assertFalse(diagnostics.enabled);assertTrue(diagnostics.queue.files().isEmpty())
     }
     @Test fun `consent permits safe logs and revocation clears pending reports`() {
-        val diagnostics=Diagnostics(context,"https://abc123@o1.ingest.sentry.io/1")
+        val diagnostics=Diagnostics(context,"https://abc123@o1.ingest.sentry.io/1",RecordingDiagnosticFileForce())
         val barrier=DiagnosticBarrierProbe(diagnostics)
         diagnostics.consent(true)
         diagnostics.event("diagnostics.test",source="phone")
@@ -163,7 +163,7 @@ class DiagnosticsTest {
         assertTrue(diagnostics.queue.files().isEmpty())
     }
     @Test fun `usage consent alone never enables diagnostic errors or operation journal`() {
-        val d=Diagnostics(context,"https://abc123@o1.ingest.sentry.io/1")
+        val d=Diagnostics(context,"https://abc123@o1.ingest.sentry.io/1",RecordingDiagnosticFileForce())
         val barrier=DiagnosticBarrierProbe(d)
         d.usageConsent(true)
         d.event("voice.started",reason="phone")
@@ -175,7 +175,7 @@ class DiagnosticsTest {
         d.usageConsent(false);assertTrue(d.queue.files().isEmpty())
     }
     @Test fun `durable summaries persist before executor and synthetic retries have stable identifiers`() {
-        val d=Diagnostics(context,"https://abc123@o1.ingest.sentry.io/1")
+        val d=Diagnostics(context,"https://abc123@o1.ingest.sentry.io/1",RecordingDiagnosticFileForce())
         val barrier=DiagnosticBarrierProbe(d)
         d.consent(true)
         val job=java.util.UUID.randomUUID().toString()
@@ -193,7 +193,7 @@ class DiagnosticsTest {
         d.usageConsent(false)
     }
     @Test fun `capture requests include failures and saved moments create one dependency job`() {
-        val d=Diagnostics(context,"https://abc123@o1.ingest.sentry.io/1")
+        val d=Diagnostics(context,"https://abc123@o1.ingest.sentry.io/1",RecordingDiagnosticFileForce())
         val barrier=DiagnosticBarrierProbe(d)
         d.consent(true)
         val request=java.util.UUID.randomUUID().toString();val moment=java.util.UUID.randomUUID().toString()
