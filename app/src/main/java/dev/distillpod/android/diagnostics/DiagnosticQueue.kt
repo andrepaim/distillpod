@@ -4,13 +4,22 @@ import java.io.File
 import java.util.UUID
 
 /** Separate, bounded outbox. Only sanitized SDK envelopes may enter this store. */
-internal class DiagnosticQueue(private val directory: File, private val now: () -> Long = System::currentTimeMillis, private val onDrop: () -> Unit = {}) {
+internal class DiagnosticQueue private constructor(private val directory: File, private val now: () -> Long,
+    private val onDrop: () -> Unit, private val fileForce: DiagnosticFileForce) {
+    constructor(directory: File, now: () -> Long = System::currentTimeMillis, onDrop: () -> Unit = {}) :
+        this(directory, now, onDrop, NativeDiagnosticFileForce)
+
+    companion object {
+        internal fun withFileForce(directory: File, fileForce: DiagnosticFileForce,
+            now: () -> Long = System::currentTimeMillis, onDrop: () -> Unit = {}) =
+            DiagnosticQueue(directory, now, onDrop, fileForce)
+    }
     @Synchronized fun append(bytes: ByteArray, priority: Boolean = false):Boolean {
         if(bytes.size > 256 * 1024) {onDrop();return false}
         directory.mkdirs()
         val target = File(directory, "${now()}-${UUID.randomUUID()}-"+(if(priority)"priority-" else "")+".envelope")
         val pending = File(directory, target.name + ".tmp")
-        java.io.FileOutputStream(pending).use { it.write(bytes); it.fd.sync() }
+        java.io.FileOutputStream(pending).use { it.write(bytes); fileForce.force(it.fd) }
         check(pending.renameTo(target))
         prune();return target.exists()
     }

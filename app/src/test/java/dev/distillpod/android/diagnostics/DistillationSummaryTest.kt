@@ -80,7 +80,7 @@ class DistillationSummaryTest {
         assertEquals("review",first["stage"]);assertEquals("quota",first["stage_outcome"])
         assertEquals(first["execution_id"],first["summary_id"])
         assertEquals(true,first["correlation_complete"])
-        assertTrue((first["emitted_at_ms"] as Number).toLong()>=(first["observed_at_ms"] as Number).toLong())
+        assertDiagnosticWallTimes(first)
         repo.generate(id);repo.run(id)
         val second=summaries(d).map {fields(it)}.single {it["execution_id"]!=first["execution_id"]}
         assertEquals(first["generation_attempt_id"],second["generation_attempt_id"])

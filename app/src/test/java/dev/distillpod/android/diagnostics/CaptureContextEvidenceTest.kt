@@ -26,7 +26,7 @@ class CaptureContextEvidenceTest {
         File(context.noBackupFilesDir,"diagnostics").deleteRecursively()
         File(context.noBackupFilesDir,"reliability").deleteRecursively()
         WorkManagerTestInitHelper.initializeTestWorkManager(context)
-        val diagnostics=Diagnostics(context,"https://abc123@o1.ingest.sentry.io/1")
+        val diagnostics=Diagnostics(context,"https://abc123@o1.ingest.sentry.io/1",RecordingDiagnosticFileForce())
         val barrier=DiagnosticBarrierProbe(diagnostics)
         diagnostics.contextSummary(UUID.randomUUID().toString(),ContextPreparationEvidence(),0,null)
         assertTrue(diagnostics.queue.files().isEmpty())
@@ -96,8 +96,7 @@ class CaptureContextEvidenceTest {
                 .mapNotNull {it.optJSONArray("items")}.first().getJSONObject(0)
             val attributes=item.getJSONObject("attributes")
             val fields=attributes.keys().asSequence().associateWith {attributes.getJSONObject(it).get("value")}
-            assertTrue(attributes.has("observed_at_ms"))
-            assertTrue((fields["observed_at_ms"] as Number).toLong()<=(fields["emitted_at_ms"] as Number).toLong())
+            assertDiagnosticWallTimes(fields)
             assertEquals(0,calls)
             if(fields["frozen_context"]==true) {
                 val saved=dao.distillation(id)!!
