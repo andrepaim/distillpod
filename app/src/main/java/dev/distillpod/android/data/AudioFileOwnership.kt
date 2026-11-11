@@ -7,6 +7,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 internal class AudioFileOwnership(private val changed: () -> Unit = {}) {
     class Selection internal constructor(val path: String) {
         internal var owners = 0
+        internal var revoked = false
     }
     class Lease internal constructor(private val release: () -> Unit) : AutoCloseable {
         private val closed = AtomicBoolean()
@@ -36,6 +37,7 @@ internal class AudioFileOwnership(private val changed: () -> Unit = {}) {
     /** Called after stat failed. A different generation or an owned copy stays intact. */
     fun discard(selection: Selection) = synchronized(monitor) {
         if (selection.owners == 0 && copies[selection.path]?.get() === selection) {
+            selection.revoked = true
             copies.remove(selection.path)
         }
         Unit
@@ -43,7 +45,7 @@ internal class AudioFileOwnership(private val changed: () -> Unit = {}) {
 
     fun acquire(selection: Selection): Lease? {
         val lease = synchronized(monitor) {
-            if (selection.path in removing || copies[selection.path]?.get() !== selection) return null
+            if (selection.revoked || selection.path in removing || copies[selection.path]?.get() !== selection) return null
             selection.owners++
             Lease {
                 synchronized(monitor) {
@@ -64,6 +66,7 @@ internal class AudioFileOwnership(private val changed: () -> Unit = {}) {
             prune()
             if (distinct.any { it in removing || (copies[it]?.get()?.owners ?: 0) > 0 }) return null
             distinct.forEach {
+                copies[it]?.get()?.revoked = true
                 copies.remove(it)
                 removing.add(it)
             }
