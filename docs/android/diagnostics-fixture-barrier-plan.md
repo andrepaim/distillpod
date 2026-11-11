@@ -21,8 +21,10 @@ private. No actual failing-worker snapshot or supported root cause is known.
 ## Plan before implementation
 
 1. Install the existing DiagnosticBarrierProbe in DiagnosticsTest immediately
-   after each Diagnostics construction, before consent/event calls can create
-   its executor worker. Delegate each existing barrier through that same probe.
+   after each barrier-bearing Diagnostics construction (11 of 12 instances),
+   before consent/event calls can create its executor worker. Delegate each
+   existing barrier through that same probe. The remaining instance has no
+   awaitIdle call and is unchanged.
 2. Preserve the original five-second direct barrier, producer ordering and
    count, assertions, privacy and original failure. Change no production code,
    main-looper progress, timeouts, retries, worker scheduling or teardown.
@@ -47,3 +49,24 @@ change; repository hosted checks are still required before eventual integration.
 No runtime, data, account, settings, network, backend, security, release or
 production telemetry change. A passing focused run is not historical-cause or
 timeout-repair evidence.
+
+## Observation checkpoint
+
+At clean `d78cfed6ea71539701e0a60f7f56a3b2edf6b668`, the existing probe covered
+all 17 original DiagnosticsTest await call sites across 11 fixture instances.
+Source reconstruction after removing probe declarations/delegations preserved
+all prior statements, assertions and producer ordering. No main-loop progress,
+retry, timeout, producer, teardown or production changes were made.
+
+One focused voice run passed DiagnosticsTest's 14 cases and the existing
+DiagnosticBarrierProbeTest's controlled privacy/original-error case: 15 tests,
+zero failures/errors/skips, source unchanged. No natural timeout recurred and
+no failing-worker snapshot was obtained. The narrower run does not reproduce
+the full suite's fixture lifetimes/resource pressure. No root cause or timeout
+repair is claimed; the original failed gate stays failed evidence, and parent
+#97 remains open. Private XML/logs and a receipt are retained outside Git.
+
+This increment awaits root review and coordination. Full default/voice, hosted
+checks, current-main integration and merged-main verification have not run on
+this branch; no PR, push, merge or device action was performed. Do not repeat
+an unchanged run merely to force another outcome.
