@@ -35,11 +35,12 @@ class ActiveFiles {
     private val processing = ConcurrentHashMap<String, AtomicInteger>()
     private val revision = MutableStateFlow(0L)
     val changes = revision.asStateFlow()
+    internal val audioOwnership = AudioFileOwnership { revision.update { it + 1 } }
     @Volatile var playback: String? = null
         set(value) { if (field != value) { field = value; revision.update { it + 1 } } }
     @Volatile var queued: Set<String> = emptySet()
         set(value) { if (field != value) { field = value; revision.update { it + 1 } } }
-    fun busy(path: String): Boolean = path == playback || path in queued || (processing[path]?.get() ?: 0) > 0
+    fun busy(path: String): Boolean = path == playback || path in queued || (processing[path]?.get() ?: 0) > 0 || audioOwnership.busy(path)
     fun acquire(file: File) { processing.getOrPut(file.absolutePath) { AtomicInteger() }.incrementAndGet(); revision.update { it + 1 } }
     fun release(file: File) { processing[file.absolutePath]?.decrementAndGet(); revision.update { it + 1 } }
 }
@@ -53,6 +54,46 @@ class MediaRepository(context: Context, private val db: AppDatabase, private val
     val modelsDirectory = File(context.filesDir, "models").apply { mkdirs() }
     private val locks = ConcurrentHashMap<String, Mutex>()
     private val episodeTransfers = Mutex()
+
+    /** Register before checking the file; admission later verifies the same copy is still valid. */
+    internal suspend fun preparePlaybackItems(items: List<androidx.media3.common.MediaItem>) =
+        withContext(Dispatchers.IO) {
+            val managed = directory.canonicalFile
+            items.map { item ->
+                val episode = dao.episode(item.mediaId)
+                if (episode == null) {
+                    val uri = item.localConfiguration?.uri
+                    require(uri == null || uri.scheme != null && uri.scheme != "file" ||
+                        !File(uri.path.orEmpty()).canonicalPath.startsWith(managed.path + "/")) {
+                        "Episode is unavailable"
+                    }
+                    return@map item
+                }
+                val requested = item.localConfiguration?.uri
+                if (requested?.isHierarchical == true && requested.getQueryParameter("distillpod_video") == "1" &&
+                    dev.distillpod.core.YouTubeUrl.videoId(requested.toString()) != null) return@map item
+                val fallback = android.net.Uri.parse(episode.audioUrl)
+                val remote = item.buildUpon().setUri(fallback).setTag(null).build()
+                val storedFile = episode.localFile?.let { File(it).absoluteFile } ?: return@map remote
+                val file = storedFile.canonicalFile
+                val uri = android.net.Uri.fromFile(storedFile)
+                if (file.parentFile != managed) {
+                    return@map if (file.isFile) remote.buildUpon().setUri(uri).build() else remote
+                }
+                val copy = active.audioOwnership.select(file.path) ?: return@map remote
+                if (!file.isFile) {
+                    active.audioOwnership.discard(copy)
+                    return@map remote
+                }
+                remote.buildUpon().setUri(uri)
+                    .setTag(dev.distillpod.android.playback.AudioPlaybackSelection(copy, fallback, uri)).build()
+            }
+        }
+
+    private fun reserveAudio(files: List<File>): AudioFileOwnership.Removal =
+        active.audioOwnership.reserve(files.map { it.canonicalPath })
+            ?: throw AudioDeletionBlocked(AudioDeletionBlockReason.ACTIVE)
+
 
     suspend fun ensureDownloaded(id: String, notify: (DownloadProgress) -> Unit = {}): File = episodeTransfers.withLock { downloadEpisode(id, notify) }
 
@@ -109,7 +150,12 @@ class MediaRepository(context: Context, private val db: AppDatabase, private val
             target
         } catch (error: Exception) {
             withContext(NonCancellable) {
-                if (dao.episode(id)?.localFile != target.absolutePath) target.delete()
+                if (dao.episode(id)?.localFile != target.absolutePath) withContext(Dispatchers.IO) {
+                    // A committed copy can have been detached by a concurrent feed refresh.
+                    if (!active.busy(target.absolutePath)) {
+                        active.audioOwnership.reserve(listOf(target.canonicalPath))?.use { target.delete() }
+                    }
+                }
                 val latest = dao.episode(id)
                 if (latest != null) dao.downloadProgress(id, if (error is CancellationException) "paused" else "failed", partial.length(), latest.totalBytes,
                     latest.etag, latest.lastModified, if (error is CancellationException) null else safeFailure(error))
@@ -157,10 +203,12 @@ class MediaRepository(context: Context, private val db: AppDatabase, private val
                     val partial = File(directory, "$id.partial")
                     requireRemovable(ep, partial)
                     require(ep.downloadState == "paused" && ep.localFile == null) { "Only a paused partial download can be discarded." }
-                    val bytes = partial.length()
-                    check(!partial.exists() || partial.delete()) { "Could not discard the partial download" }
-                    dao.downloadProgress(id, "none", 0, 0, null, null, null)
-                    bytes
+                    reserveAudio(listOf(partial)).use {
+                        val bytes = partial.length()
+                        check(!partial.exists() || partial.delete()) { "Could not discard the partial download" }
+                        dao.downloadProgress(id, "none", 0, 0, null, null, null)
+                        bytes
+                    }
                 }
             }
         }
@@ -174,11 +222,13 @@ class MediaRepository(context: Context, private val db: AppDatabase, private val
                     val partial = File(directory, "$id.partial")
                     requireRemovable(ep, partial)
                     val file = ep.localFile?.let(::File)
-                    // A failed partial cleanup must not remove the completed audio first.
-                    check(!partial.exists() || partial.delete()) { "Could not delete the partial download" }
-                    if (file != null) check(!file.exists() || file.delete()) { "Could not delete the audio file" }
-                    dao.removeDownload(id)
-                    dao.downloadProgress(id, "none", 0, 0, null, null, null)
+                    reserveAudio(listOfNotNull(file, partial)).use {
+                        // A failed partial cleanup must not remove the completed audio first.
+                        check(!partial.exists() || partial.delete()) { "Could not delete the partial download" }
+                        if (file != null) check(!file.exists() || file.delete()) { "Could not delete the audio file" }
+                        dao.removeDownload(id)
+                        dao.downloadProgress(id, "none", 0, 0, null, null, null)
+                    }
                 }
             }
         }
@@ -195,7 +245,11 @@ class MediaRepository(context: Context, private val db: AppDatabase, private val
             .map { File(directory, "${it.id}.partial").absolutePath }
         var bytes = 0L
         directory.listFiles()?.filter { it.isFile && it.absolutePath !in known && !active.busy(it.absolutePath) }?.forEach { file ->
-            val length = file.length(); if (file.delete()) bytes += length
+            val removal = active.audioOwnership.reserve(listOf(file.canonicalPath)) ?: return@forEach
+            removal.use {
+                val length = file.length()
+                if (file.delete()) bytes += length
+            }
         }
         bytes
     } }

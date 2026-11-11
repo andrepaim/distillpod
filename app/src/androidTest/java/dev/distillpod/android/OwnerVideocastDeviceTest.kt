@@ -373,7 +373,7 @@ class OwnerVideocastDeviceTest {
         lateinit var p: ExoPlayer; lateinit var texture: SurfaceTexture; lateinit var surface: Surface
         instrumentation.runOnMainSync {
             texture = SurfaceTexture(false).apply { setDefaultBufferSize(1280, 720) }; surface = Surface(texture)
-            p = ExoPlayer.Builder(context).setMediaSourceFactory(VideocastMediaSourceFactory(context, graph.youtube)).build()
+            p = ExoPlayer.Builder(context).setMediaSourceFactory(VideocastMediaSourceFactory(context, graph.youtube, graph.activeFiles.audioOwnership)).build()
             p.volume = 0f; p.setVideoSurface(surface)
             p.addListener(object : Player.Listener {
                 override fun onRenderedFirstFrame() { rendered.countDown() }

@@ -40,6 +40,7 @@ class AutoLibraryCallback(
     private val saveMomentWithSource: (suspend (String,Long,String?,String)->String)? = null,
     private val queueCommands: Set<SessionCommand> = emptySet(),
     private val onQueueCommand: ((SessionCommand,Bundle)->ListenableFuture<SessionResult>)? = null,
+    private val preparePlaybackItems: suspend (List<MediaItem>) -> List<MediaItem> = { it },
 ): MediaLibrarySession.Callback {
     override fun onPlayerCommandRequest(session: MediaSession, controller: MediaSession.ControllerInfo, playerCommand: Int): Int {
         if (controller.packageName != packageName && playerCommand in setOf(Player.COMMAND_PLAY_PAUSE,
@@ -135,12 +136,13 @@ class AutoLibraryCallback(
     }
     override fun onAddMediaItems(session: MediaSession,controller: MediaSession.ControllerInfo,mediaItems: List<MediaItem>): ListenableFuture<List<MediaItem>> = request {
         playbackReady.await()
-        if(controller.packageName==packageName && mediaItems.all {it.localConfiguration!=null})mediaItems
+        val selected = if(controller.packageName==packageName && mediaItems.all {it.localConfiguration!=null})mediaItems
         else mediaItems.map { requested ->
             val id=requested.requestMetadata.searchQuery?.let {playback.voice(it)} ?: requested.mediaId
             val ep=db.library().episode(id) ?: throw IllegalArgumentException("Episode is unavailable")
             mediaItem(ep,db.library().podcast(ep.podcastId))
         }
+        preparePlaybackItems(selected)
     }
     override fun onSetMediaItems(session:MediaSession,controller:MediaSession.ControllerInfo,mediaItems:List<MediaItem>,startIndex:Int,startPositionMs:Long):ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
         val queue=(0 until session.player.mediaItemCount).map {session.player.getMediaItemAt(it).mediaId}
@@ -149,21 +151,21 @@ class AutoLibraryCallback(
         return request {
             playbackReady.await()
             if(controller.packageName==packageName && mediaItems.all {it.localConfiguration!=null})
-                return@request MediaSession.MediaItemsWithStartPosition(mediaItems,startIndex,startPositionMs)
+                return@request MediaSession.MediaItemsWithStartPosition(preparePlaybackItems(mediaItems),startIndex,startPositionMs)
             require(mediaItems.isNotEmpty()) {"No episode was requested"}
             val item=mediaItems.getOrNull(startIndex.takeIf {it>=0}?:0)?:throw IllegalArgumentException("Episode index is unavailable")
             val id=if(item.requestMetadata.searchQuery!=null)playback.voice(item.requestMetadata.searchQuery!!) else item.mediaId
             require(!id.isNullOrBlank()) {"No matching episode"}
             val existing=queue.ifEmpty {db.library().queue().map {it.episodeId}}
             val selected=playback.select(id,existing,if(startPositionMs!=C.TIME_UNSET)startPositionMs else if(id==liveId)livePosition else null)
-            MediaSession.MediaItemsWithStartPosition(selected.items,selected.index,selected.position)
+            MediaSession.MediaItemsWithStartPosition(preparePlaybackItems(selected.items),selected.index,selected.position)
         }
     }
     override fun onPlaybackResumption(session:MediaSession,controller:MediaSession.ControllerInfo):ListenableFuture<MediaSession.MediaItemsWithStartPosition> = request {
         playbackReady.await()
         val id=playback.voice("")?:throw IllegalArgumentException("Your library has no playable episodes")
         val selected=playback.select(id,db.library().queue().map {it.episodeId})
-        MediaSession.MediaItemsWithStartPosition(selected.items,selected.index,selected.position)
+        MediaSession.MediaItemsWithStartPosition(preparePlaybackItems(selected.items),selected.index,selected.position)
     }
     override fun onMediaButtonEvent(session: MediaSession, controllerInfo: MediaSession.ControllerInfo, intent: Intent): Boolean {
         diagnostics?.event("headphone.received",source="headphones")

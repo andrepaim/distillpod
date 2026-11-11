@@ -46,7 +46,7 @@ class VideoStartupDeviceTest {
             instrumentation.runOnMainSync {
                 texture = SurfaceTexture(false).apply { setDefaultBufferSize(1280, 720) }
                 surface = Surface(texture)
-                player = ExoPlayer.Builder(context).setMediaSourceFactory(VideocastMediaSourceFactory(context, source)).build()
+                player = ExoPlayer.Builder(context).setMediaSourceFactory(VideocastMediaSourceFactory(context, source, dev.distillpod.android.data.AudioFileOwnership())).build()
                 player.volume = 0f
                 player.setVideoSurface(surface)
                 player.addListener(object : Player.Listener {

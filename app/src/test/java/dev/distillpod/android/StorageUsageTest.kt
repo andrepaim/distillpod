@@ -5,7 +5,7 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import dev.distillpod.android.data.*
 import java.io.File
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.*
 import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -379,6 +379,131 @@ class StorageUsageTest {
             assertEquals("resume", partial.readText())
         }
     }
+    @Test fun preparedQueueOwnerProtectsTheActualDownloadAndReleaseAllowsDeletion() = runBlocking {
+        fixture { db, media, _ ->
+            val audio = File(media.directory, "owned.audio").apply { writeText("sample") }
+            val row = episode().copy(localFile = audio.absolutePath, downloadState = "downloaded", downloadedBytes = 6)
+            db.library().putEpisode(row)
+            val prepared = media.preparePlaybackItems(listOf(dev.distillpod.android.playback.mediaItem(row, null))).single()
+            val selection = prepared.localConfiguration!!.tag as? dev.distillpod.android.playback.AudioPlaybackSelection
+            assertNotNull("Managed local playback needs a revocable selection", selection)
+            val lease = media.active.audioOwnership.acquire(selection!!.copy)!!
+            try {
+                val failure = runCatching { media.deleteDownload(row.id) }.exceptionOrNull()
+                assertEquals(AudioDeletionBlockReason.ACTIVE, (failure as? AudioDeletionBlocked)?.reason)
+                assertEquals("sample", audio.readText())
+                assertEquals(row, db.library().episode(row.id))
+            } finally { lease.close() }
+            media.deleteDownload(row.id)
+            assertFalse(audio.exists())
+        }
+    }
+
+    @Test fun deletionRevokesAPreparedCopyBeforeItCanEnterThePlayer() = runBlocking {
+        fixture { db, media, _ ->
+            val audio = File(media.directory, "prepared.audio").apply { writeText("sample") }
+            val row = episode().copy(localFile = audio.absolutePath, downloadState = "downloaded", downloadedBytes = 6)
+            db.library().putEpisode(row)
+            val prepared = media.preparePlaybackItems(listOf(dev.distillpod.android.playback.mediaItem(row, null))).single()
+            val selection = prepared.localConfiguration!!.tag as? dev.distillpod.android.playback.AudioPlaybackSelection
+            assertNotNull(selection)
+            media.deleteDownload(row.id)
+            assertFalse(audio.exists())
+            assertNull(media.active.audioOwnership.acquire(selection!!.copy))
+        }
+    }
+
+    @Test fun selectionDuringRemovalUsesRemoteEvenWhileTheFileStillExists() = runBlocking {
+        fixture { db, media, _ ->
+            val audio = File(media.directory, "removing.audio").apply { writeText("sample") }
+            val row = episode().copy(localFile = audio.absolutePath, downloadState = "downloaded", downloadedBytes = 6)
+            db.library().putEpisode(row)
+            val reservation = media.active.audioOwnership.reserve(listOf(audio.canonicalPath))!!
+            try {
+                val prepared = media.preparePlaybackItems(listOf(dev.distillpod.android.playback.mediaItem(row, null))).single()
+                assertEquals(android.net.Uri.parse(row.audioUrl), prepared.localConfiguration!!.uri)
+                assertNull(prepared.localConfiguration!!.tag)
+            } finally { reservation.close() }
+        }
+    }
+
+    @Test fun orphanCleanupKeepsAnOpenReaderUntilItCloses() = runBlocking {
+        fixture { db, media, _ ->
+            val audio = File(media.directory, "orphan-owner.audio").apply { writeText("sample") }
+            val row = episode().copy(localFile = audio.absolutePath, downloadState = "downloaded", downloadedBytes = 6)
+            db.library().putEpisode(row)
+            val prepared = media.preparePlaybackItems(listOf(dev.distillpod.android.playback.mediaItem(row, null))).single()
+            val selection = prepared.localConfiguration!!.tag as? dev.distillpod.android.playback.AudioPlaybackSelection
+            assertNotNull(selection)
+            val lease = media.active.audioOwnership.acquire(selection!!.copy)!!
+            try {
+                db.library().removeDownload(row.id)
+                assertEquals(0L, media.clearUnusedAudio())
+                assertEquals("sample", audio.readText())
+            } finally { lease.close() }
+            assertEquals(6L, media.clearUnusedAudio())
+            assertFalse(audio.exists())
+        }
+    }
+
+    @Test fun localPlaybackSelectionDoesNotWaitForAnUnrelatedNetworkTransfer() = runBlocking {
+        fixture { db, media, _ ->
+            val audio = File(media.directory, "local.audio").apply { writeText("sample") }
+            val local = episode().copy(localFile = audio.absolutePath, downloadState = "downloaded", downloadedBytes = 6)
+            db.library().putEpisode(local)
+            MockWebServer().use { server ->
+                server.enqueue(MockResponse().setSocketPolicy(okhttp3.mockwebserver.SocketPolicy.NO_RESPONSE))
+                server.start()
+                db.library().putEpisode(episode().copy(id = "other", guid = "other", audioUrl = server.url("/held").toString(), downloadState = "none"))
+                val transfer = async(Dispatchers.IO) { runCatching { media.ensureDownloaded("other") } }
+                try {
+                    assertNotNull(withContext(Dispatchers.IO) { server.takeRequest(5,java.util.concurrent.TimeUnit.SECONDS) })
+                    val selected = withTimeout(2000) {
+                        media.preparePlaybackItems(listOf(dev.distillpod.android.playback.mediaItem(local, null))).single()
+                    }
+                    assertEquals(android.net.Uri.fromFile(audio.absoluteFile), selected.localConfiguration!!.uri)
+                    assertFalse(transfer.isCompleted)
+                } finally { withTimeout(5000) { transfer.cancelAndJoin() } }
+            }
+        }
+    }
+
+    @Test fun preparationPreservesRequestedVideoAndBoundsUnknownLocalClips() = runBlocking {
+        fixture { db, media, _ ->
+            val audio = File(media.directory, "video.audio").apply { writeText("sample") }
+            val row = episode().copy(audioUrl = "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+                localFile = audio.absolutePath, downloadState = "downloaded")
+            db.library().putEpisode(row)
+            val video = dev.distillpod.android.playback.videocastMediaItem(row, null, true)
+            assertEquals(video, media.preparePlaybackItems(listOf(video)).single())
+            val opaque = androidx.media3.common.MediaItem.Builder().setMediaId(row.id).setUri("urn:fixture").build()
+            assertEquals(android.net.Uri.fromFile(audio.absoluteFile),
+                media.preparePlaybackItems(listOf(opaque)).single().localConfiguration!!.uri)
+            for (uri in listOf(audio.absolutePath, android.net.Uri.fromFile(audio).toString())) {
+                val unknown = androidx.media3.common.MediaItem.fromUri(uri)
+                assertTrue(runCatching { media.preparePlaybackItems(listOf(unknown)) }.exceptionOrNull() is IllegalArgumentException)
+            }
+            val diagnostic = androidx.media3.common.MediaItem.fromUri(
+                android.net.Uri.fromFile(File(media.directory.parentFile, "diagnostic.wav")))
+            assertEquals(diagnostic, media.preparePlaybackItems(listOf(diagnostic)).single())
+        }
+    }
+
+    @Test fun canonicalOwnershipMustPreserveTheStoredPlaybackUriIdentity() = runBlocking {
+        fixture { db, media, _ ->
+            val actual = File(media.directory, "alias.audio").apply { writeText("sample") }
+            val alias = File(media.directory, "../media/alias.audio").absoluteFile
+            assertNotEquals(alias.path, alias.canonicalPath)
+            val row = episode().copy(localFile = alias.path, downloadState = "downloaded", mediaFingerprint = "verified")
+            db.library().putEpisode(row)
+            val selected = media.preparePlaybackItems(listOf(dev.distillpod.android.playback.mediaItem(row, null))).single()
+            assertEquals("Playback identity must remain compatible with persisted source verification",
+                android.net.Uri.fromFile(alias), selected.localConfiguration!!.uri)
+            val token = selected.localConfiguration!!.tag as dev.distillpod.android.playback.AudioPlaybackSelection
+            assertEquals(actual.canonicalPath, token.copy.path)
+        }
+    }
+
     private fun episode() = EpisodeEntity("e", "p", "g", "Episode", "https://example.test/audio",
         downloadState = "paused", downloadedBytes = 3, etag = "old")
     private suspend fun fixture(block: suspend (AppDatabase, MediaRepository, AppSettings) -> Unit) {

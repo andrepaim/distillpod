@@ -62,14 +62,15 @@ class PlaybackService : MediaLibraryService() {
         // Observe projection before any Next event, including hosts using the legacy media browser.
         graph.carConnection
         val dao = graph.db.library()
-        val player = ExoPlayer.Builder(this)
-            .setMediaSourceFactory(dev.distillpod.android.video.VideocastMediaSourceFactory(this, graph.youtube))
+        val engine = ExoPlayer.Builder(this)
+            .setMediaSourceFactory(dev.distillpod.android.video.VideocastMediaSourceFactory(this, graph.youtube, graph.activeFiles.audioOwnership))
             .setSeekBackIncrementMs(10000).setSeekForwardIncrementMs(30000)
             .setWakeMode(C.WAKE_MODE_LOCAL)
             .setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_SPEECH).build(), true)
             .setHandleAudioBecomingNoisy(true).build()
+        val player = dev.distillpod.android.playback.OwnedAudioPlayer(engine, graph.activeFiles.audioOwnership, graph.media.directory.absolutePath)
         player.trackSelectionParameters = player.trackSelectionParameters.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, true).build()
-        val health = dev.distillpod.android.playback.PlaybackHealthRecorder(this, player)
+        val health = dev.distillpod.android.playback.PlaybackHealthRecorder(this, engine)
         val transcription = dev.distillpod.android.playback.PlaybackTranscription(
             scope, graph.settings.flow.map { it.transcribeOnPlayback },
             prepare = { id ->
@@ -80,7 +81,7 @@ class PlaybackService : MediaLibraryService() {
             },
             onFailure = { graph.diagnostics.failure("transcription",it) },
         )
-        player.addAnalyticsListener(health)
+        engine.addAnalyticsListener(health)
         scope.launch { while (isActive) { health.sample(); delay(5000) } }
         val activity = PendingIntent.getActivity(this, 1, Intent(this, MainActivity::class.java).putExtra("openPlayer", true), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         var headphoneDistill = false
@@ -100,6 +101,7 @@ class PlaybackService : MediaLibraryService() {
             openCarVoice = { graph.carVoiceEntry.open() },
             onExternalPlaybackCommand = { graph.voice.cancel(false) },
             diagnostics = graph.diagnostics,
+            preparePlaybackItems = graph.media::preparePlaybackItems,
             queueCommands = setOf(dev.distillpod.android.playback.QueueWriteCommands.BARRIER, dev.distillpod.android.playback.QueueWriteCommands.IMPORT),
             onQueueCommand = { command, args ->
                 if(command==dev.distillpod.android.playback.QueueWriteCommands.IMPORT) {
@@ -198,11 +200,13 @@ class PlaybackService : MediaLibraryService() {
                 graph.playbackEvents.videoFailure.value = id to "Video is unavailable. Returning to audio."
                 graph.diagnostics.event("videocast.failed", reason = "failed")
                 scope.launch {
-                    val pair = withContext(Dispatchers.IO) {
-                        dao.episode(id)?.let { it to dao.podcast(it.podcastId) }
+                    val prepared = withContext(Dispatchers.IO) {
+                        val episode = dao.episode(id) ?: return@withContext null
+                        val base = mediaItem(episode.copy(localFile = null), dao.podcast(episode.podcastId))
+                        graph.media.preparePlaybackItems(listOf(base)).single()
                     } ?: return@launch
                     if (player.currentMediaItem?.mediaId != id || C.TRACK_TYPE_VIDEO !in player.trackSelectionParameters.disabledTrackTypes) return@launch
-                    swapCurrentSource(player, mediaItem(pair.first, pair.second), position, resume)
+                    swapCurrentSource(player, prepared, position, resume)
                     graph.diagnostics.event("videocast.audio_restored", reason = "resume_requested")
                 }
             }
@@ -262,11 +266,12 @@ class PlaybackService : MediaLibraryService() {
                             val items=dao.queue().mapNotNull {entry->dao.episode(entry.episodeId)?.let {ep->mediaItem(ep,dao.podcast(ep.podcastId))}}
                             items to (items.firstOrNull()?.let {dao.episode(it.mediaId)?.positionMs}?:0L)
                         }
+                        val prepared = graph.media.preparePlaybackItems(restored.first)
                         withContext(Dispatchers.Main.immediate) {
                             if(!restoring && pendingCloudChoice==null && queueRevision==message.revision &&
                                 player.mediaItemCount==0 && restored.first.isNotEmpty()) {
                                 restoring=true
-                                try {player.setMediaItems(restored.first,0,restored.second);player.prepare()}
+                                try {player.setMediaItems(prepared,0,restored.second);player.prepare()}
                                 finally {restoring=false}
                                 snapshot(queueRestored=true)
                             }
@@ -293,6 +298,14 @@ class PlaybackService : MediaLibraryService() {
                                 Triple(all,dao.podcasts().associateBy {it.id},desired)
                             }
                             committed=true
+                            val before = withContext(Dispatchers.Main.immediate) {
+                                (0 until player.mediaItemCount).map { player.getMediaItemAt(it).mediaId }
+                            }
+                            val candidates = (before + data.third).distinct().filter { it in data.first }
+                            val prepared = graph.media.preparePlaybackItems(candidates.map { id ->
+                                val episode = data.first.getValue(id)
+                                mediaItem(episode.copy(localFile = null), data.second[episode.podcastId])
+                            }).associateBy { it.mediaId }
                             val (actual,laterEdit)=withContext(Dispatchers.Main.immediate) {
                                 val later=queueRevision!=message.revision
                                 if(!later) {
@@ -307,7 +320,14 @@ class PlaybackService : MediaLibraryService() {
                                             val resume=player.playWhenReady
                                             importMarker=ids
                                             message.choice.imported(ids)
-                                            player.setMediaItems(ids.map {dev.distillpod.android.playback.preserveVideoItem(data.first.getValue(it),data.second[data.first.getValue(it).podcastId],player.currentMediaItem)},index,position)
+                                            val playing = player.currentMediaItem
+                                            player.setMediaItems(ids.map { id ->
+                                                val video = playing?.localConfiguration?.uri?.let {
+                                                    dev.distillpod.core.YouTubeUrl.videoId(it.toString()) != null &&
+                                                        it.getQueryParameter("distillpod_video") == "1"
+                                                } == true
+                                                if (video && playing?.mediaId == id) playing else prepared.getValue(id)
+                                            },index,position)
                                             player.prepare();player.playWhenReady=resume
                                         }
                                     } finally {
@@ -371,9 +391,12 @@ class PlaybackService : MediaLibraryService() {
                 val podcasts = dao.podcasts().associateBy { it.id }
                 Triple(queue, podcasts, dao.playerSession())
             }
+            val prepared = graph.media.preparePlaybackItems(restore.first.map {
+                mediaItem(it.copy(localFile = null), restore.second[it.podcastId])
+            })
             if (player.mediaItemCount == 0 && restore.first.isNotEmpty()) {
                 val index = restore.first.indexOfFirst { it.id == restore.third?.episodeId }.coerceAtLeast(0)
-                player.setMediaItems(restore.first.map { mediaItem(it, restore.second[it.podcastId]) }, index, restore.first[index].positionMs)
+                player.setMediaItems(prepared, index, restore.first[index].positionMs)
                 player.setPlaybackSpeed(restore.third?.speed?.coerceIn(0.5f, 3f) ?: 1f)
                 player.prepare()
             }
@@ -398,12 +421,16 @@ class PlaybackService : MediaLibraryService() {
                         it.getQueryParameter("distillpod_video") == "1"
                 } == true) return@collect
                 val ep = episodes.firstOrNull { it.id == current.mediaId } ?: return@collect
-                val local = ep.localFile?.let(::File)?.takeIf { it.isFile } ?: return@collect
-                val uri = Uri.fromFile(local)
-                if (current.localConfiguration?.uri != uri && !restoring) {
-                    val podcast = withContext(Dispatchers.IO) { dao.podcast(ep.podcastId) }
+                if (ep.localFile == null || restoring) return@collect
+                val prepared = withContext(Dispatchers.IO) {
+                    val base = mediaItem(ep.copy(localFile = null), dao.podcast(ep.podcastId))
+                    graph.media.preparePlaybackItems(listOf(base)).single()
+                }
+                val uri = prepared.localConfiguration?.uri
+                if (uri?.scheme == "file" && current.localConfiguration?.uri != uri &&
+                    player.currentMediaItem == current && !restoring) {
                     val position = player.currentPosition.coerceAtLeast(0)
-                    swapCurrentSource(player, mediaItem(ep, podcast), position)
+                    swapCurrentSource(player, prepared, position)
                 }
             }
         }

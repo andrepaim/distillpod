@@ -27,6 +27,7 @@ class CaptureContextEvidenceTest {
         File(context.noBackupFilesDir,"reliability").deleteRecursively()
         WorkManagerTestInitHelper.initializeTestWorkManager(context)
         val diagnostics=Diagnostics(context,"https://abc123@o1.ingest.sentry.io/1")
+        val barrier=DiagnosticBarrierProbe(diagnostics)
         diagnostics.contextSummary(UUID.randomUUID().toString(),ContextPreparationEvidence(),0,null)
         assertTrue(diagnostics.queue.files().isEmpty())
         val db=Room.inMemoryDatabaseBuilder(context,AppDatabase::class.java).build()
@@ -70,13 +71,13 @@ class CaptureContextEvidenceTest {
             val id=repo.save("ep",200000,kind!="source")
             if(kind=="invalid")dao.putDistillation(dao.distillation(id)!!.copy(startMs=-1))
             if(kind=="invalid_range")dao.putDistillation(dao.distillation(id)!!.copy(endMs=-1))
-            diagnostics.consent(true);diagnostics.awaitIdle()
+            diagnostics.consent(true);barrier.awaitIdle()
             if(kind=="budget")context.getSharedPreferences("diagnostics",0).edit()
                 .putInt("budget_routine",800).putInt("sent",800).commit()
             if(kind in setOf("invalid_range","cancelled","exception","callback")) {
                 try {repo.prepareSaved(id);fail("Expected preparation failure")}catch(_:Exception) {}
             } else repo.prepareSaved(id)
-            diagnostics.awaitIdle()
+            barrier.awaitIdle()
             val payloads=diagnostics.queue.files().map {it.readText()}.filter {it.contains("capture.context_summary")}
             if(kind=="epoch") {
                 assertTrue("Old preparation crossed consent epochs",payloads.isEmpty())

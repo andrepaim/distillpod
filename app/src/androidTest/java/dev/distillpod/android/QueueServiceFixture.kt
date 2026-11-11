@@ -17,6 +17,9 @@ internal fun fixtureServicePlayer(episodeId:String):ExoPlayer {
     // Never call player methods while holding Media3's registry lock.
     val matching=sessions.filter { it.player.currentMediaItem?.mediaId==episodeId }
     check(matching.size==1) { "Expected exactly one service session for the synthetic queue item" }
-    return matching.single().player as? ExoPlayer
+    val sessionPlayer = matching.single().player
+    val engine = if (sessionPlayer is dev.distillpod.android.playback.OwnedAudioPlayer)
+        sessionPlayer.wrappedPlayer else sessionPlayer
+    return engine as? ExoPlayer
         ?: error("Fixture session must expose the actual ExoPlayer, not a controller")
 }
