@@ -57,8 +57,9 @@ class ContextObservationTimeTest {
             d.contextSummary(id,evidence,31,correlation,observedAt=1000L)
             val delayed=records().single {it.getJSONObject("outcome").getString("value")=="failed"}
             assertEquals(1000L,delayed.getJSONObject("observed_at_ms").getLong("value"))
-            assertTrue(delayed.getJSONObject("emitted_at_ms").getLong("value")>=
-                ready.getJSONObject("emitted_at_ms").getLong("value"))
+            for(record in listOf(ready,delayed)) {
+                assertDiagnosticWallTimes(record.keys().asSequence().associateWith {record.getJSONObject(it).get("value")})
+            }
             assertEquals(3,records().size)
         } finally {d.consent(false);io.sentry.Sentry.close()}
     }

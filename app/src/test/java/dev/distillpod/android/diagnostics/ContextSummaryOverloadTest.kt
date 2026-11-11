@@ -46,7 +46,7 @@ class ContextSummaryOverloadTest {
         File(context.noBackupFilesDir,"diagnostics").deleteRecursively()
         File(context.noBackupFilesDir,"reliability").deleteRecursively()
         WorkManagerTestInitHelper.initializeTestWorkManager(context)
-        val d=Diagnostics(context,"https://abc123@o1.ingest.sentry.io/1")
+        val d=Diagnostics(context,"https://abc123@o1.ingest.sentry.io/1",RecordingDiagnosticFileForce())
         val barrier=DiagnosticBarrierProbe(d)
         val db=Room.inMemoryDatabaseBuilder(context,AppDatabase::class.java).build()
         val dao=db.library()

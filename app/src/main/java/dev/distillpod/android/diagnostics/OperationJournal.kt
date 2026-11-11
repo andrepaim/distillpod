@@ -4,8 +4,11 @@ import java.io.*
 import java.util.UUID
 
 /** Content-free, bounded journal. Stable revision IDs make replay detectable downstream. */
-internal class OperationJournal(private val file: File, private val now: () -> Long = System::currentTimeMillis,
-    private val monotonic: () -> Long = { System.nanoTime()/1_000_000 }, private val release:String="unknown") {
+internal class OperationJournal private constructor(private val file: File, private val now: () -> Long,
+    private val monotonic: () -> Long, private val release:String, private val fileForce: DiagnosticFileForce) {
+    constructor(file: File, now: () -> Long = System::currentTimeMillis,
+        monotonic: () -> Long = { System.nanoTime()/1_000_000 }, release:String="unknown") :
+        this(file, now, monotonic, release, NativeDiagnosticFileForce)
     data class Row(val id:String, val kind:String, val operation:String, val attempt:String, val state:String,
         val reason:String, val source:String, val started:Long, val updated:Long, val elapsed:Long,
         val sequence:Int, val release:String, val delivered:Boolean = false, val correlation:DiagnosticCorrelation? = null)
@@ -80,10 +83,14 @@ internal class OperationJournal(private val file: File, private val now: () -> L
             // A content-free scalar survives pruning/revocation so later outcomes
             // cannot sort behind earlier reports already retained by Sentry.
             out.writeInt(nextSequence)
-            out.flush();stream.fd.sync()
+            out.flush();fileForce.force(stream.fd)
         };check(tmp.renameTo(file))
     }
     companion object {
+        internal fun withFileForce(file: File, fileForce: DiagnosticFileForce,
+            now: () -> Long = System::currentTimeMillis,
+            monotonic: () -> Long = { System.nanoTime()/1_000_000 }, release:String="unknown") =
+            OperationJournal(file, now, monotonic, release, fileForce)
         val KINDS=setOf("capture","transcription","distillation","playback","voice")
         val TERMINAL=setOf("partial","completed","failed","cancelled","interrupted","unknown")
         val STATES=TERMINAL+setOf("queued","running","waiting","paused")
