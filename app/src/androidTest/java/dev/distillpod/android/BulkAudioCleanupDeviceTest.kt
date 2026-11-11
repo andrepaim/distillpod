@@ -48,6 +48,7 @@ class BulkAudioCleanupDeviceTest {
         val vm = withContext(Dispatchers.Main) {
             ViewModelProvider(compose.activity, AppViewModel.factory(graph))[AppViewModel::class.java].also { it.open("settings") }
         }
+        compose.onNodeWithText("Downloads & storage").performScrollTo().performClick()
         compose.onNodeWithTag("audio-cleanup-review").performScrollTo().performClick()
         compose.waitUntil(15000) { vm.audioCleanup.state.value.phase == AudioCleanupPhase.READY }
         compose.onNodeWithText(if (vm.audioCleanup.state.value.preview!!.canApply) "Cancel" else "Close").performClick()
