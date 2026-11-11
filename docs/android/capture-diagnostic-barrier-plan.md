@@ -49,3 +49,18 @@ and join/cancel helper work before fixture teardown. Serialize Gradle with
 No emulator/phone acceptance is necessary while scope remains strictly JVM test
 infrastructure; hosted repository checks still apply. No production behavior,
 data, settings, backend, credentials, release metadata or publication changes.
+
+## Observation-only checkpoint
+
+At `f90ce6f6eb5643168a39bb6c7b7bd3cafebbb9a0`, the existing probe was installed
+immediately after Diagnostics construction, before this fixture's worker can be
+created. Both direct five-second waits now retain bounded failure evidence. No
+producer, assertion, timeout or progress behavior changed.
+
+One focused voice-profile reproduction ran CaptureContextEvidenceTest (nine
+tests) and DiagnosticBarrierProbeTest (one test): ten passed, none skipped. No
+natural failure recurred, so no real failing worker snapshot or supported cause
+was obtained. The earlier failure remains failed evidence. Do not infer a timing
+repair from this later pass, repeat unchanged to obtain another outcome, or mark
+parent #97 complete. Private original and reproduction reports are retained by
+the coordinating session. Full default/voice and hosted checks remain pending.
