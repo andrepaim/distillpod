@@ -10,6 +10,8 @@ import androidx.test.core.app.ApplicationProvider
 import dev.distillpod.android.data.AudioFileOwnership
 import dev.distillpod.android.playback.AudioPlaybackSelection
 import dev.distillpod.android.playback.OwnedAudioPlayer
+import java.lang.reflect.InvocationTargetException
+import java.lang.reflect.Proxy
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -44,7 +46,21 @@ class OwnedAudioPlayerTest {
         for ((name, operation) in operations) {
             val ownership = AudioFileOwnership()
             val engine = ExoPlayer.Builder(context).build()
-            val guarded = OwnedAudioPlayer(engine, ownership, "/managed")
+            val delegate = Proxy.newProxyInstance(Player::class.java.classLoader, arrayOf(Player::class.java)) { _, method, args ->
+                val incoming = args.orEmpty().flatMap {
+                    when (it) {
+                        is MediaItem -> listOf(it)
+                        is List<*> -> it.filterIsInstance<MediaItem>()
+                        else -> emptyList()
+                    }
+                }
+                if (incoming.any { it.localConfiguration?.uri?.path == path }) {
+                    assertNull("Ownership must precede delegate $name", ownership.reserve(listOf(path)))
+                }
+                try { method.invoke(engine, *args.orEmpty()) }
+                catch (failure: InvocationTargetException) { throw failure.cause!! }
+            } as Player
+            val guarded = OwnedAudioPlayer(delegate, ownership, "/managed")
             try {
                 operation(guarded, item(ownership))
                 assertEquals(name, path, engine.getMediaItemAt(0).localConfiguration!!.uri.path)
@@ -126,6 +142,87 @@ class OwnedAudioPlayerTest {
             guarded.setMediaItems(listOf(item(ownership)))
             assertEquals(0, engine.mediaItemCount)
             ownership.reserve(listOf(path))!!.close()
+        } finally { guarded.release() }
+    }
+
+    @Test fun leaseReleaseNotificationCanReenterPlaylistMutation() {
+        var reenter = false
+        lateinit var guarded: OwnedAudioPlayer
+        val ownership = AudioFileOwnership {
+            if (reenter) {
+                reenter = false
+                guarded.clearMediaItems()
+            }
+        }
+        val engine = ExoPlayer.Builder(context).build()
+        guarded = OwnedAudioPlayer(engine, ownership, "/managed")
+        val secondPath = "/managed/two.audio"
+        val second = MediaItem.Builder().setMediaId("two").setUri("file://$secondPath")
+            .setTag(AudioPlaybackSelection(ownership.select(secondPath)!!, Uri.parse("https://example.test/two"))).build()
+        try {
+            guarded.setMediaItems(listOf(item(ownership), second))
+            reenter = true
+            guarded.clearMediaItems()
+            assertEquals(0, engine.mediaItemCount)
+            ownership.reserve(listOf(path, secondPath))!!.close()
+        } finally { guarded.release() }
+    }
+
+    @Test fun schemeLessManagedFileCannotBypassPreparation() {
+        val ownership = AudioFileOwnership()
+        val engine = ExoPlayer.Builder(context).build()
+        val guarded = OwnedAudioPlayer(engine, ownership, "/managed")
+        try {
+            assertTrue(runCatching { guarded.setMediaItem(MediaItem.fromUri(path)) }.isFailure)
+            assertEquals(0, engine.mediaItemCount)
+        } finally { guarded.release() }
+    }
+
+    @Test fun releaseDuringAcquisitionRejectsMutationAndClosesTheNewLease() {
+        var releaseOnAcquire = false
+        var forwardedAfterRelease = false
+        var released = false
+        lateinit var guarded: OwnedAudioPlayer
+        val ownership = AudioFileOwnership {
+            if (releaseOnAcquire) {
+                releaseOnAcquire = false
+                guarded.release()
+            }
+        }
+        val engine = ExoPlayer.Builder(context).build()
+        val delegate = object : ForwardingPlayer(engine) {
+            override fun setMediaItem(item: MediaItem) {
+                if (released) forwardedAfterRelease = true
+                super.setMediaItem(item)
+            }
+            override fun release() { released = true; super.release() }
+        }
+        guarded = OwnedAudioPlayer(delegate, ownership, "/managed")
+        val prepared = item(ownership)
+        releaseOnAcquire = true
+        try {
+            assertTrue(runCatching { guarded.setMediaItem(prepared) }.exceptionOrNull() is IllegalStateException)
+            assertFalse("Terminal release must prevent later delegation", forwardedAfterRelease)
+            assertFalse("Acquisition interrupted by release must not leak", ownership.busy(path))
+        } finally { guarded.release() }
+    }
+
+    @Test fun nestedAcquisitionOfTheSameCopyDoesNotOverwriteAnOwner() {
+        var nest = false
+        lateinit var guarded: OwnedAudioPlayer
+        lateinit var prepared: MediaItem
+        val ownership = AudioFileOwnership {
+            if (nest) { nest = false; guarded.setMediaItem(prepared) }
+        }
+        val engine = ExoPlayer.Builder(context).build()
+        guarded = OwnedAudioPlayer(engine, ownership, "/managed")
+        prepared = item(ownership)
+        nest = true
+        try {
+            guarded.setMediaItem(prepared)
+            assertTrue(ownership.busy(path))
+            guarded.clearMediaItems()
+            assertFalse("Nested admission must release every acquired owner", ownership.busy(path))
         } finally { guarded.release() }
     }
 

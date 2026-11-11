@@ -71,4 +71,27 @@ class AudioFileOwnershipTest {
         newer.close()
         assertFalse(ownership.busy("one"))
     }
+    @Test fun discardingAnOldGenerationCannotRetireANewerCopy() {
+        val ownership = AudioFileOwnership()
+        val old = ownership.select("one")!!
+        ownership.reserve(listOf("one"))!!.close()
+        val newer = ownership.select("one")!!
+        ownership.discard(old)
+        ownership.acquire(newer)!!.close()
+        assertNull(ownership.acquire(old))
+    }
+
+    @Test fun failedStatCleanupCannotRetireAnOwnedGeneration() {
+        val ownership = AudioFileOwnership()
+        val selected = ownership.select("one")!!
+        val first = ownership.acquire(selected)!!
+        ownership.discard(selected)
+        val second = ownership.acquire(selected)!!
+        first.close()
+        assertNull(ownership.reserve(listOf("one")))
+        second.close()
+        ownership.discard(selected)
+        assertNull(ownership.acquire(selected))
+    }
+
 }

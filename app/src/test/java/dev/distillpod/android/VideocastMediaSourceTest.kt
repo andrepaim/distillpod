@@ -26,7 +26,7 @@ class VideocastMediaSourceTest {
     private val context get() = ApplicationProvider.getApplicationContext<Context>()
     private fun factory() = VideocastMediaSourceFactory(context, YouTubeSource { _, _, _ ->
         error("Extraction must wait for the loader thread")
-    })
+    }, dev.distillpod.android.data.AudioFileOwnership())
 
     @Test fun `video timeline preserves the marker and episode identity used by download observers`() {
         val item = MediaItem.Builder().setMediaId("episode").setUri("$watch&distillpod_video=1").build()

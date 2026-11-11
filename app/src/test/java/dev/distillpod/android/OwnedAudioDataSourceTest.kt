@@ -89,6 +89,30 @@ class OwnedAudioDataSourceTest {
         assertNull(source.uri)
     }
 
+    @Test fun openFailurePreservesItsIdentityAndSuppressesCloseFailure() {
+        val ownership = AudioFileOwnership()
+        val openFailure = IOException("Synthetic open failure")
+        val closeFailure = IOException("Synthetic close failure")
+        val source = OwnedAudioDataSource(selection(ownership), ownership, ProbeSource(openFailure, closeFailure))
+        assertSame(openFailure, runCatching { source.open(DataSpec(uri)) }.exceptionOrNull())
+        assertEquals(listOf(closeFailure), openFailure.suppressed.toList())
+        ownership.reserve(listOf(path))!!.close()
+        source.close()
+    }
+
+    @Test fun closingAndReopeningClaimsEachReadSeparately() {
+        val ownership = AudioFileOwnership()
+        val source = OwnedAudioDataSource(selection(ownership), ownership, ProbeSource())
+        repeat(2) {
+            source.open(DataSpec(uri))
+            assertNull(ownership.reserve(listOf(path)))
+            source.close()
+            assertFalse(ownership.busy(path))
+        }
+        ownership.reserve(listOf(path))!!.close()
+        assertTrue(runCatching { source.open(DataSpec(uri)) }.exceptionOrNull() is IOException)
+    }
+
     private class ProbeSource(
         private val openFailure: IOException? = null,
         private val closeFailure: IOException? = null,

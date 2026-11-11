@@ -17,22 +17,30 @@ internal class OwnedAudioPlayer(
     directory: String,
 ) : ForwardingPlayer(delegate) {
     private val managedDirectory = File(directory).normalize().absolutePath + "/"
-    private val held = mutableMapOf<AudioFileOwnership.Selection, AudioFileOwnership.Lease>()
+    private val held = mutableMapOf<AudioFileOwnership.Selection, MutableList<AudioFileOwnership.Lease>>()
     private var mutationDepth = 0
+    private var released = false
 
     private fun admit(item: MediaItem): MediaItem {
+        check(!released) { "Player has been released" }
         val config = item.localConfiguration ?: return item
         val selection = config.tag as? AudioPlaybackSelection
         if (selection != null && config.uri == Uri.fromFile(File(selection.copy.path))) {
             if (selection.copy in held) return item
             val lease = ownership.acquire(selection.copy)
             if (lease != null) {
-                held[selection.copy] = lease
+                if (released) {
+                    lease.close()
+                    error("Player has been released")
+                }
+                // Acquisition notification may have admitted the same copy recursively.
+                // Retain every returned lease until this generation leaves the playlist.
+                held.getOrPut(selection.copy) { mutableListOf() }.add(lease)
                 return item
             }
             return item.buildUpon().setUri(selection.fallback).setTag(null).build()
         }
-        check(config.uri.scheme != "file" ||
+        check(config.uri.scheme != null && config.uri.scheme != "file" ||
             !File(config.uri.path.orEmpty()).normalize().absolutePath.startsWith(managedDirectory)) {
             "Local audio must be prepared before playback"
         }
@@ -40,17 +48,21 @@ internal class OwnedAudioPlayer(
     }
 
     private fun change(incoming: List<MediaItem> = emptyList(), action: (List<MediaItem>) -> Unit) {
+        check(!released) { "Player has been released" }
         mutationDepth++
         try {
-            action(incoming.map(::admit))
+            val admitted = incoming.map(::admit)
+            check(!released) { "Player has been released" }
+            action(admitted)
         } finally {
             mutationDepth--
             if (mutationDepth == 0) {
-                val actual = (0 until mediaItemCount).mapNotNull {
+                val actual = if (released) emptySet() else (0 until mediaItemCount).mapNotNull {
                     (getMediaItemAt(it).localConfiguration?.tag as? AudioPlaybackSelection)?.copy
                 }.toSet()
-                val retired = held.keys.filter { it !in actual }
-                retired.forEach { held.remove(it)!!.close() }
+                val retired = held.filterKeys { it !in actual }
+                retired.keys.forEach { held.remove(it) }
+                retired.values.flatten().forEach { it.close() }
             }
         }
     }
@@ -85,11 +97,14 @@ internal class OwnedAudioPlayer(
     override fun clearMediaItems() = change { super.clearMediaItems() }
 
     override fun release() {
+        if (released) return
+        released = true
         try {
             super.release()
         } finally {
-            held.values.forEach { it.close() }
+            val retired = held.values.flatten()
             held.clear()
+            retired.forEach { it.close() }
         }
     }
 }

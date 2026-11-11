@@ -1,31 +1,68 @@
-Claiming #60's playback audio ownership increment. Main is c35904c1a051e39d3cf819b9ae8162e12f32bdcd. Branch fix/60-playback-audio-ownership in /home/andrepaim/src/distillpod-issue60-playback-owner, no PR yet. The transcription reader increment is merged and verified. Other issue and release worktrees remain owned separately.
+# Playback audio ownership for issue 60
 
-Behavior and design:
-- Keep a revocable selection for each managed local audio copy. Prepare it off the player looper while holding MediaRepository's existing episode transfer lock. Preserve a remote fallback URI in an in-process MediaItem tag.
-- A synchronous ForwardingPlayer claims queue ownership before forwarding every playlist mutation, including all set/add/replace overloads and nested callbacks. When deletion revoked a prepared copy first, admission substitutes its fallback. Reconcile owners against the actual resulting playlist after mutation, including exceptions, duplicates and removals.
-- Local Media3 data sources acquire a separate reader lease through close. If deletion wins before an old loader opens, open the fallback source on the loader thread. Opening/closing failures release ownership.
-- Deletion reserves all relevant paths atomically against queue and reader leases, invalidates prepared selections, then performs file IO outside the ownership monitor. Keep existing Room, queue and processing checks. Orphan cleanup skips reserved/owned copies.
-- Route own-package and external session selections, resumption, startup restore, cloud application and local source refresh through the same selection preparation. Preserve video intent and diagnostic clips. Keep the serialized restored-queue baseline and user progress ordering.
+This increment protects managed local audio during playlist admission and loader
+use. It is a prerequisite for bulk deletion and retention; it does not complete
+[issue 60](https://github.com/andrepaim/distillpod/issues/60). The transcription
+reader safeguard is already on the base, c35904c.
 
-Acceptance and TDD:
-- Controlled red/green tests for both admission/deletion orders, stale selections, independent files, duplicate/moved/replaced items, reentrant mutations, partial failure, source open failure and close/cancellation.
-- Real Room/file checks for expected deletion blocks and retry after release, orphan cleanup, and rollback/error distinction.
-- Test remote fallback URI, metadata and video intent, plus every session resolution route. Use actual ExoPlayer and MediaSession integration where applicable.
-- Both local default/voice tests, lint and APK pairs; all hosted emulator phases; isolated offline S22 fixtures for real file playback, queue changes and cleanup ordering. Record immutable hashes and targets before installation and preserve production data. The phone protocol covers synthetic playback and file lifetime, with OEM scheduling limitations recorded.
-- Review and current-main integration, normal PR merge and exact merged-main CI. No release metadata or publication action.
+## Behavior and implementation
 
-Risks include deleting a queued/read copy, leaked leases preventing cleanup, queue ordering changes, losing video intent, blocking the player looper and fallback configuration mismatch. A short registry monitor covers counters only. Playback and IO scheduling remain on their current loopers. #60 stays open for bulk controls, transcript suppression and retention/scheduler work after this prerequisite.
+- Register a revocable generation before checking the managed file on IO. Do not
+  wait for the transfer mutex, which can be held by an unrelated network download.
+  Removal revokes the generation and prevents new selections while reserved.
+  Failed stat discards only the matching, unowned generation. Weak references
+  allow abandoned request tags to expire.
+- Put the generation and remote fallback in an in-process MediaItem tag. A
+  synchronous ForwardingPlayer claims queue ownership before forwarding every
+  incoming playlist overload. A revoked selection uses its fallback at admission,
+  before source creation. Keep metadata and start position.
+- Reconcile ownership with the actual playlist after the outermost mutation,
+  including partial failures, duplicates and nested callbacks. Keep queue leases
+  after stop; release them after removal or terminal player release. Detach leases
+  before notifying consumers so synchronous callbacks cannot corrupt the map.
+- Give each local loader a separate reader lease through close. A removed loader
+  that opens after revocation fails with a bounded IOException. Never reinterpret
+  extractor offsets against a different remote encoding. Open/close failures must
+  release their leases while preserving the original failure.
+- Reserve all deletion paths atomically against queue and reader ownership,
+  invalidate prepared selections, and perform filesystem IO outside the short
+  registry monitor. Retain existing Room, persisted-queue and processing guards.
+  Orphan and failed-download cleanup must also respect ownership.
+- Prepare selections for all session resolution routes, resumption, startup and
+  backup restore, cloud queue application and download-source refresh. Preserve
+  requested video, diagnostic clips, current position and the serialized restored
+  queue baseline. Do not compare the database queue on every playlist event.
 
-## Design review before integration
+## Acceptance and validation
 
-Preparing selections must not wait behind an unrelated network download.
-Register the per-copy generation before stat on IO, without episodeTransfers.
-Removal revokes that generation and blocks selection while reserved. Queue
-admission verifies its identity. Failed stat retires only the matching unowned
-generation. Weak generation references allow abandoned request tags to expire.
+Use meaningful red/green tests for admission/deletion in both orders, stale and
+missing generations, independent files, duplicate/move/replace operations, all
+incoming playlist overloads, nested mutation and release, partial mutation
+failure, source open/read/close failure and cancellation. Test real Room/file
+removal and orphan cleanup, typed blocks, rollback and unchanged listening and
+transcript data. Verify all session resolution routes and video intent.
 
-Fallback substitution happens at queue admission, before media source creation.
-A late loader for a removed, revoked copy fails its open with a bounded IO error.
-It must not reinterpret extractor offsets against a different remote encoding.
-A valid queued item retains ownership, so this case belongs to removed-source
-cancellation. Real playback tests must cover it.
+Run both default and voice core/app unit suites, lint and APK builds, Python and
+security/data guards. Require all hosted PR checks and emulator phases on the
+final head. On the owned emulator, exercise the actual MediaSession queue and
+controlled late-loader overlaps using real ExoPlayer and FileDataSource. Run the
+same three synthetic tests on the S22 with an immutable, separately installed
+offline playback60 APK pair. Verify hashes, package IDs, signing and instrumentation
+target before installation; remove only that verified pair. Preserve production
+package and data. Review and integrate current main, merge normally, and verify
+combined-main CI. Do not publish a release or change release metadata.
+
+## Risk assessment and limits
+
+The primary risks are deleting queued/read audio, leaking ownership, changing
+queue/progress ordering, losing video intent, blocking the player looper and
+misapplying a fallback after extraction starts. Synchronize only registry counters;
+keep file checks on IO and player changes on their existing application looper.
+Physical validation is required for Android service playback and file-reader
+cancellation. Synthetic S22 tests establish the exercised API36 file/Media3
+behavior, not every OEM background scheduling or audio-route condition. No schema,
+signing, upgrade or backend changes are intended. A required failed/unavailable
+check remains a blocker; record exact revisions and evidence before integration.
+
+Bulk controls, transcript suppression, policy/grace settings and scheduling remain
+subsequent work within the authorized parent issue.

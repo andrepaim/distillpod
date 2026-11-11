@@ -24,6 +24,7 @@ import java.util.concurrent.TimeUnit
 class AutoSessionTest {
     private fun fixture(playbackReady:CompletableDeferred<Unit>?=null,voice:Boolean=false,openVoice:()->Boolean={false},
         queueHandler:((SessionCommand,Bundle)->com.google.common.util.concurrent.ListenableFuture<SessionResult>)?=null,
+        prepareItems: suspend (List<MediaItem>) -> List<MediaItem> = { it },
         block:(AutoLibraryCallback,MediaLibrarySession,MediaSession.ControllerInfo)->Unit) {
         val context=ApplicationProvider.getApplicationContext<Context>()
         val db=Room.inMemoryDatabaseBuilder(context,AppDatabase::class.java).build()
@@ -36,12 +37,34 @@ class AutoSessionTest {
         val ready=CompletableDeferred(Unit)
         val callback=AutoLibraryCallback(context.packageName,db,ready,scope,playbackReady?:ready,voiceEnabled={voice},openCarVoice=openVoice,
             queueCommands=if(queueHandler==null)emptySet() else setOf(dev.distillpod.android.playback.QueueWriteCommands.BARRIER,dev.distillpod.android.playback.QueueWriteCommands.IMPORT),
-            onQueueCommand=queueHandler)
+            onQueueCommand=queueHandler,preparePlaybackItems=prepareItems)
         val player=ExoPlayer.Builder(context).build()
         val session=MediaLibrarySession.Builder(context,player,callback).build()
         val controller=MediaSession.ControllerInfo.createTestOnlyControllerInfo("android.auto.test",1,1000,1,1,true,Bundle.EMPTY)
         try {block(callback,session,controller)}finally{session.release();player.release();scope.cancel();db.close()}
     }
+    @Test fun everySessionSelectionIncludingOwnPackagePassesThroughPreparation() {
+        val marker = Any()
+        var prepared = 0
+        fixture(prepareItems = { items ->
+            prepared++
+            items.map { it.buildUpon().setTag(marker).build() }
+        }) { callback, session, external ->
+            val own = MediaSession.ControllerInfo.createTestOnlyControllerInfo(ApplicationProvider.getApplicationContext<Context>().packageName,1,
+                android.os.Process.myUid(),1,1,true,Bundle.EMPTY)
+            val request = MediaItem.Builder().setMediaId("e").setUri("https://example.test/audio").build()
+            for (controller in listOf(own, external)) {
+                val added = callback.onAddMediaItems(session,controller,listOf(request)).get(5,TimeUnit.SECONDS)
+                assertSame(marker, added.single().localConfiguration!!.tag)
+                val set = callback.onSetMediaItems(session,controller,listOf(request),0,1234).get(5,TimeUnit.SECONDS)
+                assertSame(marker, set.mediaItems.single().localConfiguration!!.tag)
+            }
+            val resumed = callback.onPlaybackResumption(session,external).get(5,TimeUnit.SECONDS)
+            assertSame(marker, resumed.mediaItems.single().localConfiguration!!.tag)
+            assertEquals(5, prepared)
+        }
+    }
+
     @Test fun `enabled voice advertises Ask in both modern and legacy car layouts`() = fixture(voice=true) { c,s,b ->
         val result = c.onConnect(s,b)
         val ask = dev.distillpod.android.voice.CarVoiceEntry.ASK
