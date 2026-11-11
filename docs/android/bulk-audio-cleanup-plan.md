@@ -191,3 +191,26 @@ intent, and unchanged job rows/preferences.
 Acquire captured episode locks in sorted order before entering Room. A reference
 outside that captured/locked set discovered in the transaction makes the unit
 stale; never acquire a new episode mutex from inside the Room transaction.
+
+
+## Current-main integration and final acceptance
+
+The preserved feature branch now includes verified main c4fc9c1 through a normal
+merge. Main includes the release owner's metadata update and validated diagnostic
+fixture/oracle/exception-evidence repairs. Their public native durability defaults
+and Android/OEM persistence algorithm are unchanged. Feature app, fixture,
+manifest and script blobs remain identical to reviewed de3f859; the integration
+has no content conflict. Recheck the combined constructor/API wiring and run the
+complete required gates on the final committed head rather than reuse the old
+voice failure or historical hosted pass.
+
+Risk remains high for destructive managed-audio cleanup and partial-writer/reader
+ownership. Both default/voice gates, actual Android emulator acceptance and the
+current separately identified offline S22 three-case protocol remain required.
+The diagnostics dependency refactor does not waive these physical checks. Verify
+immutable package/target/signer/hash/permission receipts before installation;
+never target or clear the production phone package/data. Only the verified own
+isolated pair may be removed. Artifact checks must retain native force code and
+exclude JVM recording fixtures. Final-head hosted checks, current-main review,
+normal protected merge and exact merged-main CI govern completion of this audio
+increment. Parent #60 stays open for its remaining transcript/retention scope.
