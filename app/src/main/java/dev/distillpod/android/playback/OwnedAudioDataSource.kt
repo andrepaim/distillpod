@@ -5,7 +5,6 @@ import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.TransferListener
 import dev.distillpod.android.data.AudioFileOwnership
-import java.io.File
 import java.io.IOException
 
 /** Keeps readers alive independently of playlist membership, including loader cancellation. */
@@ -22,7 +21,7 @@ internal class OwnedAudioDataSource(
 
     override fun open(spec: DataSpec): Long {
         check(!active) { "Audio source is already open" }
-        if (spec.uri != Uri.fromFile(File(selection.copy.path))) {
+        if (spec.uri != selection.uri) {
             throw IOException("Local audio source changed")
         }
         val acquired = ownership.acquire(selection.copy)

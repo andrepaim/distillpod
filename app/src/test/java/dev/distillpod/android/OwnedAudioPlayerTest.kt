@@ -87,6 +87,22 @@ class OwnedAudioPlayerTest {
         } finally { guarded.release() }
     }
 
+    @Test fun playbackUriAliasesRetainTheCanonicalOwnershipKey() {
+        val ownership = AudioFileOwnership()
+        val prepared = item(ownership)
+        val alias = Uri.parse("file:///alias/one.audio")
+        val token = (prepared.localConfiguration!!.tag as AudioPlaybackSelection).copy(uri = alias)
+        val engine = ExoPlayer.Builder(context).build()
+        val guarded = OwnedAudioPlayer(engine, ownership, "/managed")
+        try {
+            guarded.setMediaItem(prepared.buildUpon().setUri(alias).setTag(token).build())
+            assertEquals(alias, engine.currentMediaItem!!.localConfiguration!!.uri)
+            assertNull(ownership.reserve(listOf(path)))
+            guarded.clearMediaItems()
+            ownership.reserve(listOf(path))!!.close()
+        } finally { guarded.release() }
+    }
+
     @Test fun duplicateMoveRemoveStopAndReleaseRetainTheRightOwners() {
         val ownership = AudioFileOwnership()
         val engine = ExoPlayer.Builder(context).build()

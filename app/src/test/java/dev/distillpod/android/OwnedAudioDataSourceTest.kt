@@ -48,6 +48,33 @@ class OwnedAudioDataSourceTest {
         assertEquals(0, delegate.closes)
     }
 
+    @Test fun opensThePreparedAliasWhileProtectingItsCanonicalCopy() {
+        val ownership = AudioFileOwnership()
+        val alias = Uri.parse("file:///alias/audio")
+        val selected = selection(ownership).copy(uri = alias)
+        val delegate = ProbeSource()
+        val source = OwnedAudioDataSource(selected, ownership, delegate)
+        source.open(DataSpec(alias))
+        try {
+            assertEquals(alias, delegate.opened?.uri)
+            assertNull(ownership.reserve(listOf(path)))
+        } finally { source.close() }
+        ownership.reserve(listOf(path))!!.close()
+    }
+
+    @Test fun mismatchedPlaybackUriFailsBeforeOpeningOrClaimingTheCopy() {
+        val ownership = AudioFileOwnership()
+        val alias = Uri.parse("file:///alias/audio")
+        val delegate = ProbeSource()
+        val source = OwnedAudioDataSource(selection(ownership).copy(uri = alias), ownership, delegate)
+        assertTrue(runCatching { source.open(DataSpec(uri)) }.exceptionOrNull() is IOException)
+        assertNull(delegate.opened)
+        assertFalse(ownership.busy(path))
+        source.open(DataSpec(alias))
+        source.close()
+        ownership.reserve(listOf(path))!!.close()
+    }
+
     @Test fun failedOpenKeepsOriginalFailureAndCleansItsPartialEffects() {
         val ownership = AudioFileOwnership()
         val selected = selection(ownership)

@@ -133,6 +133,12 @@ class VideocastLifecycleDeviceTest {
                 compose.onNodeWithContentDescription("Enter fullscreen").assertIsDisplayed()
                 withContext(Dispatchers.Main) { compose.activity.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT }
                 compose.waitUntil(10_000) { compose.activity.resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_PORTRAIT }
+                // Activity resources can update before LocalConfiguration's portrait effect
+                // clears the landscape dismissal. Process that transition before rotating again.
+                compose.waitUntil(10_000) {
+                    compose.onRoot().fetchSemanticsNode().boundsInRoot.let { it.height > it.width }
+                }
+                compose.waitForIdle()
                 withContext(Dispatchers.Main) { compose.activity.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE }
                 compose.waitUntil(10_000) { compose.onAllNodesWithContentDescription("Exit fullscreen").fetchSemanticsNodes().isNotEmpty() }
                 withContext(Dispatchers.Main) { compose.activity.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT }

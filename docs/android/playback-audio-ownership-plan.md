@@ -13,6 +13,8 @@ reader safeguard is already on the base, c35904c.
   Failed stat discards only the matching, unowned generation. Weak references
   allow abandoned request tags to expire.
 - Put the generation and remote fallback in an in-process MediaItem tag. A
+  separate exact playback URI preserves stored source identity across Android's
+  /data/user/0 and /data/data aliases; only the registry key is canonicalized. A
   synchronous ForwardingPlayer claims queue ownership before forwarding every
   incoming playlist overload. A revoked selection uses its fallback at admission,
   before source creation. Keep metadata and start position.

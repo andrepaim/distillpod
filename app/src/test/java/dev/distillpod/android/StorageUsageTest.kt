@@ -461,7 +461,7 @@ class StorageUsageTest {
                     val selected = withTimeout(2000) {
                         media.preparePlaybackItems(listOf(dev.distillpod.android.playback.mediaItem(local, null))).single()
                     }
-                    assertEquals(android.net.Uri.fromFile(audio.canonicalFile), selected.localConfiguration!!.uri)
+                    assertEquals(android.net.Uri.fromFile(audio.absoluteFile), selected.localConfiguration!!.uri)
                     assertFalse(transfer.isCompleted)
                 } finally { withTimeout(5000) { transfer.cancelAndJoin() } }
             }
@@ -477,7 +477,7 @@ class StorageUsageTest {
             val video = dev.distillpod.android.playback.videocastMediaItem(row, null, true)
             assertEquals(video, media.preparePlaybackItems(listOf(video)).single())
             val opaque = androidx.media3.common.MediaItem.Builder().setMediaId(row.id).setUri("urn:fixture").build()
-            assertEquals(android.net.Uri.fromFile(audio.canonicalFile),
+            assertEquals(android.net.Uri.fromFile(audio.absoluteFile),
                 media.preparePlaybackItems(listOf(opaque)).single().localConfiguration!!.uri)
             for (uri in listOf(audio.absolutePath, android.net.Uri.fromFile(audio).toString())) {
                 val unknown = androidx.media3.common.MediaItem.fromUri(uri)
@@ -486,6 +486,21 @@ class StorageUsageTest {
             val diagnostic = androidx.media3.common.MediaItem.fromUri(
                 android.net.Uri.fromFile(File(media.directory.parentFile, "diagnostic.wav")))
             assertEquals(diagnostic, media.preparePlaybackItems(listOf(diagnostic)).single())
+        }
+    }
+
+    @Test fun canonicalOwnershipMustPreserveTheStoredPlaybackUriIdentity() = runBlocking {
+        fixture { db, media, _ ->
+            val actual = File(media.directory, "alias.audio").apply { writeText("sample") }
+            val alias = File(media.directory, "../media/alias.audio").absoluteFile
+            assertNotEquals(alias.path, alias.canonicalPath)
+            val row = episode().copy(localFile = alias.path, downloadState = "downloaded", mediaFingerprint = "verified")
+            db.library().putEpisode(row)
+            val selected = media.preparePlaybackItems(listOf(dev.distillpod.android.playback.mediaItem(row, null))).single()
+            assertEquals("Playback identity must remain compatible with persisted source verification",
+                android.net.Uri.fromFile(alias), selected.localConfiguration!!.uri)
+            val token = selected.localConfiguration!!.tag as dev.distillpod.android.playback.AudioPlaybackSelection
+            assertEquals(actual.canonicalPath, token.copy.path)
         }
     }
 

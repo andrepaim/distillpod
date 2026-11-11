@@ -7,7 +7,11 @@ import androidx.media3.common.Player
 import dev.distillpod.android.data.AudioFileOwnership
 import java.io.File
 
-internal data class AudioPlaybackSelection(val copy: AudioFileOwnership.Selection, val fallback: Uri)
+internal data class AudioPlaybackSelection(
+    val copy: AudioFileOwnership.Selection,
+    val fallback: Uri,
+    val uri: Uri = Uri.fromFile(File(copy.path)),
+)
 
 /** All playlist mutations stay synchronous on the delegate's application looper. */
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
@@ -25,7 +29,7 @@ internal class OwnedAudioPlayer(
         check(!released) { "Player has been released" }
         val config = item.localConfiguration ?: return item
         val selection = config.tag as? AudioPlaybackSelection
-        if (selection != null && config.uri == Uri.fromFile(File(selection.copy.path))) {
+        if (selection != null && config.uri == selection.uri) {
             if (selection.copy in held) return item
             val lease = ownership.acquire(selection.copy)
             if (lease != null) {

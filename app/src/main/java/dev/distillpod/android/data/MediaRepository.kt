@@ -74,17 +74,19 @@ class MediaRepository(context: Context, private val db: AppDatabase, private val
                     dev.distillpod.core.YouTubeUrl.videoId(requested.toString()) != null) return@map item
                 val fallback = android.net.Uri.parse(episode.audioUrl)
                 val remote = item.buildUpon().setUri(fallback).setTag(null).build()
-                val file = episode.localFile?.let { File(it).canonicalFile } ?: return@map remote
+                val storedFile = episode.localFile?.let { File(it).absoluteFile } ?: return@map remote
+                val file = storedFile.canonicalFile
+                val uri = android.net.Uri.fromFile(storedFile)
                 if (file.parentFile != managed) {
-                    return@map if (file.isFile) remote.buildUpon().setUri(android.net.Uri.fromFile(file)).build() else remote
+                    return@map if (file.isFile) remote.buildUpon().setUri(uri).build() else remote
                 }
                 val copy = active.audioOwnership.select(file.path) ?: return@map remote
                 if (!file.isFile) {
                     active.audioOwnership.discard(copy)
                     return@map remote
                 }
-                remote.buildUpon().setUri(android.net.Uri.fromFile(file))
-                    .setTag(dev.distillpod.android.playback.AudioPlaybackSelection(copy, fallback)).build()
+                remote.buildUpon().setUri(uri)
+                    .setTag(dev.distillpod.android.playback.AudioPlaybackSelection(copy, fallback, uri)).build()
             }
         }
 
