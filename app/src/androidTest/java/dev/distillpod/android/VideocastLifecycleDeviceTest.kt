@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.*
 import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -27,6 +28,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicInteger
 
 /** Stopping the real Compose host must restore audio before its frame clock resumes. */
 @RunWith(AndroidJUnit4::class)
@@ -72,6 +74,7 @@ class VideocastLifecycleDeviceTest {
                 try { awaitCancellation() } finally { requestCancelled.complete(Unit) }
             })
         val player = graph.playback.sessionPlayer()
+        val composedOrientation = AtomicInteger(android.content.res.Configuration.ORIENTATION_UNDEFINED)
         suspend fun awaitPlayer(label: String, predicate: (Player) -> Boolean) {
             try { withTimeout(10_000) { while (!withContext(Dispatchers.Main) { predicate(player) }) delay(50) } }
             catch (e: TimeoutCancellationException) { throw AssertionError("Player did not reach: $label", e) }
@@ -97,6 +100,8 @@ class VideocastLifecycleDeviceTest {
                     // Exercise the application's navigation BackHandler as well as the player.
                     androidx.lifecycle.ViewModelProvider(compose.activity, AppViewModel.factory(graph))[AppViewModel::class.java].open("player")
                 } else compose.activity.setContent {
+                    val orientation = LocalConfiguration.current.orientation
+                    SideEffect { composedOrientation.set(orientation) }
                     DistillTheme { Surface { Column(Modifier.padding(48.dp)) { VideocastPlayer(playback, tag, audioOnlyArtwork = {}) } } }
                 }
             }
@@ -136,7 +141,7 @@ class VideocastLifecycleDeviceTest {
                 // Activity resources can update before LocalConfiguration's portrait effect
                 // clears the landscape dismissal. Process that transition before rotating again.
                 compose.waitUntil(10_000) {
-                    compose.onRoot().fetchSemanticsNode().boundsInRoot.let { it.height > it.width }
+                    composedOrientation.get() == android.content.res.Configuration.ORIENTATION_PORTRAIT
                 }
                 compose.waitForIdle()
                 withContext(Dispatchers.Main) { compose.activity.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE }
