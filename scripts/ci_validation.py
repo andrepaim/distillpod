@@ -50,7 +50,7 @@ def doc_path(path):
     return path.startswith('docs/android/evidence/') and suffix in {'.json', '.jsonl', '.txt'}
 
 
-def choose_route(root, event, inputs, base, head, checkout_sha=None):
+def choose_route(root, event, inputs, base, head, checkout_sha=None, draft=False):
     root = Path(root)
     checkout = git(root, 'rev-parse', 'HEAD').decode().strip()
     if checkout_sha and checkout != checkout_sha:
@@ -85,7 +85,9 @@ def choose_route(root, event, inputs, base, head, checkout_sha=None):
                      old_mode in {'000000', '100644'} and
                      new_mode in {'000000', '100644'} and doc_path(path))
     if not paths or not eligible:
-        return Route('full', paths, checkout, 'empty diff or non-documentation input')
+        return Route('draft' if draft is True else 'full', paths, checkout,
+                     'draft preview; full validation required when ready' if draft is True
+                     else 'empty diff or non-documentation input')
     whitespace = subprocess.run(['git', 'diff', '--check', bases[0], head, '--'],
                                 cwd=root, capture_output=True)
     if whitespace.returncode:
@@ -109,6 +111,8 @@ def validate_gate(needs, event, inputs, expected_sha):
     if output.get('checkout_sha') != expected_sha:
         raise ValueError('Classification revision does not match this run')
     mode = output.get('mode')
+    if mode == 'draft':
+        raise ValueError('Draft preview is incomplete; mark ready for review to run required validation')
     if mode == 'docs':
         if not direct_pr(event, inputs) or output.get('docs_validated') != 'true':
             raise ValueError('Documentation omission was not validated/authorized by the route')
@@ -141,7 +145,8 @@ def main():
         expected = os.environ.get('GITHUB_SHA', '')
         if args.command == 'select':
             route = choose_route(Path.cwd(), event, inputs,
-                                 os.environ.get('PR_BASE_SHA'), os.environ.get('PR_HEAD_SHA'), expected)
+                                 os.environ.get('PR_BASE_SHA'), os.environ.get('PR_HEAD_SHA'), expected,
+                                 draft=os.environ.get('PR_IS_DRAFT') == 'true')
             outputs = {'mode': route.mode, 'checkout_sha': route.checkout_sha,
                        'changed_count': str(len(route.paths)),
                        'docs_validated': 'true' if route.mode == 'docs' else 'not_selected'}
