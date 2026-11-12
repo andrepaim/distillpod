@@ -33,7 +33,8 @@ internal class DiagnosticQueue private constructor(private val directory: File, 
         val files=directory.listFiles()?.sortedWith(compareBy<File> {it.name.contains("priority-")}.thenBy {it.name}).orEmpty()
         var size=files.sumOf {it.length()};var count=files.size
         for(file in files) if(size>5*1024*1024 || count>1000) {
-            if(file.delete()){size-=file.length();count--;onDrop()}
+            val removedSize=file.length()
+            if(file.delete()){size-=removedSize;count--;onDrop()}
         }
     }
 }

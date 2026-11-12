@@ -69,10 +69,13 @@ class DiagnosticsTest {
     }
     @Test fun `offline routine pressure evicts routine before protected reports`() {
         val directory=temporary.newFolder()
-        val q=DiagnosticQueue(directory)
+        var clock=System.currentTimeMillis()
+        var drops=0
+        val q=DiagnosticQueue(directory,now={clock},onDrop={drops++})
         q.append("terminal".toByteArray(),priority=true)
-        repeat(1005){q.append("routine".toByteArray())}
+        repeat(1005){clock++;q.append("routine".toByteArray())}
         assertEquals(1000,q.files().size)
+        assertEquals(6,drops)
         assertTrue(q.files().any {it.readText()=="terminal"})
         assertTrue(DiagnosticQueue(directory).files().any {it.readText()=="terminal"})
         q.clear();assertTrue(q.files().isEmpty())
@@ -227,12 +230,71 @@ class DiagnosticsTest {
     }
     @Test fun `outbox survives reopening and bounds storage and expiry`() {
         val directory=temporary.newFolder()
-        val now=System.currentTimeMillis()
-        val queue=DiagnosticQueue(directory){now}
-        repeat(30){queue.append(ByteArray(240*1024))}
-        assertTrue(directory.listFiles()!!.sumOf {it.length()}<=5*1024*1024)
-        assertTrue(DiagnosticQueue(directory){now}.files().isNotEmpty())
-        directory.listFiles()!!.forEach {it.setLastModified(now-73*60*60*1000L)}
+        var clock=System.currentTimeMillis()
+        var drops=0
+        val queue=DiagnosticQueue(directory,now={clock},onDrop={drops++})
+        repeat(30){index->clock++;queue.append(ByteArray(240*1024){index.toByte()})}
+        val reopened=DiagnosticQueue(directory,now={clock}).files()
+        assertEquals((9..29).toList(),reopened.map {it.readBytes().first().toInt()})
+        assertEquals(21L*240*1024,reopened.sumOf {it.length()})
+        assertTrue(reopened.sumOf {it.length()}<=5L*1024*1024)
+        assertEquals(9,drops)
+        reopened.forEach {assertTrue(it.setLastModified(clock-73*60*60*1000L))}
         assertTrue(queue.files().isEmpty())
+        assertEquals(30,drops)
+    }
+    @Test fun `append crossing size cap retains newest envelope and drops only oldest`() {
+        val directory=temporary.newFolder()
+        var clock=System.currentTimeMillis()
+        var drops=0
+        val queue=DiagnosticQueue(directory,now={clock},onDrop={drops++})
+        repeat(20){index->clock++;assertTrue(queue.append(ByteArray(256*1024){index.toByte()}))}
+        assertEquals(5L*1024*1024,queue.files().sumOf {it.length()})
+        assertEquals(0,drops)
+        clock++
+        assertTrue(queue.append(ByteArray(256*1024){20}))
+        assertEquals((1..20).toList(),queue.files().map {it.readBytes().first().toInt()})
+        assertEquals(5L*1024*1024,queue.files().sumOf {it.length()})
+        assertEquals(1,drops)
+    }
+    @Test fun `size pressure evicts oldest routine envelopes before older priority reports`() {
+        val directory=temporary.newFolder()
+        var clock=System.currentTimeMillis()
+        var drops=0
+        val queue=DiagnosticQueue(directory,now={clock},onDrop={drops++})
+        repeat(22){index->clock++;queue.append(ByteArray(256*1024){index.toByte()},priority=index<2)}
+        assertEquals(listOf(0,1)+(4..21).toList(),queue.files().map {it.readBytes().first().toInt()})
+        assertEquals(2,queue.files().count {it.name.contains("priority-")})
+        assertEquals(2,drops)
+    }
+    @Test fun `size pressure evicts oldest priority only when no routine remains`() {
+        val directory=temporary.newFolder()
+        var clock=System.currentTimeMillis()
+        var drops=0
+        val queue=DiagnosticQueue(directory,now={clock},onDrop={drops++})
+        repeat(21){index->clock++;queue.append(ByteArray(256*1024){index.toByte()},priority=true)}
+        assertEquals((1..20).toList(),queue.files().map {it.readBytes().first().toInt()})
+        assertEquals(1,drops)
+    }
+    @Test fun `expired and temporary files are removed before size eviction and expiry boundary survives`() {
+        val directory=temporary.newFolder()
+        var clock=System.currentTimeMillis()
+        var drops=0
+        val queue=DiagnosticQueue(directory,now={clock},onDrop={drops++})
+        repeat(20){clock++;assertTrue(queue.append(ByteArray(256*1024)))}
+        val valid=queue.files().map {it.name}.toSet()
+        val expired=File(directory,"expired-priority-report.envelope").apply {
+            writeBytes(ByteArray(256*1024))
+            assertTrue(setLastModified(clock-72*60*60*1000L-1))
+        }
+        val pending=File(directory,"pending.envelope.tmp").apply {writeBytes(ByteArray(256*1024))}
+        val boundary=File(directory,"boundary-priority-report.envelope").apply {
+            writeBytes(byteArrayOf())
+            assertTrue(setLastModified(clock-72*60*60*1000L))
+        }
+        assertEquals(valid+boundary.name,queue.files().map {it.name}.toSet())
+        assertEquals(5L*1024*1024,queue.files().sumOf {it.length()})
+        assertFalse(expired.exists());assertFalse(pending.exists())
+        assertEquals(2,drops)
     }
 }
