@@ -12,6 +12,11 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.runInterruptible
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import dev.distillpod.core.YouTubeUrl
 import dev.distillpod.android.video.YouTubeSource
 import okhttp3.HttpUrl
@@ -20,6 +25,9 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
 import java.time.Instant
+
+/** In-process result of an on-demand YouTube metadata check for one episode. */
+enum class EpisodeDetailsState { LOADING, CHECKED, FAILED }
 
 data class PodcastCandidate(val title: String, val author: String, val feedUrl: String, val imageUrl: String?, val category: String = "")
 data class ProviderSearchResult(val provider: String, val results: List<PodcastCandidate> = emptyList(), val failed: Boolean = false)
@@ -43,6 +51,36 @@ class PodcastRepository(private val db: AppDatabase, private val http: OkHttpCli
     private val youtube: YouTubeSource? = null) {
     private val dao = db.library()
     private val subscriptionSync = dev.distillpod.android.sync.SubscriptionSyncStore(db)
+    private val details = MutableStateFlow<Map<String, EpisodeDetailsState>>(emptyMap())
+    val episodeDetails: StateFlow<Map<String, EpisodeDetailsState>> = details.asStateFlow()
+
+    /**
+     * Fetch a YouTube video's own publication time and description when a refresh could not supply them,
+     * for example videos older than the public feed window. Each video is checked once per process;
+     * a failure may be retried.
+     */
+    suspend fun loadEpisodeDetails(id: String) {
+        val source = youtube ?: return
+        while (true) {
+            val current = details.value
+            if (current[id] == EpisodeDetailsState.LOADING || current[id] == EpisodeDetailsState.CHECKED) return
+            if (details.compareAndSet(current, current + (id to EpisodeDetailsState.LOADING))) break
+        }
+        try {
+            val episode = dao.episode(id)
+            if (episode != null && YouTubeUrl.videoId(episode.audioUrl) != null && (episode.publishedAt <= 0 || episode.description.isBlank())) {
+                val found = runInterruptible(Dispatchers.IO) { source.details(episode.audioUrl) }
+                val published = found.publishedAt?.let { runCatching { Instant.parse(it).toEpochMilli() }.getOrNull() } ?: 0L
+                dao.fillMissingEpisodeMetadata(id, published, found.description)
+            }
+            details.update { it + (id to EpisodeDetailsState.CHECKED) }
+        } catch (e: CancellationException) {
+            details.update { it - id }
+            throw e
+        } catch (_: Exception) {
+            details.update { it + (id to EpisodeDetailsState.FAILED) }
+        }
+    }
     suspend fun search(query: String): List<PodcastCandidate> = withContext(Dispatchers.IO) {
         require(query.trim().length in 2..200) { "Enter at least two characters" }
         if (youtube == null) return@withContext searchDirectory(query)
@@ -202,7 +240,9 @@ class PodcastRepository(private val db: AppDatabase, private val http: OkHttpCli
                 dao.analysis(old.id)?.let { dao.putAnalysis(it.copy(state = "stale", error = "The audio enclosure changed. Analyze the current source again.")) }
             }
             val base = old ?: EpisodeEntity(item.id, podcastId, item.guid, item.title, item.audioUrl)
-            base.copy(webpageUrl = item.webpageUrl ?: base.webpageUrl, title = item.title, audioUrl = item.audioUrl, description = item.description,
+            base.copy(webpageUrl = item.webpageUrl ?: base.webpageUrl, title = item.title, audioUrl = item.audioUrl,
+                // A refresh that cannot supply a description (e.g. outside YouTube's feed window) keeps the known one.
+                description = item.description.ifBlank { base.description },
                 imageUrl = item.imageUrl, sourceOrder = item.sourceOrder ?: base.sourceOrder, publishedAt = item.publishedAt?.let { runCatching { Instant.parse(it).toEpochMilli() }.getOrDefault(0) } ?: base.publishedAt,
                 durationMs = item.durationMs ?: base.durationMs, mimeType = item.mimeType, transcriptUrl = item.transcriptUrl, transcriptType = item.transcriptType,
                 localFile = if (changed) null else base.localFile, downloadState = if (changed) "none" else base.downloadState,

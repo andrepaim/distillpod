@@ -13,18 +13,41 @@ import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.HttpUrl.Companion.toHttpUrl
+import okhttp3.OkHttpClient
+import okhttp3.Request
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
+import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.FutureTask
+import java.util.concurrent.TimeUnit
 
 fun interface YouTubeExtractor {
     fun extract(url: String, flat: Boolean, limit: Int): JSONObject
+}
+
+/** Reads YouTube's public, account-free Atom feed for a channel or playlist. */
+fun interface YouTubeMetadataFetcher {
+    fun fetch(url: String): ByteArray
+}
+
+/** One bounded, unauthenticated GET; the feed parser applies the same 2 MB limit while reading. */
+class HttpYouTubeMetadataFetcher(http: OkHttpClient) : YouTubeMetadataFetcher {
+    private val client = http.newBuilder().callTimeout(15, TimeUnit.SECONDS).build()
+    override fun fetch(url: String): ByteArray = client.newCall(Request.Builder().url(url).build()).execute().use { response ->
+        if (!response.isSuccessful) throw IOException("YouTube feed request failed")
+        val body = response.body ?: throw IOException("YouTube feed is empty")
+        if (body.contentLength() > LIMIT) throw IOException("YouTube feed exceeds the supported size")
+        val source = body.source()
+        if (source.request(LIMIT + 1)) throw IOException("YouTube feed exceeds the supported size")
+        source.readByteArray()
+    }
+    private companion object { const val LIMIT = 2_000_000L }
 }
 
 /** No account, cookies, API key, remote service or runtime code update. */
@@ -88,6 +111,16 @@ class AndroidYouTubeExtractor(private val context: Context,
 }
 
 internal fun JSONArray.objects(): List<JSONObject> = (0 until length()).mapNotNull { optJSONObject(it) }
+/** A JSON null or absent value is missing text, never the string "null". */
+private fun JSONObject.text(name: String): String = if (isNull(name)) "" else optString(name)
+/**
+ * Prefer the exact upload instant. A date-only value is stored at 12:00 UTC so its calendar day
+ * stays the same when shown in time zones from UTC-11 to UTC+11.
+ */
+internal fun JSONObject.publishedAt(): String? = optLong("timestamp", 0).takeIf { it > 0 }?.let { Instant.ofEpochSecond(it).toString() }
+    ?: runCatching {
+        LocalDate.parse(getString("upload_date"), DateTimeFormatter.BASIC_ISO_DATE).atTime(12, 0).toInstant(ZoneOffset.UTC).toString()
+    }.getOrNull()
 private fun JSONObject.picture(): String? = optJSONArray("thumbnails")?.objects()
     ?.lastOrNull()?.optString("url")?.takeIf { it.startsWith("https://") }
 
@@ -97,8 +130,10 @@ internal data class StreamClock(val elapsedNanos: () -> Long = System::nanoTime,
     val wallMillis: () -> Long = System::currentTimeMillis)
 
 /** Network extraction is injectable; parsing and identity are shared by live and fixture tests. */
-class YouTubeSource internal constructor(private val extractor: YouTubeExtractor, private val clock: StreamClock) {
+class YouTubeSource internal constructor(private val extractor: YouTubeExtractor, private val clock: StreamClock,
+    private val metadata: YouTubeMetadataFetcher? = null) {
     constructor(extractor: YouTubeExtractor) : this(extractor, StreamClock())
+    constructor(extractor: YouTubeExtractor, metadata: YouTubeMetadataFetcher) : this(extractor, StreamClock(), metadata)
     var onStreamRefresh: () -> Unit = {}
     internal fun refreshed() { runCatching { onStreamRefresh() } }
     suspend fun search(query: String): List<PodcastCandidate> = withTimeoutOrNull(45_000) {
@@ -136,19 +171,39 @@ class YouTubeSource internal constructor(private val extractor: YouTubeExtractor
                 if (item.optString("availability") in setOf("private", "premium_only", "subscriber_only", "needs_auth") ||
                     item.optString("live_status") in setOf("is_live", "is_upcoming")) return@mapIndexedNotNull null
                 val watch = YouTubeUrl.watch(videoId)
-                val published = runCatching {
-                    LocalDate.parse(item.getString("upload_date"), DateTimeFormatter.BASIC_ISO_DATE)
-                        .atStartOfDay().toInstant(ZoneOffset.UTC).toString()
-                }.getOrNull()
                 FeedEpisode(episodeId(id, videoId), videoId, item.optString("title"), watch,
                     item.optDouble("duration", 0.0).takeIf { it.isFinite() && it > 0 }?.let { (it * 1000).toLong() },
-                    null, published, item.optString("description"), item.picture(), "video/youtube", webpageUrl = watch, sourceOrder = index)
+                    null, item.publishedAt(), item.text("description"), item.picture(), "video/youtube", webpageUrl = watch, sourceOrder = index)
             }.distinctBy { it.id }
             require(episodes.isNotEmpty()) { "This YouTube source has no available episodes" }
             val ordered = if (YouTubeUrl.channel(url) != null) episodes else episodes.sortedByDescending { it.publishedAt }
-            Feed(data.optString("title"), ordered.mapIndexed { index, episode -> episode.copy(sourceOrder = index) }, data.optString("channel").ifBlank { data.optString("uploader") },
+            // Flat extraction omits per-video dates and descriptions. Merge them after ordering so
+            // partially available feed metadata never reorders a show.
+            val known = if (playlist) sourceMetadata(url, data) else emptyMap()
+            Feed(data.optString("title"), ordered.mapIndexed { index, episode ->
+                val found = known[episode.guid]
+                episode.copy(sourceOrder = index, publishedAt = found?.publishedAt ?: episode.publishedAt,
+                    description = found?.description?.takeIf(String::isNotBlank) ?: episode.description)
+            }, data.optString("channel").ifBlank { data.optString("uploader") },
                 data.optString("description"), data.picture(), url)
         }
+    }
+
+    /** Best effort: an unavailable public feed leaves the refresh unchanged. */
+    private fun sourceMetadata(url: String, data: JSONObject): Map<String, YouTubeVideoMetadata> {
+        val fetcher = metadata ?: return emptyMap()
+        val address = YouTubeUrl.playlistId(url)?.let(YouTubeMetadata::playlistFeed)
+            ?: YouTubeMetadata.channelFeed(data.text("channel_id")) ?: return emptyMap()
+        return try { YouTubeMetadata.parse(fetcher.fetch(address).inputStream()) }
+        catch (e: InterruptedException) { throw e }
+        catch (_: Exception) { emptyMap() }
+    }
+
+    /** Full single-video metadata for an episode outside the public feed window. */
+    fun details(raw: String): YouTubeVideoMetadata {
+        val id = requireNotNull(YouTubeUrl.videoId(raw)) { "Invalid YouTube episode" }
+        val data = extractor.extract(YouTubeUrl.watch(id), false, 1)
+        return YouTubeVideoMetadata(data.publishedAt(), data.text("description").trim())
     }
 
     // Memory-only cache, bounded by both signed URL expiry and a 30-minute cap; never sync CDN URLs.
