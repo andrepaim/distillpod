@@ -14,12 +14,24 @@ prevents background execution until reopening the app.
 Device-local Room records retain show intent and episode stages. WorkManager downloads
 verified audio, existing resumable transcription prepares local/publisher text, and
 existing analysis generates summaries, chapters, and suggested ads. Online cached text
-is not used for automatic analysis. A coordinator advances completed stages and
-schedules persisted continuations after worker completion. Startup also reconciles
-stages. Processing is serialized through the automatic pipeline; manual work can run
-independently. Network, model, charging and storage constraints remain enforced by
-the existing components. Missing account access waits; failures and user pauses show
-a retry action. Missing models can be downloaded from Transcription settings.
+is not used for automatic analysis. A coordinator advances completed stages. It runs
+when the state it acts on changes: a job's stage, the show's automation and follow
+state, an episode's download state, local file and audio fingerprint, the transcript
+and analysis state and revision, and ChatGPT sign-in. Playback position, download
+bytes and transcription chunk progress do not run it, and neither does moving between
+queued and running within a stage (#140). Startup also reconciles stages.
+
+Running work is serialized: a job with a queued or running download, transcript or
+analysis holds later jobs back. A job that cannot continue without the user, such as
+a paused or failed download (including Android's refusal of a background download,
+#138), a paused, failed, partial or stale transcript, a missing model, or a failed,
+paused or quota-limited analysis, is marked blocked and later episodes continue.
+When its blocker clears (Resume, a downloaded model, a new transcript, sign-in or
+Retry preparation), the coordinator runs again and the job resumes its stage.
+Manual work can run independently. Network, model, charging and storage constraints
+remain enforced by the existing components. Missing account access waits; failures,
+user pauses and other blocked jobs show a retry action. Missing models can be
+downloaded from Transcription settings.
 
 Disabling automation removes its pending intent. An already dispatched shared worker
 may finish its current operation; subsequent automatic stages stop. This avoids

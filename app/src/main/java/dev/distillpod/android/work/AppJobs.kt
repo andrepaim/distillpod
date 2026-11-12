@@ -161,7 +161,7 @@ class LibraryWorker(context: Context, params: WorkerParameters) : CoroutineWorke
                 "refresh" -> if(target.isBlank())graph.podcasts.refreshAll() else graph.podcasts.refresh(target)
                 else -> return Result.failure()
             }
-            graph.automation.kick()
+            // Show automation observes the resulting download, model and job state (#140).
             Result.success()
         } catch (cancelled: CancellationException) {
             if (kind == "download" || kind == "model")
@@ -209,7 +209,6 @@ class UnderstandingWorker(context: Context, params: WorkerParameters) : Coroutin
             "explain" -> graph.explanations.run(target)
             else -> return Result.failure()
         }
-        graph.automation.kick()
         return Result.success()
     }
 }
