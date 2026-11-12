@@ -69,6 +69,20 @@ class AccountingTest(unittest.TestCase):
         first['draft_incomplete_marker']=True;first['jobs'][-1]['conclusion']='failure'
         self.assertEqual(1,analyze(data)['attempt_classifications']['failure'])
 
+    def test_reused_main_requires_marker_success_and_only_planned_omissions(self):
+        data=snapshot();entry=data['attempts'][0]
+        entry['metadata']['event']='push';entry['metadata']['conclusion']='success'
+        entry['jobs']=[job(1,'Kotlin, lint and APK')]
+        for ident,name in enumerate(['Android build validation','Firebase protocol and security rules',
+                                    'Native bridge validation','Isolated Android acceptance'],10):
+            entry['jobs'].append(job(ident,name,conclusion='skipped'))
+        entry['reused_validation_source_run']=123
+        self.assertEqual(1,analyze(data)['attempt_classifications']['reused_validation'])
+        entry['reused_validation_source_run']=None
+        self.assertEqual(0,analyze(data)['attempt_classifications'].get('reused_validation',0))
+        entry['reused_validation_source_run']=123;entry['jobs'][-1]['conclusion']='failure'
+        self.assertEqual(1,analyze(data)['attempt_classifications']['failure'])
+
     def test_missing_times_and_ambiguous_pr_are_unknown_not_zero(self):
         data=snapshot();data['attempts'][0]['jobs'][0]['completed_at']=None
         data['pulls'].append(dict(number=11,head=copy.deepcopy(data['pulls'][0]['head'])))
@@ -136,6 +150,29 @@ class CollectionTest(unittest.TestCase):
         self.assertFalse(data['coverage']['complete'])
         self.assertNotIn('private error',str(data['coverage']))
         self.assertLess(len(calls),6)
+
+    def test_collector_verifies_reuse_marker_with_bounded_plan_log(self):
+        run=dict(id=1,run_attempt=1,event='push',created_at='2026-11-12T00:00:00Z')
+        jobs=[job(1,'Kotlin, lint and APK'),job(2,'Select validation and check documentation')]
+        for ident,name in enumerate(['Android build validation','Firebase protocol and security rules',
+                                    'Native bridge validation','Isolated Android acceptance'],10):
+            jobs.append(job(ident,name,conclusion='skipped'))
+        def read(endpoint):
+            if '/actions/workflows/' in endpoint:return {'total_count':1,'workflow_runs':[run]}
+            if '/pulls?' in endpoint:return []
+            if '/jobs?' in endpoint:return {'total_count':len(jobs),'jobs':jobs}
+            if endpoint.endswith('/logs'):
+                return 'Validation route: reused; paths: 0; verified proof; proof run: 123\n'
+            return dict(run,status='completed',conclusion='success')
+        data=collect(read,'owner/repo','2026-11-12T00:00:00Z','2026-11-13T00:00:00Z')
+        self.assertTrue(data['coverage']['complete'])
+        self.assertEqual(1,data['coverage']['log_reads'])
+        summary=analyze(data)
+        self.assertEqual(1,summary['attempt_classifications']['reused_validation'])
+        self.assertEqual(123,summary['attempt_metrics'][0]['validation_source_run'])
+        capped=collect(read,'owner/repo','2026-11-12T00:00:00Z','2026-11-13T00:00:00Z',max_logs=0)
+        self.assertFalse(capped['coverage']['complete'])
+        self.assertNotIn('reused_validation',analyze(capped)['attempt_classifications'])
 
     def test_request_budget_is_enforced_and_reported(self):
         calls=[]

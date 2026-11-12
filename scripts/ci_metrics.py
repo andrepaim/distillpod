@@ -145,6 +145,26 @@ def collect(read, repo, start, end, max_pages=10, max_runs=1000, max_logs=10, ma
                 except (RuntimeError, ValueError):
                     coverage['complete'] = False
                     coverage['errors'].append(f"job {gate['id']}: draft classification log unavailable")
+            results = {j['name']: j.get('conclusion') for j in entry['jobs']}
+            if (run.get('event') == 'push' and
+                    results.get('Kotlin, lint and APK') == 'success' and
+                    all(results.get(name) == 'skipped' for name in EXPENSIVE)):
+                plans = [j for j in entry['jobs'] if j['name'] == 'Select validation and check documentation'
+                         and j.get('conclusion') == 'success']
+                if len(plans) == 1:
+                    if coverage['log_reads'] >= max_logs:
+                        coverage['complete'] = False
+                        coverage['errors'].append('reuse classification log limit reached')
+                    else:
+                        coverage['log_reads'] += 1
+                        try:
+                            log = read(f"repos/{repo}/actions/jobs/{plans[0]['id']}/logs")
+                            matches = re.findall(r'Validation route: reused;[^\n]*; proof run: ([1-9]\d*)', log)
+                            if len(matches) == 1:
+                                entry['reused_validation_source_run'] = int(matches[0])
+                        except (RuntimeError, ValueError, TypeError):
+                            coverage['complete'] = False
+                            coverage['errors'].append(f"job {plans[0]['id']}: reuse classification log unavailable")
             data['attempts'].append(entry)
     return data
 
@@ -158,6 +178,14 @@ def classification(entry):
         all(j.get('conclusion') in {'success', 'skipped'}
             for j in jobs if j['name'] != 'Kotlin, lint and APK')):
         return 'draft_incomplete'
+    reused_source = entry.get('reused_validation_source_run')
+    if (type(reused_source) is int and reused_source > 0 and
+        entry.get('metadata', {}).get('event') == 'push' and
+        entry.get('metadata', {}).get('conclusion') == 'success' and
+        results.get('Kotlin, lint and APK') == 'success' and
+        all(results.get(name) == 'skipped' for name in EXPENSIVE) and
+        all(j.get('conclusion') in {'success', 'skipped'} for j in jobs)):
+        return 'reused_validation'
     if any(j.get('conclusion') in {'failure', 'timed_out', 'startup_failure', 'action_required'} for j in jobs):
         return 'failure'
     if entry.get('metadata', {}).get('conclusion') in {'failure', 'timed_out', 'startup_failure', 'action_required'}:
@@ -245,6 +273,7 @@ def analyze(data):
         totals['runner_seconds'] += attempt_seconds
         if category == 'cancelled': totals['cancelled_seconds'] += attempt_seconds
         if category == 'draft_incomplete': totals['draft_seconds'] += attempt_seconds
+        if category == 'reused_validation': totals['reused_seconds'] += attempt_seconds
         if entry['attempt'] > 1:
             totals['rerun_attempts'] += 1; totals['rerun_seconds'] += attempt_seconds
         metadata = entry.get('metadata', {})
@@ -257,6 +286,7 @@ def analyze(data):
             span.append(seconds(min(starts), max(ends)))
         attempt_metrics.append({'run_id': entry['run_id'], 'attempt': entry['attempt'],
             'classification': category, 'runner_minutes': attempt_seconds / 60,
+            'validation_source_run': entry.get('reused_validation_source_run') if category == 'reused_validation' else None,
             'wall_seconds': seconds(start, max(ends)) if start and ends else None,
             'execution_span_seconds': seconds(min(starts), max(ends)) if starts and ends else None})
         if category == 'cancelled' and ends:
@@ -282,7 +312,8 @@ def analyze(data):
         'Attempt wall time ends at the last completed job, excluding workflow finalization; execution span omits initial orchestration.',
         'PR branch fallback requires one matching repository/ref; branch reuse or missing records remain unassociated.',
         'Unequal windows, code, cache state, runner hardware and small samples prevent causal speedup or flake-rate claims.',
-        'Failed gates without the verified draft marker remain failures, not assumed draft previews.'
+        'Failed gates without the verified draft marker remain failures, not assumed draft previews.',
+        'Proof-reused main validations require a successful gate, planned omissions and an explicit plan-log source-run marker; they are not full suite executions.'
     ]
     return {'schema': 1, 'scope': data.get('scope', {}), 'coverage': data['coverage'],
             'accounting_complete': bool(data['coverage']['complete']) and not totals['jobs_without_execution_time'],
@@ -295,6 +326,7 @@ def analyze(data):
             'candidate_superseded_attempts': totals['candidate_superseded_attempts'],
             'candidate_superseded_runner_minutes': totals['candidate_superseded_seconds'] / 60,
             'draft_preview_runner_minutes': totals['draft_seconds'] / 60,
+            'reused_validation_runner_minutes': totals['reused_seconds'] / 60,
             'rerun_attempts': totals['rerun_attempts'], 'rerun_runner_minutes': totals['rerun_seconds'] / 60,
             'jobs_without_execution_time': totals['jobs_without_execution_time'],
             'jobs_without_queue_time': totals['jobs_without_queue_time'],
