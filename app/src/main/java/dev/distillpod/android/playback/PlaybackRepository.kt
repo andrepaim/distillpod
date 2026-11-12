@@ -47,6 +47,26 @@ internal fun shouldCheckpointRemoval(reason: Int, oldId: String?, newId: String?
 /** Clear-and-stop must also clear play intent so a later enqueue cannot auto-start. */
 internal fun clearPlaybackQueue(player: Player) { player.pause(); player.clearMediaItems() }
 
+/**
+ * Add or move one episode around the current item with incremental playlist commands.
+ * Rebuilding the playlist would release and re-prepare the current source (a gap and a new request).
+ */
+internal fun enqueueMediaItem(player: Player, item: MediaItem, next: Boolean) {
+    val count = player.mediaItemCount
+    val current = player.currentMediaItemIndex.takeIf { count > 0 && it in 0 until count }
+    if (current != null && player.getMediaItemAt(current).mediaId == item.mediaId) return
+    val from = (0 until count).firstOrNull { player.getMediaItemAt(it).mediaId == item.mediaId }
+    // Target index in the resulting playlist, which no longer has the item at its old place.
+    val currentAfterRemoval = current?.let { if (from != null && from < it) it - 1 else it }
+    val target = if (next && currentAfterRemoval != null) currentAfterRemoval + 1 else if (from != null) count - 1 else count
+    when {
+        from == null -> player.addMediaItem(target, item)
+        from != target -> player.moveMediaItem(from, target)
+    }
+    // Only a new or restored playlist needs preparing; play intent is unchanged.
+    if (player.playbackState == Player.STATE_IDLE && player.mediaItemCount > 0) player.prepare()
+}
+
 fun mediaItem(ep: EpisodeEntity, podcast: PodcastEntity?): MediaItem {
     val file = ep.localFile?.let(::File)?.takeIf { it.isFile }
     return MediaItem.Builder().setMediaId(ep.id).setUri(file?.let(Uri::fromFile) ?: Uri.parse(ep.audioUrl))
@@ -162,21 +182,10 @@ class PlaybackRepository(private val context: Context, private val db: AppDataba
     suspend fun skip(delta: Long) { val c = controller(); withContext(Dispatchers.Main) { c.seekTo((c.currentPosition + delta).coerceAtLeast(0)) } }
     suspend fun speed(value: Float) { require(value in 0.5f..3f); val c = controller(); withContext(Dispatchers.Main) { c.setPlaybackSpeed(value) } }
     suspend fun enqueue(id: String, next: Boolean = false) {
-        val all = db.library().episodes().associateBy { it.id }
-        require(id in all)
-        val podcasts = db.library().podcasts().associateBy { it.id }
+        val ep = db.library().episode(id) ?: throw IllegalArgumentException("Episode is unavailable")
+        val item = mediaItem(ep, db.library().podcast(ep.podcastId))
         val c = controller()
-        withContext(Dispatchers.Main) {
-            val current = c.currentMediaItem?.mediaId
-            if (current == id) return@withContext
-            val ids = (0 until c.mediaItemCount).map { c.getMediaItemAt(it).mediaId }.filter { it in all && it != id }.toMutableList()
-            val at = if (next && current in ids) ids.indexOf(current) + 1 else ids.size
-            ids.add(at, id)
-            val index = ids.indexOf(current).coerceAtLeast(0)
-            val position = if (current in ids) c.currentPosition.coerceAtLeast(0) else 0L
-            c.setMediaItems(ids.map { preserveVideoItem(all.getValue(it), podcasts[all.getValue(it).podcastId], c.currentMediaItem) }, index, position)
-            c.prepare()
-        }
+        withContext(Dispatchers.Main) { enqueueMediaItem(c, item, next) }
     }
     suspend fun remove(id: String) { val c = controller(); withContext(Dispatchers.Main) { val at = (0 until c.mediaItemCount).firstOrNull { c.getMediaItemAt(it).mediaId == id }; if (at != null) c.removeMediaItem(at) } }
     suspend fun move(id: String, offset: Int) {
