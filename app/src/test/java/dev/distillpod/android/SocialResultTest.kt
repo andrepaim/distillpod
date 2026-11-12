@@ -135,6 +135,20 @@ class SocialResultTest {
         val (_,brief)=SocialComposer(ai,tools).brief(SocialResult(PostContent(excerpt="Feedback"),"infographic",research="Qualified evidence",researchSources=JSONArray(sources.map {it.json()}).toString()))
         assertEquals("A qualified claim.",brief.nodes[1].detail);assertEquals(3,calls)
     }
+    @Test fun `brief review propagates service failures without sending a repair request`()=runBlocking {
+        val sources=listOf(EvidenceSource(1,"One","https://example.org/one"),EvidenceSource(2,"Two","https://example.org/two"))
+        val good=JSONObject().put("title","Feedback").put("subtitle","Three ideas").put("relationship","comparison")
+            .put("nodes",JSONArray((0..2).map {JSONObject().put("title","An idea").put("detail","A qualified claim.").put("sources",JSONArray().put(if(it==0) 1 else 2))}))
+            .put("caveat","Context matters.").put("illustration","Three explanatory scenes.")
+        var calls=0
+        val ai=object:AiGateway {override suspend fun complete(instructions:String,input:String,onDelta:(String)->Unit):AiText {
+            calls++; if(calls==1) return AiText(good.toString(),"fixture"); throw AiServiceUnavailable(503)
+        }}
+        val tools=object:SocialTools {override suspend fun research(question:String):WebEvidence=error("Not used")}
+        try { SocialComposer(ai,tools).brief(SocialResult(PostContent(excerpt="Feedback"),"infographic",research="Evidence",researchSources=JSONArray(sources.map {it.json()}).toString())); fail() }
+        catch (_: AiServiceUnavailable) { }
+        assertEquals(2,calls)
+    }
     @Test fun `legacy text remains readable without an empty quote`() {
         val old=PostContent(body="An older draft")
         val result=SocialResult.parse(old.json())
