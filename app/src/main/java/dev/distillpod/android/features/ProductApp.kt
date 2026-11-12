@@ -199,7 +199,7 @@ fun fileSize(bytes: Long): String = if (bytes >= 1_000_000_000) "%.1f GB".format
         if (podcastId == null && filter == "all" && resume != null) item(key = "resume") {
             val current = player.episodeId == resume.id
             ResumeListeningCard(resume, podcasts.firstOrNull { it.id == resume.podcastId },
-                if (current) player.positionMs else resume.positionMs, if (current && player.durationMs > 0) player.durationMs else resume.durationMs,
+                listeningPosition(resume, player), listeningDuration(resume, player),
                 current && player.playing, { if (current) vm.open("player") else vm.open("episode:${resume.id}") },
                 { if (current) vm.toggle() else vm.play(resume.id) })
         }
@@ -242,8 +242,8 @@ fun fileSize(bytes: Long): String = if (bytes >= 1_000_000_000) "%.1f GB".format
 @OptIn(ExperimentalLayoutApi::class)
 @Composable private fun EpisodeCard(vm: AppViewModel, ep: EpisodeEntity, podcast: PodcastEntity?, player: PlaybackState, transcript: TranscriptEntity? = null, captureCount: Int = 0) {
     val current = player.episodeId == ep.id
-    val position = if (current) player.positionMs else ep.positionMs
-    val duration = if (current && player.durationMs > 0) player.durationMs else ep.durationMs
+    val position = listeningPosition(ep, player)
+    val duration = listeningDuration(ep, player)
     Card(onClick = { vm.open("episode:${ep.id}") }, shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
         Column(Modifier.padding(start = 14.dp, end = 8.dp, top = 14.dp, bottom = 4.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -466,18 +466,43 @@ fun fileSize(bytes: Long): String = if (bytes >= 1_000_000_000) "%.1f GB".format
     )
     val byId = episodes.associateBy { it.id }
     val shows = podcasts.associateBy { it.id }
-    LazyColumn(Modifier.testTag("queue-list"), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    val queue = player.queue
+    val currentIndex = queue.indexOf(player.episodeId)
+    val historyEnd = currentIndex.coerceAtLeast(0)
+    val nextStart = if (currentIndex >= 0) currentIndex + 1 else 0
+    // Controls, the history heading and its rows precede "Now playing".
+    val focusItem = if (historyEnd > 0) 2 + historyEnd else 0
+    val list = rememberLazyListState(initialFirstVisibleItemIndex = focusItem)
+    // Open at the current item, since a long history pushes it off screen. Reopening a saved
+    // route focuses it again; later edits on this screen keep the user's scroll position.
+    var focused by remember { mutableStateOf(false) }
+    LaunchedEffect(focusItem > 0) { if (!focused && focusItem > 0) list.scrollToItem(focusItem); focused = true }
+    @Composable fun row(index: Int, id: String) = byId[id]?.let { ep ->
+        QueueEpisodeCard(ep, shows[ep.podcastId], player, index + 1, index > 0,
+            index < queue.lastIndex, onOpen, onPlay, onToggle, onMove, onRemove)
+    }
+    LazyColumn(Modifier.testTag("queue-list"), state = list, contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item(key = "queue-controls") {
             SectionHeading("Playback order", "Episodes before the current item remain available to replay.")
             TextButton(onClick = { confirmClear = true }) { Icon(Icons.Default.ClearAll, null); Text("Clear queue") }
         }
-        items(player.queue, key = { it }) { id ->
-            val index = player.queue.indexOf(id)
-            byId[id]?.let { ep ->
-                QueueEpisodeCard(ep, shows[ep.podcastId], player, index + 1, index > 0,
-                    index < player.queue.lastIndex, onOpen, onPlay, onToggle, onMove, onRemove)
+        if (historyEnd > 0) {
+            item(key = "queue-history") { SectionHeading("History") }
+            items(historyEnd, key = { queue[it] }) { row(it, queue[it]) }
+        }
+        if (currentIndex >= 0) {
+            item(key = "queue-now") { SectionHeading("Now playing") }
+            item(key = queue[currentIndex]) { row(currentIndex, queue[currentIndex]) }
+        }
+        item(key = "queue-next") { SectionHeading("Up next") }
+        if (nextStart > queue.lastIndex) item(key = "queue-next-empty") {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("Nothing up next", style = MaterialTheme.typography.titleSmall)
+                Text("Use Play next or Add to queue on an episode.", style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
+        else items(queue.size - nextStart, key = { queue[nextStart + it] }) { row(nextStart + it, queue[nextStart + it]) }
     }
 }
 
@@ -489,14 +514,13 @@ fun fileSize(bytes: Long): String = if (bytes >= 1_000_000_000) "%.1f GB".format
                 if (number != null) Text(number.toString().padStart(2, '0'), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Cover(ep.imageUrl ?: podcast?.imageUrl, Modifier.size(48.dp))
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    if (current) Text(if (player.playing) "Now playing" else "Ready to resume", style = MaterialTheme.typography.labelSmall)
                     Text(ep.title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 3, overflow = TextOverflow.Ellipsis)
                     Text(podcast?.title ?: "Podcast", maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 IconButton(onClick = { if (current && player.playing) onToggle() else onPlay(ep.id) }) { Icon(if (current && player.playing) Icons.Default.Pause else Icons.Default.PlayArrow, "${if (current && player.playing) "Pause" else "Play"} ${ep.title}") }
             }
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(timeRemaining(ep.durationMs, if (current) player.positionMs else ep.positionMs), Modifier.weight(1f), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(queueTimeLabel(ep, player), Modifier.weight(1f), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 IconButton(onClick = { onMove(ep.id, -1) }, enabled = canMoveUp) { Icon(Icons.Default.ArrowUpward, "Move ${ep.title} up") }
                 IconButton(onClick = { onMove(ep.id, 1) }, enabled = canMoveDown) { Icon(Icons.Default.ArrowDownward, "Move ${ep.title} down") }
                 IconButton(onClick = { onRemove(ep.id) }) { Icon(Icons.Default.Close, "Remove ${ep.title} from queue") }

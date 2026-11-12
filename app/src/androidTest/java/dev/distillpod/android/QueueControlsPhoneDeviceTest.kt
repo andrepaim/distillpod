@@ -96,11 +96,17 @@ class QueueControlsPhoneDeviceTest {
             assertEquals(ids[0], graph.playback.state.value.episodeId)
             assertTrue(graph.playback.state.value.playing)
             withContext(Dispatchers.Main) { assertEquals(android.net.Uri.fromFile(file), player.currentMediaItem!!.localConfiguration!!.uri) }
+            // Play next while playing edits the playlist without re-preparing or seeking the current item.
+            assertEnqueueKeepsPlaying(ids[0]) {
+                graph.playback.enqueue(ids[1], next = true)
+                awaitQueue(ids)
+            }
+            assertEquals(ids[0], graph.playback.state.value.episodeId)
             graph.playback.pause()
             graph.playback.seek(4567)
             clearDialog()
             compose.onNodeWithText("Cancel").performClick()
-            assertEquals(ids.reversed(), graph.playback.state.value.queue)
+            assertEquals(ids, graph.playback.state.value.queue)
             clearDialog()
             compose.onNodeWithText("Clear and stop").performClick()
             awaitQueue(emptyList())
