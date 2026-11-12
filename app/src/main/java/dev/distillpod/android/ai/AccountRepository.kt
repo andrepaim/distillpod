@@ -25,7 +25,7 @@ class AccountRepository(private val context: Context, private val scope: Corouti
     private val pendingVault = TokenVault(context, "chatgpt-pending", "distillpod-pending")
     private val mutable = MutableStateFlow(AccountState(connected = runCatching { vault.read() != null }.getOrDefault(false)))
     val session = AuthSession(vault::read, vault::write, onCredentialsChanged = { connected ->
-        mutable.update { it.copy(connected = connected, message = if (connected) it.message else "Reconnect your ChatGPT account to continue.") }
+        mutable.update { it.copy(connected = connected, models = if (connected) it.models else emptyList(), message = if (connected) it.message else "Reconnect your ChatGPT account to continue.") }
     })
     val state: StateFlow<AccountState> = mutable.asStateFlow()
     val browser = MutableStateFlow<String?>(null)

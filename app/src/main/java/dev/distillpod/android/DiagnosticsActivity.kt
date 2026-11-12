@@ -76,7 +76,7 @@ class DiagnosticsActivity : ComponentActivity() {
         lifecycleScope.launch { applicationContext.appGraph.account.state.collect { connected = it.connected } }
         setContent {
             FeasibilityScreen(status, busy, connected, prompt, { prompt = it }, { connect() }, {
-                auth.disconnect(); connected = false; retryConnection = false; status = "Account disconnected"
+                applicationContext.appGraph.account.disconnect(); connected = false; retryConnection = false; status = "Account disconnected"
             }, { importModel.launch(arrayOf("application/octet-stream", "*/*")) }, { importAudio.launch(arrayOf("audio/*")) }, { transcribeClip() }, {
                 execute {
                     val provider = SubscriptionProvider()
