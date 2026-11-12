@@ -225,6 +225,18 @@ runner termination may leave the current phase unrecorded. Compare phase and
 whole-workflow time across comparable revisions/cache states before claiming a
 speedup; parallel runner minutes and elapsed waiting time measure different costs.
 
+On a failed phase, explicitly enabled GitHub-hosted emulator CI also writes
+`/tmp/distillpod-ci-failure-state.jsonl`. It contains only the fixed phase name,
+allowlisted numeric host memory/disk/aggregate OOM counters, emulator/ADB process
+counts (including zombies), and a bounded ADB transport-state category. It never
+records process arguments, raw ADB output, logcat, app content or target serials.
+The ADB read is restricted to the configured `emulator-PORT` target and times out
+after two seconds; process inspection is capped at 4,096 entries. No physical
+phone or non-hosted run enables these probes. Diagnostic failure does not replace
+the phase's original failed exit status. Runner termination may prevent collection.
+Host counters are cumulative and a single failure snapshot cannot establish OOM,
+crash causality, or a shared cause with an earlier packaging failure.
+
 ## Identical merged-tree validation
 
 A direct single-merge push to main may reuse a successful full PR run created
@@ -253,6 +265,7 @@ the new main VM or establish that intermittent failures vanished. The 24-hour
 bound limits environmental drift, but hosted images and external infrastructure
 can still change. Use a manual full run when fresh environment evidence is needed
 and investigate genuine failures rather than reusing or retrying them as green.
+
 
 ## Workflows
 
