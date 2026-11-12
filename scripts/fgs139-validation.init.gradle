@@ -6,10 +6,8 @@ allprojects {
             if (project.hasProperty('distillpodFirebaseConfig')) throw new GradleException('Validation forbids Firebase configuration')
             if (project.findProperty('distillpodVoiceEnabled') != 'true') throw new GradleException('Validation requires -PdistillpodVoiceEnabled=true')
             android.defaultConfig.applicationId = 'dev.distillpod.android.validation.fgs139'
-            android.defaultConfig.testApplicationId = 'dev.distillpod.android.validation.fgs139.test'
-            android.sourceSets.androidTest.java.srcDir('src/validationFgs139Test/java')
+            android.sourceSets.debug.java.srcDir('src/validationFgs139/java')
             android.sourceSets.debug.manifest.srcFile('src/validationFgs139/AndroidManifest.xml')
-            android.sourceSets.androidTest.manifest.srcFile('src/validationFgs139/AndroidManifest.xml')
         }
     }
 }

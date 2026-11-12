@@ -27,6 +27,10 @@ class ForegroundServiceFailureTest {
         // Validation builds use another application ID, so Android prints the full class name.
         assertEquals("transcription",ForegroundServiceFailure.service(
             record("dev.distillpod.android.work.TranscriptionService","dev.distillpod.android.validation139")))
+        // Exact Android 16 (S22) wording from the isolated fgs139 probe, record hash replaced.
+        assertEquals("headphone_voice",ForegroundServiceFailure.service("Context.startForegroundService() did not then call " +
+            "Service.startForeground(): ServiceRecord{HASH u0 dev.distillpod.android.validation.fgs139/" +
+            "dev.distillpod.android.voice.HeadphoneVoiceService c:dev.distillpod.android.validation.fgs139}"))
         assertEquals("work_manager",ForegroundServiceFailure.service(
             "startForegroundService() not allowed due to mAllowStartForeground false: service dev.distillpod.android/androidx.work.impl.foreground.SystemForegroundService"))
     }
