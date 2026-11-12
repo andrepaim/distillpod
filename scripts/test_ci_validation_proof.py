@@ -33,6 +33,10 @@ class ProofTests(unittest.TestCase):
             'Android build validation','Firebase protocol and security rules','Native bridge validation',
             'Isolated Android acceptance','Kotlin, lint and APK']]
 
+    def test_clean_but_wrong_checkout_cannot_pass_job_source_guard(self):
+        self.assertIsNone(check_source(self.repo.root,self.checkout))
+        with self.assertRaises(ValueError):check_source(self.repo.root,self.head)
+
     def test_dirty_tracked_or_nonignored_untracked_source_cannot_emit_proof(self):
         self.assertIsNone(check_source(self.repo.root))
         self.repo.write('app/code.kt','untested change\n')

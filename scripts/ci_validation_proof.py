@@ -32,7 +32,9 @@ def source(root):
             'parents': git(root, 'show', '-s', '--format=%P', 'HEAD').split()}
 
 
-def check_source(root):
+def check_source(root, expected_sha=None):
+    if expected_sha is not None and git(root, 'rev-parse', 'HEAD') != expected_sha:
+        raise ValueError('Validation checkout differs from the event revision')
     result = subprocess.run(['git', 'diff', '--quiet', '--no-ext-diff',
                              '--ignore-submodules=none', 'HEAD', '--'], cwd=root)
     if result.returncode or git(root, 'ls-files', '--others', '--exclude-standard', '-z'):
@@ -207,6 +209,8 @@ if __name__ == '__main__':
     parser.add_argument('command', choices=['check-source'])
     parser.parse_args()
     try:
-        check_source(Path.cwd())
+        if not os.environ.get('GITHUB_SHA'):
+            raise ValueError('Missing validation event revision')
+        check_source(Path.cwd(), os.environ['GITHUB_SHA'])
     except (ValueError, OSError, subprocess.SubprocessError):
         raise SystemExit('Validation source integrity failed')
