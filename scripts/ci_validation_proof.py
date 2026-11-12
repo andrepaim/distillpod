@@ -1,4 +1,5 @@
 """Conservative, read-only reuse of successful full PR validation after a merge."""
+import argparse
 import datetime
 import io
 import json
@@ -12,6 +13,8 @@ import zlib
 
 WORKFLOW = '.github/workflows/ci.yml'
 ARTIFACT = 'ci-validation-proof-'
+BUILD_JOBS = {'Android build validation', 'Firebase protocol and security rules',
+              'Native bridge validation', 'Isolated Android acceptance'}
 REQUIRED = {'Select validation and check documentation',
             'Repository security / Secrets and personal data guard',
             'Android build validation', 'Firebase protocol and security rules',
@@ -29,7 +32,15 @@ def source(root):
             'parents': git(root, 'show', '-s', '--format=%P', 'HEAD').split()}
 
 
+def check_source(root):
+    result = subprocess.run(['git', 'diff', '--quiet', '--no-ext-diff',
+                             '--ignore-submodules=none', 'HEAD', '--'], cwd=root)
+    if result.returncode or git(root, 'ls-files', '--others', '--exclude-standard', '-z'):
+        raise ValueError('Validation source differs from its committed tree')
+
+
 def make_proof(root, env):
+    check_source(root)
     s = source(root)
     if (env.get('GITHUB_EVENT_NAME') != 'pull_request' or len(s['parents']) != 2 or
             s['parents'] != [env.get('PR_BASE_SHA'), env.get('PR_HEAD_SHA')] or
@@ -48,14 +59,20 @@ def direct_main(root, env, inputs):
     return len(parents) == 2 and parents[0] == env.get('PUSH_BEFORE_SHA')
 
 
+def recent(timestamp):
+    try:
+        if not isinstance(timestamp, str):
+            return False
+        created = datetime.datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+        return 0 <= (datetime.datetime.now(datetime.timezone.utc) - created).total_seconds() <= 86400
+    except (ValueError, TypeError):
+        return False
+
+
 def verify_evidence(root, proof, run, jobs, repository, tested_commit=None):
     try:
         current = source(root)
-        if not isinstance(run.get('created_at'), str):
-            return False
-        created = datetime.datetime.fromisoformat(run['created_at'].replace('Z', '+00:00'))
-        age = (datetime.datetime.now(datetime.timezone.utc) - created).total_seconds()
-        if not 0 <= age <= 86400:
+        if not recent(run.get('created_at')):
             return False
         if tested_commit is None:
             sha = proof['checkout_sha']
@@ -75,6 +92,11 @@ def verify_evidence(root, proof, run, jobs, repository, tested_commit=None):
                 run['path'] != WORKFLOW or run['repository']['full_name'] != repository or
                 run['head_repository']['full_name'] != repository):
             return False
+        for job in jobs:
+            if job.get('name') in BUILD_JOBS and not any(
+                    step.get('name') == 'Verify validation source' and step.get('conclusion') == 'success'
+                    for step in job.get('steps', [])):
+                return False
         names = [j['name'] for j in jobs]
         return (len(names) == len(set(names)) and REQUIRED.issubset(names) and
                 all(j.get('conclusion') == 'success' for j in jobs))
@@ -113,6 +135,25 @@ class ActionsAPI:
             raise ValueError('Proof API read failed or exceeded its bound')
         return response.stdout if binary else json.loads(response.stdout)
 
+    def cache_is_warm(self):
+        # Main pushes populate the shared Gradle cache; reuse must not starve it.
+        runs = self.get('actions/workflows/ci.yml/runs?event=push&branch=main&status=success&per_page=5')['workflow_runs']
+        for run in runs[:5]:
+            if (run.get('event') != 'push' or run.get('head_branch') != 'main' or
+                    run.get('path') != WORKFLOW or run.get('conclusion') != 'success' or
+                    run.get('repository', {}).get('full_name') != self.repository or
+                    not recent(run.get('created_at'))):
+                continue
+            jobs = self.get(f"actions/runs/{int(run['id'])}/attempts/{int(run['run_attempt'])}/jobs?per_page=100")
+            if jobs['total_count'] != len(jobs['jobs']):
+                return False
+            selected = [j for j in jobs['jobs'] if j['name'] in {
+                'Android build validation', 'Isolated Android acceptance'}]
+            if (len(selected) == 2 and len({j['name'] for j in selected}) == 2 and
+                    all(j.get('conclusion') == 'success' and recent(j.get('completed_at')) for j in selected)):
+                return True
+        return False
+
     def evidence(self, root, run):
         run_id, attempt = int(run['id']), int(run['run_attempt'])
         artifacts = self.get(f'actions/runs/{run_id}/artifacts?per_page=100')
@@ -139,6 +180,8 @@ def find_reusable(root, env, inputs, run_id=None, api=None):
         if not direct_main(root, env, inputs):
             return ''
         api = api or ActionsAPI(env['GITHUB_REPOSITORY'])
+        if not api.cache_is_warm():
+            return ''
         if run_id is not None:
             if not str(run_id).isdigit():
                 return ''
@@ -157,3 +200,13 @@ def find_reusable(root, env, inputs, run_id=None, api=None):
 def emit(root, env, output):
     Path(output).parent.mkdir(parents=True, exist_ok=True)
     Path(output).write_text(json.dumps(make_proof(root, env), sort_keys=True) + '\n')
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('command', choices=['check-source'])
+    parser.parse_args()
+    try:
+        check_source(Path.cwd())
+    except (ValueError, OSError, subprocess.SubprocessError):
+        raise SystemExit('Validation source integrity failed')

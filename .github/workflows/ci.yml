@@ -101,6 +101,9 @@ jobs:
           npm --prefix firebase run test:emulator
           npm --prefix firebase run test:storage
 
+      - name: Verify validation source
+        run: python3 scripts/ci_validation_proof.py check-source
+
   android_build:
     needs: plan
     if: needs.plan.outputs.mode == 'full'
@@ -156,6 +159,8 @@ jobs:
           umask 077
           printf '%s' "$FIREBASE_CONFIG_JSON" > "$config_file"
           ./gradlew --no-daemon --stacktrace --no-build-cache :app:lintRelease :app:assembleRelease -PdistillpodVoiceEnabled=true "-PdistillpodFirebaseConfig=$config_file"
+      - name: Verify validation source
+        run: python3 scripts/ci_validation_proof.py check-source
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
@@ -196,6 +201,9 @@ jobs:
           cmake -S app/src/main/cpp -B /tmp/distillpod-native -DCMAKE_BUILD_TYPE=Release
           cmake --build /tmp/distillpod-native --parallel 2
           ctest --test-dir /tmp/distillpod-native --output-on-failure
+
+      - name: Verify validation source
+        run: python3 scripts/ci_validation_proof.py check-source
 
   emulator:
     needs: plan
@@ -259,6 +267,8 @@ jobs:
             python3 scripts/ci_phase.py ordinary -- env DISTILLPOD_SERIAL=emulator-5554 scripts/emulator-tests.sh /tmp/distillpod-fixtures
             python3 scripts/ci_phase.py cloud -- env JAVA_HOME="$DISTILLPOD_FIREBASE_JAVA" PATH="$DISTILLPOD_FIREBASE_JAVA/bin:$PATH" firebase/node_modules/.bin/firebase --config firebase/firebase.json emulators:exec --only auth,firestore,storage --project demo-distillpod-sync 'env DISTILLPOD_SERIAL=emulator-5554 scripts/sync-device-tests.sh'
             python3 scripts/ci_phase.py voice -- env DISTILLPOD_SERIAL=emulator-5554 scripts/voice-device-tests.sh /tmp/distillpod-fixtures
+      - name: Verify validation source
+        run: python3 scripts/ci_validation_proof.py check-source
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:

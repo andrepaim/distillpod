@@ -266,7 +266,11 @@ The main classifier and aggregate independently read the evidence. A lookup
 failure in selection falls back to full validation; a verification failure after
 jobs have been omitted fails the aggregate rather than passing. Lookups are
 bounded to five matching runs, one complete page of up to 100 jobs/artifacts per
-candidate, and 45 seconds per lookup. Truncated evidence cannot authorize reuse.
+candidate, and 45 seconds per lookup. Reuse also requires a successful full main
+Android-build and emulator execution within 24 hours among the last five
+successful main runs. Otherwise main performs full validation and refreshes its
+shared Gradle caches; repeated lightweight merges cannot indefinitely starve cache
+writes. This is a bounded eligibility rule, not a new scheduled workflow. Truncated evidence cannot authorize reuse.
 Existing required context names and independent main security remain. Main CI
 logs the source proof run; the combined-main result must still pass before an
 issue is complete. Reusable release callers explicitly retain read-only Actions

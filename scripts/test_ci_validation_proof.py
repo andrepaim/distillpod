@@ -6,7 +6,7 @@ import json
 import unittest
 import zipfile
 from test_ci_validation import Repository
-from ci_validation_proof import make_proof, verify_evidence, proof_archive, direct_main, find_reusable, ActionsAPI
+from ci_validation_proof import make_proof, verify_evidence, proof_archive, direct_main, find_reusable, ActionsAPI, check_source
 from ci_validation import validate_gate
 from test_ci_validation import results, SHA
 
@@ -28,10 +28,18 @@ class ProofTests(unittest.TestCase):
         self.run = {'created_at':datetime.datetime.now(datetime.timezone.utc).isoformat(), 'id':123,'run_attempt':1,'event':'pull_request','status':'completed',
                     'conclusion':'success','head_sha':self.head,'path':'.github/workflows/ci.yml',
                     'repository':{'full_name':'owner/repo'},'head_repository':{'full_name':'owner/repo'}}
-        self.jobs = [{'name':n,'conclusion':'success'} for n in [
+        self.jobs = [{'name':n,'conclusion':'success','steps':[{'name':'Verify validation source','conclusion':'success'}]} for n in [
             'Select validation and check documentation','Repository security / Secrets and personal data guard',
             'Android build validation','Firebase protocol and security rules','Native bridge validation',
             'Isolated Android acceptance','Kotlin, lint and APK']]
+
+    def test_dirty_tracked_or_nonignored_untracked_source_cannot_emit_proof(self):
+        self.assertIsNone(check_source(self.repo.root))
+        self.repo.write('app/code.kt','untested change\n')
+        with self.assertRaises(ValueError):make_proof(self.repo.root,self.env)
+        self.repo.git('reset','--hard',self.checkout)
+        self.repo.write('app/extra.kt','untracked input\n')
+        with self.assertRaises(ValueError):check_source(self.repo.root)
 
     def test_identical_merge_tree_with_successful_full_provenance_passes(self):
         # The real merge SHA may differ from the tested synthetic merge SHA.
@@ -60,8 +68,26 @@ class ProofTests(unittest.TestCase):
         for conclusion in ['failure','skipped','cancelled',None]:
             j=copy.deepcopy(self.jobs);j[2]['conclusion']=conclusion
             self.assertFalse(verify_evidence(self.repo.root,self.proof,self.run,j,'owner/repo'))
+        missing_guard=copy.deepcopy(self.jobs);missing_guard[2]['steps']=[]
+        self.assertFalse(verify_evidence(self.repo.root,self.proof,self.run,missing_guard,'owner/repo'))
         self.assertFalse(verify_evidence(self.repo.root,self.proof,self.run,self.jobs[:-1],'owner/repo'))
         self.assertFalse(verify_evidence(self.repo.root,self.proof,self.run,self.jobs+self.jobs,'owner/repo'))
+
+    def test_cache_refresh_is_required_when_recent_main_has_only_reused_jobs(self):
+        run=dict(self.run,id=789,event='push',head_branch='main')
+        jobs=[{'name':name,'conclusion':'skipped','completed_at':self.run['created_at']}
+              for name in ['Android build validation','Isolated Android acceptance']]
+        class CacheAPI(ActionsAPI):
+            def __init__(self):self.repository='owner/repo'
+            def get(self,path,binary=False):
+                if 'workflow_runs' not in path and '/runs?' in path:return {'workflow_runs':[run]}
+                return {'total_count':2,'jobs':jobs}
+        api=CacheAPI()
+        self.assertFalse(api.cache_is_warm())
+        for job in jobs:job['conclusion']='success'
+        self.assertTrue(api.cache_is_warm())
+        jobs[0]['completed_at']='2000-01-01T00:00:00Z'
+        self.assertFalse(api.cache_is_warm())
 
     def test_only_direct_single_merge_main_pushes_can_reuse(self):
         env={'GITHUB_EVENT_NAME':'push','GITHUB_REF':'refs/heads/main','PUSH_BEFORE_SHA':self.base}
@@ -82,6 +108,11 @@ class ProofTests(unittest.TestCase):
             'actions/runs/123/attempts/1/jobs?per_page=100': {'total_count':len(self.jobs),'jobs':self.jobs},
             f'git/commits/{self.checkout}': {'sha':self.checkout,'tree':{'sha':self.proof['tree']},
                                            'parents':[{'sha':self.base},{'sha':self.head}]}}
+        payloads['actions/workflows/ci.yml/runs?event=push&branch=main&status=success&per_page=5'] = {
+            'workflow_runs':[dict(self.run,id=789,event='push',head_branch='main')]}
+        payloads['actions/runs/789/attempts/1/jobs?per_page=100'] = {
+            'total_count':2,'jobs':[dict(j,completed_at=self.run['created_at']) for j in self.jobs
+                                  if j['name'] in {'Android build validation','Isolated Android acceptance'}]}
         class FakeAPI(ActionsAPI):
             def __init__(self):self.repository='owner/repo'
             def get(self,path,binary=False):return payloads[path]
@@ -110,6 +141,8 @@ class ProofTests(unittest.TestCase):
 class LookupTests(unittest.TestCase):
     def test_network_missing_metadata_and_invalid_context_fall_back_full(self):
         class BrokenAPI:
+            def cache_is_warm(self):
+                raise OSError
             def get(self, path):
                 raise OSError('private-body-must-not-be-printed')
         with Repository() as repo:
