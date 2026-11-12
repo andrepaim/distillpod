@@ -243,7 +243,8 @@ class TranscriptionRepository internal constructor(private val graph: AppGraph,
     internal suspend fun process(id: String, revision: String, execution: TranscriptExecution) = processing.withLock {
         val job = currentCoroutineContext().job
         running[id] = job
-        try { processChunk(id, revision, execution) } finally { running.remove(id, job); graph.automation.kick() }
+        // Show automation observes transcript state changes, not each chunk (#140).
+        try { processChunk(id, revision, execution) } finally { running.remove(id, job) }
     }
 
     private suspend fun processChunk(id: String, revision: String, execution: TranscriptExecution): TranscriptOutcome {

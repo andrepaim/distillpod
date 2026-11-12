@@ -27,6 +27,8 @@ interface AutomationDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun putShow(row: ShowAutomationEntity)
     @Insert(onConflict = OnConflictStrategy.IGNORE) suspend fun insertJob(row: EpisodeAutomationEntity)
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun putJob(row: EpisodeAutomationEntity)
+    /** Keeps discovery order and cannot recreate a job removed by disabling automation meanwhile. */
+    @Query("UPDATE episode_automation SET stage=:stage WHERE episodeId=:id") suspend fun setStage(id: String, stage: String)
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun putAd(row: EpisodeAdPreferenceEntity)
     @Query("UPDATE show_automation SET initialized=1 WHERE podcastId=:id AND initialized=0") suspend fun initialize(id: String)
     @Query("DELETE FROM show_automation WHERE podcastId=:id") suspend fun disable(id: String)
@@ -73,22 +75,17 @@ class ShowAutomation(private val graph: AppGraph) {
     }
 
     suspend fun retry(id: String) {
-        dao.jobs().firstOrNull { it.episodeId == id }?.let { dao.putJob(it.copy(stage = "retry")) }
+        dao.setStage(id, "retry")
     }
-    fun kick() {
+    private fun kick() {
         WorkManager.getInstance(graph.context).enqueueUniqueWork("show-automation", ExistingWorkPolicy.APPEND_OR_REPLACE,
             OneTimeWorkRequestBuilder<ShowAutomationWorker>().build())
     }
-    @OptIn(FlowPreview::class)
+    /** Workers change the observed rows; their state changes, not their progress, wake the coordinator. */
     fun observe() {
         graph.scope.launch(Dispatchers.IO) {
-            // Persist a continuation whenever a dependency changes. Debounce byte/chunk progress.
-            merge(library.observeEpisodes().map { Unit }, library.observeTranscripts().map { Unit },
-                library.observeAnalyses().map { Unit }, dao.observeShows().map { Unit }, dao.observeJobs().map { Unit },
-                graph.settings.flow.map { Unit }, graph.account.state.map { Unit })
-                .debounce(500).collect {
-                    if (dao.jobs().any { it.stage != "ready" }) kick()
-                }
+            automationKickRequests(dao.observeJobs(), dao.observeShows(), library.observePodcasts(), library.observeEpisodes(),
+                library.observeTranscripts(), library.observeAnalyses(), graph.account.state.map { it.connected }).collect { kick() }
         }
     }
     suspend fun advance() = controls.withLock {
@@ -97,6 +94,20 @@ class ShowAutomation(private val graph: AppGraph) {
     }
 }
 
+private val STARTING_STAGES = listOf("queued", "retry")
+private val ACTIVE_DOWNLOAD = listOf("queued", "downloading")
+private val ACTIVE_TRANSCRIPT = listOf("queued", "processing")
+private val ACTIVE_ANALYSIS = listOf("queued", "running")
+/** Stopped by the user or a failure; automation restarts these only after Retry preparation. */
+private val HELD_DOWNLOAD = listOf("paused", "failed")
+private val HELD_TRANSCRIPT = listOf("paused", "failed", "partial", "stale")
+
+/**
+ * Advances jobs in discovery order. Only actively running work (a queued or running download,
+ * transcript or analysis) holds later jobs back, so processing stays one at a time. A job that
+ * cannot progress without the user is staged `blocked` (or `waiting_auth`) and is skipped; it
+ * resumes when its download, transcript, analysis or account state changes or after Retry preparation.
+ */
 internal class AutomationProcessor(private val db: AppDatabase, private val connected: () -> Boolean,
     private val download: suspend (String) -> Unit, private val transcribe: suspend (String) -> Unit,
     private val analyze: suspend (String) -> Unit) {
@@ -107,34 +118,91 @@ internal class AutomationProcessor(private val db: AppDatabase, private val conn
             val show = dao.show(job.podcastId) ?: continue
             if (!show.initialized || library.podcast(job.podcastId)?.subscribed != true) continue
             val ep = library.episode(job.episodeId) ?: continue
-            suspend fun stage(value: String) { if (job.stage != value) dao.putJob(job.copy(stage = value)) }
-            if (ep.localFile?.let { File(it).isFile } != true) {
-                if (ep.downloadState in listOf("paused", "failed") && job.stage != "retry") continue
-                if (job.stage in listOf("queued", "retry") || ep.downloadState == "none") {
-                    stage("downloading"); download(ep.id)
-                }
-                // A pause/failure is retried explicitly from the show page.
-                if (ep.downloadState !in listOf("paused", "failed")) return
-                continue
-            }
-            val transcript = library.transcript(ep.id)
-            if (transcript?.state != "ready" || transcript.fingerprint != ep.mediaFingerprint || transcript.source == "online") {
-                if (transcript?.state in listOf("paused", "failed", "partial", "stale") && job.stage != "retry") continue
-                if (job.stage in listOf("queued", "retry") || transcript == null) {
-                    stage("transcribing"); transcribe(ep.id)
-                }
-                if (transcript?.state !in listOf("paused", "failed", "waiting_model", "partial", "stale")) return
-                continue
-            }
-            val analysis = library.analysis(ep.id)
-            if (analysis?.state == "succeeded" && analysis.revision == transcript.revision) { stage("ready"); continue }
-            if (!connected()) { stage("waiting_auth"); continue }
-            if (analysis == null || analysis.revision != transcript.revision || job.stage == "retry") {
-                stage("analyzing"); analyze(ep.id)
-            }
-            if (analysis?.state !in listOf("failed", "paused", "waiting_auth", "waiting_quota")) return
+            if (step(job, ep)) return
         }
     }
+
+    /** Returns true while this job has running work that later jobs wait for. */
+    private suspend fun step(job: EpisodeAutomationEntity, ep: EpisodeEntity): Boolean {
+        var current = job.stage
+        suspend fun stage(value: String) { if (current != value) { dao.setStage(job.episodeId, value); current = value } }
+        val retry = job.stage == "retry"
+        val starting = job.stage in STARTING_STAGES
+        if (!ep.hasAudio()) {
+            val start = when (ep.downloadState) {
+                in ACTIVE_DOWNLOAD -> starting // Make sure a new or retried job's request exists.
+                in HELD_DOWNLOAD -> retry
+                else -> true // Not downloaded, or its file is gone.
+            }
+            if (start) { stage("downloading"); download(ep.id) }
+            val now = library.episode(ep.id) ?: return false
+            if (now.downloadState in ACTIVE_DOWNLOAD || now.hasAudio()) { stage("downloading"); return true }
+            stage("blocked"); return false
+        }
+        fun usable(t: TranscriptEntity?) = t?.state == "ready" && t.fingerprint == ep.mediaFingerprint && t.source != "online"
+        var transcript = library.transcript(ep.id)
+        if (!usable(transcript)) {
+            val start = transcript == null || retry || (starting && transcript.state !in HELD_TRANSCRIPT)
+            if (start) { stage("transcribing"); transcribe(ep.id); transcript = library.transcript(ep.id) }
+            if (!usable(transcript)) {
+                if (transcript?.state in ACTIVE_TRANSCRIPT) { stage("transcribing"); return true }
+                // Held, waiting for a model, or unusable text: Retry preparation transcribes locally.
+                stage("blocked"); return false
+            }
+        }
+        val revision = transcript!!.revision
+        fun done(a: AnalysisEntity?) = a?.state == "succeeded" && a.revision == revision
+        var analysis = library.analysis(ep.id)
+        if (done(analysis)) { stage("ready"); return false }
+        if (!connected()) { stage("waiting_auth"); return false }
+        if (analysis == null || analysis.revision != revision || retry) { stage("analyzing"); analyze(ep.id); analysis = library.analysis(ep.id) }
+        if (done(analysis)) { stage("ready"); return false }
+        if (analysis?.state in ACTIVE_ANALYSIS) { stage("analyzing"); return true }
+        stage("blocked"); return false
+    }
+
+    private fun EpisodeEntity.hasAudio() = localFile?.let { File(it).isFile } == true
+}
+
+/** What [AutomationProcessor] decides on for one unfinished job; positions, bytes and chunk progress are left out. */
+internal data class AutomationJobKey(val episodeId: String, val stage: String, val show: String, val subscribed: Boolean,
+    val download: String?, val localFile: String?, val media: String?, val transcript: String?, val analysis: String?)
+internal data class AutomationFingerprint(val connected: Boolean, val jobs: List<AutomationJobKey>)
+
+private fun phase(state: String, active: List<String>) = if (state in active) "active" else state
+
+internal fun automationFingerprint(jobs: List<EpisodeAutomationEntity>, shows: List<ShowAutomationEntity>, podcasts: List<PodcastEntity>,
+    episodes: List<EpisodeEntity>, transcripts: List<TranscriptEntity>, analyses: List<AnalysisEntity>, connected: Boolean): AutomationFingerprint {
+    val pending = jobs.filter { it.stage != "ready" }
+    val ids = pending.mapTo(HashSet()) { it.episodeId }
+    val episode = episodes.filter { it.id in ids }.associateBy { it.id }
+    val transcript = transcripts.filter { it.episodeId in ids }.associateBy { it.episodeId }
+    val analysis = analyses.filter { it.episodeId in ids }.associateBy { it.episodeId }
+    val show = shows.associateBy { it.podcastId }
+    val subscribed = podcasts.filter { it.subscribed }.mapTo(HashSet()) { it.id }
+    return AutomationFingerprint(connected, pending.map { job ->
+        val ep = episode[job.episodeId]
+        val t = transcript[job.episodeId]
+        val a = analysis[job.episodeId]
+        AutomationJobKey(job.episodeId, if (job.stage in STARTING_STAGES) job.stage else "started",
+            show[job.podcastId]?.let { if (it.initialized) "initialized" else "baseline" } ?: "disabled", job.podcastId in subscribed,
+            ep?.let { phase(it.downloadState, ACTIVE_DOWNLOAD) }, ep?.localFile, ep?.mediaFingerprint,
+            t?.let { "${phase(it.state, ACTIVE_TRANSCRIPT)}:${it.revision}:${it.fingerprint}:${it.source}" },
+            a?.let { "${phase(it.state, ACTIVE_ANALYSIS)}:${it.revision}" })
+    })
+}
+
+/**
+ * Requests a coordinator run when [automationFingerprint] changes and unfinished jobs exist.
+ * Playback writes the episodes table every second; those writes no longer schedule work (#140).
+ */
+@OptIn(FlowPreview::class)
+internal fun automationKickRequests(jobs: Flow<List<EpisodeAutomationEntity>>, shows: Flow<List<ShowAutomationEntity>>,
+    podcasts: Flow<List<PodcastEntity>>, episodes: Flow<List<EpisodeEntity>>, transcripts: Flow<List<TranscriptEntity>>,
+    analyses: Flow<List<AnalysisEntity>>, connected: Flow<Boolean>): Flow<AutomationFingerprint> {
+    val media = combine(episodes, transcripts, analyses) { e, t, a -> Triple(e, t, a) }
+    return combine(jobs, shows, podcasts, media, connected) { j, s, p, (e, t, a), c -> automationFingerprint(j, s, p, e, t, a, c) }
+        .debounce(500).distinctUntilChanged().filter { it.jobs.isNotEmpty() }
 }
 
 class ShowAutomationWorker(context: android.content.Context, params: WorkerParameters) : CoroutineWorker(context, params) {
