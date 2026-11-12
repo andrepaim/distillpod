@@ -4,6 +4,11 @@ import dev.distillpod.android.ai.*
 import dev.distillpod.core.sourceQuoteMatches
 import org.json.*
 
+private fun isRequestFailure(error: Exception) = error is kotlinx.coroutines.CancellationException ||
+    error is dev.distillpod.android.QuotaExceeded || error is dev.distillpod.android.ReauthorizationRequired ||
+    error is dev.distillpod.android.AiRateLimited || error is dev.distillpod.android.AccountEntitlementDenied ||
+    error is dev.distillpod.android.AiRequestRejected || error is dev.distillpod.android.AiServiceUnavailable || error is java.io.IOException
+
 /** The renderer receives a constrained explanatory brief, never arbitrary drawing commands. */
 data class InfographicNode(val title: String, val detail: String, val sources: List<Int>)
 data class InfographicBrief(val title: String, val subtitle: String, val relationship: String, val nodes: List<InfographicNode>, val caveat: String, val illustration: String) {
@@ -46,7 +51,7 @@ class SocialComposer(private val ai: AiGateway, private val tools: SocialTools) 
                 require(discussion.length in 100..12000 && discussion.contains("\n\n"))
                 return SocialArtifact(text = discussion, quote = quote, title = result.source.episode.take(300))
             } catch (e: Exception) {
-                if (e is kotlinx.coroutines.CancellationException || e is dev.distillpod.android.QuotaExceeded || e is dev.distillpod.android.ReauthorizationRequired || e is java.io.IOException) throw e
+                if (isRequestFailure(e)) throw e
                 if (attempt == 1) throw SocialGenerationFailure("The post could not be verified against its source. Try again.", e)
                 answer = ai.complete(prompt + " Repair the previous answer: quote must match the excerpt exactly and discussion must have blank-line paragraph breaks.", JSONObject(input).put("invalidPreviousAnswer",answer.take(16000)).toString()).text
             }
@@ -79,7 +84,7 @@ class SocialComposer(private val ai: AiGateway, private val tools: SocialTools) 
                 require(review.getBoolean("supported")) { "The evidence does not support the visual" }
                 return jsonObjectAnswer(raw).toString() to brief
             } catch (e: Exception) {
-                if (e is kotlinx.coroutines.CancellationException || e is dev.distillpod.android.QuotaExceeded || e is dev.distillpod.android.ReauthorizationRequired || e is java.io.IOException) throw e
+                if (isRequestFailure(e)) throw e
                 if (attempt == 1) throw SocialGenerationFailure("The infographic claims could not be verified. Try again.", e)
                 raw = ai.complete(prompt + " Repair the invalidPreviousAnswer using repairReason. Shorten overlong strings substantially, preserve caveats and citation alignment. Obey all length/format limits. Return the complete repaired JSON.", JSONObject(input).put("invalidPreviousAnswer",raw.take(40000)).put("repairReason",e.message.orEmpty().take(1000)).toString()).text
             }
@@ -106,7 +111,7 @@ class SocialComposer(private val ai: AiGateway, private val tools: SocialTools) 
         repeat(2) { attempt ->
             try { val json = jsonObjectAnswer(raw).toString(); dev.distillpod.android.sharing.VectorIllustrations.validate(json); return json }
             catch (e: Exception) {
-                if (e is kotlinx.coroutines.CancellationException || e is dev.distillpod.android.QuotaExceeded || e is dev.distillpod.android.ReauthorizationRequired || e is java.io.IOException) throw e
+                if (isRequestFailure(e)) throw e
                 if (attempt == 1) throw SocialGenerationFailure("The illustration could not be completed. Try again.",e)
                 raw = ai.complete(prompt + " Repair invalidPreviousAnswer: fix all malformed or out-of-bounds shapes. Use only the documented shape properties.",JSONObject(input).put("invalidPreviousAnswer",raw.take(60000)).put("repairReason",e.message.orEmpty().take(1000)).toString()).text
             }

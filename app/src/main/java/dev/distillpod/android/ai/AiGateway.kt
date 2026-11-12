@@ -22,15 +22,15 @@ class ChatGptGateway(private val auth: AuthSession, private val settings: AppSet
             val active = AtomicReference<Call?>()
             executor.submit {
                 try {
-                    val token = auth.accessToken()
                     if (!continuation.isActive) return@submit
                     val provider = SubscriptionProvider()
                     val register: (Call) -> Unit = { active.set(it); if (!continuation.isActive) it.cancel() }
-                    val models = provider.models(token, register)
+                    val models = auth.withAccessToken { provider.models(it, register) }
                     val model = if (selected.isBlank()) models.firstOrNull() ?: error("No entitled text model") else selected.also { require(it in models) { "Choose an available AI model in Settings" } }
                     if (!continuation.isActive) return@submit
-                    continuation.resume(AiText(provider.respond(token, model, instructions, input, register, onDelta), model))
-                } catch (error: Exception) { continuation.resumeWithException(error) }
+                    val result = AiText(auth.withAccessToken { provider.respond(it, model, instructions, input, register, onDelta) }, model)
+                    if (continuation.isActive) continuation.resume(result)
+                } catch (error: Exception) { if (continuation.isActive) continuation.resumeWithException(error) }
             }
             continuation.invokeOnCancellation { active.get()?.cancel() }
         }
