@@ -27,7 +27,7 @@ class AppGraph internal constructor(val context: Context, val scope: CoroutineSc
     val syncAccount by lazy { dev.distillpod.android.sync.SubscriptionSyncAccount(this) }
     val youtube = dev.distillpod.android.video.YouTubeSource(dev.distillpod.android.video.AndroidYouTubeExtractor(context) { name, reason, elapsed, operation ->
         diagnostics.event(name, operation = operation, reason = reason, elapsedMs = elapsed)
-    }).apply { onStreamRefresh = { diagnostics.event("youtube.stream_refreshed", reason = "ready") } }
+    }, dev.distillpod.android.video.HttpYouTubeMetadataFetcher(http)).apply { onStreamRefresh = { diagnostics.event("youtube.stream_refreshed", reason = "ready") } }
     val podcasts = PodcastRepository(db, http, onSubscriptionChanged = { syncAccount.kick() }, onFeedNeeded = { jobs.refresh(it) }, youtube = youtube)
     val portableSync by lazy {dev.distillpod.android.sync.PortableLibrarySync(db,changed={syncAccount.kick()})}
     val collectionSync by lazy {dev.distillpod.android.sync.CollectionSync(db,changed={syncAccount.kick()})}

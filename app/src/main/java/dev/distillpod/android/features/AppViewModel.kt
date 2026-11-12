@@ -111,6 +111,9 @@ class AppViewModel(val graph: AppGraph, private val saved: SavedStateHandle) : V
         val candidate = search.value.results.firstOrNull { it.feedUrl == url }
         val id = if (candidate != null) graph.podcasts.follow(candidate) else graph.podcasts.subscribe(url); messages.send("Subscribed"); open("podcast:$id")
     }
+    val episodeDetails = graph.podcasts.episodeDetails
+    /** Quiet background check; the episode page shows checking, unavailable and retry states. */
+    fun loadEpisodeDetails(id: String) { viewModelScope.launch { graph.podcasts.loadEpisodeDetails(id) } }
     fun refresh(id: String? = null) = action("refresh") {
         if (id == null) graph.podcasts.refreshAll() else graph.podcasts.refresh(id)
         messages.send("Feed refresh finished")
