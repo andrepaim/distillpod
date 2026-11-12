@@ -127,6 +127,13 @@ class QueueControlsDeviceTest {
             withContext(Dispatchers.Main) {
                 assertEquals(android.net.Uri.fromFile(file),player.currentMediaItem!!.localConfiguration!!.uri)
             }
+            // Play next and Add to queue edit around the playing item without re-preparing or seeking it.
+            assertEnqueueKeepsPlaying(ids[0]) {
+                graph.playback.enqueue(ids[1],next=true)
+                awaitQueue(listOf(ids[2],ids[0],ids[1]))
+                graph.playback.enqueue(ids[2])
+                awaitQueue(listOf(ids[0],ids[1],ids[2]))
+            }
             openClearDialog()
             compose.onNodeWithText("Cancel").performClick()
             assertEquals(3,graph.playback.state.value.queue.size)
