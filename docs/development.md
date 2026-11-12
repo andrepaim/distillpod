@@ -193,6 +193,37 @@ They use `demo-distillpod-sync`, with Firestore on localhost:8085 and Storage on
 
 The [library sync guide](android/subscription-sync.md) documents optional client configuration, Auth/Firestore/Storage Android acceptance, and the two-phase force-stop test. `scripts/sync-device-tests.sh` requires running cloud emulators and a verified Android emulator; it refuses physical-phone targets. The default build intentionally contains no production Firebase configuration. The sync runner uses ADB reverse for localhost Auth/Firestore/Storage endpoints, so acceptance does not depend on the emulator’s Wi-Fi route; it removes those forwards on exit. CI runs the ordinary device suite first and the explicit cloud acceptance afterward. `IsolatedTestRunner` disables automatic production cloud activity and deferred fixture intents; SDK cases inject demo clients explicitly.
 
+## Reducing repeated CI work
+
+Keep related implementation corrections, tests and documentation in one coherent
+PR. Push work in progress as a draft and consolidate changes before requesting
+full hosted validation. Before marking ready, finish relevant local checks,
+reconcile current main, review the combined diff, and coordinate the integration
+lane with other sessions. This does not reserve the lane during exploratory
+implementation or change the two-issue overlap limit. Record validation results
+in the tracker/PR; add a separate documentation commit only when repository
+content actually needs updating.
+
+Direct draft code PRs run routing regressions and repository security, omitting
+Android/Firebase/native/emulator jobs. Their aggregate deliberately fails with
+"Draft preview is incomplete"; this is expected deferred validation, not a test
+failure or merge evidence. Marking ready for review triggers full CI without a
+new commit. Further ready PR pushes run full checks. Converting back to draft
+starts a preview and cancels superseded CI through the existing concurrency
+group. Documentation-only drafts still run their validated documentation route.
+Manual, reusable/release and main-push runs retain full validation. Never use a
+draft result or an older ready result to satisfy final-revision acceptance.
+
+The emulator job records startup, ordinary (including teardown, Android Auto and
+notification), cloud and voice phase durations and exit codes in
+`/tmp/distillpod-ci-phase-timings.jsonl`, uploaded with emulator results. Child
+output streams normally; the timing file contains no command arguments or app
+content. Each phase includes its existing builds/setup/cleanup. Failures retain
+the command status and stop later phases; no automatic retry is added. Abrupt
+runner termination may leave the current phase unrecorded. Compare phase and
+whole-workflow time across comparable revisions/cache states before claiming a
+speedup; parallel runner minutes and elapsed waiting time measure different costs.
+
 ## Workflows
 
 `security.yml` scans fetched Git history for secrets and checks current/new
@@ -213,7 +244,8 @@ its complete Git base/head diff. A narrow allowlist recognizes known root
 Markdown, Markdown/PNG/MP4 under `docs/`, historical JSON/JSONL/TXT evidence,
 the Firebase/investigation README files and the Manrope license. Other paths,
 including plugin/integration content, app resources, code under `docs/`, scripts,
-workflows, executable files, symlinks and submodules select full validation.
+workflows, executable files, symlinks and submodules select full validation for
+ready PRs; direct draft code PRs use the incomplete preview described above.
 Both sides of renames/deletions are inspected without GitHub's 300-file API
 limit. Missing, shallow or ambiguous Git evidence fails visibly.
 
