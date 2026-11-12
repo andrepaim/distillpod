@@ -12,7 +12,7 @@ device() { "$adb_tool" -P "${DISTILLPOD_ADB_PORT:-5037}" -s "$serial" "$@"; }
 [[ "$(device shell getprop ro.kernel.qemu | tr -d '\r')" == 1 ]] || { echo 'Target is not an emulator' >&2; exit 1; }
 installed="$(device shell pm list packages "$app" | tr -d '\r')"
 [[ -z "$installed" ]] || { echo 'Validation package already exists; refusing to replace it' >&2; exit 1; }
-flock /tmp/distillpod-dot-full-build.lock ./gradlew --no-daemon --max-workers=2     -I scripts/startup56-validation.init.gradle :app:assembleDebug :app:assembleDebugAndroidTest
+flock /tmp/distillpod-dot-full-build.lock ./gradlew --no-daemon -I scripts/emulator-abi.init.gradle --max-workers=2     -I scripts/startup56-validation.init.gradle :app:assembleDebug :app:assembleDebugAndroidTest
 aapt="${ANDROID_HOME:?Set ANDROID_HOME}/build-tools/35.0.0/aapt"
 main_apk=app/build/outputs/apk/debug/app-debug.apk
 test_apk=app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
@@ -20,6 +20,9 @@ test_apk=app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
 [[ "$("$aapt" dump badging "$test_apk" | sed -n "s/^package: name='\([^']*\)'.*/\1/p")" == "$test_app" ]]
 [[ "$("$aapt" dump xmltree "$test_apk" AndroidManifest.xml | sed -n 's/.*android:targetPackage[^=]*="\([^"]*\)".*/\1/p')" == "$app" ]]
 "$aapt" dump xmltree "$main_apk" AndroidManifest.xml | grep -F 'dev.distillpod.android.DistillPodApplication'
+if [[ -n "${DISTILLPOD_EMULATOR_ABI:-}" ]]; then
+    python3 scripts/emulator_apk.py app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+fi
 for apk in "$main_apk" "$test_apk"; do
     permissions="$("$aapt" dump permissions "$apk")"
     if grep -F 'android.permission.INTERNET' <<< "$permissions"; then

@@ -51,7 +51,10 @@ if [[ "${GITHUB_ACTIONS:-false}" == true ]]; then
 fi
 # Keep the compressed regression sample tied to the same pinned upstream checkout.
 cp third_party/whisper.cpp/samples/jfk.mp3 "$DISTILLPOD_FIXTURES/jfk.mp3"
-./gradlew --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest "-PdistillpodFixtureDir=$DISTILLPOD_FIXTURES"
+./gradlew --no-daemon -I scripts/emulator-abi.init.gradle :app:assembleDebug :app:assembleDebugAndroidTest "-PdistillpodFixtureDir=$DISTILLPOD_FIXTURES"
+if [[ -n "${DISTILLPOD_EMULATOR_ABI:-}" ]]; then
+    python3 scripts/emulator_apk.py app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+fi
 for DISTILLPOD_PACKAGE in app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk; do
     DISTILLPOD_PACKAGE="$(realpath "$DISTILLPOD_PACKAGE")"
     if [[ "$DISTILLPOD_ADB" == *.exe ]]; then DISTILLPOD_PACKAGE="$(wslpath -w "$DISTILLPOD_PACKAGE")"; fi
