@@ -184,16 +184,19 @@ def find_reusable(root, env, inputs, run_id=None, api=None):
         api = api or ActionsAPI(env['GITHUB_REPOSITORY'])
         if not api.cache_is_warm():
             return ''
+        head = source(root)['parents'][1]
+        runs = api.get(f'actions/workflows/ci.yml/runs?event=pull_request&head_sha={head}&per_page=5')['workflow_runs']
+        # A newer failed, pending or incomplete result must never be hidden by
+        # searching only successful historical runs for the same code.
+        if not runs:
+            return ''
+        latest = runs[0]
         if run_id is not None:
-            if not str(run_id).isdigit():
+            if not str(run_id).isdigit() or str(latest['id']) != str(run_id):
                 return ''
-            runs = [api.get(f'actions/runs/{int(run_id)}')]
-        else:
-            head = source(root)['parents'][1]
-            runs = api.get(f'actions/workflows/ci.yml/runs?event=pull_request&status=success&head_sha={head}&per_page=5')['workflow_runs']
-        for run in runs[:5]:
-            if api.evidence(root, run):
-                return str(run['id'])
+            latest = api.get(f'actions/runs/{int(run_id)}')
+        if api.evidence(root, latest):
+            return str(latest['id'])
     except (KeyError, TypeError, ValueError, OSError, subprocess.SubprocessError, zipfile.BadZipFile, RuntimeError, zlib.error):
         pass
     return ''

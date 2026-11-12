@@ -117,11 +117,19 @@ class ProofTests(unittest.TestCase):
         payloads['actions/runs/789/attempts/1/jobs?per_page=100'] = {
             'total_count':2,'jobs':[dict(j,completed_at=self.run['created_at']) for j in self.jobs
                                   if j['name'] in {'Android build validation','Isolated Android acceptance'}]}
+        payloads[f'actions/workflows/ci.yml/runs?event=pull_request&head_sha={self.head}&per_page=5'] = {'workflow_runs':[self.run]}
         class FakeAPI(ActionsAPI):
             def __init__(self):self.repository='owner/repo'
             def get(self,path,binary=False):return payloads[path]
         env={'GITHUB_EVENT_NAME':'push','GITHUB_REF':'refs/heads/main','PUSH_BEFORE_SHA':self.base}
         self.assertEqual('123',find_reusable(self.repo.root,env,{},run_id='123',api=FakeAPI()))
+        latest_path=f'actions/workflows/ci.yml/runs?event=pull_request&head_sha={self.head}&per_page=5'
+        for status,conclusion in [('completed','failure'),('in_progress',None),('completed','cancelled')]:
+            payloads[latest_path]={'workflow_runs':[dict(self.run,id=124,status=status,conclusion=conclusion),self.run]}
+            self.assertEqual('',find_reusable(self.repo.root,env,{},run_id='123',api=FakeAPI()))
+            self.assertEqual('',find_reusable(self.repo.root,env,{},api=FakeAPI()))
+        payloads[latest_path]={'workflow_runs':[self.run]}
+
         artifact=payloads['actions/runs/123/artifacts?per_page=100']['artifacts'][0]
         artifact['expired']=True
         self.assertEqual('',find_reusable(self.repo.root,env,{},run_id='123',api=FakeAPI()))

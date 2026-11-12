@@ -255,7 +255,8 @@ A direct single-merge push to main may reuse a successful full PR run created
 within the preceding 24 hours. The proof must match both merge parents, the
 whole Git tree (including workflow/scripts/submodule identities), tested synthetic
 merge checkout and workflow blob. Read-only GitHub API evidence must identify
-the same repository and PR workflow, its successful latest attempt and every
+the same repository and PR workflow, its latest matching run and successful
+latest attempt and every
 expected successful job. Only full direct PR validation emits the bounded
 `ci-validation-proof-ATTEMPT` artifact; docs, drafts and reused runs never do.
 Artifacts expire after seven days; the shorter 24-hour run freshness limit also
