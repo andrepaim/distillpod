@@ -173,6 +173,18 @@ Ordinary CI excludes live-account, opt-in public-directory, and long public-podc
 
 On disposable GitHub-hosted emulators only, the fixture script supplies Chromium's test command-line flags to bypass first-run onboarding before the real browser callback check. It verifies that the target is an emulator and removes its flags/debug-app setting on exit. This setup is never applied to an owner's phone. Lazy-list UI checks scroll the containing list before accessing rows that may not yet be composed on smaller screens.
 
+Disposable GitHub-hosted x86_64 acceptance opts into `emulator-abi.init.gradle`
+for startup, ordinary and voice builds. It builds/packages only the emulator's
+native ABI, avoiding repeated ARM compilation and installation payload there.
+The separate default/voice Android build validation and distribution build retain
+both `arm64-v8a` and `x86_64`. The init script is inert without the explicit CI
+opt-in and rejects other ABIs, non-hosted/physical targets, release tasks and
+unexpected default filters. With the shared build resource held, run
+`python3 scripts/verify_emulator_abi.py` for isolated Gradle-model regressions.
+Cloud acceptance continues using the ordinary phase's compatible APK pair;
+startup has a separate offline identity and voice has different resources and
+manifest settings, so those pairs cannot be substituted for one another.
+
 CI also waits up to 30 seconds for user storage to become RUNNING_UNLOCKED after the emulator reports boot completion. A development phone still requires its owner to unlock it; the script does not dismiss a secure keyguard.
 
 The browser integration check validates receipt of a real browser's callback and its state/client identity. A separate Android TCP check reads the complete HTTP response while the listener scope remains open. This tests callback delivery and response completion independently of Chrome's accessibility representation of a plain-text page.

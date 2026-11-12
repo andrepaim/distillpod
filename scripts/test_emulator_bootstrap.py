@@ -66,6 +66,7 @@ elif cmd[:3]==['shell','am','instrument']:
         result, calls = self.run_fixture("race")
         self.assertEqual(0, result.returncode, result.stdout + result.stderr)
         self.assertEqual("3", (self.root / "count").read_text())
+        self.assertIn("-I\nscripts/emulator-abi.init.gradle\n", (self.root / "gradle-args").read_text())
         self.assertEqual(2, sum(call[0] == "install" for call in calls))
         command = next(call for call in calls if call[:3] == ["shell", "am", "instrument"])
         self.assertIn("#realDirectoryShowsPublisherThumbnails", " ".join(command))
@@ -130,6 +131,7 @@ elif cmd[:3]==['shell','am','instrument']:
         result, calls = self.voice_fixture()
         self.assertEqual(0, result.returncode, result.stdout + result.stderr)
         self.assertIn("-PdistillpodVoiceEnabled=true", (self.root / "gradle-args").read_text())
+        self.assertIn("-I\nscripts/emulator-abi.init.gradle\n", (self.root / "gradle-args").read_text())
         self.assertEqual(2, sum(call[0] == "install" for call in calls))
         commands = [call for call in calls if call[:3] == ["shell", "am", "instrument"]]
         self.assertEqual(1, len(commands))

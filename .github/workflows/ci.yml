@@ -127,7 +127,10 @@ jobs:
       - name: Install pinned native tools
         run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0' 'ndk;27.2.12479018' 'cmake;3.22.1'
       - name: Validate release tooling
-        run: python3 -m unittest discover -s scripts -p 'test_*.py'
+        run: |
+          python3 -m unittest discover -s scripts -p 'test_*.py'
+          python3 scripts/verify_emulator_abi.py
+          ./gradlew --stop
       - name: Test, lint and build
         env:
           GH_TOKEN: ${{ github.token }}
@@ -202,6 +205,9 @@ jobs:
     timeout-minutes: 35
     env:
       GRADLE_OPTS: -Dorg.gradle.caching=true
+      DISTILLPOD_EMULATOR_ABI: x86_64
+      DISTILLPOD_FAILURE_DIAGNOSTICS: 'true'
+      DISTILLPOD_SERIAL: emulator-5554
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -264,6 +270,7 @@ jobs:
             /tmp/distillpod-voice-device.log
             /tmp/distillpod-startup56-device.log
             /tmp/distillpod-ci-phase-timings.jsonl
+            /tmp/distillpod-ci-failure-state.jsonl
           retention-days: 14
 
   android:
