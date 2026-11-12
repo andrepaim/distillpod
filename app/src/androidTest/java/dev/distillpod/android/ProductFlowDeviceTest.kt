@@ -108,9 +108,19 @@ class ProductFlowDeviceTest {
                         androidx.work.WorkManager.getInstance(graph.context).cancelUniqueWork("download:$fixtureId")
                             .result.get(10, java.util.concurrent.TimeUnit.SECONDS)
                     }
-                    await("playback and persisted queue release the fixture download") {
-                        fixtureId !in graph.playback.state.value.queue && dao.queue().none { queued -> queued.episodeId == fixtureId } &&
-                            !graph.activeFiles.busy(dao.episode(fixtureId)?.localFile ?: "")
+                    val fixtureFiles = listOfNotNull(dao.episode(fixtureId)?.localFile?.let { java.io.File(it) },
+                        java.io.File(graph.media.directory, "$fixtureId.partial"))
+                    try {
+                        await("playback, persisted queue and canonical loader leases release the fixture download") {
+                            fixtureId !in graph.playback.state.value.queue &&
+                                dao.queue().none { queued -> queued.episodeId == fixtureId } &&
+                                fixtureAudioReleased(graph.activeFiles, fixtureFiles)
+                        }
+                    } catch (failure: Throwable) {
+                        throw AssertionError("Fixture cleanup ownership: controllerQueued=${fixtureId in graph.playback.state.value.queue}, " +
+                            "persistedQueued=${dao.queue().any { it.episodeId == fixtureId }}, " +
+                            "rawBusy=${fixtureFiles.map { graph.activeFiles.busy(it.absolutePath) }}, " +
+                            "canonicalBusy=${fixtureFiles.map { graph.activeFiles.busy(it.canonicalPath) }}", failure)
                     }
                     graph.media.deleteDownload(fixtureId)
                 }
