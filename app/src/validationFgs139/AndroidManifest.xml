@@ -1,0 +1,7 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
+    <uses-permission android:name="android.permission.INTERNET" tools:node="remove" />
+    <application android:label="Foreground start validation" tools:replace="android:label">
+        <!-- Shell-triggered probe for the isolated validation package only. -->
+        <receiver android:name="dev.distillpod.android.validation.ForegroundStartProbe" android:exported="true" />
+    </application>
+</manifest>
