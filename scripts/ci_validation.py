@@ -21,6 +21,7 @@ class Route:
     paths: list[str]
     checkout_sha: str
     reason: str
+    reuse_run_id: str = ''
 
 
 def git(root, *args):
@@ -101,7 +102,7 @@ def choose_route(root, event, inputs, base, head, checkout_sha=None, draft=False
     return Route('docs', paths, checkout, 'reviewed documentation-only diff validated')
 
 
-def validate_gate(needs, event, inputs, expected_sha):
+def validate_gate(needs, event, inputs, expected_sha, reuse_verified_run=''):
     if not isinstance(needs, dict) or set(needs) != FULL_JOBS | {'plan', 'security'}:
         raise ValueError('Required dependency evidence is missing or unexpected')
     plan = needs['plan']
@@ -113,7 +114,13 @@ def validate_gate(needs, event, inputs, expected_sha):
     mode = output.get('mode')
     if mode == 'draft':
         raise ValueError('Draft preview is incomplete; mark ready for review to run required validation')
-    if mode == 'docs':
+    if mode == 'reused':
+        run_id = output.get('reuse_run_id', '')
+        if (event != 'push' or not isinstance(inputs, dict) or inputs or
+                not run_id.isdigit() or reuse_verified_run != run_id):
+            raise ValueError('Identical merged-tree validation proof is required')
+        expected = 'skipped'
+    elif mode == 'docs':
         if not direct_pr(event, inputs) or output.get('docs_validated') != 'true':
             raise ValueError('Documentation omission was not validated/authorized by the route')
         try:
@@ -147,16 +154,26 @@ def main():
             route = choose_route(Path.cwd(), event, inputs,
                                  os.environ.get('PR_BASE_SHA'), os.environ.get('PR_HEAD_SHA'), expected,
                                  draft=os.environ.get('PR_IS_DRAFT') == 'true')
-            outputs = {'mode': route.mode, 'checkout_sha': route.checkout_sha,
+            from ci_validation_proof import find_reusable
+            reused = find_reusable(Path.cwd(), os.environ, inputs)
+            if reused:
+                route = Route('reused', [], expected, 'verified identical merged-tree full PR validation', reused)
+            outputs = {'reuse_run_id': route.reuse_run_id, 'mode': route.mode, 'checkout_sha': route.checkout_sha,
                        'changed_count': str(len(route.paths)),
                        'docs_validated': 'true' if route.mode == 'docs' else 'not_selected'}
             with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
                 output.write(''.join(f'{key}={value}\n' for key, value in outputs.items()))
-            print(f'Validation route: {route.mode}; paths: {len(route.paths)}; {route.reason}')
+            print(f'Validation route: {route.mode}; paths: {len(route.paths)}; {route.reason}; proof run: {reused or "none"}')
         else:
             needs = json.loads(os.environ['VALIDATION_NEEDS'])
-            validate_gate(needs, event, inputs, expected)
-            print('Selected validation succeeded; only planned documentation omissions are permitted')
+            from ci_validation_proof import find_reusable, emit
+            selected = needs.get('plan', {}).get('outputs', {})
+            reused = (find_reusable(Path.cwd(), os.environ, inputs, selected.get('reuse_run_id'))
+                      if selected.get('mode') == 'reused' else '')
+            validate_gate(needs, event, inputs, expected, reused)
+            if selected.get('mode') == 'full' and direct_pr(event, inputs):
+                emit(Path.cwd(), os.environ, os.environ['CI_PROOF_OUTPUT'])
+            print('Selected validation succeeded; omissions require verified documentation or merge proof')
     except (ValueError, KeyError, OSError) as error:
         print(f'Validation failed: {error}')
         return 1

@@ -211,7 +211,8 @@ failure or merge evidence. Marking ready for review triggers full CI without a
 new commit. Further ready PR pushes run full checks. Converting back to draft
 starts a preview and cancels superseded CI through the existing concurrency
 group. Documentation-only drafts still run their validated documentation route.
-Manual, reusable/release and main-push runs retain full validation. Never use a
+Manual and reusable/release runs retain full validation. Main merge pushes may
+reuse verified identical-tree evidence as described below. Never use a
 draft result or an older ready result to satisfy final-revision acceptance.
 
 The emulator job records startup, ordinary (including teardown, Android Auto and
@@ -223,6 +224,35 @@ the command status and stop later phases; no automatic retry is added. Abrupt
 runner termination may leave the current phase unrecorded. Compare phase and
 whole-workflow time across comparable revisions/cache states before claiming a
 speedup; parallel runner minutes and elapsed waiting time measure different costs.
+
+## Identical merged-tree validation
+
+A direct single-merge push to main may reuse a successful full PR run created
+within the preceding 24 hours. The proof must match both merge parents, the
+whole Git tree (including workflow/scripts/submodule identities), tested synthetic
+merge checkout and workflow blob. Read-only GitHub API evidence must identify
+the same repository and PR workflow, its successful latest attempt and every
+expected successful job. Only full direct PR validation emits the bounded
+`ci-validation-proof-ATTEMPT` artifact; docs, drafts and reused runs never do.
+Artifacts expire after seven days; the shorter 24-hour run freshness limit also
+applies. Fork results, squash/rebase merges, batched pushes and ambiguous or
+missing evidence conservatively run the full suite.
+
+The main classifier and aggregate independently read the evidence. A lookup
+failure in selection falls back to full validation; a verification failure after
+jobs have been omitted fails the aggregate rather than passing. Lookups are
+bounded to five matching runs, one complete page of up to 100 jobs/artifacts per
+candidate, and 45 seconds per lookup. Truncated evidence cannot authorize reuse.
+Existing required context names and independent main security remain. Main CI
+logs the source proof run; the combined-main result must still pass before an
+issue is complete. Reusable release callers explicitly retain read-only Actions
+permission and always perform full validation, including distribution builds.
+
+This avoids duplicate execution of equivalent code; it does not rerun tests on
+the new main VM or establish that intermittent failures vanished. The 24-hour
+bound limits environmental drift, but hosted images and external infrastructure
+can still change. Use a manual full run when fresh environment evidence is needed
+and investigate genuine failures rather than reusing or retrying them as green.
 
 ## Workflows
 

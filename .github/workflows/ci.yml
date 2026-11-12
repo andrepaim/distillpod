@@ -29,6 +29,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -41,6 +42,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       mode: ${{ steps.select.outputs.mode }}
+      reuse_run_id: ${{ steps.select.outputs.reuse_run_id }}
       docs_validated: ${{ steps.select.outputs.docs_validated }}
       checkout_sha: ${{ steps.select.outputs.checkout_sha }}
       changed_count: ${{ steps.select.outputs.changed_count }}
@@ -54,9 +56,12 @@ jobs:
           python3 -m unittest discover -s scripts -p 'test_ci_validation.py'
           python3 -m unittest discover -s scripts -p 'test_docs_validation.py'
           python3 -m unittest discover -s scripts -p 'test_ci_throughput.py'
+          python3 -m unittest discover -s scripts -p 'test_ci_validation_proof.py'
       - name: Select from the complete PR diff
         id: select
         env:
+          GH_TOKEN: ${{ github.token }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
           PR_IS_DRAFT: ${{ github.event.pull_request.draft }}
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
@@ -272,8 +277,21 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
       - name: Require successful selected validation
         env:
           WORKFLOW_INPUTS_CONTEXT: ${{ toJSON(inputs) }}
           VALIDATION_NEEDS: ${{ toJSON(needs) }}
+          GH_TOKEN: ${{ github.token }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          CI_PROOF_OUTPUT: ${{ runner.temp }}/distillpod-ci-proof/proof.json
         run: python3 scripts/ci_validation.py gate
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: needs.plan.outputs.mode == 'full' && github.event_name == 'pull_request' && toJSON(inputs) == '{}'
+        with:
+          name: ci-validation-proof-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/distillpod-ci-proof/proof.json
+          if-no-files-found: error
+          retention-days: 7
