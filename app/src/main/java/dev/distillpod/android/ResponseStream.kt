@@ -18,7 +18,8 @@ class ResponseStream {
                 failed = true
                 val code = event.optJSONObject("response")?.optJSONObject("error")?.optString("code")
                     ?: event.optJSONObject("error")?.optString("code") ?: event.optString("code")
-                if (code in listOf("subscription_sharing_usage_limit_exceeded", "subscription_sharing_usage_unavailable", "rate_limit_exceeded", "insufficient_quota")) throw QuotaExceeded()
+                if (code in listOf("subscription_sharing_usage_limit_exceeded", "subscription_sharing_usage_unavailable", "insufficient_quota")) throw QuotaExceeded()
+                if (code == "rate_limit_exceeded") throw AiRateLimited()
                 error("Response did not complete")
             }
         }

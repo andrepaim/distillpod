@@ -23,8 +23,10 @@ data class AccountState(val connected: Boolean = false, val busy: Boolean = fals
 class AccountRepository(private val context: Context, private val scope: CoroutineScope) {
     private val vault = TokenVault(context)
     private val pendingVault = TokenVault(context, "chatgpt-pending", "distillpod-pending")
-    val session = AuthSession(vault::read, vault::write)
     private val mutable = MutableStateFlow(AccountState(connected = runCatching { vault.read() != null }.getOrDefault(false)))
+    val session = AuthSession(vault::read, vault::write, onCredentialsChanged = { connected ->
+        mutable.update { it.copy(connected = connected, message = if (connected) it.message else "Reconnect your ChatGPT account to continue.") }
+    })
     val state: StateFlow<AccountState> = mutable.asStateFlow()
     val browser = MutableStateFlow<String?>(null)
     private val foreground = MutableStateFlow(false)
@@ -107,9 +109,15 @@ class AccountRepository(private val context: Context, private val scope: Corouti
 
     fun refreshModels() { val epoch = generation.get(); scope.launch(Dispatchers.IO) {
         try {
-            val models = SubscriptionProvider().models(session.accessToken())
-            if (generation.get() == epoch) mutable.update { it.copy(connected = true, models = models, message = "Connected. AI requests use your ChatGPT plan allowance.") }
-        } catch (error: Exception) { if (generation.get() == epoch) mutable.update { it.copy(connected = it.connected && error !is dev.distillpod.android.ReauthorizationRequired, message = "Could not refresh model access. Check your network or reconnect.") } }
+            val models = session.withAccessToken { SubscriptionProvider().models(it) }
+            if (generation.get() == epoch) mutable.update { if (it.connected) it.copy(models = models, message = "Connected. AI requests use your ChatGPT plan allowance.") else it }
+        } catch (error: Exception) { if (generation.get() == epoch) mutable.update { it.copy(
+            message = when (error) {
+                is dev.distillpod.android.AccountEntitlementDenied -> "Your ChatGPT account does not have access to this feature."
+                is dev.distillpod.android.AiRequestRejected, is dev.distillpod.android.AiServiceUnavailable -> error.message ?: "Could not refresh model access."
+                is dev.distillpod.android.ReauthorizationRequired -> "Reconnect your ChatGPT account to continue."
+                else -> "Could not refresh model access. Check your connection and retry."
+            }) } }
     } }
 
     private suspend fun finish(attempt: OAuthAttempt, callback: String) {
