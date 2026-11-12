@@ -237,6 +237,7 @@ class Diagnostics internal constructor(private val context: Context, private val
                     event.setTag("session_id",session)
                     event.setTag("installation_id",installation)
                     event.setTag("android_api",Build.VERSION.SDK_INT.toString())
+                    foregroundServiceTags(event.exceptions).forEach { (key,value) -> event.setTag(key,value) }
                     event.exceptions?.forEach { exception ->
                         exception.value="Diagnostic failure: ${event.getTag("reason")?.takeIf {it in REASONS} ?: "internal"}"
                         exception.stacktrace?.frames?.forEach { frame ->
@@ -383,6 +384,8 @@ class Diagnostics internal constructor(private val context: Context, private val
                     scope.setTag("test_traffic",(stage=="diagnostics" || dev.distillpod.android.sync.SubscriptionCloudAccess.instrumentation).toString())
                     scope.setTag("reason",reason(error))
                     scope.setTag("exception_type",error.javaClass.name.take(160))
+                    if(ForegroundServiceFailure.isForegroundServiceType(error.javaClass.name))
+                        scope.setTag("fgs_service",ForegroundServiceFailure.service(error.message))
                     operation?.takeIf {runCatching {UUID.fromString(it)}.isSuccess}?.let {scope.setTag("operation_id",it)}
                 }
             }catch(_:Exception) {}
@@ -390,6 +393,19 @@ class Diagnostics internal constructor(private val context: Context, private val
     }
     internal fun uploaded() { prefs.edit().putString("last_upload",java.time.Instant.now().toString()).apply();status.value="Last upload: ${java.text.DateFormat.getDateTimeInstance().format(java.util.Date())}" }
     companion object {
+        /**
+         * Which component Android refused or timed out, read before the message is redacted.
+         * A framework start timeout carries a cause only when this process recorded the
+         * startForegroundService() call site; "none" means another process (for example a
+         * notification action) started it, or a later startForeground() cleared the record.
+         */
+        internal fun foregroundServiceTags(exceptions:List<io.sentry.protocol.SentryException>?):Map<String,String> {
+            val failure=exceptions?.firstOrNull {ForegroundServiceFailure.isForegroundServiceType(it.type)} ?: return emptyMap()
+            val tags=mutableMapOf("fgs_service" to ForegroundServiceFailure.service(failure.value))
+            if(failure.type?.endsWith("ForegroundServiceDidNotStartInTimeException")==true)
+                tags["fgs_start_site"]=if(exceptions.any {it.type=="StackTrace" && it.module=="android.app"}) "recorded" else "none"
+            return tags
+        }
         private val EVENT_NAMES=setOf("capture.context_summary","distillation.attempt_summary","youtube.extraction_started","youtube.extraction_completed","youtube.extraction_failed","youtube.extraction_retry","youtube.stream_refreshed","videocast.video_requested","videocast.audio_restored","videocast.first_frame","videocast.failed","videocast.download_validated","transcription.quality","diagnostics.health","operation.summary","usage.feature","transcription.partial","transcription.paused","transcription.cancelled","distillation.cancelled","voice.recording","voice.text","voice.audio","voice.resumed","voice.resume_failed","playback.buffering","playback.ready","playback.focus","playback.route","app.started","diagnostics.test","diagnostics.failed","headphone.received","headphone.rejected","headphone.previous","headphone.next",
             "capture.started","capture.completed","capture.requested","capture.accepted","capture.saved","capture.waiting","capture.transcript_link","capture.prepared","capture.failed",
             "transcription.dependency","transcription.started","transcription.stage","transcription.queued","transcription.completed","transcription.failed",
