@@ -18,11 +18,30 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import dev.distillpod.android.data.EpisodeEntity
 import dev.distillpod.android.data.PodcastEntity
+import dev.distillpod.android.playback.PlaybackState
 
 internal fun timeRemaining(durationMs: Long, positionMs: Long): String {
     if (durationMs <= 0) return "Duration unavailable"
     val minutes = ((durationMs - positionMs).coerceAtLeast(0) + 59_999) / 60_000
     return if (minutes >= 60) "${minutes / 60} hr ${minutes % 60} min left" else "$minutes min left"
+}
+
+/**
+ * The player's duration is authoritative for the current episode: feeds with dynamic ad
+ * insertion can declare a different length. Other episodes use the stored duration.
+ */
+internal fun listeningDuration(ep: EpisodeEntity, player: PlaybackState): Long =
+    if (player.episodeId == ep.id && player.durationMs > 0) player.durationMs else ep.durationMs
+
+internal fun listeningPosition(ep: EpisodeEntity, player: PlaybackState): Long =
+    if (player.episodeId == ep.id) player.positionMs else ep.positionMs
+
+/** Finished episodes read "Played"; replaying the current one shows its remaining time again. */
+internal fun queueTimeLabel(ep: EpisodeEntity, player: PlaybackState): String {
+    val duration = listeningDuration(ep, player)
+    val position = listeningPosition(ep, player)
+    val atEnd = duration > 0 && position >= duration
+    return if (ep.completed && (player.episodeId != ep.id || atEnd)) "Played" else timeRemaining(duration, position)
 }
 
 @Composable internal fun PodcastCover(url: String?, modifier: Modifier = Modifier) {
