@@ -110,8 +110,7 @@ class AppGraph internal constructor(val context: Context, val scope: CoroutineSc
             }
             portableSync.releaseSessions(); importFeasibility(); understanding.recoverInterrupted(); explanations.recoverInterrupted(); recommendations.recoverInterrupted()
             db.library().distillations().filter { it.state == "queued" }.forEach { jobs.capture(it.id) }
-            db.library().episodes().filter { it.downloadState in listOf("queued", "downloading") }.forEach { jobs.download(it.id) }
-            db.library().observeModels().first().filter { it.state in listOf("queued", "downloading") }.forEach { jobs.model(it.id) }
+            jobs.recoverDownloads()
             db.library().observePosts().first().forEach { row ->
                 val post = runCatching { SocialResult.parse(row.content) }.getOrNull()
                 if (post != null && post.stage in listOf("queued", "preparing", "researching", "illustrating")) {
