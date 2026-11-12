@@ -6,6 +6,8 @@ from pathlib import Path
 import subprocess
 import time
 
+from ci_failure_state import record_failure_state
+
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
@@ -26,6 +28,12 @@ def main():
         code = 127
     record = {'phase': args.phase, 'elapsed_seconds': round(time.monotonic() - start, 3),
               'exit_code': code}
+    if code:
+        try:
+            record_failure_state(args.phase)
+        except Exception:
+            # Optional diagnostics must never replace the original phase failure.
+            print('CI failure state could not be recorded', flush=True)
     # A recording failure must not mask a failed command or turn missing evidence green.
     try:
         with Path(os.environ.get('DISTILLPOD_PHASE_TIMINGS',

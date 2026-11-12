@@ -67,6 +67,8 @@
 
 ## Evidence
 
+- An identical merged tree may reuse a successful full PR validation only through the automated provenance gate: direct single-merge main push, exact tested merge parents/tree/workflow, same repository, successful complete latest attempt, unexpired proof and a run created within 24 hours. Reuse also requires recent actual full main build/emulator execution among the latest five successful main runs, so shared Gradle caches are refreshed by periodic full validation. The combined-main classifier and aggregate must independently verify this evidence and standalone main security must pass. Missing or mismatched evidence selects fresh full validation; lost evidence at the aggregate fails visibly. Draft/docs/reused results, direct multi-commit pushes, manual/reusable/release validation and unknown contexts cannot supply reusable full proof. Record the proof run and combined-main result; reuse is code equivalence evidence, not a new execution of tests or evidence that nondeterministic failures disappeared.
+
 - Distinguish implemented behavior, automated checks, emulator checks, and physical-device validation. Record the revision and limitations of evidence; historical device results do not validate every later change.
 - For documentation-only changes, review accuracy, local links, and `git diff --check`; a full local Android build is unnecessary unless build behavior also changes. CI still runs according to the repository workflows.
 - Keep credentials, signing keys, personal content, and device state out of commits, logs, and CI artifacts.
