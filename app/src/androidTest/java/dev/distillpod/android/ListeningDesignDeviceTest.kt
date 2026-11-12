@@ -4,6 +4,8 @@ import android.content.ComponentName
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.test.*
 import androidx.lifecycle.ViewModelProvider
@@ -172,6 +174,30 @@ class ListeningDesignDeviceTest {
             // Show controls and large text can put this lazy item outside the viewport.
             compose.onNode(hasScrollAction()).performScrollToNode(hasText("Nothing in progress"))
             compose.onNodeWithText("Show latest").performScrollTo().performClick()
+            // Changing the filter launches a scroll-to-top effect. Do not race that reset with
+            // our own scroll, or let Compose's failure formatter hide an ambiguous selector.
+            var scrollContainers = -1
+            var scrollPosition: Float? = null
+            try {
+                compose.waitUntil(10000) {
+                    val latestReady = vm.filter.value == "all" &&
+                        vm.backStack.value.lastOrNull() == "podcast:$id" &&
+                        vm.episodes.value.any { it.id == ids[0] && it.podcastId == id }
+                    if (!latestReady) false else {
+                        val containers = compose.onAllNodes(hasScrollAction()).fetchSemanticsNodes()
+                        scrollContainers = containers.size
+                        scrollPosition = if (containers.size == 1) compose.runOnUiThread {
+                            containers.single().config.getOrNull(SemanticsProperties.VerticalScrollAxisRange)?.value?.invoke()
+                        } else null
+                        scrollContainers == 1 && scrollPosition == 0f
+                    }
+                }
+            } catch (timeout: ComposeTimeoutException) {
+                throw AssertionError("Show latest did not settle: filter=${vm.filter.value}, " +
+                    "expectedRoute=${vm.backStack.value.lastOrNull() == "podcast:$id"}, " +
+                    "fixturePresent=${vm.episodes.value.any { it.id == ids[0] }}, " +
+                    "scrollContainers=$scrollContainers, scrollPosition=$scrollPosition", timeout)
+            }
             compose.onNode(hasScrollAction()).performScrollToNode(hasText(titles[0]))
             compose.onNodeWithText(titles[0]).assertIsDisplayed()
         } finally {
