@@ -20,6 +20,15 @@ a quote. **Improve this distill** retains the current result, and previous
 versions can be restored. Requests can consume account allowance even if they
 fail; retries are deliberate. [Source and review behavior](android/contextual-distills.md).
 
+## A download stays queued or says Android blocked it
+
+Android can refuse to start a download in the background. DistillPod retries the
+same request while the episode or model shows **Queued**. If Android keeps
+refusing, it shows "Android blocked the background download." Open DistillPod
+and tap **Resume** (or **Resume model download**); the partial file is kept. A
+download you pause stays paused after the app restarts.
+[Download behavior](android/download-network-policy.md#background-starts-pauses-and-system-stops).
+
 ## Transcript preparation is waiting or incomplete
 
 | What you see | What to check |
