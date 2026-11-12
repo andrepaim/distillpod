@@ -46,10 +46,6 @@ import dev.distillpod.android.DiagnosticsActivity
 import dev.distillpod.android.ai.AccountState
 import dev.distillpod.android.data.*
 import dev.distillpod.android.playback.PlaybackState
-import java.time.Instant
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
-import java.util.Locale
 
 private val ink = Color(0xFF0C0F16)
 private val accent = Color(0xFFB7B9FF)
@@ -67,7 +63,6 @@ fun timestamp(ms: Long): String {
     return if (seconds >= 3600) "%d:%02d:%02d".format(seconds / 3600, seconds / 60 % 60, seconds % 60) else "%d:%02d".format(seconds / 60, seconds % 60)
 }
 fun fileSize(bytes: Long): String = if (bytes >= 1_000_000_000) "%.1f GB".format(bytes / 1_000_000_000.0) else "%.0f MB".format(bytes / 1_000_000.0)
-private fun date(ms: Long) = if (ms <= 0) "" else DateTimeFormatter.ofPattern("dd MMM", Locale.getDefault()).withZone(ZoneId.systemDefault()).format(Instant.ofEpochMilli(ms))
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable fun ProductApp(vm: AppViewModel) {
@@ -256,7 +251,7 @@ private fun date(ms: Long) = if (ms <= 0) "" else DateTimeFormatter.ofPattern("d
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(podcast?.title ?: "Podcast", maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.secondary)
                     Text(ep.title, maxLines = 3, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                    Text(listOf(date(ep.publishedAt), if (position > 0 && !ep.completed) timeRemaining(duration, position) else duration.takeIf { it > 0 }?.let(::timestamp) ?: "").filter(String::isNotBlank).joinToString(" · "), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(listOf(episodeDate(ep.publishedAt), if (position > 0 && !ep.completed) timeRemaining(duration, position) else duration.takeIf { it > 0 }?.let(::timestamp) ?: "").filter(String::isNotBlank).joinToString(" · "), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 FilledTonalIconButton(onClick = { if (current && player.playing) vm.toggle() else vm.play(ep.id) }) {
                     Icon(if (current && player.playing) Icons.Default.Pause else Icons.Default.PlayArrow, "${if (current && player.playing) "Pause" else "Play"} ${ep.title}")
@@ -418,9 +413,13 @@ private fun date(ms: Long) = if (ms <= 0) "" else DateTimeFormatter.ofPattern("d
 @Composable private fun EpisodePage(vm: AppViewModel, ep: EpisodeEntity?, podcasts: List<PodcastEntity>, player: PlaybackState) {
     if (ep == null) { Empty("Episode unavailable", "Refresh the podcast or choose another saved episode."); return }
     val podcast = podcasts.firstOrNull { it.id == ep.podcastId }
+    val detailStates by vm.episodeDetails.collectAsStateWithLifecycle()
+    val needsDetails = ep.needsSourceDetails()
+    LaunchedEffect(ep.id, needsDetails) { if (needsDetails) vm.loadEpisodeDetails(ep.id) }
+    val metadata = episodeMetadataText(ep, detailStates[ep.id])
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Cover(ep.imageUrl ?: podcast?.imageUrl, Modifier.size(96.dp)); Column(Modifier.weight(1f)) { EpisodeShowLink(podcast, vm::open); Text(date(ep.publishedAt), style = MaterialTheme.typography.bodySmall) }
+            Cover(ep.imageUrl ?: podcast?.imageUrl, Modifier.size(96.dp)); Column(Modifier.weight(1f)) { EpisodeShowLink(podcast, vm::open); Text(metadata.date, style = MaterialTheme.typography.bodySmall) }
         }
         Text(ep.title, style = MaterialTheme.typography.headlineSmall)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -432,7 +431,12 @@ private fun date(ms: Long) = if (ms <= 0) "" else DateTimeFormatter.ofPattern("d
         TranscriptTools(vm, ep)
         EpisodeUnderstandingTools(vm, ep)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { OutlinedButton(onClick = { vm.enqueue(ep.id, true) }) { Text("Play next") }; OutlinedButton(onClick = { vm.enqueue(ep.id) }) { Text("Add to queue") } }
-        if (ep.description.isNotBlank()) SelectionContainer { Text(ep.description, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyLarge) }
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("Description", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            metadata.description?.let { SelectionContainer { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyLarge) } }
+            metadata.note?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium) }
+            if (metadata.retry) TextButton(onClick = { vm.loadEpisodeDetails(ep.id) }) { Text("Retry") }
+        }
     }
 }
 

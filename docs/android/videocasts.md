@@ -10,8 +10,19 @@ Choose the publisher in search, or paste its channel or playlist link in the add
 YouTube video URL can also be added. Channels use their latest **Videos** tab, newest first. Refresh loads up to the first 200 source entries;
 unavailable, private, upcoming and live entries are excluded when their availability is known.
 This is a bounded initial import, not a complete archive import of longer playlists.
-Flat playlist entries often omit upload dates; those dates remain unknown rather than being
-invented. The library preserves source order for unknown-date entries instead of alphabetizing them. Dated playlist entries sort newest first; undated playlists retain publisher order, which may not be chronological. Archived entries outside the bounded refresh remain available after the current source snapshot.
+Flat channel and playlist extraction omits each video's upload date and description. Refresh
+therefore also reads YouTube's public, account-free feed for the channel or playlist
+(`/feeds/videos.xml`), which lists the newest 15 videos with their exact publication time and
+original description. Those values fill matching episodes. If the feed is unavailable, the
+refresh still succeeds. This metadata never reorders a show, and a later refresh that lacks it
+keeps the stored date and description. Opening an older video whose date or description is
+still missing makes one single-video lookup and fills only the missing fields. The episode page
+states when it is checking, when YouTube supplies no date or description, and when the lookup
+failed (with **Retry**). Dates use the exact upload time when known; a date-only value keeps its
+calendar day in local time zones. Dates outside the current year include the year. Values that
+YouTube does not supply remain unknown rather than being invented.
+
+The library preserves source order for unknown-date entries instead of alphabetizing them. Dated playlist entries sort newest first; undated playlists retain publisher order, which may not be chronological. Archived entries outside the bounded refresh remain available after the current source snapshot.
 
 The player starts in audio mode. For video episodes, **Video** displays the picture above
 the existing playback controls; **Audio** restores audio at the same position. The fullscreen button opens an immersive landscape view, including with rotation locked. With system auto-rotate enabled, turning to landscape enters fullscreen and returning upright exits. Back exits fullscreen first. Tap the picture to reveal or hide pause/play, seek, Distill, voice question and exit controls; controls stay visible during pause or interaction. Fullscreen changes the view and window policy while retaining the same MediaController, media item and video surface. Distill saves the current moment without leaving fullscreen; voice uses the existing setup and session sheet. Leaving the
