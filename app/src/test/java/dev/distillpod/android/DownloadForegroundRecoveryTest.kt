@@ -193,7 +193,10 @@ class DownloadForegroundRecoveryTest {
                         .throttleBody(1024, 50, TimeUnit.MILLISECONDS))
                     val worker = worker("download", episode.id, 0, allowed())
                     val run = launch(Dispatchers.IO) { worker.doWork() }
-                    settle { (dao.episode(episode.id)?.downloadedBytes ?: 0) > 0 }
+                    // Wait for written bytes reported by this transfer. The row starts each phase queued;
+                    // bytes kept from the previous phase alone let the stop land before doWork reached the
+                    // transfer, and the transfer's first progress report precedes any written byte.
+                    settle { dao.episode(episode.id)?.let { it.downloadState == "downloading" && it.downloadedBytes > 0 } == true }
                     worker.stop(reason)
                     run.cancelAndJoin()
                 }
