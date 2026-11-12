@@ -40,6 +40,17 @@ class FailureStateTest(unittest.TestCase):
             self.assertEqual(2,data['host_oom_kills_total'])
             self.assertNotIn('secret',json.dumps(data)); self.assertNotIn('5554',json.dumps(data))
 
+    def test_process_scan_stops_at_its_entry_bound(self):
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as directory:
+            proc = Path(directory); entry = proc / '1'; entry.mkdir()
+            (entry / 'comm').write_text('adb')
+            with patch.object(Path, 'iterdir', return_value=iter([entry] * 4097)):
+                data = collect_failure_state('startup', ENV, proc=proc,
+                                             transport=lambda serial: 'offline')
+            self.assertTrue(data['process_scan_truncated'])
+            self.assertEqual(4096, data['process_counts']['adb'])
+
     def test_process_loss_and_unavailable_host_fields_remain_explicit(self):
         with tempfile.TemporaryDirectory() as directory:
             data = collect_failure_state('startup', ENV, proc=Path(directory),

@@ -19,8 +19,8 @@ def diagnostics_enabled(env):
 
 def read_bounded(path):
     try:
-        with path.open() as source:
-            return source.read(8192)
+        with path.open('rb') as source:
+            return source.read(8192).decode('ascii')
     except (OSError, UnicodeError):
         return ''
 
