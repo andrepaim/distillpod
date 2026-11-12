@@ -293,7 +293,11 @@ class MediaRepository(context: Context, private val db: AppDatabase, private val
 }
 
 fun safeFailure(error: Throwable): String = when (error) {
+    is dev.distillpod.android.AccountEntitlementDenied -> "Your ChatGPT account does not have access to this feature."
+    is dev.distillpod.android.AiRequestRejected -> error.message ?: "The AI request was rejected. Check the request or model settings."
+    is dev.distillpod.android.AiServiceUnavailable -> error.message ?: "The AI service is unavailable. Try again later."
     is dev.distillpod.android.QuotaExceeded -> "ChatGPT allowance is unavailable. Retry when your plan allows more work."
+    is dev.distillpod.android.AiRateLimited -> "The AI service is busy. Try again later."
     is dev.distillpod.android.ReauthorizationRequired -> "Reconnect ChatGPT in Settings, then retry."
     is java.net.UnknownHostException -> "Could not reach the server. Check your connection and retry."
     is IOException -> "The transfer was interrupted. Check storage and connection, then retry."

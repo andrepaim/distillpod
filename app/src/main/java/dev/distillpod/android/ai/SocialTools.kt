@@ -4,6 +4,9 @@ import dev.distillpod.android.AuthSession
 import dev.distillpod.android.SubscriptionProvider
 import dev.distillpod.android.QuotaExceeded
 import dev.distillpod.android.ReauthorizationRequired
+import dev.distillpod.android.classifyAiResponse
+import dev.distillpod.android.executeAiRequest
+import dev.distillpod.android.AiRateLimited
 import dev.distillpod.android.data.AppSettings
 import dev.distillpod.android.data.publicHttpUrl
 import kotlinx.coroutines.flow.first
@@ -51,9 +54,8 @@ class AccountSocialTools(private val auth: AuthSession, private val settings: Ap
             executor.submit {
                 try {
                     val register: (Call) -> Unit = { active.set(it); if (!continuation.isActive) it.cancel() }
-                    val token = auth.accessToken()
                     if (!continuation.isActive) return@submit
-                    val models = SubscriptionProvider().models(token, register)
+                    val models = auth.withAccessToken { SubscriptionProvider().models(it, register) }
                     val model = selected.ifBlank { models.firstOrNull() ?: error("No available AI model") }
                     require(model in models) { "Choose an available AI model in Settings" }
                     val body = JSONObject().put("model", model).put("store", false).put("stream", true)
@@ -62,13 +64,13 @@ class AccountSocialTools(private val auth: AuthSession, private val settings: Ap
                         .put("tools", JSONArray().put(JSONObject().put("type", tool)))
                         .put("tool_choice", JSONObject().put("type", tool))
                     if (tool == "web_search") body.put("include", JSONArray().put("web_search_call.action.sources"))
-                    val req = Request.Builder().url("https://api.openai.com/v1/responses").header("Authorization", "Bearer $token")
-                        .post(body.toString().toRequestBody("application/json".toMediaType())).build()
-                    val result = client.newCall(req).also(register).execute().use { response ->
-                        if (response.code == 429) throw QuotaExceeded()
-                        if (response.code in listOf(401,403)) throw ReauthorizationRequired()
-                        if (!response.isSuccessful) throw SocialGenerationFailure(if (response.code in listOf(400,404,422)) "${if (tool == "web_search") "Web research" else "Image generation"} is unavailable through this account/model (${response.code}). Try another available model in Settings." else "The AI service could not finish (${response.code}). Try again.")
-                        ToolResponse.read(response.body!!.source())
+                    val result = auth.withAccessToken { token ->
+                        val req = Request.Builder().url("https://api.openai.com/v1/responses").header("Authorization", "Bearer $token")
+                            .post(body.toString().toRequestBody("application/json".toMediaType())).build()
+                        executeAiRequest(client, req, register).use { response ->
+                            classifyAiResponse(response.code)
+                            ToolResponse.read(response.body!!.source())
+                        }
                     }
                     if (continuation.isActive) continuation.resume(result)
                 } catch (e: Exception) { if (continuation.isActive) continuation.resumeWithException(e) }
@@ -103,7 +105,8 @@ internal object ToolResponse {
                 "response.completed" -> { require(completed == null); completed = event.getJSONObject("response") }
                 "error", "response.failed", "response.incomplete" -> {
                     val code = event.optJSONObject("response")?.optJSONObject("error")?.optString("code") ?: event.optJSONObject("error")?.optString("code") ?: event.optString("code")
-                    if (code in listOf("subscription_sharing_usage_limit_exceeded", "subscription_sharing_usage_unavailable", "rate_limit_exceeded", "insufficient_quota")) throw QuotaExceeded()
+                    if (code in listOf("subscription_sharing_usage_limit_exceeded", "subscription_sharing_usage_unavailable", "insufficient_quota")) throw QuotaExceeded()
+                    if (code == "rate_limit_exceeded") throw AiRateLimited()
                     throw SocialGenerationFailure("The AI tool could not complete the request. Try again.")
                 }
             }
