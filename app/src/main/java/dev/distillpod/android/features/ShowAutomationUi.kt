@@ -40,10 +40,11 @@ import org.json.JSONArray
                     job.stage == "downloading" -> "Download queued · waits for network settings"
                     transcript?.state in listOf("failed", "paused", "waiting_model", "partial", "stale") -> "Transcript ${transcript?.state?.replace('_', ' ')}"
                     analysis?.state in listOf("failed", "paused", "waiting_auth", "waiting_quota") -> "Analysis ${analysis?.state?.replace('_', ' ')}"
+                    job.stage == "blocked" -> "Needs attention · later episodes continue"
                     else -> job.stage.replace('_', ' ')
                 }
                 Text("${ep?.title ?: "Episode"} · $status", style = MaterialTheme.typography.bodySmall)
-                if (ep?.downloadState in listOf("failed", "paused") || transcript?.state in listOf("failed", "paused", "partial", "stale") || analysis?.state in listOf("failed", "paused", "waiting_auth", "waiting_quota")) {
+                if (ep?.downloadState in listOf("failed", "paused") || transcript?.state in listOf("failed", "paused", "partial", "stale") || analysis?.state in listOf("failed", "paused", "waiting_auth", "waiting_quota") || job.stage == "blocked") {
                     TextButton(onClick = { vm.retryAutomation(job.episodeId) }) { Text("Retry preparation") }
                 }
             }
