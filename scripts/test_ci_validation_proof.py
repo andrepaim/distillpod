@@ -51,7 +51,7 @@ class ProofTests(unittest.TestCase):
         self.assertFalse(verify_evidence(self.repo.root,self.proof,self.run,self.jobs,'owner/repo'))
 
     def test_failed_incomplete_foreign_manual_and_rerun_evidence_never_pass(self):
-        for field,value in [('created_at','2000-01-01T00:00:00Z'),('conclusion','failure'),('status','in_progress'),('event','workflow_dispatch'),
+        for field,value in [('created_at',None),('created_at',123),('created_at','2000-01-01T00:00:00Z'),('conclusion','failure'),('status','in_progress'),('event','workflow_dispatch'),
                             ('head_sha','b'*40),('run_attempt',2),('path','.github/workflows/other.yml'),
                             ('repository',{'full_name':'other/repo'}),('head_repository',{'full_name':'fork/repo'})]:
             r = copy.deepcopy(self.run);r[field]=value

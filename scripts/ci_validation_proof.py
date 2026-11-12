@@ -51,6 +51,8 @@ def direct_main(root, env, inputs):
 def verify_evidence(root, proof, run, jobs, repository, tested_commit=None):
     try:
         current = source(root)
+        if not isinstance(run.get('created_at'), str):
+            return False
         created = datetime.datetime.fromisoformat(run['created_at'].replace('Z', '+00:00'))
         age = (datetime.datetime.now(datetime.timezone.utc) - created).total_seconds()
         if not 0 <= age <= 86400:
