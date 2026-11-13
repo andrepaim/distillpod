@@ -22,7 +22,7 @@ interface SubscriptionCloud {
     suspend fun commit(operation:SyncOutboxEntity):CloudSubscription
 }
 class SubscriptionConflict(val current:CloudSubscription?):Exception("Subscription changed on another device")
-class SubscriptionSyncCoordinator(private val db:AppDatabase,private val cloud:SubscriptionCloud) {
+class SubscriptionSyncCoordinator(private val db:AppDatabase,private val cloud:SubscriptionCloud,private val rejected:(String,SyncOperationRejected)->Unit={_,_->}) {
     private val dao get()=db.sync()
     private val mutex=Mutex()
     private suspend fun valid(b:SyncBindingEntity):Boolean {
@@ -95,17 +95,31 @@ class SubscriptionSyncCoordinator(private val db:AppDatabase,private val cloud:S
                         if(!valid(b))return@withTransaction false
                         conflict.current?.let { remember(b,it) };dao.state(op.operationId,"conflict");true
                     })return@withLock false
+                } catch(refused:SyncOperationRejected) {
+                    // Retrying an unchanged refused write cannot succeed; keep it for the user and continue.
+                    if(!db.withTransaction {
+                        if(!valid(b))return@withTransaction false
+                        // A newer local edit queued during the upload replaces the refused intent.
+                        if(dao.forKey(b.uid,b.generation,op.entityKey).any { it.operationId!=op.operationId })dao.acknowledge(b.uid,b.generation,op.operationId)
+                        else dao.state(op.operationId,"rejected")
+                        true
+                    })return@withLock false
+                    rejected(op.entityKey.substringBefore('_'),refused)
                 }
             }
             db.withTransaction {
                 if(valid(b))applyStagedContent(db,b)
             }
-            val contentPending=dao.artifacts(b.uid,b.generation).any {it.state in setOf("prepared","downloaded","waiting")}
+            val refused=dao.rejected(b.uid,b.generation)
+            // Staged content whose upload was refused waits for the user, not for another run.
+            val refusedContent=refused.filter { it.entityKey.startsWith("artifact_") }.mapNotNull { SubscriptionSyncStore.decode(it.payload)["hash"] }.toSet()
+            val contentPending=dao.artifacts(b.uid,b.generation).any {it.state in setOf("downloaded","waiting") || (it.state=="prepared" && it.hash !in refusedContent)}
             val remaining=dao.operations(b.uid,b.generation)
             val status=when {
                 dao.nextOperation(b.uid,b.generation)!=null || contentPending -> "pending"
                 remaining.any {it.state=="upgrade_required"} -> "upgrade_required"
                 remaining.any {it.state=="conflict"} -> "conflict"
+                refused.isNotEmpty() -> "rejected"
                 else -> "synced"
             }
             update(b){it.copy(status=status,lastSyncedAt=if(status=="synced")System.currentTimeMillis() else it.lastSyncedAt)}

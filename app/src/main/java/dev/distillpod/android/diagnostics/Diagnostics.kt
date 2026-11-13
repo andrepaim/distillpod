@@ -422,6 +422,7 @@ class Diagnostics internal constructor(private val context: Context, private val
             is SecurityException -> "permission"
             is dev.distillpod.android.ReauthorizationRequired -> "auth_expired"
             is dev.distillpod.android.QuotaExceeded -> "quota"
+            is dev.distillpod.android.sync.SyncOperationRejected -> "rejected"
             is java.io.IOException -> "network_or_storage"
             is IllegalArgumentException -> "invalid_data"
             else -> "internal"

@@ -11,6 +11,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
 import dev.distillpod.android.sync.SubscriptionSyncStore
+import dev.distillpod.android.sync.SyncBindingEntity
 
 @Composable internal fun SubscriptionSyncSettings(vm:AppViewModel, onOpenBackup: () -> Unit) {
     val account=vm.graph.syncAccount
@@ -22,6 +23,7 @@ import dev.distillpod.android.sync.SubscriptionSyncStore
     val approvals by account.store.approvals.collectAsStateWithLifecycle(initialValue=emptyList())
     val podcasts by vm.podcasts.collectAsStateWithLifecycle()
     val conflicts by account.conflicts.collectAsStateWithLifecycle(initialValue=emptyList())
+    val rejected by account.rejected.collectAsStateWithLifecycle(initialValue=0)
     val fullScope by account.fullScope.collectAsStateWithLifecycle(initialValue=null)
     val excludedQueue by vm.graph.db.sync().observeView("__queue_excluded").collectAsStateWithLifecycle(initialValue=null)
     val contentStates by account.contentStates.collectAsStateWithLifecycle(initialValue=emptyList())
@@ -65,19 +67,7 @@ import dev.distillpod.android.sync.SubscriptionSyncStore
                 TextButton(onClick={vm.action("select-content"){account.useSavedContent(item.hash)}}){Text("Use saved source version ${index+1}")}
             }
             if(state.email.isNotEmpty())Text(state.email)
-            val status=when {
-                binding==null->"Not connected"
-                !state.connected || state.uid!=binding?.uid->"Sign in with this library's original account"
-                binding?.enabled!=true->"Sync paused"
-                binding?.status=="synced"&&pending==0->"Library synced"
-                binding?.status=="syncing"->"Syncing library…"
-                binding?.status=="conflict"->"Library changes need review"
-                binding?.status=="error"->"Sync needs attention. Retry or reconnect."
-                binding?.status=="upgrade_required"->"New distills are saved locally. Upgrade saved-moment sync to send them."
-                binding?.status=="offline"->"Waiting for a connection"
-                else->"$pending changes waiting to sync"
-            }
-            Text(status,color=MaterialTheme.colorScheme.secondary)
+            Text(librarySyncStatus(binding,state.connected,state.uid,pending,rejected),color=MaterialTheme.colorScheme.secondary)
             if(state.busy)LinearProgressIndicator(Modifier.fillMaxWidth())
             else if(!state.connected || binding==null || state.uid!=binding?.uid) {
                 Button(onClick={if(binding==null)reviewing=true else signIn()}) {Text("Connect Google & sync library")}
@@ -98,6 +88,15 @@ import dev.distillpod.android.sync.SubscriptionSyncStore
                 }
                 if(fullScope!=null) Text(DataProtectionGuidance.expanded,style=MaterialTheme.typography.bodySmall)
                 TextButton(onClick={vm.action("sync-signout"){account.disconnect()}}){Text("Sign out of sync")}
+            }
+            if(rejected>0 && binding?.enabled==true && state.connected && state.uid==binding?.uid) Card {
+                Column(Modifier.padding(12.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                    Text(rejectedChangesText(rejected),style=MaterialTheme.typography.bodySmall)
+                    Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                        TextButton(onClick={vm.action("retry-rejected-sync"){account.retryRejected()}}){Text("Retry")}
+                        TextButton(onClick={vm.action("discard-rejected-sync"){account.discardRejected()}}){Text("Discard")}
+                    }
+                }
             }
             conflicts.forEach { conflict ->
                 Card {
@@ -154,3 +153,23 @@ import dev.distillpod.android.sync.SubscriptionSyncStore
         }
     }
 }
+
+internal fun librarySyncStatus(binding:SyncBindingEntity?,connected:Boolean,uid:String,pending:Int,rejected:Int):String=when {
+    binding==null->"Not connected"
+    !connected || uid!=binding.uid->"Sign in with this library's original account"
+    !binding.enabled->"Sync paused"
+    binding.status=="synced"&&pending==0->"Library synced"
+    binding.status=="syncing"->"Syncing library…"
+    binding.status=="conflict"->"Library changes need review"
+    binding.status=="rejected"->"Some changes were not accepted by the cloud"
+    binding.status=="error"->"Sync needs attention. Retry or reconnect."
+    binding.status=="upgrade_required"->"New distills are saved locally. Upgrade saved-moment sync to send them."
+    binding.status=="offline"->"Waiting for a connection"
+    // Refused changes are no longer sent automatically, so they are not counted as waiting.
+    else->"${(pending-rejected).coerceAtLeast(0)} changes waiting to sync"
+}
+
+/** Counts only: refused records may be private and are never described here. */
+internal fun rejectedChangesText(count:Int):String=
+    if(count==1)"1 change was not accepted by the cloud and is no longer sent automatically. It stays on this phone. Retry later, or discard it to stop sending it and accept newer changes from other phones."
+    else "$count changes were not accepted by the cloud and are no longer sent automatically. They stay on this phone. Retry later, or discard them to stop sending them and accept newer changes from other phones."

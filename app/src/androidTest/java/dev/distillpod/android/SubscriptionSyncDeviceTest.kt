@@ -142,4 +142,48 @@ class SubscriptionSyncDeviceTest {
             fsA.terminate().await();fsB.terminate().await();a.delete();b.delete()
         }
     }
+    /** Real SDK and emulator rules: a write the rules refuse is set aside and later records still sync. */
+    @Test fun rulesRejectedOperationDoesNotBlockLaterOutboxWork() = runBlocking {
+        val args=InstrumentationRegistry.getArguments()
+        assumeTrue("Explicit isolated cloud emulator argument required",args.getString("syncEmulators")=="true")
+        check(Build.FINGERPRINT.contains("generic") || Build.MODEL.contains("Emulator") || Build.HARDWARE.contains("ranchu")) { "Synthetic cloud tests require an Android emulator" }
+        val context=InstrumentationRegistry.getInstrumentation().targetContext
+        val host=args.getString("syncEmulatorHost")?:"10.0.2.2"
+        require(host in listOf("10.0.2.2","127.0.0.1"))
+        for(port in listOf(8085,9099))Socket().use { it.connect(InetSocketAddress(host,port),3000) }
+        val tag=UUID.randomUUID().toString()
+        val options=FirebaseOptions.Builder().setProjectId("demo-distillpod-sync").setApplicationId("1:123456789:android:1234567890abcdef")
+            .setApiKey("fake-api-key").build()
+        val app=FirebaseApp.initializeApp(context,options,"rejected-$tag")
+        val auth=FirebaseAuth.getInstance(app).apply { useEmulator(host,9099) }
+        val firestore=FirebaseFirestore.getInstance(app).apply {
+            firestoreSettings=FirebaseFirestoreSettings.Builder().setLocalCacheSettings(MemoryCacheSettings.newBuilder().build()).build()
+            useEmulator(host,8085)
+        }
+        val name="sync-rejected-$tag.db"
+        val db=Room.databaseBuilder(context,AppDatabase::class.java,name).build()
+        try {
+            withTimeout(60000) {
+                auth.createUserWithEmailAndPassword("rejected-$tag@example.test","fixture-password-123").await()
+                val cloud=FirebaseSubscriptionCloud(auth,firestore)
+                val head=cloud.head()
+                assertEquals(1,head.protocol)
+                val store=SubscriptionSyncStore(db,isolatedDemo=true)
+                store.bind(head.owner)
+                // Protocol-1 rules refuse queue records; the client protocol itself accepts this payload.
+                db.sync().enqueue(SyncOutboxEntity("refused-$tag",head.owner.uid,head.owner.generation,"queue_library",0,"{\"items\":\"\"}",false))
+                val podcast=PodcastEntity("podcast1","https://example.test/public-feed","Synthetic subscription",originalFeedUrl="https://example.test/public-feed")
+                store.follow(podcast,true)
+                assertFalse(SubscriptionSyncCoordinator(db,cloud).run())
+                val remaining=db.sync().operations(head.owner.uid,head.owner.generation)
+                assertEquals(listOf("queue_library" to "rejected"),remaining.map { it.entityKey to it.state })
+                assertEquals("rejected",db.sync().binding()!!.status)
+                assertEquals(1L,cloud.head().sequence)
+                assertTrue(cloud.entities("").any { it.key==SubscriptionSyncStore.key(podcast) })
+            }
+        } finally {
+            db.close();context.deleteDatabase(name)
+            firestore.terminate().await();app.delete()
+        }
+    }
 }
