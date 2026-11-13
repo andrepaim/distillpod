@@ -81,6 +81,9 @@ class AppViewModel(val graph: AppGraph, private val saved: SavedStateHandle) : V
     private val directorySearch = PodcastSearch(viewModelScope, graph.podcasts::search, graph.settings::rememberSearch,
         graph.podcasts.searchProviderNames, graph.podcasts::searchProviders)
     val search = directorySearch.state
+    /** Library matches for the Search field (#179), found on the phone only while the Search tab collects them. */
+    internal val librarySearch = librarySearchStates(query, librarySearchChanges(podcasts, episodes, captures, localTranscripts),
+        memory = LibrarySearchMemory(), search = LibrarySearcher(TranscriptSearch(graph.db)::find, podcasts::value, episodes::value, captures::value)::search).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), LibrarySearchState())
     val recentSearches = graph.settings.recentSearches.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     val busy = MutableStateFlow<Set<String>>(emptySet())
     val messages = Channel<String>(Channel.BUFFERED)

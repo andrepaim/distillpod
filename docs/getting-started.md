@@ -19,7 +19,7 @@ Complete browser sign-in and return to DistillPod for its final connection resul
 
 ## Follow your shows
 
-Open Search and enter a show name or creator. Preview the artwork and publisher, then Follow. Search uses Apple’s iTunes podcast directory, so a show might require its public RSS address instead. Add RSS feed accepts that address directly. Settings also imports OPML subscription lists.
+Search also finds what is already yours: as you type, it lists matching followed shows, library episodes, transcript passages and saved moments, all searched on the phone. Tap a transcript passage to open the transcript at that point. To find a new show, tap **Search the podcast directory** or the keyboard's search key, preview the artwork and publisher, then Follow. Search uses Apple’s iTunes podcast directory, so a show might require its public RSS address instead. Add RSS feed accepts that address directly. Settings also imports OPML subscription lists.
 
 A subscription fetches feed metadata and episode listings. Download audio explicitly from an episode when you want offline playback. Search history is local and can be cleared.
 
