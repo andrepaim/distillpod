@@ -40,6 +40,11 @@ data class EpisodeEntity(
 @Entity(tableName = "queue", foreignKeys = [ForeignKey(entity = EpisodeEntity::class, parentColumns = ["id"], childColumns = ["episodeId"], onDelete = ForeignKey.CASCADE)], indices = [Index("sortOrder")])
 data class QueueEntryEntity(@PrimaryKey val episodeId: String, val sortOrder: Int)
 
+/** Episode columns that decide reviewed ad skipping for a downloaded file. */
+data class AdSourceRow(val id: String, val localFile: String?, val mediaFingerprint: String, val durationMs: Long)
+/** Episode columns shown by media browsers; lastPlayedAt is compared at minute resolution. */
+data class BrowseRow(val id: String, val title: String, val completed: Boolean, val localFile: String?, val downloadState: String, val lastPlayedAt: Long)
+
 @Entity(tableName = "player_session")
 data class PlayerSessionEntity(@PrimaryKey val id: Int = 0, val episodeId: String?, val speed: Float = 1f)
 
@@ -137,6 +142,11 @@ interface LibraryDao {
         LIMIT :limit OFFSET :offset""")
     suspend fun autoEpisodes(section: String, show: String, current: String?, limit: Int, offset: Long): List<EpisodeEntity>
     @Query("SELECT * FROM episodes WHERE id=:id") suspend fun episode(id: String): EpisodeEntity?
+    /** Narrow playback observers (#141): progress columns are excluded so their writes do not re-emit. */
+    @Query("SELECT localFile FROM episodes WHERE id=:id") fun observeEpisodeLocalFile(id: String): Flow<String?>
+    @Query("SELECT id, localFile, mediaFingerprint, durationMs FROM episodes WHERE localFile IS NOT NULL AND id IN (SELECT episodeId FROM analyses WHERE state='succeeded') ORDER BY id")
+    fun observeAdSources(): Flow<List<AdSourceRow>>
+    @Query("SELECT id, title, completed, localFile, downloadState, lastPlayedAt FROM episodes ORDER BY id") fun observeBrowseRows(): Flow<List<BrowseRow>>
     @Upsert suspend fun putEpisode(value: EpisodeEntity)
     @Upsert suspend fun putEpisodes(values: List<EpisodeEntity>)
     @Query("UPDATE episodes SET positionMs=:position, durationMs=CASE WHEN :duration>0 THEN :duration ELSE durationMs END, completed=CASE WHEN :complete THEN 1 ELSE completed END, lastPlayedAt=:at WHERE id=:id")
@@ -178,7 +188,14 @@ interface LibraryDao {
     suspend fun transitionTranscriptState(id: String, revision: String, fromStates: List<String>, state: String, error: String?): Int
     @Query("SELECT * FROM segments WHERE episodeId=:id AND revision=:revision ORDER BY startMs,ordinal") suspend fun segments(id: String, revision: String): List<SegmentEntity>
     @Query("SELECT * FROM segments WHERE episodeId=:id AND revision=:revision AND endMs>:start AND startMs<:end ORDER BY startMs,ordinal") suspend fun window(id: String, revision: String, start: Long, end: Long): List<SegmentEntity>
-    @Upsert suspend fun putSegments(values: List<SegmentEntity>)
+    /** Every application segment write: finished-content capture must rebuild an episode whose rows were written. */
+    @Transaction suspend fun putSegments(values: List<SegmentEntity>) {
+        writeSegments(values)
+        forgetArtifactSources(values.map { "__artifact_source_${it.episodeId}" }.distinct())
+    }
+    // Room primitive; application writes use the transactional entry point above.
+    @Upsert suspend fun writeSegments(values: List<SegmentEntity>)
+    @Query("DELETE FROM sync_views WHERE entityKey IN (:keys)") suspend fun forgetArtifactSources(keys: List<String>)
     @Query("SELECT * FROM transcript_coverage WHERE episodeId=:id AND revision=:revision ORDER BY startMs") suspend fun coverage(id: String, revision: String): List<CoverageEntity>
     @Upsert suspend fun putCoverage(value: CoverageEntity)
     @Query("DELETE FROM segments WHERE episodeId=:id") suspend fun deleteSegments(id: String)

@@ -8,6 +8,7 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
@@ -288,5 +289,11 @@ class PodcastRepository(private val db: AppDatabase, private val http: OkHttpCli
         if(added>0) onSubscriptionChanged()
         return added
     }
-    suspend fun refreshAll() { dao.podcasts().filter { it.subscribed }.forEach { runCatching { refresh(it.id) } } }
+    /** One failing feed does not stop the others, but a stopped worker stops here instead of reporting success. */
+    suspend fun refreshAll() {
+        for (podcast in dao.podcasts().filter { it.subscribed }) {
+            try { refresh(podcast.id) }
+            catch (_: Exception) { currentCoroutineContext().ensureActive() }
+        }
+    }
 }

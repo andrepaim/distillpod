@@ -47,11 +47,11 @@ import kotlinx.coroutines.*
     }
 }
 
-@Composable fun PostDraftsPage(vm: AppViewModel, momentId: String? = null) {
+@Composable fun PostDraftsPage(vm: AppViewModel, momentId: String? = null, showHeading: Boolean = true) {
     val all by vm.posts.collectAsStateWithLifecycle()
     val posts = all.filter { momentId == null || it.sourceMomentId == momentId }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        item { Text("Your posts", style = MaterialTheme.typography.headlineSmall) }
+        if (showHeading) item { Text("Your posts", style = MaterialTheme.typography.headlineSmall) }
         if (posts.isEmpty()) item { Text("Create a post from a saved moment to start.") }
         items(posts, key = { it.id }) { row ->
             val result = runCatching { SocialResult.parse(row.content) }.getOrNull()

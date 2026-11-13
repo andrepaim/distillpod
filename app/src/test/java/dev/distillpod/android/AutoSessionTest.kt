@@ -25,6 +25,7 @@ class AutoSessionTest {
     private fun fixture(playbackReady:CompletableDeferred<Unit>?=null,voice:Boolean=false,openVoice:()->Boolean={false},
         queueHandler:((SessionCommand,Bundle)->com.google.common.util.concurrent.ListenableFuture<SessionResult>)?=null,
         prepareItems: suspend (List<MediaItem>) -> List<MediaItem> = { it },
+        allowArtwork: (String) -> Unit = {},
         block:(AutoLibraryCallback,MediaLibrarySession,MediaSession.ControllerInfo)->Unit) {
         val context=ApplicationProvider.getApplicationContext<Context>()
         val db=Room.inMemoryDatabaseBuilder(context,AppDatabase::class.java).build()
@@ -37,7 +38,7 @@ class AutoSessionTest {
         val ready=CompletableDeferred(Unit)
         val callback=AutoLibraryCallback(context.packageName,db,ready,scope,playbackReady?:ready,voiceEnabled={voice},openCarVoice=openVoice,
             queueCommands=if(queueHandler==null)emptySet() else setOf(dev.distillpod.android.playback.QueueWriteCommands.BARRIER,dev.distillpod.android.playback.QueueWriteCommands.IMPORT),
-            onQueueCommand=queueHandler,preparePlaybackItems=prepareItems)
+            onQueueCommand=queueHandler,preparePlaybackItems=prepareItems,allowArtwork=allowArtwork)
         val player=ExoPlayer.Builder(context).build()
         val session=MediaLibrarySession.Builder(context,player,callback).build()
         val controller=MediaSession.ControllerInfo.createTestOnlyControllerInfo("android.auto.test",1,1000,1,1,true,Bundle.EMPTY)
@@ -101,6 +102,19 @@ class AutoSessionTest {
         @Suppress("DEPRECATION")
         val token = result.extras.getParcelable<android.media.session.MediaSession.Token>(dev.distillpod.android.voice.CarVoiceEntry.TOKEN_EXTRA)
         assertEquals(s.platformToken,token)
+    }
+    @Test fun `only external library browsers are allowed to read artwork`() {
+        val readers = mutableListOf<String>()
+        fixture(allowArtwork = { readers += it }) { c, s, browser ->
+            val context = ApplicationProvider.getApplicationContext<Context>()
+            val own = MediaSession.ControllerInfo.createTestOnlyControllerInfo(context.packageName,1,android.os.Process.myUid(),1,1,true,Bundle.EMPTY)
+            assertTrue(c.onConnect(s,browser).isAccepted)
+            assertTrue("Controllers that never browse receive no artwork URIs and need no grant", readers.isEmpty())
+            assertEquals(LibraryResult.RESULT_SUCCESS, c.onGetLibraryRoot(s,own,null).get(5,TimeUnit.SECONDS).resultCode)
+            assertTrue("The app reads its own provider without a grant", readers.isEmpty())
+            assertEquals(LibraryResult.RESULT_SUCCESS, c.onGetLibraryRoot(s,browser,null).get(5,TimeUnit.SECONDS).resultCode)
+            assertEquals(listOf("android.auto.test"), readers)
+        }
     }
     @Test fun `untrusted external controllers cannot connect`()=fixture {c,s,_ ->
         val caller=MediaSession.ControllerInfo.createTestOnlyControllerInfo("untrusted",1,1000,1,1,false,Bundle.EMPTY)
