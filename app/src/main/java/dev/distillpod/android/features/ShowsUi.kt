@@ -21,10 +21,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.distillpod.android.data.*
-import java.time.Instant
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
-import java.util.Locale
 
 @Composable internal fun ShowsPage(vm: AppViewModel) {
     val library by vm.shows.collectAsState()
@@ -131,12 +127,7 @@ import java.util.Locale
                 maxLines = 3, overflow = TextOverflow.Ellipsis)
             if (show.author.isNotBlank()) Text(show.author, style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            val latest = when {
-                row.episodeCount == 0 -> "No episodes yet"
-                row.latestPublishedAt <= 0 -> "Episode date unavailable"
-                else -> "Latest: " + DateTimeFormatter.ofPattern("d MMM yyyy", Locale.getDefault())
-                    .withZone(ZoneId.systemDefault()).format(Instant.ofEpochMilli(row.latestPublishedAt))
-            }
+            val latest = latestEpisodeLabel(row)
             Text(latest, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (row.episodeCount > 0) Text("${row.unfinishedCount} unfinished", style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
