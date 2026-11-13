@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -76,7 +77,7 @@ internal fun queueTimeLabel(ep: EpisodeEntity, player: PlaybackState): String {
     playing: Boolean, onOpen: () -> Unit, onToggle: () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         SectionHeading("Continue listening")
-        Card(onClick = onOpen, shape = RoundedCornerShape(24.dp),
+        Card(onClick = onOpen, shape = RoundedCornerShape(24.dp), modifier = Modifier.testTag("resume-card"),
             colors = CardDefaults.cardColors(containerColor = Color(0xFF20243A)),
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = .16f))) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
