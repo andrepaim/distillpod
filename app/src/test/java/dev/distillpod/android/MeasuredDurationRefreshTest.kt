@@ -85,7 +85,7 @@ class MeasuredDurationRefreshTest {
         val ep = subscribe(db, server, repo, audio, "30:00")
         play(db, ep.id, 600_000, 1_920_000)
         val refreshed = refresh(db, server, repo, audio, "30:00")
-        // An unchanged enclosure keeps its local transcript current: no stale marker, same fingerprint and coverage.
+        // Regression guard: an unchanged enclosure keeps its local transcript current (no stale marker, same fingerprint and coverage).
         val local = TranscriptEntity(ep.id, "local", refreshed.mediaFingerprint, "tiny", "auto", state = "ready", durationMs = 1_920_000, processedMs = 1_920_000)
         db.library().putTranscript(local); db.library().putCoverage(CoverageEntity(ep.id, "local", 0, 1_920_000))
         val again = refresh(db, server, repo, audio, "30:00")
@@ -104,7 +104,7 @@ class MeasuredDurationRefreshTest {
             }, now = { at }).lookup(db.library().episode(ep.id)!!, row)
         }
         assertFalse("the feed's declared length no longer matches this audio", lookup(1_800_000, at = 0))
-        // A later lookup (after the miss's retry delay) adopts the transcript of the measured audio.
+        // A later lookup (after the rejected candidate's backoff) adopts the transcript of the measured audio.
         assertTrue(lookup(1_921_000, at = 86_400_000))
     }
 }
