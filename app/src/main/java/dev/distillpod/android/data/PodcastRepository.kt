@@ -213,7 +213,7 @@ class PodcastRepository(private val db: AppDatabase, private val http: OkHttpCli
             }.build()
             http.newCall(request).execute().use { response ->
                 if (response.code == 304) { initializeAutomation(id); dao.putPodcast(podcast.copy(refreshedAt = System.currentTimeMillis(), error = null)); return@use }
-                check(response.isSuccessful) { "Feed refresh failed" }
+                if (!response.isSuccessful) throw FeedHttpException(response.code)
                 val feed = response.body!!.byteStream().use { parseFeedStream(id, it, response.request.url.toString()) }
                 db.withTransaction {
                     // Keep stable IDs and locally saved state when redirect/metadata changes.
@@ -226,7 +226,7 @@ class PodcastRepository(private val db: AppDatabase, private val http: OkHttpCli
             }
         } catch (error: Exception) {
             if (error is kotlinx.coroutines.CancellationException) throw error
-            dao.podcast(id)?.let { dao.putPodcast(it.copy(error = "Refresh failed. Saved episodes are still available.")) }
+            dao.podcast(id)?.let { dao.putPodcast(it.copy(error = feedRefreshError(error))) }
             throw error
         }
     }

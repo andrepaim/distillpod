@@ -29,6 +29,8 @@ The library offers Continue listening, followed shows and recent episodes. The s
 
 Downloaded episodes can play without a network connection. Streaming requires access to the publisher's audio host. Listen from the original source timeline; reviewed ad ranges are optional, and seeking into a range lets you hear it normally.
 
+Continue listening shows the episode loaded in the player, the same one as the mini-player; with nothing loaded, it offers your most recently played unfinished episode. Each episode row's **⋮** menu holds Play next, Add to queue, Download (or Pause download) and Mark played; an episode page offers the same actions under Play, before its description. If a followed show's feed cannot refresh, the library names the show with the reason (no connection, an HTTP error from the feed server or an unreadable feed) and offers **Retry**, **Open show** and **Unsubscribe**; a show page shows only its own refresh error. **Distill last 60 seconds** becomes available once some of the episode has played.
+
 | Library | Full player |
 | --- | --- |
 | ![Synthetic library with Continue listening](demos/library.png) | ![Player with playback controls and the Distill action](demos/player.png) |
