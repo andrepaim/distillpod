@@ -7,11 +7,14 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.ComponentActivity
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.core.app.ApplicationProvider
@@ -52,8 +55,8 @@ class NotificationPromptTest {
         compose.setContent {
             MaterialTheme {
                 val snackbar = remember { SnackbarHostState() }
-                Scaffold(snackbarHost = { SnackbarHost(snackbar) }) {
-                    NotificationPromptHost(prompt, snackbar) { settingsOpened++ }
+                Scaffold(snackbarHost = { SnackbarHost(snackbar) }) { padding ->
+                    Box(Modifier.padding(padding)) { NotificationPromptHost(prompt, snackbar) { settingsOpened++ } }
                 }
             }
         }
