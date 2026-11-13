@@ -27,9 +27,10 @@ internal object DocumentPickerUi {
         }
         val deadline = SystemClock.uptimeMillis() + 10000
         while (SystemClock.uptimeMillis() < deadline) {
-            val row = device.findObject(pane)?.findObject(selector)
-            if (row != null) {
-                val center = row.visibleCenter
+            // The system picker can re-lay out between lookup and use; look the row up again.
+            val center = try { device.findObject(pane)?.findObject(selector)?.visibleCenter }
+                catch (_: StaleObjectException) { null }
+            if (center != null) {
                 device.click(center.x, center.y)
                 device.waitForIdle()
                 return
