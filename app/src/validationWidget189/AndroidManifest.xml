@@ -4,8 +4,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" tools:node="remove" />
     <application android:label="Widget validation" tools:replace="android:label">
         <!-- Shell-triggered probe and pin request for the isolated validation package only. -->
-        <receiver android:name="dev.distillpod.android.validation.WidgetProbe" android:exported="true" />
-        <activity android:name="dev.distillpod.android.validation.PinWidgetActivity" android:exported="true"
+        <receiver android:name="dev.distillpod.android.validation.WidgetProbe" android:exported="true" android:permission="android.permission.DUMP" />
+        <activity android:name="dev.distillpod.android.validation.PinWidgetActivity" android:exported="true" android:permission="android.permission.DUMP"
             android:theme="@android:style/Theme.Translucent.NoTitleBar" />
     </application>
 </manifest>

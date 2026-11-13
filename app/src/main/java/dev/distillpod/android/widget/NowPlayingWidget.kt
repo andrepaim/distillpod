@@ -64,10 +64,10 @@ internal object NowPlayingWidget {
             setTextViewText(R.id.widget_show, if (state.idle) context.getString(R.string.widget_idle_detail) else state.show ?: "DistillPod")
             setOnClickPendingIntent(R.id.widget_root, openIntent(context, !state.idle))
             setImageViewResource(R.id.widget_toggle, if (state.playing) R.drawable.ic_widget_pause else R.drawable.ic_widget_play)
-            setContentDescription(R.id.widget_toggle, if (state.playing) "Pause" else context.getString(R.string.widget_play))
+            setContentDescription(R.id.widget_toggle, context.getString(if (state.playing) R.string.widget_pause else R.string.widget_play))
             setOnClickPendingIntent(R.id.widget_toggle, actionIntent(context, ACTION_TOGGLE))
             setBoolean(R.id.widget_distill, "setEnabled", state.captureAvailable)
-            setInt(R.id.widget_distill, "setImageAlpha", if (state.captureAvailable) 255 else 97)
+            setImageViewResource(R.id.widget_distill, if (state.captureAvailable) R.drawable.ic_widget_distill else R.drawable.ic_widget_distill_off)
             setContentDescription(R.id.widget_distill, context.getString(R.string.widget_distill))
             setOnClickPendingIntent(R.id.widget_distill, actionIntent(context, ACTION_DISTILL))
         }

@@ -60,6 +60,7 @@ class NowPlayingWidgetActions : BroadcastReceiver() {
         val handler = Handler(Looper.getMainLooper())
         val future = MediaController.Builder(app, SessionToken(app, ComponentName(app, PlaybackService::class.java))).buildAsync()
         var done = false
+        var timeoutMessage: () -> String? = { null }
         fun finish(message: String? = null) {
             if (done) return
             done = true
@@ -69,40 +70,62 @@ class NowPlayingWidgetActions : BroadcastReceiver() {
             pending.finish()
         }
         // Stay well inside the broadcast deadline; an accepted capture still completes in the session.
-        handler.postDelayed({ finish() }, TIMEOUT_MS)
+        handler.postDelayed({ finish(timeoutMessage()) }, TIMEOUT_MS)
         future.addListener({
             val controller = runCatching { future.get() }.getOrNull() ?: return@addListener finish("DistillPod playback is unavailable")
-            when (val action = widgetAction(requested, controller.currentMediaItem != null, controller.currentPosition)) {
-                WidgetAction.TogglePlayback -> {
-                    val starting = Util.shouldShowPlayButton(controller)
-                    Util.handlePlayPauseButtonAction(controller)
-                    // A started session goes foreground once its player is playing or buffering with play intent
-                    // (Media3 can first resume the saved queue). Disconnecting earlier could stop an unbound service.
-                    if (!starting) return@addListener finish()
-                    val settle: (Player) -> Unit = { player ->
-                        if (playbackOngoing(player)) handler.postDelayed({ finish() }, FOREGROUND_GRACE_MS)
-                        else if (!player.playWhenReady) finish()
+            var acted = false
+            fun act() {
+                if (acted || done) return
+                acted = true
+                when (val action = widgetAction(requested, controller.currentMediaItem != null, controller.currentPosition)) {
+                    WidgetAction.TogglePlayback -> togglePlayback(controller, handler, { timeoutMessage = it }, ::finish)
+                    WidgetAction.SaveMoment -> {
+                        val result = controller.sendCustomCommand(PlaybackControls.distill, widgetCaptureArgs)
+                        result.addListener({
+                            finish(captureResultMessage(runCatching { result.get().resultCode }.getOrDefault(SessionError.ERROR_UNKNOWN)))
+                        }, main)
                     }
-                    controller.addListener(object : Player.Listener {
-                        override fun onEvents(player: Player, events: Player.Events) = settle(player)
-                    })
-                    settle(controller)
+                    is WidgetAction.Explain -> finish(action.message)
+                    null -> finish()
                 }
-                WidgetAction.SaveMoment -> {
-                    val result = controller.sendCustomCommand(PlaybackControls.distill, widgetCaptureArgs)
-                    result.addListener({
-                        finish(captureResultMessage(runCatching { result.get().resultCode }.getOrDefault(SessionError.ERROR_UNKNOWN)))
-                    }, main)
-                }
-                is WidgetAction.Explain -> finish(action.message)
-                null -> finish()
+            }
+            // After process death the binding creates the service, which restores the saved queue
+            // asynchronously. Give it a moment so the tap acts on that episode, not on an empty player.
+            if (controller.currentMediaItem != null) act()
+            else {
+                controller.addListener(object : Player.Listener {
+                    override fun onEvents(player: Player, events: Player.Events) { if (player.currentMediaItem != null) act() }
+                })
+                handler.postDelayed({ act() }, RESTORE_WAIT_MS)
             }
         }, main)
     }
 
+    /**
+     * Pausing needs nothing more. Starting must keep this binding until the session plays: a service
+     * created by this tap is only bound, and goes foreground (started) once playback is under way.
+     * Media3 may first resume the saved queue, so intermediate paused states are not final.
+     */
+    private fun togglePlayback(controller: MediaController, handler: Handler, onTimeout: (() -> String?) -> Unit,
+        finish: (String?) -> Unit) {
+        val starting = Util.shouldShowPlayButton(controller)
+        Util.handlePlayPauseButtonAction(controller)
+        if (!starting) return finish(null)
+        onTimeout { if (controller.isPlaying || playbackOngoing(controller)) null else "Couldn't start playback" }
+        val settle: (Player) -> Unit = { player ->
+            if (player.isPlaying) handler.postDelayed({ finish(null) }, FOREGROUND_GRACE_MS)
+            else if (player.playerError != null) finish("Couldn't start playback")
+        }
+        controller.addListener(object : Player.Listener {
+            override fun onEvents(player: Player, events: Player.Events) = settle(player)
+        })
+        settle(controller)
+    }
+
     private companion object {
-        const val TIMEOUT_MS = 8_000L
-        const val FOREGROUND_GRACE_MS = 500L
+        const val TIMEOUT_MS = 9_000L
+        const val RESTORE_WAIT_MS = 2_500L
+        const val FOREGROUND_GRACE_MS = 1_500L
         fun playbackOngoing(player: Player) = player.playWhenReady &&
             player.playbackState in setOf(Player.STATE_BUFFERING, Player.STATE_READY)
     }
