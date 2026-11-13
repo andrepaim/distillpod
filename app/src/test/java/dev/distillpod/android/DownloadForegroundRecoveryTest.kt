@@ -66,10 +66,11 @@ class DownloadForegroundRecoveryTest {
     private fun allowed(): ForegroundUpdater = ForegroundUpdater { _, _, _ ->
         CallbackToFutureAdapter.getFuture<Void> { it.set(null); "allowed" }
     }
+    /** An unreferenced completer fails its future when collected (#186); WorkManager's queued start keeps its own. */
+    private val pendingStarts = java.util.concurrent.ConcurrentLinkedQueue<CallbackToFutureAdapter.Completer<Void>>()
     /** Never completes: the worker is stopped while still waiting for its foreground service. */
     private fun pending(reached: CompletableDeferred<Unit>): ForegroundUpdater = ForegroundUpdater { _, _, _ ->
-        reached.complete(Unit)
-        CallbackToFutureAdapter.getFuture<Void> { "pending" }
+        CallbackToFutureAdapter.getFuture<Void> { pendingStarts += it; "pending" }.also { reached.complete(Unit) }
     }
     private fun worker(kind: String, id: String, attempt: Int, foreground: ForegroundUpdater, workId: java.util.UUID? = null) =
         TestListenableWorkerBuilder.from(context, LibraryWorker::class.java)
@@ -78,6 +79,12 @@ class DownloadForegroundRecoveryTest {
             .setRunAttemptCount(attempt)
             .setForegroundUpdater(foreground).build()
     private fun unfinished(name: String) = manager.getWorkInfosForUniqueWork(name).get(5, TimeUnit.SECONDS).filter { !it.state.isFinished }
+    /** A collection may run at any time while the stopped worker still awaits its foreground start (#186). */
+    private suspend fun awaitPendingStart(reached: CompletableDeferred<Unit>) {
+        withTimeout(5000) { reached.await() }
+        System.gc()
+        System.runFinalization()
+    }
     private suspend fun settle(check: suspend () -> Boolean) = withTimeout(10000) {
         while (!check()) { shadowOf(Looper.getMainLooper()).idle(); delay(10) }
     }
@@ -222,7 +229,7 @@ class DownloadForegroundRecoveryTest {
             val reached = CompletableDeferred<Unit>()
             val worker = worker("download", episode.id, 0, pending(reached))
             val run = launch(Dispatchers.IO) { worker.doWork() }
-            withTimeout(5000) { reached.await() }
+            awaitPendingStart(reached)
             worker.stop(WorkInfo.STOP_REASON_TIMEOUT)
             run.cancelAndJoin()
             assertEquals("paused", dao.episode(episode.id)!!.downloadState)
@@ -238,7 +245,7 @@ class DownloadForegroundRecoveryTest {
                 val reached = CompletableDeferred<Unit>()
                 val worker = worker("model", "tiny", 0, pending(reached))
                 val run = launch(Dispatchers.IO) { worker.doWork() }
-                withTimeout(5000) { reached.await() }
+                awaitPendingStart(reached)
                 worker.stop(reason)
                 run.cancelAndJoin()
                 assertEquals("stop reason $reason", expected, dao.model("tiny")!!.state)
@@ -257,7 +264,7 @@ class DownloadForegroundRecoveryTest {
                 val reached = CompletableDeferred<Unit>()
                 val worker = worker("download", episode.id, 0, pending(reached), request)
                 val run = launch(Dispatchers.IO) { worker.doWork() }
-                withTimeout(5000) { reached.await() }
+                awaitPendingStart(reached)
                 if (cancel) manager.cancelWorkById(request).result.get(5, TimeUnit.SECONDS)
                 worker.stop(WorkInfo.STOP_REASON_UNKNOWN)
                 run.cancelAndJoin()

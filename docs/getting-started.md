@@ -77,6 +77,10 @@ of repeatedly capturing the same instant. See [contextual distills](android/cont
 | --- | --- |
 | ![Playback and headphone capture settings](demos/headphone-settings.png) | ![Takeaway, supporting quote and replay controls using demo text](demos/distill-result.png) |
 
+### Home-screen widget
+
+Add the DistillPod **Now playing** widget from your launcher's widget list. It shows the current episode and show (the same titles as the media notification), a play/pause button and **Distill last 60 seconds**, which saves the moment exactly like the notification or Android Auto button. Distill is dimmed while nothing is loaded or playback is paused at 0:00, and a short message confirms the save or explains why it could not happen. Tap the titles to open the full player. The widget updates only when playback changes, never on a timer; it is not offered on the lock screen. If Android has closed DistillPod, the widget may show the last episode until you tap it: taps always act on the current playback state.
+
 ## Sync supported library data
 
 In a configured build, open **Settings → Library sync → Connect Google & sync library**. Review existing feeds, approve only public sources, then choose the Google account for this library. Google sign-in is separate from ChatGPT and from the Drive file picker. An unconfigured source/debug build shows “Cloud sync is unavailable in this build.”

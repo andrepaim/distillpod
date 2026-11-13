@@ -4,7 +4,11 @@ Settings groups related tasks without changing stored preference values or defau
 
 - **Your library:** Backup & Restore, Library sync, and Library (subscription import/export and refresh).
 - **Playback & transcripts:** Playback & headphones, optional Voice, Transcript preparation, ChatGPT, and Downloads & storage.
-- **App access & privacy:** Notification access and Privacy & diagnostics.
+- **App access & privacy:** Notification access, Privacy & diagnostics, and About DistillPod.
+
+The overview starts directly with these groups under the Settings top bar; the
+former "Make it yours" header was removed (#188). Group labels are announced as
+headings, and every destination, including About, is a full-width row.
 
 **Moment saved sound** has one editable control, under Playback & headphones.
 **Only transcribe while charging** is under Transcript preparation. Its **Download

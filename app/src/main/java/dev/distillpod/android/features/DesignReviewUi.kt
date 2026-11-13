@@ -15,6 +15,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
@@ -28,26 +30,29 @@ import androidx.compose.ui.unit.dp
         shape=RoundedCornerShape(16.dp),modifier=Modifier.fillMaxWidth())
 }
 
-@Composable internal fun SettingsOverview(vm:AppViewModel,connected:Boolean) {
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
-        Text("Make it yours",style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.SemiBold)
-        Text("Your library, your listening, your choices.",style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
-        SectionHeading("Your library")
-        SettingsDestination("Backup & Restore","Save or bring back a portable copy",Icons.Default.Restore){vm.open("backup")}
-        SettingsDestination("Library sync","Google account and sync status",Icons.Default.Sync){vm.open("settings:sync")}
-        SettingsDestination("Library","Import, export and refresh subscriptions",Icons.Default.ImportExport){vm.open("settings:library")}
-        SectionHeading("Playback & transcripts")
-        SettingsDestination("Playback & headphones","Button shortcuts and save feedback",Icons.Default.Headphones){vm.open("settings:playback")}
-        if (vm.graph.context.resources.getBoolean(dev.distillpod.android.R.bool.voice_enabled))
-            SettingsDestination("Voice","API key and spoken answers",Icons.Default.Mic){vm.open("settings:voice")}
-        SettingsDestination("Transcript preparation","Automatic preparation, lookup, models and charging",Icons.Default.Subtitles){vm.open("settings:transcription")}
-        SettingsDestination("ChatGPT",if(connected)"Connected · account and AI model" else "Connect for insights and questions",Icons.Default.AutoAwesome){vm.open("settings:ai")}
-        SettingsDestination("Downloads & storage","Download network policy, usage and cleanup",Icons.Default.Download){vm.open("settings:storage")}
-        SectionHeading("App access & privacy")
-        SettingsDestination("Notification access","Playback controls and background progress",Icons.Default.Notifications){vm.open("settings:notifications")}
-        SettingsDestination("Privacy & diagnostics","Share technical reports and report a problem",Icons.Default.BugReport){vm.open("settings:diagnostics")}
-        TextButton(onClick={vm.open("settings:about")}){Text("About DistillPod")}
+/** Settings home (#188): destinations start under the top bar, in three announced groups. */
+@Composable internal fun SettingsOverview(connected:Boolean,voiceEnabled:Boolean,open:(String)->Unit) {
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal=20.dp,vertical=12.dp),verticalArrangement=Arrangement.spacedBy(10.dp)) {
+        SettingsGroupLabel("Your library")
+        SettingsDestination("Backup & Restore","Save or bring back a portable copy",Icons.Default.Restore){open("backup")}
+        SettingsDestination("Library sync","Google account and sync status",Icons.Default.Sync){open("settings:sync")}
+        SettingsDestination("Library","Import, export and refresh subscriptions",Icons.Default.ImportExport){open("settings:library")}
+        SettingsGroupLabel("Playback & transcripts")
+        SettingsDestination("Playback & headphones","Button shortcuts and save feedback",Icons.Default.Headphones){open("settings:playback")}
+        if (voiceEnabled)
+            SettingsDestination("Voice","API key and spoken answers",Icons.Default.Mic){open("settings:voice")}
+        SettingsDestination("Transcript preparation","Automatic preparation, lookup, models and charging",Icons.Default.Subtitles){open("settings:transcription")}
+        SettingsDestination("ChatGPT",if(connected)"Connected · account and AI model" else "Connect for insights and questions",Icons.Default.AutoAwesome){open("settings:ai")}
+        SettingsDestination("Downloads & storage","Download network policy, usage and cleanup",Icons.Default.Download){open("settings:storage")}
+        SettingsGroupLabel("App access & privacy")
+        SettingsDestination("Notification access","Playback controls and background progress",Icons.Default.Notifications){open("settings:notifications")}
+        SettingsDestination("Privacy & diagnostics","Share technical reports and report a problem",Icons.Default.BugReport){open("settings:diagnostics")}
+        SettingsDestination("About DistillPod","Version, licenses and source code",Icons.Default.Info){open("settings:about")}
     }
+}
+@Composable private fun SettingsGroupLabel(title:String) {
+    Text(title,Modifier.fillMaxWidth().padding(top=10.dp,start=4.dp).semantics{heading()},
+        style=MaterialTheme.typography.titleSmall,fontWeight=FontWeight.SemiBold,color=MaterialTheme.colorScheme.primary)
 }
 @Composable private fun SettingsDestination(title:String,detail:String,icon:ImageVector,onClick:()->Unit) {
     Surface(onClick=onClick,shape=RoundedCornerShape(18.dp),color=MaterialTheme.colorScheme.surface,modifier=Modifier.fillMaxWidth()) {
