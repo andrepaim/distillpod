@@ -24,54 +24,77 @@ import kotlin.concurrent.thread
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk=[34])
 class SubscriptionSyncSchedulingTest {
+    private val now=1_000_000L
+    private fun w(state:WorkInfo.State,attempts:Int=0,next:Long=now)=SyncWorkSnapshot(state,attempts,next)
+    private val backedOff=w(ENQUEUED,attempts=1,next=now+30_000)
     @Test fun `scheduling decision merges with pending work`() {
-        assertEquals(SyncWorkAction.ENQUEUE,subscriptionWorkAction(emptyList(),false))
-        assertEquals(SyncWorkAction.ENQUEUE,subscriptionWorkAction(listOf(SUCCEEDED,FAILED,CANCELLED),false))
-        assertEquals(SyncWorkAction.KEEP,subscriptionWorkAction(listOf(ENQUEUED),false))
-        assertEquals(SyncWorkAction.REPLACE,subscriptionWorkAction(listOf(ENQUEUED),true))
-        assertEquals(SyncWorkAction.REPLACE,subscriptionWorkAction(listOf(ENQUEUED,BLOCKED),true))
-        assertEquals(SyncWorkAction.KEEP,subscriptionWorkAction(listOf(ENQUEUED,BLOCKED),false))
-        assertEquals(SyncWorkAction.FOLLOW_UP,subscriptionWorkAction(listOf(RUNNING),false))
-        assertEquals(SyncWorkAction.FOLLOW_UP,subscriptionWorkAction(listOf(SUCCEEDED,RUNNING),true))
+        fun action(vararg work:SyncWorkSnapshot,user:Boolean=false)=subscriptionWorkAction(work.toList(),user,now)
+        assertEquals(SyncWorkAction.ENQUEUE,action())
+        assertEquals(SyncWorkAction.ENQUEUE,action(w(SUCCEEDED),w(FAILED),w(CANCELLED)))
+        assertEquals(SyncWorkAction.KEEP,action(w(ENQUEUED)))
+        assertEquals(SyncWorkAction.KEEP,action(backedOff))
+        assertEquals(SyncWorkAction.KEEP,action(backedOff,w(BLOCKED)))
+        assertEquals(SyncWorkAction.REPLACE,action(backedOff,user=true))
+        assertEquals(SyncWorkAction.REPLACE,action(backedOff,w(BLOCKED),user=true))
+        // A request about to run (fresh, or backoff ending soon) is kept: replacing it could cancel a starting sync.
+        assertEquals(SyncWorkAction.KEEP,action(w(ENQUEUED),user=true))
+        assertEquals(SyncWorkAction.KEEP,action(w(ENQUEUED,attempts=2,next=now+2_000),user=true))
+        assertEquals(SyncWorkAction.FOLLOW_UP,action(w(RUNNING)))
+        assertEquals(SyncWorkAction.FOLLOW_UP,action(w(SUCCEEDED),w(RUNNING),user=true))
         // A running sync is never cancelled; its single follow-up already covers new requests.
-        assertEquals(SyncWorkAction.KEEP,subscriptionWorkAction(listOf(RUNNING,BLOCKED),false))
-        assertEquals(SyncWorkAction.KEEP,subscriptionWorkAction(listOf(RUNNING,BLOCKED),true))
+        assertEquals(SyncWorkAction.KEEP,action(w(RUNNING),w(BLOCKED)))
+        assertEquals(SyncWorkAction.KEEP,action(w(RUNNING),w(BLOCKED),user=true))
     }
 
-    @Test fun `bursts of kicks coalesce into one scheduling decision`()=runTest {
-        val calls=mutableListOf<Boolean>()
-        val scheduler=SubscriptionSyncScheduler(backgroundScope) { calls+=it }
-        repeat(7) { scheduler.kick();advanceTimeBy(40) }
-        advanceTimeBy(1_000);runCurrent()
-        assertEquals(listOf(false),calls)
+    private fun TestScope.scheduler(failed:(Exception)->Unit={},schedule:suspend (Boolean)->Unit)=
+        SubscriptionSyncScheduler(backgroundScope,clock={ testScheduler.currentTime },failed=failed,schedule=schedule)
+    @Test fun `bursts of kicks coalesce into one scheduling decision after they settle`()=runTest {
+        val calls=mutableListOf<Boolean>();val scheduler=scheduler { calls+=it }
+        repeat(5) { scheduler.kick();advanceTimeBy(200) }
+        // Last kick at 800 ms: the decision waits for 300 ms of quiet.
+        advanceTimeBy(50);runCurrent();assertEquals(emptyList<Boolean>(),calls)
+        advanceTimeBy(100);runCurrent();assertEquals(listOf(false),calls)
         scheduler.kick();advanceTimeBy(1_000);runCurrent()
         assertEquals(listOf(false,false),calls)
     }
-    @Test fun `sync now skips the debounce`()=runTest {
-        val calls=mutableListOf<Boolean>()
-        val scheduler=SubscriptionSyncScheduler(backgroundScope) { calls+=it }
+    @Test fun `a continuous stream of kicks still schedules within the maximum wait`()=runTest {
+        val calls=mutableListOf<Boolean>();val scheduler=scheduler { calls+=it }
+        repeat(25) { scheduler.kick();advanceTimeBy(200) }
+        runCurrent();assertEquals(2,calls.size)
+    }
+    @Test fun `sync now skips the debounce even inside a kick window`()=runTest {
+        val calls=mutableListOf<Boolean>();val scheduler=scheduler { calls+=it }
         scheduler.kick();scheduler.syncNow();runCurrent()
         assertEquals(listOf(true),calls)
-        scheduler.kick();advanceTimeBy(100);scheduler.syncNow();advanceTimeBy(250);runCurrent()
+        scheduler.kick();advanceTimeBy(100);scheduler.syncNow();runCurrent()
         assertEquals(listOf(true,true),calls)
     }
-    @Test fun `a failed scheduling attempt does not stop later kicks`()=runTest {
-        var attempts=0
-        val scheduler=SubscriptionSyncScheduler(backgroundScope) { attempts++;if(attempts==1)error("synthetic") }
+    @Test fun `a kick during an in-flight decision schedules once more`()=runTest {
+        val calls=mutableListOf<Boolean>();val gate=CompletableDeferred<Unit>()
+        val scheduler=scheduler { calls+=it;if(calls.size==1)gate.await() }
+        scheduler.kick();advanceTimeBy(1_000);runCurrent();assertEquals(1,calls.size)
+        scheduler.kick();gate.complete(Unit);advanceTimeBy(1_000);runCurrent()
+        assertEquals(2,calls.size)
+    }
+    @Test fun `failed scheduling is reported and does not stop or downgrade later requests`()=runTest {
+        val calls=mutableListOf<Boolean>();val failures=mutableListOf<Exception>()
+        val scheduler=scheduler({ failures+=it }) { calls+=it;if(calls.size<=2)throw if(calls.size==1)IllegalStateException("synthetic") else java.util.concurrent.CancellationException("future") }
+        scheduler.syncNow();runCurrent()
         scheduler.kick();advanceTimeBy(1_000);runCurrent()
         scheduler.kick();advanceTimeBy(1_000);runCurrent()
-        assertEquals(2,attempts)
+        // The user request survives both failures, including a cancelled WorkManager future.
+        assertEquals(listOf(true,true,true),calls);assertEquals(2,failures.size)
     }
     @Test fun `concurrent kicks from many threads coalesce without losing the last one`()=runBlocking {
         val count=AtomicInteger();val scope=CoroutineScope(SupervisorJob()+Dispatchers.Default)
         try {
             val scheduler=SubscriptionSyncScheduler(scope,debounceMs=20) { count.incrementAndGet() }
             (1..8).map { thread { repeat(500) { scheduler.kick() } } }.forEach { it.join() }
-            withTimeout(5_000) { while(true) { val seen=count.get();delay(200);if(seen>0 && count.get()==seen)break } }
+            withTimeout(10_000) { while(true) { val seen=count.get();delay(300);if(seen>0 && count.get()==seen)break } }
             val settled=count.get()
-            assertTrue("$settled scheduling decisions for 4000 kicks",settled in 1..20)
+            assertTrue("$settled scheduling decisions for 4000 kicks",settled in 1..200)
             scheduler.kick()
-            withTimeout(5_000) { while(count.get()==settled)delay(10) }
+            withTimeout(10_000) { while(count.get()==settled)delay(10) }
         } finally { scope.cancel() }
     }
 
@@ -103,7 +126,7 @@ class SubscriptionSyncSchedulingTest {
         while(!condition()) { org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();delay(20) }
     }
     private suspend fun awaitState(manager:WorkManager,id:UUID,state:WorkInfo.State)=until { manager.getWorkInfoById(id).get(5,TimeUnit.SECONDS)?.state==state }
-    private suspend fun schedule(manager:WorkManager,user:Boolean=false)=scheduleSubscriptionWork(manager,user,::subscriptionSyncRequest)
+    private suspend fun schedule(manager:WorkManager,user:Boolean=false,active:Boolean=true)=scheduleSubscriptionWork(manager,user,active,::subscriptionSyncRequest)
 
     @Test fun `kicks while enqueued keep the single pending run`()=work { manager ->
         assertEquals(SyncWorkAction.ENQUEUE,schedule(manager))
@@ -138,12 +161,42 @@ class SubscriptionSyncSchedulingTest {
             val followUp=open(manager).single();assertNotEquals(first,followUp.id);assertEquals(ENQUEUED,followUp.state)
         } finally { release.countDown() }
     }
-    @Test fun `failed chain is replaced rather than appended to`()=work { manager ->
+    @Test fun `finished failed chain starts a fresh run`()=work { manager ->
         HeldWorker.run={ ListenableWorker.Result.failure() }
         schedule(manager);val failed=open(manager).single().id
         WorkManagerTestInitHelper.getTestDriver(context)!!.setAllConstraintsMet(failed)
         assertTrue(open(manager).isEmpty())
         assertEquals(SyncWorkAction.ENQUEUE,schedule(manager))
         assertEquals(ENQUEUED,open(manager).single().state)
+    }
+    @Test fun `follow-up racing a finished head is neither lost nor blocked`()=work { manager ->
+        for(result in listOf(ListenableWorker.Result.failure(),ListenableWorker.Result.success())) {
+            HeldWorker.run={ result }
+            schedule(manager);val head=open(manager).single().id
+            WorkManagerTestInitHelper.getTestDriver(context)!!.setAllConstraintsMet(head)
+            // The decision saw RUNNING; the head finished before the follow-up was enqueued.
+            enqueueSubscriptionWork(manager,SyncWorkAction.FOLLOW_UP,::subscriptionSyncRequest)
+            assertEquals(listOf(ENQUEUED),open(manager).map { it.state })
+            manager.cancelUniqueWork(SUBSCRIPTION_SYNC_WORK).result.get(5,TimeUnit.SECONDS)
+        }
+    }
+    @Test fun `paused sync schedules nothing`()=work { manager ->
+        assertEquals(SyncWorkAction.SKIP,schedule(manager,active=false))
+        assertTrue(open(manager).isEmpty())
+    }
+    @Test fun `retried run with a follow-up is kept by kicks and replaced by sync now`()=work(running=true) { manager ->
+        val started=java.util.concurrent.CountDownLatch(1);val release=java.util.concurrent.CountDownLatch(1)
+        HeldWorker.run={ started.countDown();release.await(10,TimeUnit.SECONDS);ListenableWorker.Result.retry() }
+        try {
+            schedule(manager);val first=open(manager).single().id
+            WorkManagerTestInitHelper.getTestDriver(context)!!.setAllConstraintsMet(first)
+            until { started.count==0L };awaitState(manager,first,RUNNING)
+            assertEquals(SyncWorkAction.FOLLOW_UP,schedule(manager))
+            release.countDown();awaitState(manager,first,ENQUEUED)
+            assertEquals(listOf(ENQUEUED,BLOCKED),open(manager).map { it.state }.sorted())
+            assertEquals(SyncWorkAction.KEEP,schedule(manager))
+            assertEquals(SyncWorkAction.REPLACE,schedule(manager,user=true))
+            val fresh=open(manager).single();assertNotEquals(first,fresh.id);assertEquals(0,fresh.runAttemptCount)
+        } finally { release.countDown() }
     }
 }

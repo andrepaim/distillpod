@@ -52,7 +52,13 @@ class SubscriptionSyncAccount(private val graph:AppGraph) {
     // Content-free report, once per record kind and process: rules drift is visible without the record.
     private val reportedRejections=java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     private val coordinator by lazy { SubscriptionSyncCoordinator(graph.db,cloud) { kind,error -> if(reportedRejections.add(kind))graph.diagnostics.failure("sync",error) } }
-    private val scheduler by lazy { SubscriptionSyncScheduler(graph.scope) { user -> scheduleSubscriptionWork(WorkManager.getInstance(context),user,::subscriptionSyncRequest) } }
+    private val scheduler by lazy {
+        SubscriptionSyncScheduler(graph.scope,failed={ graph.diagnostics.failure("sync",it) }) { user ->
+            // A paused library needs no runs; resume and connect kick again after enabling it.
+            val active=graph.db.sync().binding()?.enabled==true
+            scheduleSubscriptionWork(WorkManager.getInstance(context),user,active,::subscriptionSyncRequest)
+        }
+    }
     private val connecting=Mutex()
     init {
         if(mutable.value.configured) {

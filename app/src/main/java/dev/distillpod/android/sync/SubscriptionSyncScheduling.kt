@@ -5,39 +5,51 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
 internal const val SUBSCRIPTION_SYNC_WORK="subscription-sync"
 
-internal enum class SyncWorkAction { ENQUEUE, KEEP, FOLLOW_UP, REPLACE }
+internal enum class SyncWorkAction { ENQUEUE, KEEP, FOLLOW_UP, REPLACE, SKIP }
+internal data class SyncWorkSnapshot(val state:WorkInfo.State,val runAttemptCount:Int=0,val nextScheduleTimeMillis:Long=Long.MAX_VALUE)
+
+/** Backoff ending sooner than this is treated as about to run, so a user request does not race its start. */
+private const val BACKOFF_REPLACE_MARGIN_MS=5_000L
 
 /**
  * Merges a sync request with the unique work already present: nothing open starts a run; queued
- * work (including work waiting in backoff) is kept unless the user asked to sync now; a running
- * sync gets exactly one follow-up and is never cancelled.
+ * work is kept; a running sync gets exactly one follow-up and is never cancelled. A user request
+ * replaces only a run that is waiting in retry backoff. WorkManager has no conditional replace, so
+ * the margin narrows, but cannot remove, the window in which that run starts meanwhile.
  */
-internal fun subscriptionWorkAction(states:List<WorkInfo.State>,user:Boolean):SyncWorkAction {
-    val open=states.filter { !it.isFinished }
+internal fun subscriptionWorkAction(work:List<SyncWorkSnapshot>,user:Boolean,now:Long):SyncWorkAction {
+    val open=work.filter { !it.state.isFinished }
     return when {
         open.isEmpty() -> SyncWorkAction.ENQUEUE
-        WorkInfo.State.RUNNING in open -> if(open.size==1) SyncWorkAction.FOLLOW_UP else SyncWorkAction.KEEP
-        user -> SyncWorkAction.REPLACE
+        open.any { it.state==WorkInfo.State.RUNNING } -> if(open.size==1) SyncWorkAction.FOLLOW_UP else SyncWorkAction.KEEP
+        user && open.any { it.state==WorkInfo.State.ENQUEUED && it.runAttemptCount>0 && it.nextScheduleTimeMillis>now+BACKOFF_REPLACE_MARGIN_MS } -> SyncWorkAction.REPLACE
         else -> SyncWorkAction.KEEP
     }
 }
 
 /** Callers must serialize this; [SubscriptionSyncScheduler] runs it from a single consumer. */
-internal suspend fun scheduleSubscriptionWork(manager:WorkManager,user:Boolean,request:()->OneTimeWorkRequest):SyncWorkAction {
-    val states=withContext(Dispatchers.IO) { manager.getWorkInfosForUniqueWork(SUBSCRIPTION_SYNC_WORK).get(30,TimeUnit.SECONDS) }.map { it.state }
-    val action=subscriptionWorkAction(states,user)
+internal suspend fun scheduleSubscriptionWork(manager:WorkManager,user:Boolean,active:Boolean=true,request:()->OneTimeWorkRequest):SyncWorkAction {
+    if(!active)return SyncWorkAction.SKIP
+    val work=withContext(Dispatchers.IO) { manager.getWorkInfosForUniqueWork(SUBSCRIPTION_SYNC_WORK).get(30,TimeUnit.SECONDS) }
+        .map { SyncWorkSnapshot(it.state,it.runAttemptCount,it.nextScheduleTimeMillis) }
+    return enqueueSubscriptionWork(manager,subscriptionWorkAction(work,user,System.currentTimeMillis()),request)
+}
+
+internal suspend fun enqueueSubscriptionWork(manager:WorkManager,action:SyncWorkAction,request:()->OneTimeWorkRequest):SyncWorkAction {
     val policy=when(action) {
-        SyncWorkAction.KEEP -> return action
+        SyncWorkAction.KEEP,SyncWorkAction.SKIP -> return action
         SyncWorkAction.ENQUEUE -> ExistingWorkPolicy.KEEP
-        // Appends behind the running sync; a chain that failed meanwhile is replaced instead.
+        // Appends behind the running sync; if it finished meanwhile, starts or replaces the chain.
         SyncWorkAction.FOLLOW_UP -> ExistingWorkPolicy.APPEND_OR_REPLACE
         SyncWorkAction.REPLACE -> ExistingWorkPolicy.REPLACE
     }
@@ -50,22 +62,32 @@ internal fun subscriptionSyncRequest():OneTimeWorkRequest=OneTimeWorkRequestBuil
     .setBackoffCriteria(BackoffPolicy.EXPONENTIAL,30,TimeUnit.SECONDS).build()
 
 /**
- * Thread-safe trigger coalescing. Requests from any thread land in a conflated channel; one
- * consumer waits [debounceMs] after the first request of a burst, then makes one scheduling
- * decision. A request arriving during that decision schedules once more, so none is lost.
- * A user request skips the wait.
+ * Thread-safe trigger coalescing. Requests from any thread land in a conflated channel read by one
+ * consumer, which waits until no request arrived for [debounceMs] (at most [maxWaitMs] in total) and
+ * then makes one scheduling decision. A request during a decision schedules once more, so none is
+ * lost. A user request ends the wait immediately and survives a failed decision.
  */
-internal class SubscriptionSyncScheduler(scope:CoroutineScope,private val debounceMs:Long=300,private val schedule:suspend (user:Boolean)->Unit) {
+internal class SubscriptionSyncScheduler(scope:CoroutineScope,private val debounceMs:Long=300,private val maxWaitMs:Long=2_000,
+    private val clock:()->Long={ System.nanoTime()/1_000_000 },private val failed:(Exception)->Unit={},private val schedule:suspend (user:Boolean)->Unit) {
     private val requests=Channel<Unit>(Channel.CONFLATED)
     private val user=AtomicBoolean(false)
     init {
         scope.launch {
-            for(request in requests) {
-                if(!user.get())delay(debounceMs)
+            for(first in requests) {
+                val started=clock()
+                while(!user.get()) {
+                    val remaining=maxWaitMs-(clock()-started)
+                    if(remaining<=0 || withTimeoutOrNull(minOf(debounceMs,remaining)) { requests.receive() }==null)break
+                }
                 requests.tryReceive()
-                try { schedule(user.getAndSet(false)) }
-                catch(cancelled:CancellationException) { throw cancelled }
-                catch(_:Exception) { /* The periodic recovery work and the next trigger retry scheduling. */ }
+                val requested=user.getAndSet(false)
+                try { schedule(requested) }
+                catch(error:Exception) {
+                    // A cancelled WorkManager future is also a CancellationException; only our own cancellation ends the loop.
+                    if(error is CancellationException)currentCoroutineContext().ensureActive()
+                    if(requested)user.set(true)
+                    failed(error)
+                }
             }
         }
     }
