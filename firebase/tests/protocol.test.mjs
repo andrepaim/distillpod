@@ -19,9 +19,11 @@ async function seed(uid='alice',protocol=1) { await env.withSecurityRulesDisable
 }); }
 const validPayload={subscribed:'true',podcastId:'podcast1',feedUrl:'https://example.test/feed',originalFeedUrl:'https://example.test/feed',title:'Show',author:'Author'};
 async function commit(database, {uid='alice',id='op1',key='subscription_item1',baseVersion=0,payload=validPayload,deleted=false,generation='g1'}={}) {
- let observedSequence;
+ let observedSequence, staged=false;
  for(let attempt=0;attempt<5;attempt++) {
+ staged=false;
  try { return await runTransaction(database,async tx=>{
+  staged=false;
   const headRef=doc(database,control(uid)), entityRef=doc(database,`${control(uid)}/entities/${key}`), receiptRef=doc(database,`${control(uid)}/receipts/${id}`);
   const [head,entity,receipt]=await Promise.all([tx.get(headRef),tx.get(entityRef),tx.get(receiptRef)]);
   observedSequence=head.data().sequence;
@@ -29,7 +31,7 @@ async function commit(database, {uid='alice',id='op1',key='subscription_item1',b
   if(receipt.exists()) { if(receipt.data().signature!==signature) throw Error('Operation ID reused'); return receipt.data(); }
   if(head.data().generation!==generation || !head.data().active) throw Error('Account unavailable');
   if((entity.exists()?entity.data().version:0)!==baseVersion) throw Error('Conflict');
-  const sequence=head.data().sequence+1;
+  const sequence=head.data().sequence+1; staged=true;
   const value={version:baseVersion+1,payload:deleted?{}:payload,deleted,generation,sequence,operationId:id};
   const result={signature,key,version:value.version,sequence,generation};
   tx.update(headRef,{sequence}); tx.set(entityRef,value);
@@ -40,7 +42,10 @@ async function commit(database, {uid='alice',id='op1',key='subscription_item1',b
    // Retry only after proving the same account head advanced; never ignore denial.
    if(error.code!=='permission-denied' || observedSequence===undefined || attempt===4) throw error;
    const latest=(await getDocFromServer(doc(database,control(uid)))).data();
-   if(!latest.active || latest.generation!==generation || latest.sequence<=observedSequence) throw error;
+   if(!latest.active || latest.generation!==generation) throw error;
+   // Without head advancement, refused staged writes are this operation's deterministic rejection;
+   // FirebaseSubscriptionCloud reports it as SyncOperationRejected and the outbox continues.
+   if(latest.sequence<=observedSequence) { if(staged) error.rejected=true; throw error; }
  }
  }
 }
@@ -94,4 +99,17 @@ test('protocol three validates moment schema and bounds metadata',async()=>{
  for(const [i,extra] of [{momentSchema:'3',sourceJson:''},{momentSchema:'2'},{sourceJson:''},{momentSchema:'2',sourceJson:'x'.repeat(32769)}].entries())
   await assertFails(commit(a,{key:'moment_moment1',id:`bad-context-${i}`,payload:{...moment,...extra}}));
  await assertSucceeds(commit(a,{key:'moment_moment1',payload:{...moment,momentSchema:'2',sourceJson:'',quote:''}}));
+});
+
+test('rules refusal of a staged write is a deterministic operation rejection and later work continues',async()=>{
+ await seed();const a=db('alice');
+ const refused=await commit(a,{key:'preference_model',payload:{value:'tiny'}}).then(()=>assert.fail('Write accepted'),error=>error);
+ assert.equal(refused.code,'permission-denied');assert.equal(refused.rejected,true);
+ assert.equal((await getDocFromServer(doc(a,'users/alice'))).data().sequence,0);
+ const accepted=await commit(a,{id:'op2'});assert.equal(accepted.sequence,1);
+});
+test('denied account reads are not operation rejections',async()=>{
+ await seed();
+ const denied=await commit(db('bob'),{uid:'alice'}).then(()=>assert.fail('Read allowed'),error=>error);
+ assert.equal(denied.code,'permission-denied');assert.notEqual(denied.rejected,true);
 });
