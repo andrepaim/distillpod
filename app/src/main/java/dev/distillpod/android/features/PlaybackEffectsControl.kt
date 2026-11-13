@@ -12,7 +12,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -51,8 +50,7 @@ internal data class PlaybackEffectsState(val speed: Float = 1f, val showTitle: S
         state.showTitle?.let { show ->
             val description = "Keep this speed for $show"
             Row(Modifier.fillMaxWidth().heightIn(min = 48.dp)
-                .toggleable(value = state.keepsShowSpeed, role = Role.Switch, onValueChange = onKeepForShow)
-                .semantics { contentDescription = description }, verticalAlignment = Alignment.CenterVertically) {
+                .toggleable(value = state.keepsShowSpeed, role = Role.Switch, onValueChange = onKeepForShow), verticalAlignment = Alignment.CenterVertically) {
                 Text(description, Modifier.weight(1f).padding(end = 12.dp), style = MaterialTheme.typography.bodyMedium)
                 Switch(checked = state.keepsShowSpeed, onCheckedChange = null)
             }

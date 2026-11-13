@@ -52,10 +52,10 @@ class PlaybackEffectsControlTest {
 
     @Test fun keepingASpeedForTheShow() {
         show()
-        compose.onNodeWithContentDescription("Keep this speed for Synthetic Show").assertIsOff().performClick()
+        compose.onNodeWithText("Keep this speed for Synthetic Show").assertIsOff().performClick()
         assertEquals(listOf("keep:true"), calls)
         state.value = state.value.copy(keepsShowSpeed = true)
-        compose.onNodeWithContentDescription("Keep this speed for Synthetic Show").assertIsOn().performClick()
+        compose.onNodeWithText("Keep this speed for Synthetic Show").assertIsOn().performClick()
         assertEquals(listOf("keep:true", "keep:false"), calls)
     }
 

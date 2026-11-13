@@ -141,4 +141,16 @@ class PlaybackSpeedControllerTest {
         f.choose(1.9f)
         assertEquals(SpeedPreferences(1.9f, mapOf("x" to 1.8f)), f.stored)
     }
+
+    @Test fun `a real choice is recorded even when a late emission makes it look like the stored speed`() {
+        val f = Fixture(SpeedPreferences(global = 1f))
+        f.item("y1")
+        f.choose(1.1f); f.choose(1.2f)
+        // The emission for the 1.1 write arrives after the 1.2 choice.
+        f.controller.preferencesChanged(SpeedPreferences(global = 1.1f)); f.scope.runCurrent()
+        val before = f.saves
+        f.choose(1.1f)
+        assertEquals("Going back to 1.1 is a choice", before + 1, f.saves)
+        assertEquals(1.1f, f.stored.global!!, 0f)
+    }
 }

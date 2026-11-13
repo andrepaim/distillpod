@@ -32,6 +32,8 @@ internal class PlaybackSpeedController(
     /** A speed chosen before the current item's show or the preferences were known. */
     private var pending: Float? = null
     private var lookup: Job? = null
+    /** The speed this controller last applied; its report back is not a choice. */
+    private var applied: Float? = null
 
     fun preferencesChanged(value: SpeedPreferences) {
         val previous = preferences
@@ -59,13 +61,14 @@ internal class PlaybackSpeedController(
     fun speedChanged(speed: Float) {
         if (ignoreChanges()) return
         val value = PlaybackSpeeds.normalize(speed) ?: return
+        val own = value == applied
+        applied = null
+        if (own) return
         val prefs = preferences
         if (!resolved || prefs == null) {
             // The listener chose this speed for the new item: keep it rather than applying a stored one.
             pending = value; applyDue = false; return
         }
-        // Applying a stored speed reports the same value back; it is not a new choice.
-        if (prefs.target(show) == value) return
         record(prefs, value)
     }
 
@@ -76,7 +79,7 @@ internal class PlaybackSpeedController(
         if (!applyDue) return
         applyDue = false
         val target = prefs.target(show) ?: return
-        if (PlaybackSpeeds.normalize(player.speed) != target) player.speed = target
+        if (PlaybackSpeeds.normalize(player.speed) != target) { applied = target; player.speed = target }
     }
 
     private fun record(prefs: SpeedPreferences, value: Float) {
