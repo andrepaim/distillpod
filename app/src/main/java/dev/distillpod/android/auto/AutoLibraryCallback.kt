@@ -41,6 +41,8 @@ class AutoLibraryCallback(
     private val queueCommands: Set<SessionCommand> = emptySet(),
     private val onQueueCommand: ((SessionCommand,Bundle)->ListenableFuture<SessionResult>)? = null,
     private val preparePlaybackItems: suspend (List<MediaItem>) -> List<MediaItem> = { it },
+    /** Grants an accepted external controller read access to artwork URIs; the provider is not exported. */
+    private val allowArtwork: (String) -> Unit = {},
 ): MediaLibrarySession.Callback {
     override fun onPlayerCommandRequest(session: MediaSession, controller: MediaSession.ControllerInfo, playerCommand: Int): Int {
         if (controller.packageName != packageName && playerCommand in setOf(Player.COMMAND_PLAY_PAUSE,
@@ -83,6 +85,7 @@ class AutoLibraryCallback(
     }
     override fun onConnect(session: MediaSession,controller: MediaSession.ControllerInfo): MediaSession.ConnectionResult {
         if(controller.packageName!=packageName && !controller.isTrusted)return MediaSession.ConnectionResult.reject()
+        if(controller.packageName!=packageName)allowArtwork(controller.packageName)
         val base=super.onConnect(session,controller)
         val notification=session.isMediaNotificationController(controller)
         val commands=base.availableSessionCommands.buildUpon().add(SessionCommand(DISTILL,Bundle.EMPTY))

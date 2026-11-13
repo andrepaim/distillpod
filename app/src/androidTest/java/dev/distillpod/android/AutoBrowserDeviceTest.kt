@@ -125,6 +125,36 @@ class AutoBrowserDeviceTest {
             assertFalse(main {browser.isPlaying})
         } finally {main {browser.stop();browser.release()}}
     }
+    /** Another application (the shell here) reads artwork only through grants made for allowed controllers. */
+    @Test fun artworkIsReadableByAnotherAppOnlyAfterItIsAllowed() {
+        val reader="com.android.shell"
+        val info=context.packageManager.getProviderInfo(ComponentName(context,dev.distillpod.android.auto.AutoArtworkProvider::class.java),0)
+        assertFalse(info.exported)
+        fun key(url:String)=java.security.MessageDigest.getInstance("SHA-256").digest(url.toByteArray()).joinToString(""){"%02x".format(it)}+".jpg"
+        fun shellRead(uri:android.net.Uri)=instrumentation.uiAutomation.executeShellCommand("content read --uri $uri").use {
+            android.os.ParcelFileDescriptor.AutoCloseInputStream(it).readBytes()
+        }
+        val directory=java.io.File(context.cacheDir,"auto-art").apply {mkdirs()}
+        val earlier="https://example.invalid/earlier-${System.nanoTime()}.png"
+        val later="https://example.invalid/later-${System.nanoTime()}.png"
+        val earlierFile=java.io.File(directory,key(earlier)).apply {writeBytes("earlier artwork".toByteArray())}
+        val laterFile=java.io.File(directory,key(later))
+        val scope=kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob()+kotlinx.coroutines.Dispatchers.IO)
+        val art=dev.distillpod.android.auto.AutoArtwork(context,okhttp3.OkHttpClient(),scope)
+        val earlierUri=art.uri(earlier)
+        try {
+            assertEquals("Ungranted artwork must not be readable by other apps",0,shellRead(earlierUri).size)
+            runBlocking {art.allow(reader).join()}
+            assertArrayEquals(earlierFile.readBytes(),shellRead(earlierUri))
+            laterFile.writeBytes("later artwork".toByteArray())
+            val laterUri=art.uri(later)
+            assertArrayEquals(laterFile.readBytes(),shellRead(laterUri))
+        } finally {
+            for(uri in listOf(earlierUri,art.uri(later)))context.revokeUriPermission(uri,android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            earlierFile.delete();laterFile.delete()
+            scope.coroutineContext[kotlinx.coroutines.Job]!!.cancel()
+        }
+    }
     @Test fun platformLegacyBrowserConnectsAndSubscribesWithoutActivity() {
         seed();val ready=CountDownLatch(1);val loaded=CountDownLatch(1)
         val rows=java.util.concurrent.atomic.AtomicReference<List<PlatformBrowser.MediaItem>>()
