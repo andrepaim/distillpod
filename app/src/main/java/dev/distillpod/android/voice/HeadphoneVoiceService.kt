@@ -39,11 +39,16 @@ class HeadphoneVoiceService : Service() {
             DONE -> { if (graph.voice.state.value.origin == VoiceOrigin.HEADPHONES) graph.voice.finishQuestion(); if (binding == null) stopSelf(); return START_NOT_STICKY }
         }
         if (binding != null) return START_NOT_STICKY
-        if (!canArm(this) || !graph.voiceApiKey.hasKey()) { stopSelf(); return START_NOT_STICKY }
+        // arm() used startForegroundService(). Stopping before startForeground() makes Android
+        // crash the process (ForegroundServiceDidNotStartInTimeException), so promote first and
+        // only then honour a key removed after arm() checked it. Without microphone/notification
+        // permission there is no valid promotion; revoking either also restarts the process.
+        if (!canArm(this)) { stopSelf(); return START_NOT_STICKY }
         try {
             channel(this)
             ServiceCompat.startForeground(this, NOTIFICATION, notification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
         } catch (_: Exception) { stopSelf(); return START_NOT_STICKY }
+        if (!graph.voiceApiKey.hasKey()) { stopSelf(); return START_NOT_STICKY }
         binding = graph.headphoneVoice.attach {
             if (graph.voiceApiKey.hasKey()) {
                 val route = HeadphoneAudioRoute(this)

@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import dev.distillpod.android.data.*
+import dev.distillpod.android.work.DOWNLOAD_BLOCKED_MESSAGE
 import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.MockResponse
@@ -159,6 +160,78 @@ class ShowAutomationTest {
         db.automation().putJob(EpisodeAutomationEntity("e", "p", "retry"))
         processor.advance()
         assertEquals(1, downloads)
+    }
+
+    private suspend fun AppDatabase.stage(id: String) = automation().jobs().single { it.episodeId == id }.stage
+
+    @Test fun `a blocked job does not stop later episodes while running work stays serialized`() = fixture { db, _, _ ->
+        val file = java.io.File.createTempFile("episode", ".mp3")
+        try {
+            db.automation().putShow(ShowAutomationEntity("p", 0, true))
+            // Android refused the background download start (#138); only the user can resume it.
+            db.library().putEpisode(EpisodeEntity("a", "p", "a", "A", "https://example.test/a", downloadState = "paused", error = DOWNLOAD_BLOCKED_MESSAGE))
+            // Transcribed, but its analysis was left without running work.
+            db.library().putEpisode(EpisodeEntity("b", "p", "b", "B", "https://example.test/b", localFile = file.path, downloadState = "downloaded", mediaFingerprint = "f"))
+            db.library().putTranscript(TranscriptEntity("b", "r", "f", "tiny", "en", state = "ready"))
+            db.library().putAnalysis(AnalysisEntity("b", "r", state = "stale"))
+            db.library().putEpisode(EpisodeEntity("c", "p", "c", "C", "https://example.test/c"))
+            db.library().putEpisode(EpisodeEntity("d", "p", "d", "D", "https://example.test/d"))
+            db.automation().insertJob(EpisodeAutomationEntity("a", "p"))
+            db.automation().insertJob(EpisodeAutomationEntity("b", "p", "analyzing"))
+            db.automation().insertJob(EpisodeAutomationEntity("c", "p"))
+            db.automation().insertJob(EpisodeAutomationEntity("d", "p"))
+            val downloads = mutableListOf<String>()
+            val processor = AutomationProcessor(db, { true }, { id ->
+                downloads += id
+                db.library().putEpisode(db.library().episode(id)!!.copy(downloadState = "queued"))
+            }, { error("Unexpected transcript") }, { error("Unexpected analysis") })
+            processor.advance()
+            assertEquals(listOf("c"), downloads)
+            assertEquals("blocked", db.stage("a"))
+            assertEquals("blocked", db.stage("b"))
+            assertEquals("downloading", db.stage("c"))
+            // D waits for C's active download; blocked jobs do not count as pending work.
+            assertEquals("queued", db.stage("d"))
+            processor.advance()
+            assertEquals(listOf("c"), downloads)
+        } finally { file.delete() }
+    }
+
+    @Test fun `clearing a blocker resumes the job`() = fixture { db, _, _ ->
+        val file = java.io.File.createTempFile("episode", ".mp3")
+        try {
+            db.automation().putShow(ShowAutomationEntity("p", 0, true))
+            val a = EpisodeEntity("a", "p", "a", "A", "https://example.test/a", downloadState = "paused", error = DOWNLOAD_BLOCKED_MESSAGE, mediaFingerprint = "f")
+            db.library().putEpisode(a)
+            db.library().putEpisode(EpisodeEntity("b", "p", "b", "B", "https://example.test/b"))
+            db.automation().insertJob(EpisodeAutomationEntity("a", "p"))
+            db.automation().insertJob(EpisodeAutomationEntity("b", "p"))
+            val actions = mutableListOf<String>()
+            val processor = AutomationProcessor(db, { true }, { id ->
+                actions += "download:$id"
+                db.library().putEpisode(db.library().episode(id)!!.copy(downloadState = "queued"))
+            }, { id ->
+                actions += "transcribe:$id"
+                db.library().putTranscript(TranscriptEntity(id, "r", "f", "tiny", "en", state = "waiting_model"))
+            }, { error("Unexpected analysis") })
+            processor.advance()
+            assertEquals(listOf("download:b"), actions)
+            assertEquals("blocked", db.stage("a"))
+            // Resume in the app re-queues A's request itself.
+            db.library().putEpisode(a.copy(downloadState = "queued", error = null))
+            processor.advance()
+            assertEquals("downloading", db.stage("a"))
+            assertEquals(listOf("download:b"), actions)
+            db.library().putEpisode(a.copy(localFile = file.path, downloadState = "downloaded", error = null))
+            processor.advance()
+            assertEquals(listOf("download:b", "transcribe:a"), actions)
+            // Without a model the transcript waits; later jobs are not held behind it.
+            assertEquals("blocked", db.stage("a"))
+            db.library().putTranscript(db.library().transcript("a")!!.copy(state = "queued"))
+            processor.advance()
+            assertEquals("transcribing", db.stage("a"))
+            assertEquals(listOf("download:b", "transcribe:a"), actions)
+        } finally { file.delete() }
     }
 
 }

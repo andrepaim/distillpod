@@ -14,6 +14,7 @@ on:
       - 'design/icon-proposal/assets/Manrope-OFL.txt'
   pull_request:
     branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
   workflow_dispatch:
   workflow_call:
     inputs:
@@ -28,6 +29,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -40,6 +42,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       mode: ${{ steps.select.outputs.mode }}
+      reuse_run_id: ${{ steps.select.outputs.reuse_run_id }}
       docs_validated: ${{ steps.select.outputs.docs_validated }}
       checkout_sha: ${{ steps.select.outputs.checkout_sha }}
       changed_count: ${{ steps.select.outputs.changed_count }}
@@ -52,9 +55,14 @@ jobs:
         run: |
           python3 -m unittest discover -s scripts -p 'test_ci_validation.py'
           python3 -m unittest discover -s scripts -p 'test_docs_validation.py'
+          python3 -m unittest discover -s scripts -p 'test_ci_throughput.py'
+          python3 -m unittest discover -s scripts -p 'test_ci_validation_proof.py'
       - name: Select from the complete PR diff
         id: select
         env:
+          GH_TOKEN: ${{ github.token }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+          PR_IS_DRAFT: ${{ github.event.pull_request.draft }}
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           WORKFLOW_INPUTS_CONTEXT: ${{ toJSON(inputs) }}
@@ -93,6 +101,9 @@ jobs:
           npm --prefix firebase run test:emulator
           npm --prefix firebase run test:storage
 
+      - name: Verify validation source
+        run: python3 scripts/ci_validation_proof.py check-source
+
   android_build:
     needs: plan
     if: needs.plan.outputs.mode == 'full'
@@ -119,7 +130,10 @@ jobs:
       - name: Install pinned native tools
         run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0' 'ndk;27.2.12479018' 'cmake;3.22.1'
       - name: Validate release tooling
-        run: python3 -m unittest discover -s scripts -p 'test_*.py'
+        run: |
+          python3 -m unittest discover -s scripts -p 'test_*.py'
+          python3 scripts/verify_emulator_abi.py
+          ./gradlew --stop
       - name: Test, lint and build
         env:
           GH_TOKEN: ${{ github.token }}
@@ -145,6 +159,8 @@ jobs:
           umask 077
           printf '%s' "$FIREBASE_CONFIG_JSON" > "$config_file"
           ./gradlew --no-daemon --stacktrace --no-build-cache :app:lintRelease :app:assembleRelease -PdistillpodVoiceEnabled=true "-PdistillpodFirebaseConfig=$config_file"
+      - name: Verify validation source
+        run: python3 scripts/ci_validation_proof.py check-source
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
@@ -186,6 +202,9 @@ jobs:
           cmake --build /tmp/distillpod-native --parallel 2
           ctest --test-dir /tmp/distillpod-native --output-on-failure
 
+      - name: Verify validation source
+        run: python3 scripts/ci_validation_proof.py check-source
+
   emulator:
     needs: plan
     if: needs.plan.outputs.mode == 'full'
@@ -194,6 +213,9 @@ jobs:
     timeout-minutes: 35
     env:
       GRADLE_OPTS: -Dorg.gradle.caching=true
+      DISTILLPOD_EMULATOR_ABI: x86_64
+      DISTILLPOD_FAILURE_DIAGNOSTICS: 'true'
+      DISTILLPOD_SERIAL: emulator-5554
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -241,10 +263,12 @@ jobs:
           arch: x86_64
           disable-animations: true
           script: |
-            DISTILLPOD_SERIAL=emulator-5554 scripts/startup56-emulator-tests.sh
-            DISTILLPOD_SERIAL=emulator-5554 scripts/emulator-tests.sh /tmp/distillpod-fixtures
-            JAVA_HOME="$DISTILLPOD_FIREBASE_JAVA" PATH="$DISTILLPOD_FIREBASE_JAVA/bin:$PATH" firebase/node_modules/.bin/firebase --config firebase/firebase.json emulators:exec --only auth,firestore,storage --project demo-distillpod-sync 'env DISTILLPOD_SERIAL=emulator-5554 scripts/sync-device-tests.sh'
-            DISTILLPOD_SERIAL=emulator-5554 scripts/voice-device-tests.sh /tmp/distillpod-fixtures
+            python3 scripts/ci_phase.py startup -- env DISTILLPOD_SERIAL=emulator-5554 scripts/startup56-emulator-tests.sh
+            python3 scripts/ci_phase.py ordinary -- env DISTILLPOD_SERIAL=emulator-5554 scripts/emulator-tests.sh /tmp/distillpod-fixtures
+            python3 scripts/ci_phase.py cloud -- env JAVA_HOME="$DISTILLPOD_FIREBASE_JAVA" PATH="$DISTILLPOD_FIREBASE_JAVA/bin:$PATH" firebase/node_modules/.bin/firebase --config firebase/firebase.json emulators:exec --only auth,firestore,storage --project demo-distillpod-sync 'env DISTILLPOD_SERIAL=emulator-5554 scripts/sync-device-tests.sh'
+            python3 scripts/ci_phase.py voice -- env DISTILLPOD_SERIAL=emulator-5554 scripts/voice-device-tests.sh /tmp/distillpod-fixtures
+      - name: Verify validation source
+        run: python3 scripts/ci_validation_proof.py check-source
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
@@ -255,6 +279,8 @@ jobs:
             /tmp/distillpod-sync-device.log*
             /tmp/distillpod-voice-device.log
             /tmp/distillpod-startup56-device.log
+            /tmp/distillpod-ci-phase-timings.jsonl
+            /tmp/distillpod-ci-failure-state.jsonl
           retention-days: 14
 
   android:
@@ -268,8 +294,21 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
       - name: Require successful selected validation
         env:
           WORKFLOW_INPUTS_CONTEXT: ${{ toJSON(inputs) }}
           VALIDATION_NEEDS: ${{ toJSON(needs) }}
+          GH_TOKEN: ${{ github.token }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          CI_PROOF_OUTPUT: ${{ runner.temp }}/distillpod-ci-proof/proof.json
         run: python3 scripts/ci_validation.py gate
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: needs.plan.outputs.mode == 'full' && github.event_name == 'pull_request' && toJSON(inputs) == '{}'
+        with:
+          name: ci-validation-proof-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/distillpod-ci-proof/proof.json
+          if-no-files-found: error
+          retention-days: 7

@@ -27,7 +27,7 @@ class AppGraph internal constructor(val context: Context, val scope: CoroutineSc
     val syncAccount by lazy { dev.distillpod.android.sync.SubscriptionSyncAccount(this) }
     val youtube = dev.distillpod.android.video.YouTubeSource(dev.distillpod.android.video.AndroidYouTubeExtractor(context) { name, reason, elapsed, operation ->
         diagnostics.event(name, operation = operation, reason = reason, elapsedMs = elapsed)
-    }).apply { onStreamRefresh = { diagnostics.event("youtube.stream_refreshed", reason = "ready") } }
+    }, dev.distillpod.android.video.HttpYouTubeMetadataFetcher(http)).apply { onStreamRefresh = { diagnostics.event("youtube.stream_refreshed", reason = "ready") } }
     val podcasts = PodcastRepository(db, http, onSubscriptionChanged = { syncAccount.kick() }, onFeedNeeded = { jobs.refresh(it) }, youtube = youtube)
     val portableSync by lazy {dev.distillpod.android.sync.PortableLibrarySync(db,changed={syncAccount.kick()})}
     val collectionSync by lazy {dev.distillpod.android.sync.CollectionSync(db,changed={syncAccount.kick()})}
@@ -110,8 +110,7 @@ class AppGraph internal constructor(val context: Context, val scope: CoroutineSc
             }
             portableSync.releaseSessions(); importFeasibility(); understanding.recoverInterrupted(); explanations.recoverInterrupted(); recommendations.recoverInterrupted()
             db.library().distillations().filter { it.state == "queued" }.forEach { jobs.capture(it.id) }
-            db.library().episodes().filter { it.downloadState in listOf("queued", "downloading") }.forEach { jobs.download(it.id) }
-            db.library().observeModels().first().filter { it.state in listOf("queued", "downloading") }.forEach { jobs.model(it.id) }
+            jobs.recoverDownloads()
             db.library().observePosts().first().forEach { row ->
                 val post = runCatching { SocialResult.parse(row.content) }.getOrNull()
                 if (post != null && post.stage in listOf("queued", "preparing", "researching", "illustrating")) {

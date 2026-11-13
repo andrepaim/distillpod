@@ -1,0 +1,14 @@
+// Offline, separately installed show automation scheduling probe (#140). Never use for production.
+allprojects {
+    afterEvaluate {
+        if (path == ':app') {
+            if (System.getenv('SENTRY_DSN')) throw new GradleException('Validation requires empty SENTRY_DSN')
+            if (project.hasProperty('distillpodFirebaseConfig')) throw new GradleException('Validation forbids Firebase configuration')
+            android.defaultConfig.applicationId = project.findProperty('automation140Package') ?: 'dev.distillpod.android.validation.automation140'
+            if (!android.defaultConfig.applicationId.startsWith('dev.distillpod.android.validation.automation140'))
+                throw new GradleException('Validation package must be dev.distillpod.android.validation.automation140*')
+            android.sourceSets.debug.java.srcDir('src/validationAutomation140/java')
+            android.sourceSets.debug.manifest.srcFile('src/validationAutomation140/AndroidManifest.xml')
+        }
+    }
+}

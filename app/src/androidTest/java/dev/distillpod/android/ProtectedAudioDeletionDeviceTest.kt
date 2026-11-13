@@ -3,6 +3,7 @@ package dev.distillpod.android
 import android.os.Build
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.lifecycle.ViewModelProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -100,7 +101,8 @@ class ProtectedAudioDeletionDeviceTest {
                 vm.episodes.value.any { it.id == id } &&
                     vm.audioDeletionBlocks.value[id] == AudioDeletionBlockReason.QUEUED
             }
-            compose.onNode(hasScrollToNodeAction())
+            compose.onNode(hasScrollToNodeAction() and
+                SemanticsMatcher.keyIsDefined(SemanticsProperties.VerticalScrollAxisRange))
                 .performScrollToNode(hasContentDescription("More actions for Protected audio fixture"))
             compose.onNodeWithContentDescription("More actions for Protected audio fixture").assertIsDisplayed().performClick()
             compose.onNodeWithText("Delete download").assertIsNotEnabled()

@@ -1,0 +1,28 @@
+// Disposable hosted acceptance only. Normal/debug/distribution ABI defaults stay intact.
+def selected = System.getenv('DISTILLPOD_EMULATOR_ABI')
+if (selected != null) {
+    if (selected != 'x86_64' || System.getenv('GITHUB_ACTIONS') != 'true' ||
+        System.getenv('RUNNER_ENVIRONMENT') != 'github-hosted' ||
+        !(System.getenv('DISTILLPOD_SERIAL') ?: '').startsWith('emulator-') ||
+        gradle.startParameter.taskNames.any { it.toLowerCase().contains('release') }) {
+        throw new GradleException('Emulator ABI selection requires hosted x86_64 emulator debug validation')
+    }
+    gradle.taskGraph.whenReady { graph ->
+        if (graph.allTasks.any { it.name.toLowerCase().contains('release') }) {
+            throw new GradleException('Emulator ABI selection forbids release tasks, including aliases')
+        }
+    }
+    allprojects {
+        afterEvaluate {
+            if (path == ':app') {
+                def filters = android.defaultConfig.ndk.abiFilters
+                if (filters as Set != ['arm64-v8a', 'x86_64'] as Set) {
+                    throw new GradleException('Emulator ABI selection found unexpected default ABI filters')
+                }
+                filters.clear()
+                filters.add('x86_64')
+                println 'Emulator ABI selection: x86_64; full Android validation retains both ABIs'
+            }
+        }
+    }
+}

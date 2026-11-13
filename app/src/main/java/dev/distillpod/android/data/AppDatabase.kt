@@ -142,8 +142,14 @@ interface LibraryDao {
     @Query("UPDATE episodes SET positionMs=:position, durationMs=CASE WHEN :duration>0 THEN :duration ELSE durationMs END, completed=CASE WHEN :complete THEN 1 ELSE completed END, lastPlayedAt=:at WHERE id=:id")
     suspend fun progress(id: String, position: Long, duration: Long, complete: Boolean, at: Long)
     @Query("UPDATE episodes SET completed=:complete WHERE id=:id") suspend fun markCompleted(id: String, complete: Boolean)
+    /** Fill source metadata that is still missing; never replace known values or touch listening state. */
+    @Query("UPDATE episodes SET publishedAt=CASE WHEN publishedAt<=0 AND :publishedAt>0 THEN :publishedAt ELSE publishedAt END, description=CASE WHEN description='' THEN :description ELSE description END WHERE id=:id")
+    suspend fun fillMissingEpisodeMetadata(id: String, publishedAt: Long, description: String)
     @Query("UPDATE episodes SET downloadState=:state, downloadedBytes=:bytes, totalBytes=:total, etag=:etag, lastModified=:modified, error=:error WHERE id=:id")
     suspend fun downloadProgress(id: String, state: String, bytes: Long, total: Long, etag: String?, modified: String?, error: String?)
+    /** Conditional so a late worker update cannot rewrite a pause, resume or completed download. */
+    @Query("UPDATE episodes SET downloadState=:to, error=:error WHERE id=:id AND downloadState IN (:from)")
+    suspend fun transitionDownload(id: String, from: List<String>, to: String, error: String?): Int
     @Query("UPDATE episodes SET localDownloadedAt=CASE WHEN localFile=:file THEN localDownloadedAt ELSE MAX(0,:completedAt) END, localFile=:file, mediaFingerprint=:fingerprint, downloadState='downloaded', downloadedBytes=:bytes, totalBytes=:bytes, error=NULL WHERE id=:id")
     suspend fun downloadComplete(id: String, file: String, fingerprint: String, bytes: Long, completedAt: Long = System.currentTimeMillis())
     @Query("UPDATE episodes SET localFile=NULL, localDownloadedAt=0, downloadState='none', downloadedBytes=0, error=NULL WHERE id=:id") suspend fun removeDownload(id: String)
@@ -193,6 +199,8 @@ interface LibraryDao {
     @Query("SELECT * FROM models") fun observeModels(): Flow<List<ModelEntity>>
     @Query("SELECT * FROM models WHERE id=:id") suspend fun model(id: String): ModelEntity?
     @Upsert suspend fun putModel(value: ModelEntity)
+    @Query("UPDATE models SET state=:to, error=:error WHERE id=:id AND state IN (:from)")
+    suspend fun transitionModel(id: String, from: List<String>, to: String, error: String?): Int
     @Query("SELECT * FROM analyses") fun observeAnalyses(): Flow<List<AnalysisEntity>>
     @Query("SELECT * FROM analyses") suspend fun analyses(): List<AnalysisEntity>
     @Query("SELECT * FROM analyses WHERE episodeId=:id") suspend fun analysis(id: String): AnalysisEntity?

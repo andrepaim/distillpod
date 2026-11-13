@@ -286,7 +286,8 @@ class YouTubeSourceTest {
             JSONObject("""{"id":"heoWstJTwu4","title":"Episode","upload_date":"20261107","duration":42}""")
         }.feed("show", "https://youtu.be/heoWstJTwu4?si=tracking")
         assertEquals(video, single.episodes.single().audioUrl)
-        assertEquals("2026-11-07T00:00:00Z", single.episodes.single().publishedAt)
+        // Date-only uploads are stored at 12:00 UTC so the day does not shift in local time zones (#125).
+        assertEquals("2026-11-07T12:00:00Z", single.episodes.single().publishedAt)
         val filtered = YouTubeSource { _, flat, limit ->
             assertTrue(flat)
             assertEquals(200, limit)

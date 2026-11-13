@@ -116,6 +116,9 @@ class AppViewModel(val graph: AppGraph, private val saved: SavedStateHandle) : V
         val candidate = search.value.results.firstOrNull { it.feedUrl == url }
         val id = if (candidate != null) graph.podcasts.follow(candidate) else graph.podcasts.subscribe(url); messages.send("Subscribed"); open("podcast:$id")
     }
+    val episodeDetails = graph.podcasts.episodeDetails
+    /** Quiet background check; the episode page shows checking, unavailable and retry states. */
+    fun loadEpisodeDetails(id: String) { viewModelScope.launch { graph.podcasts.loadEpisodeDetails(id) } }
     fun refresh(id: String? = null) = action("refresh") {
         if (id == null) graph.podcasts.refreshAll() else graph.podcasts.refresh(id)
         messages.send("Feed refresh finished")
@@ -134,12 +137,13 @@ class AppViewModel(val graph: AppGraph, private val saved: SavedStateHandle) : V
     fun removeQueue(id: String) = queueActions.submit { graph.playback.remove(id) }
     fun moveQueue(id: String, offset: Int) = queueActions.submit { graph.playback.move(id, offset) }
     fun download(id: String) = action("download:$id") { graph.jobs.download(id); messages.send("Download queued") }
-    fun pauseDownload(id: String) { graph.jobs.pauseDownload(id) }
+    fun pauseDownload(id: String) = action("pause:$id") { graph.jobs.pauseDownload(id) }
     fun deleteDownload(id: String) = action("delete:$id") { graph.media.deleteDownload(id) }
     fun clearUnusedAudio() = action("storage") { messages.send("Cleared ${fileSize(graph.media.clearUnusedAudio())} of unused audio. Queued and active files were kept.") }
     fun markCompleted(id: String, complete: Boolean) = action("completed:$id") { graph.portableSync.markCompleted(id, complete) }
     fun unsubscribe(id: String) = action("unsubscribe:$id") { graph.automation.setEnabled(id, false); graph.podcasts.unsubscribe(id); root("library") }
     fun downloadModel(id: String) = action("model:$id") { graph.jobs.model(id) }
+    fun pauseModel(id: String) = action("pause-model:$id") { graph.jobs.pauseModel(id) }
     fun deleteModel(id: String) = action("model:$id") { graph.media.deleteModel(id) }
     fun flag(key: String, value: Boolean) = action("settings") {
         graph.settings.flag(key, value)

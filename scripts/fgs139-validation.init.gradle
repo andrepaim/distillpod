@@ -1,0 +1,13 @@
+// Offline, separately installed foreground-service start probe (#139). Never use for production.
+allprojects {
+    afterEvaluate {
+        if (path == ':app') {
+            if (System.getenv('SENTRY_DSN')) throw new GradleException('Validation requires empty SENTRY_DSN')
+            if (project.hasProperty('distillpodFirebaseConfig')) throw new GradleException('Validation forbids Firebase configuration')
+            if (project.findProperty('distillpodVoiceEnabled') != 'true') throw new GradleException('Validation requires -PdistillpodVoiceEnabled=true')
+            android.defaultConfig.applicationId = 'dev.distillpod.android.validation.fgs139'
+            android.sourceSets.debug.java.srcDir('src/validationFgs139/java')
+            android.sourceSets.debug.manifest.srcFile('src/validationFgs139/AndroidManifest.xml')
+        }
+    }
+}

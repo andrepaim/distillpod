@@ -9,6 +9,7 @@ import android.content.pm.ServiceInfo
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.work.*
+import dev.distillpod.android.AppGraph
 import dev.distillpod.android.MainActivity
 import dev.distillpod.android.appGraph
 import dev.distillpod.android.data.*
@@ -59,8 +60,46 @@ class AppJobs(private val context: Context) {
                 .setConstraints(Constraints.Builder().setRequiredNetworkType(if (prefs.wifiOnly) NetworkType.UNMETERED else NetworkType.CONNECTED).build()).build())
         else manager.cancelUniqueWork("refresh-periodic")
     }
-    fun pauseDownload(id: String) { manager.cancelUniqueWork("download:$id") }
-    fun pauseModel(id: String) { manager.cancelUniqueWork("model:$id") }
+    /** Persist the pause too: work waiting for its network or backoff never runs to record it. */
+    suspend fun pauseDownload(id: String) = pause("download", id)
+    suspend fun pauseModel(id: String) = pause("model", id)
+    private suspend fun pause(kind: String, id: String) = downloadControls.withLock { withContext(Dispatchers.IO) {
+        manager.cancelUniqueWork("$kind:$id").result.get()
+        transition(kind, id, "paused", null)
+        Unit
+    } }
+    /**
+     * Only Pause (in the app or the notification) cancels a transfer request. Any other stop (network,
+     * job timeouts, quota, the FGS time limit) is rescheduled by WorkManager, so the row stays resumable
+     * unless the request was cancelled meanwhile. API 29-30 report no stop reason; WorkManager marks an
+     * app cancellation before it stops the worker.
+     */
+    internal suspend fun stopped(kind: String, id: String, workId: java.util.UUID, stopReason: Int?) = withContext(NonCancellable + Dispatchers.IO) {
+        downloadControls.withLock {
+            val byApp = stopReason?.let { it == WorkInfo.STOP_REASON_CANCELLED_BY_APP }
+                ?: (manager.getWorkInfoById(workId).get()?.state == WorkInfo.State.CANCELLED)
+            if (byApp) transition(kind, id, "paused", null, PAUSABLE_TRANSFER_STATES)
+            else if (manager.getWorkInfosForUniqueWork("$kind:$id").get().any { !it.state.isFinished })
+                transition(kind, id, "queued", null, PAUSABLE_TRANSFER_STATES)
+        }
+        Unit
+    }
+    /** Settle an active transfer that no longer has work; never rewrites a pause, resume or completion. */
+    internal suspend fun settle(kind: String, id: String, state: String, error: String?) =
+        withContext(NonCancellable + Dispatchers.IO) { downloadControls.withLock { transition(kind, id, state, error) }; Unit }
+    private suspend fun transition(kind: String, id: String, state: String, error: String?, from: List<String> = ACTIVE_TRANSFER_STATES) {
+        val dao = context.appGraph.db.library()
+        when (kind) {
+            "download" -> dao.transitionDownload(id, from, state, error)
+            "model" -> dao.transitionModel(id, from, state, error)
+        }
+    }
+    /** Startup restores interrupted transfers; paused and failed rows wait for the user. */
+    suspend fun recoverDownloads() {
+        val dao = context.appGraph.db.library()
+        dao.episodes().filter { it.downloadState in listOf("queued", "downloading") }.forEach { download(it.id) }
+        dao.observeModels().first().filter { it.state in listOf("queued", "downloading") }.forEach { model(it.id) }
+    }
     fun capture(id: String) { manager.enqueueUniqueWork("capture:$id", ExistingWorkPolicy.APPEND_OR_REPLACE,
         OneTimeWorkRequestBuilder<CaptureWorker>().setInputData(workDataOf("capture" to id))
             .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()).build()) }
@@ -92,21 +131,28 @@ class AppJobs(private val context: Context) {
         .addTag("$kind:$id").build()
 }
 
+private val ACTIVE_TRANSFER_STATES = listOf("queued", "downloading")
+/** The transfer records its own cancellation as paused before the worker classifies the stop. */
+private val PAUSABLE_TRANSFER_STATES = ACTIVE_TRANSFER_STATES + "paused"
+const val DOWNLOAD_BLOCKED_MESSAGE = "Android blocked the background download. Open DistillPod and tap Resume."
+const val MODEL_BLOCKED_MESSAGE = "Android blocked the background model download. Open DistillPod and tap Resume model download."
+
 class LibraryWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result {
         val graph = applicationContext.appGraph
         graph.ready.await()
+        val kind = inputData.getString("kind")
         val target = inputData.getString("id") ?: ""
         return try {
-            when (inputData.getString("kind")) {
+            when (kind) {
                 "download" -> {
-                    setForeground(workForeground(applicationContext, id, "Downloading episode"))
+                    startForeground("Downloading episode")?.let { return deferStart(graph, kind, target, it) }
                     graph.media.ensureDownloaded(target) { progress ->
                         runBlocking { setProgress(workDataOf("bytes" to progress.bytes, "total" to progress.total)) }
                     }
                 }
                 "model" -> {
-                    setForeground(workForeground(applicationContext, id, "Downloading transcription model"))
+                    startForeground("Downloading transcription model")?.let { return deferStart(graph, kind, target, it) }
                     graph.media.downloadModel(target) { progress ->
                         runBlocking { setProgress(workDataOf("bytes" to progress.bytes, "total" to progress.total)) }
                     }
@@ -115,22 +161,40 @@ class LibraryWorker(context: Context, params: WorkerParameters) : CoroutineWorke
                 "refresh" -> if(target.isBlank())graph.podcasts.refreshAll() else graph.podcasts.refresh(target)
                 else -> return Result.failure()
             }
-            graph.automation.kick()
+            // Show automation observes the resulting download, model and job state (#140).
             Result.success()
         } catch (cancelled: CancellationException) {
-            withContext(NonCancellable) {
-                if (inputData.getString("kind") == "download") graph.db.library().episode(target)?.let { ep ->
-                    graph.db.library().downloadProgress(target, "paused", ep.downloadedBytes, ep.totalBytes, ep.etag, ep.lastModified, null)
-                }
-                if (inputData.getString("kind") == "model") graph.db.library().model(target)?.let { graph.db.library().putModel(it.copy(state = "paused", error = null)) }
-            }
+            if (kind == "download" || kind == "model")
+                graph.jobs.stopped(kind, target, id, if (Build.VERSION.SDK_INT >= 31) stopReason else null)
             throw cancelled
         }
         catch (error: Exception) {
             graph.diagnostics.failure("worker", error)
-            if (inputData.getString("kind") == "download" && error is java.io.IOException && runAttemptCount < 3) Result.retry()
-            else Result.failure()
+            if (kind == "download" && error is java.io.IOException && runAttemptCount < 3) Result.retry()
+            else {
+                // A failure before the transfer starts must not leave the row queued without work.
+                if (kind == "download" || kind == "model") graph.jobs.settle(kind, target, "failed", safeFailure(error))
+                Result.failure()
+            }
         }
+    }
+
+    /** Returns Android's refusal of a background foreground-service start; other errors propagate. */
+    private suspend fun startForeground(title: String): Exception? = try {
+        setForeground(workForeground(applicationContext, id, title))
+        null
+    } catch (error: Exception) {
+        if (error is CancellationException) throw error
+        currentCoroutineContext().ensureActive()
+        if (error.isForegroundStartRejected()) error else throw error
+    }
+
+    /** Like transcription (#56): retry while the row stays queued, then pause with an actionable message. */
+    private suspend fun deferStart(graph: AppGraph, kind: String, target: String, error: Exception): Result {
+        if (runAttemptCount < MAX_FOREGROUND_START_ATTEMPTS - 1) return Result.retry()
+        graph.diagnostics.failure("worker", error)
+        graph.jobs.settle(kind, target, "paused", if (kind == "model") MODEL_BLOCKED_MESSAGE else DOWNLOAD_BLOCKED_MESSAGE)
+        return Result.failure()
     }
 }
 
@@ -145,7 +209,6 @@ class UnderstandingWorker(context: Context, params: WorkerParameters) : Coroutin
             "explain" -> graph.explanations.run(target)
             else -> return Result.failure()
         }
-        graph.automation.kick()
         return Result.success()
     }
 }

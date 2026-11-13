@@ -39,6 +39,34 @@ refresh, AI requests, account operations, and cloud-sync policy are unchanged.
 The setting remains device-local; no schema, backup format, release metadata, or
 production configuration changes are needed.
 
+## Background starts, pauses and system stops
+
+Audio and model downloads run as foreground work with a progress notification.
+Android 12+ can refuse to start that foreground service when the job begins
+while DistillPod is in the background, for example after a Wi-Fi constraint is
+met, after a retry backoff, from show automation or from startup recovery. As
+with transcription, the refusal is treated as a transient start delay. The row
+stays **Queued** and WorkManager retries the same request. After five refused
+attempts the row becomes **Paused**, showing "Android blocked the background
+download. Open DistillPod and tap Resume." (the model message is similar).
+Resuming keeps the partial file and its HTTP validators. Other errors raised
+before the transfer begins mark the row **Failed** instead of leaving it queued
+without work.
+
+**Pause** in the app cancels the request and records the pause, even when the
+request was still waiting for its network constraint or backoff, so a later
+app start does not resume it. The notification's Pause action is also an app
+cancellation. Any other stop (lost network, job time limits, quota, standby
+restrictions or the Android 15 foreground-service time limit) is not a user
+pause. WorkManager reschedules the request, so the row returns to **Queued** and
+the transfer resumes from its partial file.
+
+`DownloadForegroundRecoveryTest` drives the real `LibraryWorker` with an
+injected foreground updater that rejects, fails or never starts. It covers
+bounded retries before the pause message, Resume, pausing before start with
+startup recovery, and a system stop compared with an app cancellation during a
+loopback transfer.
+
 ## Regression checks
 
 `DownloadNetworkPolicyTest` exercises the actual Settings action and WorkManager

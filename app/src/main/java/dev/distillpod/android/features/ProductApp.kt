@@ -46,10 +46,6 @@ import dev.distillpod.android.DiagnosticsActivity
 import dev.distillpod.android.ai.AccountState
 import dev.distillpod.android.data.*
 import dev.distillpod.android.playback.PlaybackState
-import java.time.Instant
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
-import java.util.Locale
 
 private val ink = Color(0xFF0C0F16)
 private val accent = Color(0xFFB7B9FF)
@@ -67,7 +63,6 @@ fun timestamp(ms: Long): String {
     return if (seconds >= 3600) "%d:%02d:%02d".format(seconds / 3600, seconds / 60 % 60, seconds % 60) else "%d:%02d".format(seconds / 60, seconds % 60)
 }
 fun fileSize(bytes: Long): String = if (bytes >= 1_000_000_000) "%.1f GB".format(bytes / 1_000_000_000.0) else "%.0f MB".format(bytes / 1_000_000.0)
-private fun date(ms: Long) = if (ms <= 0) "" else DateTimeFormatter.ofPattern("dd MMM", Locale.getDefault()).withZone(ZoneId.systemDefault()).format(Instant.ofEpochMilli(ms))
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable fun ProductApp(vm: AppViewModel) {
@@ -204,7 +199,7 @@ private fun date(ms: Long) = if (ms <= 0) "" else DateTimeFormatter.ofPattern("d
         if (podcastId == null && filter == "all" && resume != null) item(key = "resume") {
             val current = player.episodeId == resume.id
             ResumeListeningCard(resume, podcasts.firstOrNull { it.id == resume.podcastId },
-                if (current) player.positionMs else resume.positionMs, if (current && player.durationMs > 0) player.durationMs else resume.durationMs,
+                listeningPosition(resume, player), listeningDuration(resume, player),
                 current && player.playing, { if (current) vm.open("player") else vm.open("episode:${resume.id}") },
                 { if (current) vm.toggle() else vm.play(resume.id) })
         }
@@ -247,8 +242,8 @@ private fun date(ms: Long) = if (ms <= 0) "" else DateTimeFormatter.ofPattern("d
 @OptIn(ExperimentalLayoutApi::class)
 @Composable private fun EpisodeCard(vm: AppViewModel, ep: EpisodeEntity, podcast: PodcastEntity?, player: PlaybackState, transcript: TranscriptEntity? = null, captureCount: Int = 0) {
     val current = player.episodeId == ep.id
-    val position = if (current) player.positionMs else ep.positionMs
-    val duration = if (current && player.durationMs > 0) player.durationMs else ep.durationMs
+    val position = listeningPosition(ep, player)
+    val duration = listeningDuration(ep, player)
     Card(onClick = { vm.open("episode:${ep.id}") }, shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
         Column(Modifier.padding(start = 14.dp, end = 8.dp, top = 14.dp, bottom = 4.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -256,7 +251,7 @@ private fun date(ms: Long) = if (ms <= 0) "" else DateTimeFormatter.ofPattern("d
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(podcast?.title ?: "Podcast", maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.secondary)
                     Text(ep.title, maxLines = 3, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                    Text(listOf(date(ep.publishedAt), if (position > 0 && !ep.completed) timeRemaining(duration, position) else duration.takeIf { it > 0 }?.let(::timestamp) ?: "").filter(String::isNotBlank).joinToString(" · "), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(listOf(episodeDate(ep.publishedAt), if (position > 0 && !ep.completed) timeRemaining(duration, position) else duration.takeIf { it > 0 }?.let(::timestamp) ?: "").filter(String::isNotBlank).joinToString(" · "), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 FilledTonalIconButton(onClick = { if (current && player.playing) vm.toggle() else vm.play(ep.id) }) {
                     Icon(if (current && player.playing) Icons.Default.Pause else Icons.Default.PlayArrow, "${if (current && player.playing) "Pause" else "Play"} ${ep.title}")
@@ -418,9 +413,13 @@ private fun date(ms: Long) = if (ms <= 0) "" else DateTimeFormatter.ofPattern("d
 @Composable private fun EpisodePage(vm: AppViewModel, ep: EpisodeEntity?, podcasts: List<PodcastEntity>, player: PlaybackState) {
     if (ep == null) { Empty("Episode unavailable", "Refresh the podcast or choose another saved episode."); return }
     val podcast = podcasts.firstOrNull { it.id == ep.podcastId }
+    val detailStates by vm.episodeDetails.collectAsStateWithLifecycle()
+    val needsDetails = ep.needsSourceDetails()
+    LaunchedEffect(ep.id, needsDetails) { if (needsDetails) vm.loadEpisodeDetails(ep.id) }
+    val metadata = episodeMetadataText(ep, detailStates[ep.id])
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Cover(ep.imageUrl ?: podcast?.imageUrl, Modifier.size(96.dp)); Column(Modifier.weight(1f)) { EpisodeShowLink(podcast, vm::open); Text(date(ep.publishedAt), style = MaterialTheme.typography.bodySmall) }
+            Cover(ep.imageUrl ?: podcast?.imageUrl, Modifier.size(96.dp)); Column(Modifier.weight(1f)) { EpisodeShowLink(podcast, vm::open); Text(metadata.date, style = MaterialTheme.typography.bodySmall) }
         }
         Text(ep.title, style = MaterialTheme.typography.headlineSmall)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -432,7 +431,12 @@ private fun date(ms: Long) = if (ms <= 0) "" else DateTimeFormatter.ofPattern("d
         TranscriptTools(vm, ep)
         EpisodeUnderstandingTools(vm, ep)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { OutlinedButton(onClick = { vm.enqueue(ep.id, true) }) { Text("Play next") }; OutlinedButton(onClick = { vm.enqueue(ep.id) }) { Text("Add to queue") } }
-        if (ep.description.isNotBlank()) SelectionContainer { Text(ep.description, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyLarge) }
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("Description", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            metadata.description?.let { SelectionContainer { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyLarge) } }
+            metadata.note?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium) }
+            if (metadata.retry) TextButton(onClick = { vm.loadEpisodeDetails(ep.id) }) { Text("Retry") }
+        }
     }
 }
 
@@ -462,18 +466,43 @@ private fun date(ms: Long) = if (ms <= 0) "" else DateTimeFormatter.ofPattern("d
     )
     val byId = episodes.associateBy { it.id }
     val shows = podcasts.associateBy { it.id }
-    LazyColumn(Modifier.testTag("queue-list"), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    val queue = player.queue
+    val currentIndex = queue.indexOf(player.episodeId)
+    val historyEnd = currentIndex.coerceAtLeast(0)
+    val nextStart = if (currentIndex >= 0) currentIndex + 1 else 0
+    // Controls, the history heading and its rows precede "Now playing".
+    val focusItem = if (historyEnd > 0) 2 + historyEnd else 0
+    val list = rememberLazyListState(initialFirstVisibleItemIndex = focusItem)
+    // Open at the current item, since a long history pushes it off screen. Reopening a saved
+    // route focuses it again; later edits on this screen keep the user's scroll position.
+    var focused by remember { mutableStateOf(false) }
+    LaunchedEffect(focusItem > 0) { if (!focused && focusItem > 0) list.scrollToItem(focusItem); focused = true }
+    @Composable fun row(index: Int, id: String) = byId[id]?.let { ep ->
+        QueueEpisodeCard(ep, shows[ep.podcastId], player, index + 1, index > 0,
+            index < queue.lastIndex, onOpen, onPlay, onToggle, onMove, onRemove)
+    }
+    LazyColumn(Modifier.testTag("queue-list"), state = list, contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item(key = "queue-controls") {
             SectionHeading("Playback order", "Episodes before the current item remain available to replay.")
             TextButton(onClick = { confirmClear = true }) { Icon(Icons.Default.ClearAll, null); Text("Clear queue") }
         }
-        items(player.queue, key = { it }) { id ->
-            val index = player.queue.indexOf(id)
-            byId[id]?.let { ep ->
-                QueueEpisodeCard(ep, shows[ep.podcastId], player, index + 1, index > 0,
-                    index < player.queue.lastIndex, onOpen, onPlay, onToggle, onMove, onRemove)
+        if (historyEnd > 0) {
+            item(key = "queue-history") { SectionHeading("History") }
+            items(historyEnd, key = { queue[it] }) { row(it, queue[it]) }
+        }
+        if (currentIndex >= 0) {
+            item(key = "queue-now") { SectionHeading("Now playing") }
+            item(key = queue[currentIndex]) { row(currentIndex, queue[currentIndex]) }
+        }
+        item(key = "queue-next") { SectionHeading("Up next") }
+        if (nextStart > queue.lastIndex) item(key = "queue-next-empty") {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("Nothing up next", style = MaterialTheme.typography.titleSmall)
+                Text("Use Play next or Add to queue on an episode.", style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
+        else items(queue.size - nextStart, key = { queue[nextStart + it] }) { row(nextStart + it, queue[nextStart + it]) }
     }
 }
 
@@ -485,14 +514,13 @@ private fun date(ms: Long) = if (ms <= 0) "" else DateTimeFormatter.ofPattern("d
                 if (number != null) Text(number.toString().padStart(2, '0'), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Cover(ep.imageUrl ?: podcast?.imageUrl, Modifier.size(48.dp))
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    if (current) Text(if (player.playing) "Now playing" else "Ready to resume", style = MaterialTheme.typography.labelSmall)
                     Text(ep.title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 3, overflow = TextOverflow.Ellipsis)
                     Text(podcast?.title ?: "Podcast", maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 IconButton(onClick = { if (current && player.playing) onToggle() else onPlay(ep.id) }) { Icon(if (current && player.playing) Icons.Default.Pause else Icons.Default.PlayArrow, "${if (current && player.playing) "Pause" else "Play"} ${ep.title}") }
             }
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(timeRemaining(ep.durationMs, if (current) player.positionMs else ep.positionMs), Modifier.weight(1f), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(queueTimeLabel(ep, player), Modifier.weight(1f), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 IconButton(onClick = { onMove(ep.id, -1) }, enabled = canMoveUp) { Icon(Icons.Default.ArrowUpward, "Move ${ep.title} up") }
                 IconButton(onClick = { onMove(ep.id, 1) }, enabled = canMoveDown) { Icon(Icons.Default.ArrowDownward, "Move ${ep.title} down") }
                 IconButton(onClick = { onRemove(ep.id) }) { Icon(Icons.Default.Close, "Remove ${ep.title} from queue") }
@@ -637,7 +665,7 @@ private fun captureState(state: String) = when (state) { "waiting_transcript" ->
                     Row(verticalAlignment = Alignment.CenterVertically) { RadioButton(selected = prefs.model == spec.id, onClick = { vm.text("model", spec.id) }); Column { Text(spec.title); Text(fileSize(spec.bytes), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) } }
                     when (status?.state) {
                         "ready" -> Row(verticalAlignment = Alignment.CenterVertically) { Text("Ready", color = MaterialTheme.colorScheme.secondary, modifier = Modifier.weight(1f)); TextButton(onClick = { vm.deleteModel(spec.id) }) { Text("Delete model") } }
-                        "queued", "downloading" -> { LinearProgressIndicator(progress = { ((status.bytes).toFloat() / spec.bytes).coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth()); TextButton(onClick = { vm.graph.jobs.pauseModel(spec.id) }) { Text("Pause download") } }
+                        "queued", "downloading" -> { LinearProgressIndicator(progress = { ((status.bytes).toFloat() / spec.bytes).coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth()); TextButton(onClick = { vm.pauseModel(spec.id) }) { Text("Pause download") } }
                         else -> OutlinedButton(onClick = { vm.downloadModel(spec.id) }) { Text(if (status?.state in listOf("failed", "paused")) "Resume model download" else "Download model") }
                     }
                     status?.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }

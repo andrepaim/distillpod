@@ -29,7 +29,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 private const val CHUNK_MS = 120_000L
-private const val MAX_FOREGROUND_START_ATTEMPTS = 5
+internal const val MAX_FOREGROUND_START_ATTEMPTS = 5
 enum class TranscriptStage { ONLINE, PUBLISHER, DOWNLOADING, CHECKING_MODEL, DECODING, STARTING, TRANSCRIBING, SAVING, QUEUED }
 data class TranscriptProgress(val revision: String, val run: String, val stage: TranscriptStage,
     val workedMs: Long, val durationMs: Long, val chunkStartMs: Long = 0, val chunkEndMs: Long = 0)
@@ -40,7 +40,7 @@ enum class TranscriptOutcome { COMPLETED, DEFERRED_START, RESUME_REQUIRED, FAILE
 
 /** Only a rejection of foreground startup is transient, not arbitrary processing errors. */
 private class DeferredForegroundStart(cause: Exception) : Exception(cause)
-private fun Exception.isForegroundStartRejected(): Boolean {
+internal fun Exception.isForegroundStartRejected(): Boolean {
     val visited = java.util.Collections.newSetFromMap(java.util.IdentityHashMap<Throwable, Boolean>())
     var current: Throwable? = this
     while (current != null && visited.add(current)) {
@@ -243,7 +243,8 @@ class TranscriptionRepository internal constructor(private val graph: AppGraph,
     internal suspend fun process(id: String, revision: String, execution: TranscriptExecution) = processing.withLock {
         val job = currentCoroutineContext().job
         running[id] = job
-        try { processChunk(id, revision, execution) } finally { running.remove(id, job); graph.automation.kick() }
+        // Show automation observes transcript state changes, not each chunk (#140).
+        try { processChunk(id, revision, execution) } finally { running.remove(id, job) }
     }
 
     private suspend fun processChunk(id: String, revision: String, execution: TranscriptExecution): TranscriptOutcome {

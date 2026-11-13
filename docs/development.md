@@ -173,6 +173,18 @@ Ordinary CI excludes live-account, opt-in public-directory, and long public-podc
 
 On disposable GitHub-hosted emulators only, the fixture script supplies Chromium's test command-line flags to bypass first-run onboarding before the real browser callback check. It verifies that the target is an emulator and removes its flags/debug-app setting on exit. This setup is never applied to an owner's phone. Lazy-list UI checks scroll the containing list before accessing rows that may not yet be composed on smaller screens.
 
+Disposable GitHub-hosted x86_64 acceptance opts into `emulator-abi.init.gradle`
+for startup, ordinary and voice builds. It builds/packages only the emulator's
+native ABI, avoiding repeated ARM compilation and installation payload there.
+The separate default/voice Android build validation and distribution build retain
+both `arm64-v8a` and `x86_64`. The init script is inert without the explicit CI
+opt-in and rejects other ABIs, non-hosted/physical targets, release tasks and
+unexpected default filters. With the shared build resource held, run
+`python3 scripts/verify_emulator_abi.py` for isolated Gradle-model regressions.
+Cloud acceptance continues using the ordinary phase's compatible APK pair;
+startup has a separate offline identity and voice has different resources and
+manifest settings, so those pairs cannot be substituted for one another.
+
 CI also waits up to 30 seconds for user storage to become RUNNING_UNLOCKED after the emulator reports boot completion. A development phone still requires its owner to unlock it; the script does not dismiss a secure keyguard.
 
 The browser integration check validates receipt of a real browser's callback and its state/client identity. A separate Android TCP check reads the complete HTTP response while the listener scope remains open. This tests callback delivery and response completion independently of Chrome's accessibility representation of a plain-text page.
@@ -192,6 +204,85 @@ npm --prefix firebase run test:storage
 They use `demo-distillpod-sync`, with Firestore on localhost:8085 and Storage on localhost:9199, and need no cloud credentials. See [Firebase test setup](../firebase/README.md) and the [implementation plan](android/firebase-sync-telemetry-plan.md). Do not run concurrent Gradle builds against the same checkout.
 
 The [library sync guide](android/subscription-sync.md) documents optional client configuration, Auth/Firestore/Storage Android acceptance, and the two-phase force-stop test. `scripts/sync-device-tests.sh` requires running cloud emulators and a verified Android emulator; it refuses physical-phone targets. The default build intentionally contains no production Firebase configuration. The sync runner uses ADB reverse for localhost Auth/Firestore/Storage endpoints, so acceptance does not depend on the emulator’s Wi-Fi route; it removes those forwards on exit. CI runs the ordinary device suite first and the explicit cloud acceptance afterward. `IsolatedTestRunner` disables automatic production cloud activity and deferred fixture intents; SDK cases inject demo clients explicitly.
+
+## Reducing repeated CI work
+
+Keep related implementation corrections, tests and documentation in one coherent
+PR. Push work in progress as a draft and consolidate changes before requesting
+full hosted validation. Before marking ready, finish relevant local checks,
+reconcile current main, review the combined diff, and coordinate the integration
+lane with other sessions. This does not reserve the lane during exploratory
+implementation or change the two-issue overlap limit. Record validation results
+in the tracker/PR; add a separate documentation commit only when repository
+content actually needs updating.
+
+Direct draft code PRs run routing regressions and repository security, omitting
+Android/Firebase/native/emulator jobs. Their aggregate deliberately fails with
+"Draft preview is incomplete"; this is expected deferred validation, not a test
+failure or merge evidence. Marking ready for review triggers full CI without a
+new commit. Further ready PR pushes run full checks. Converting back to draft
+starts a preview and cancels superseded CI through the existing concurrency
+group. Documentation-only drafts still run their validated documentation route.
+Manual and reusable/release runs retain full validation. Main merge pushes may
+reuse verified identical-tree evidence as described below. Never use a
+draft result or an older ready result to satisfy final-revision acceptance.
+
+The emulator job records startup, ordinary (including teardown, Android Auto and
+notification), cloud and voice phase durations and exit codes in
+`/tmp/distillpod-ci-phase-timings.jsonl`, uploaded with emulator results. Child
+output streams normally; the timing file contains no command arguments or app
+content. Each phase includes its existing builds/setup/cleanup. Failures retain
+the command status and stop later phases; no automatic retry is added. Abrupt
+runner termination may leave the current phase unrecorded. Compare phase and
+whole-workflow time across comparable revisions/cache states before claiming a
+speedup; parallel runner minutes and elapsed waiting time measure different costs.
+
+On a failed phase, explicitly enabled GitHub-hosted emulator CI also writes
+`/tmp/distillpod-ci-failure-state.jsonl`. It contains only the fixed phase name,
+allowlisted numeric host memory/disk/aggregate OOM counters, emulator/ADB process
+counts (including zombies), and a bounded ADB transport-state category. It never
+records process arguments, raw ADB output, logcat, app content or target serials.
+The ADB read is restricted to the configured `emulator-PORT` target and times out
+after two seconds; process inspection is capped at 4,096 entries. No physical
+phone or non-hosted run enables these probes. Diagnostic failure does not replace
+the phase's original failed exit status. Runner termination may prevent collection.
+Host counters are cumulative and a single failure snapshot cannot establish OOM,
+crash causality, or a shared cause with an earlier packaging failure.
+
+## Identical merged-tree validation
+
+A direct single-merge push to main may reuse a successful full PR run created
+within the preceding 24 hours. The proof must match both merge parents, the
+whole Git tree (including workflow/scripts/submodule identities), tested synthetic
+merge checkout and workflow blob. Read-only GitHub API evidence must identify
+the same repository and PR workflow, its latest matching run and successful
+latest attempt and every
+expected successful job. Only full direct PR validation emits the bounded
+`ci-validation-proof-ATTEMPT` artifact; docs, drafts and reused runs never do.
+Artifacts expire after seven days; the shorter 24-hour run freshness limit also
+applies. Fork results, squash/rebase merges, batched pushes and ambiguous or
+missing evidence conservatively run the full suite.
+
+The main classifier and aggregate independently read the evidence. A lookup
+failure in selection falls back to full validation; a verification failure after
+jobs have been omitted fails the aggregate rather than passing. Lookups are
+bounded to five matching runs, one complete page of up to 100 jobs/artifacts per
+candidate, and 45 seconds per lookup. Reuse also requires a successful full main
+Android-build and emulator execution within 24 hours among the last five
+successful main runs. Otherwise main performs full validation and refreshes its
+shared Gradle caches; repeated lightweight merges cannot indefinitely starve cache
+writes. This is a bounded eligibility rule, not a new scheduled workflow. Truncated evidence cannot authorize reuse.
+Existing required context names and independent main security remain. Main CI
+logs the source proof run; the combined-main result must still pass before an
+issue is complete. Reusable release callers explicitly retain read-only Actions
+permission and always perform full validation, including distribution builds.
+
+This avoids duplicate execution of equivalent code; it does not rerun tests on
+the new main VM or establish that intermittent failures vanished. The 24-hour
+bound limits environmental drift, but hosted images and external infrastructure
+can still change. Use a manual full run when fresh environment evidence is needed
+and investigate genuine failures rather than reusing or retrying them as green.
+
 
 ## Workflows
 
@@ -213,7 +304,8 @@ its complete Git base/head diff. A narrow allowlist recognizes known root
 Markdown, Markdown/PNG/MP4 under `docs/`, historical JSON/JSONL/TXT evidence,
 the Firebase/investigation README files and the Manrope license. Other paths,
 including plugin/integration content, app resources, code under `docs/`, scripts,
-workflows, executable files, symlinks and submodules select full validation.
+workflows, executable files, symlinks and submodules select full validation for
+ready PRs; direct draft code PRs use the incomplete preview described above.
 Both sides of renames/deletions are inspected without GitHub's 300-file API
 limit. Missing, shallow or ambiguous Git evidence fails visibly.
 

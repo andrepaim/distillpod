@@ -1,6 +1,9 @@
 package dev.distillpod.android
 
 import androidx.compose.ui.test.*
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.lifecycle.ViewModelProvider
+import dev.distillpod.android.features.AppViewModel
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -21,6 +24,10 @@ class UnderstandingFlowDeviceTest {
         val graph = compose.activity.applicationContext.appGraph
         graph.ready.await()
         val dao = graph.db.library()
+        val vm = withContext(Dispatchers.Main) {
+            ViewModelProvider(compose.activity, AppViewModel.factory(graph))[AppViewModel::class.java]
+                .also { it.root("library"); it.filter("all") }
+        }
         val id = "understanding-check-${UUID.randomUUID()}"
         val previous = graph.settings.flow.first().skipAds
         val source = java.io.File.createTempFile("understanding-", ".wav", graph.context.cacheDir)
@@ -40,8 +47,16 @@ class UnderstandingFlowDeviceTest {
             val repo = EpisodeUnderstanding(graph.db, ai, {}, {})
             repo.analyze(id); repo.runAnalysis(id)
             val reply = repo.ask(id, "What does the speaker ask?"); repo.runReply(reply)
-            compose.waitUntil(10000) { compose.onAllNodesWithText("Understanding validation episode").fetchSemanticsNodes().isNotEmpty() }
-            compose.onNodeWithText("Understanding validation episode").performClick()
+            compose.waitUntil(10000) {
+                vm.backStack.value.lastOrNull() == "library" && vm.filter.value == "all" &&
+                    vm.episodes.value.any { it.id == id }
+            }
+            // Other retained fixtures/resume cards can put this row outside the lazy viewport.
+            // Horizontal show chips also support scroll-to-node; only the vertical library owns it.
+            compose.onNode(hasScrollToNodeAction() and
+                SemanticsMatcher.keyIsDefined(SemanticsProperties.VerticalScrollAxisRange))
+                .performScrollToNode(hasText("Understanding validation episode"))
+            compose.onNodeWithText("Understanding validation episode").assertIsDisplayed().performClick()
             compose.onNodeWithText("Summary & chapters").performScrollTo().performClick()
             compose.onNodeWithText("A public speech calls for community contribution.").assertIsDisplayed()
             compose.onNodeWithText("Approve this range for skipping").performScrollTo()
