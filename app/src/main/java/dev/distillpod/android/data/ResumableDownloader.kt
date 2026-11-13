@@ -20,6 +20,15 @@ import okhttp3.Request
 data class DownloadProgress(val bytes: Long, val total: Long, val etag: String?, val lastModified: String?)
 data class DownloadResult(val bytes: Long, val sha256: String, val etag: String?, val lastModified: String?)
 
+const val DOWNLOAD_SIZE_MISMATCH = "Download is larger than expected. Please retry."
+const val STORAGE_LIMIT_MESSAGE = "Not enough room under the audio storage limit. In Settings → Storage, tap Clear unused audio, delete downloads or raise the limit, then retry."
+
+/**
+ * The download does not fit the remaining audio quota. Leftover partials and detached audio count
+ * against it, so the message points to the Storage settings that free space. Not retried automatically.
+ */
+class StorageLimitExceeded : IllegalArgumentException(STORAGE_LIMIT_MESSAGE)
+
 /** A partial is reusable only with a validator; completion requires a validated body and optional hash. */
 class ResumableDownloader(private val http: OkHttpClient) {
     companion object { private val executor = Executors.newCachedThreadPool { Thread(it, "distillpod-download").apply { isDaemon = true } } }
@@ -95,7 +104,8 @@ class ResumableDownloader(private val http: OkHttpClient) {
                     val initial = if (append) offset else 0L
                     val total = range?.groupValues?.get(3)?.toLong() ?: body.contentLength().takeIf { it >= 0 }?.let { initial + it } ?: 0
                     if (response.code == 206) rangeTotal = total
-                    require(total <= maximumBytes && (expectedBytes == null || total == 0L || total == expectedBytes)) { "Download exceeds its expected size or storage limit" }
+                    require(expectedBytes == null || total == 0L || total == expectedBytes) { DOWNLOAD_SIZE_MISMATCH }
+                    if (total > maximumBytes) throw StorageLimitExceeded()
                     if (total > 0 && partial.parentFile!!.usableSpace < total - initial + 8_000_000) throw IOException("Not enough free storage")
                     etag = newEtag; modified = newModified
                     var bytes = initial
@@ -108,7 +118,8 @@ class ResumableDownloader(private val http: OkHttpClient) {
                             checkActive()
                             val count = input.read(buffer); if (count < 0) break
                             bytes += count
-                            require(bytes <= maximumBytes && (expectedBytes == null || bytes <= expectedBytes)) { "Download exceeds its expected size or storage limit" }
+                            require(expectedBytes == null || bytes <= expectedBytes) { DOWNLOAD_SIZE_MISMATCH }
+                            if (bytes > maximumBytes) throw StorageLimitExceeded()
                             output.write(buffer, 0, count)
                             if (System.nanoTime() - notified >= 500_000_000) { progress(DownloadProgress(bytes, total, etag, modified)); notified = System.nanoTime() }
                         }
