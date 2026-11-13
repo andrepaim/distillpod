@@ -50,6 +50,21 @@ class DownloadTest {
             assertFalse(target.exists()); assertFalse(File(dir, "model.partial").exists())
         } } finally { dir.deleteRecursively() }
     }
+    @Test fun `an oversized fixed-size resource is not reported as a storage-limit problem`() = runBlocking {
+        val dir = files()
+        try { MockWebServer().use { server ->
+            val target = File(dir, "final")
+            server.enqueue(MockResponse().setBody("longer than declared"))
+            val error = runCatching { ResumableDownloader(OkHttpClient()).download(server.url("/model").toString(), File(dir, "model.partial"), target,
+                expectedBytes = 4, maximumBytes = 4) }.exceptionOrNull()!!
+            assertFalse(dev.distillpod.android.data.safeFailure(error), dev.distillpod.android.data.safeFailure(error).contains("Storage"))
+            assertFalse(target.exists())
+            server.enqueue(MockResponse().setBody("too large for the remaining quota"))
+            val quota = runCatching { ResumableDownloader(OkHttpClient()).download(server.url("/audio").toString(), File(dir, "audio.partial"), target,
+                maximumBytes = 4) }.exceptionOrNull()!!
+            assertTrue(dev.distillpod.android.data.safeFailure(quota), dev.distillpod.android.data.safeFailure(quota).contains("Settings → Storage"))
+        } } finally { dir.deleteRecursively() }
+    }
     @Test fun `cancellation closes the writer before a caller can reuse its partial file`() = runBlocking {
         val dir = files()
         try { MockWebServer().use { server ->

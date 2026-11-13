@@ -5,6 +5,11 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 /** Coordinates canonical local copies without holding a monitor across file IO. */
 internal class AudioFileOwnership(private val changed: () -> Unit = {}) {
+    sealed interface ExpectedReservation {
+        data class Success(val removal: Removal) : ExpectedReservation
+        data object Stale : ExpectedReservation
+        data object Busy : ExpectedReservation
+    }
     class Selection internal constructor(val path: String) {
         internal var owners = 0
         internal var revoked = false
@@ -77,6 +82,29 @@ internal class AudioFileOwnership(private val changed: () -> Unit = {}) {
         }
         changed()
         return removal
+    }
+
+    fun reserveExpected(expected: Collection<Selection>): ExpectedReservation {
+        val removal = synchronized(monitor) {
+            val byPath = linkedMapOf<String, Selection>()
+            for (item in expected) {
+                val previous = byPath.put(item.path, item)
+                if (previous != null && previous !== item) return ExpectedReservation.Stale
+            }
+            val distinct = byPath.values
+            if (distinct.any { it.path in removing }) return ExpectedReservation.Busy
+            if (distinct.any { it.revoked || copies[it.path]?.get() !== it }) return ExpectedReservation.Stale
+            if (distinct.any { it.owners > 0 }) return ExpectedReservation.Busy
+            val paths = distinct.map { it.path }.toSet()
+            distinct.forEach { it.revoked = true; copies.remove(it.path) }
+            removing.addAll(paths)
+            Removal {
+                synchronized(monitor) { removing.removeAll(paths) }
+                changed()
+            }
+        }
+        changed()
+        return ExpectedReservation.Success(removal)
     }
 
     fun busy(path: String): Boolean = synchronized(monitor) {

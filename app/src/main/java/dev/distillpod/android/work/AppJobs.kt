@@ -53,12 +53,21 @@ class AppJobs(private val context: Context) {
         configureRefresh()
     } }
     fun refresh(id:String = "") { manager.enqueueUniqueWork(if(id.isBlank())"refresh" else "refresh:$id", ExistingWorkPolicy.KEEP, request("refresh", id, Preferences(wifiOnly = false))) }
+    /**
+     * Runs on every process start and Settings change. An unchanged schedule is kept as is; updating it
+     * each time would bump the request generation and rewrite WorkManager state for nothing.
+     */
     suspend fun configureRefresh() {
         val prefs = context.appGraph.settings.flow.first()
-        if (prefs.refresh) manager.enqueueUniquePeriodicWork("refresh-periodic", ExistingPeriodicWorkPolicy.UPDATE,
-            PeriodicWorkRequestBuilder<LibraryWorker>(prefs.refreshHours.toLong(), TimeUnit.HOURS).setInputData(workDataOf("kind" to "refresh"))
-                .setConstraints(Constraints.Builder().setRequiredNetworkType(if (prefs.wifiOnly) NetworkType.UNMETERED else NetworkType.CONNECTED).build()).build())
-        else manager.cancelUniqueWork("refresh-periodic")
+        if (!prefs.refresh) { manager.cancelUniqueWork("refresh-periodic"); return }
+        val interval = TimeUnit.HOURS.toMillis(prefs.refreshHours.toLong())
+        val network = if (prefs.wifiOnly) NetworkType.UNMETERED else NetworkType.CONNECTED
+        val current = withContext(Dispatchers.IO) { manager.getWorkInfosForUniqueWork("refresh-periodic").get() }.firstOrNull { !it.state.isFinished }
+        val unchanged = current != null && current.periodicityInfo?.repeatIntervalMillis == interval &&
+            current.constraints.requiredNetworkType == network
+        manager.enqueueUniquePeriodicWork("refresh-periodic", if (unchanged) ExistingPeriodicWorkPolicy.KEEP else ExistingPeriodicWorkPolicy.UPDATE,
+            PeriodicWorkRequestBuilder<LibraryWorker>(interval, TimeUnit.MILLISECONDS).setInputData(workDataOf("kind" to "refresh"))
+                .setConstraints(Constraints.Builder().setRequiredNetworkType(network).build()).build())
     }
     /** Persist the pause too: work waiting for its network or backoff never runs to record it. */
     suspend fun pauseDownload(id: String) = pause("download", id)
