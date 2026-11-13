@@ -29,7 +29,7 @@ Implementation now includes versioned queue order and per-key portable preferenc
 
 Local core/Room/security tests and two-client Android Auth/Firestore/Storage acceptance pass; final verification and live deployment are tracked in [TDD evidence](evidence/firebase-sync-tdd.md). Production content deployment was cancelled following the owner’s Spark-only decision above. Billing was unlinked before any full-content uploads; existing basic sync remains available. The queue/preferences option upgrades the account protocol independently of the disabled Storage adapter.
 
-This increment does not complete the entire plan: account profile switching, broad alias/conflict/performance coverage, independent cloud recovery/retention/erasure, telemetry delivery, App Check and public release automation remain separate gates. Immutable objects/history are retained; do not enable pruning until recovery and old-device tests pass.
+This increment does not complete the entire plan: account profile switching, broad alias/conflict/performance coverage, independent cloud recovery/retention/erasure, telemetry delivery, App Check and public release automation remain separate gates. Immutable objects/history are retained. Firestore history compaction (protocol 4, with old-device rebuild) is implemented but disabled by default; enabling it requires the owner's rules deployment and release flag (see [history compaction](subscription-sync.md#history-compaction-and-protocol-4)).
 
 ## Core-library increment — November 4 (historical checkpoint)
 

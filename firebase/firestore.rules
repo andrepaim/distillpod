@@ -7,6 +7,12 @@ service cloud.firestore {
   function entity(uid,key) { return getAfter(/databases/$(database)/documents/users/$(uid)/entities/$(key)).data; }
   function change(uid,seq) { return getAfter(/databases/$(database)/documents/users/$(uid)/changes/$(string(seq))).data; }
   function receipt(uid,id) { return getAfter(/databases/$(database)/documents/users/$(uid)/receipts/$(id)).data; }
+  // History at or below compactedThrough may be deleted; clients whose cursor is lower rebuild from entities.
+  // Keep retainedSequences equal to SyncCompaction.RETAINED_SEQUENCES in the Android client.
+  function retainedSequences() { return 10000; }
+  function compactedThrough(h) { return h.get('compactedThrough',0); }
+  // One head read per deleted document keeps batched deletes within the rules' document-access limits.
+  function compactedAt(h,seq) { return h.active == true && h.protocol >= 4 && seq <= compactedThrough(h); }
   function id(value) { return value is string && value.matches('[A-Za-z0-9_-]{1,128}'); }
   function subscriptionPayload(p) {
    return p is map && p.keys().hasOnly(['subscribed','podcastId','feedUrl','originalFeedUrl','title','author'])
@@ -91,7 +97,15 @@ service cloud.firestore {
       && request.resource.data.sequence == resource.data.sequence + 1
       && change(uid,request.resource.data.sequence).sequence == request.resource.data.sequence)
      || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['protocol'])
-      && resource.data.protocol in [1,2] && request.resource.data.protocol in [2,3] && request.resource.data.protocol > resource.data.protocol));
+      && resource.data.protocol in [1,2] && request.resource.data.protocol in [2,3] && request.resource.data.protocol > resource.data.protocol)
+     // Protocol 4 (history compaction) only follows protocol 3, so it never widens the account's record scope.
+     || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['protocol'])
+      && resource.data.protocol == 3 && request.resource.data.protocol == 4)
+     // The compaction watermark only rises and always trails the head by the retained window.
+     || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['compactedThrough'])
+      && resource.data.protocol >= 4 && request.resource.data.compactedThrough is int
+      && request.resource.data.compactedThrough > compactedThrough(resource.data)
+      && request.resource.data.compactedThrough <= resource.data.sequence - retainedSequences()));
    match /entities/{key} {
     allow read: if owner(uid);
     function companions() {
@@ -111,18 +125,23 @@ service cloud.firestore {
      && request.resource.data.keys().hasOnly(['key','version','payload','deleted','generation','sequence','operationId'])
      && request.resource.data.diff(entity(uid,request.resource.data.key)).affectedKeys().hasOnly(['key'])
      && request.resource.data.sequence == nextHead(uid).sequence;
+    allow delete: if owner(uid) && sequence.matches('[1-9][0-9]{0,15}') && compactedAt(head(uid),int(sequence));
    }
    match /receipts/{operationId} {
     allow read: if owner(uid);
     allow create: if owner(uid) && id(operationId)
      && request.resource.data.keys().hasOnly(['signature','key','version','sequence','generation'])
-     && request.resource.data.signature is string && request.resource.data.signature.size() <= 131072
+     && request.resource.data.signature is string
+     && (head(uid).protocol >= 4 ? request.resource.data.signature.matches('[a-f0-9]{64}') : request.resource.data.signature.size() <= 131072)
      && id(request.resource.data.key)
      && entity(uid,request.resource.data.key).operationId == operationId
      && request.resource.data.version == entity(uid,request.resource.data.key).version
      && request.resource.data.sequence == head(uid).sequence + 1
      && request.resource.data.sequence == nextHead(uid).sequence
      && request.resource.data.generation == head(uid).generation;
+    // A missing receipt (already deleted by an interrupted run) is a harmless no-op.
+    allow delete: if owner(uid) && (resource == null || resource.data.sequence is int)
+     && compactedAt(head(uid),resource == null ? 0 : resource.data.sequence);
    }
   }
  }

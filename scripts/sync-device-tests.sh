@@ -20,6 +20,14 @@ for port in 8085 9099 9199; do
     "$DISTILLPOD_ADB" "${DISTILLPOD_FLAGS[@]}" reverse "tcp:$port" "tcp:$port"
     DISTILLPOD_REVERSED_PORTS+=("$port")
 done
+DISTILLPOD_SYNC_CLASSES=dev.distillpod.android.FullContentSyncDeviceTest,dev.distillpod.android.SubscriptionSyncDeviceTest,dev.distillpod.android.DatabaseUpgradeDeviceTest,dev.distillpod.android.SubscriptionSyncUiDeviceTest,dev.distillpod.android.PublicFeedReviewDeviceTest
+# Protocol-4 history compaction needs firebase/firestore.rules. DISTILLPOD_SYNC_COMPACTION=false omits it, to run
+# the remaining acceptance against the deployed protocol-3 rules before they are replaced (see firebase/README.md).
+case "${DISTILLPOD_SYNC_COMPACTION:-true}" in
+    true) DISTILLPOD_SYNC_CLASSES+=,dev.distillpod.android.SyncCompactionDeviceTest ;;
+    false) ;;
+    *) echo 'DISTILLPOD_SYNC_COMPACTION must be true or false' >&2; exit 1 ;;
+esac
 for artifact in app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk; do
     artifact="$(realpath "$artifact")"
     if [[ "$DISTILLPOD_ADB" == *.exe ]]; then artifact="$(wslpath -w "$artifact")"; fi
@@ -27,7 +35,7 @@ for artifact in app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/
 done
 "$DISTILLPOD_ADB" "${DISTILLPOD_FLAGS[@]}" shell am instrument -w -r -e syncEmulators true \
     -e syncEmulatorHost 127.0.0.1 \
-    -e class dev.distillpod.android.FullContentSyncDeviceTest,dev.distillpod.android.SubscriptionSyncDeviceTest,dev.distillpod.android.DatabaseUpgradeDeviceTest,dev.distillpod.android.SubscriptionSyncUiDeviceTest,dev.distillpod.android.PublicFeedReviewDeviceTest \
+    -e class "$DISTILLPOD_SYNC_CLASSES" \
     dev.distillpod.android.test/dev.distillpod.android.IsolatedTestRunner | tee "$DISTILLPOD_LOG"
 python3 scripts/device_result.py "$DISTILLPOD_LOG"
 for phase in seed resume; do
