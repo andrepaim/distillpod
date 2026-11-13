@@ -29,7 +29,8 @@ class SocialPostDeviceTest {
             val vm=withContext(Dispatchers.Main) {ViewModelProvider(compose.activity,AppViewModel.factory(graph))[AppViewModel::class.java].also {
                 it.root("saved");it.open("capture:$id");compose.activity.setContent {CompositionLocalProvider(LocalDensity provides Density(graph.context.resources.displayMetrics.density,1.6f)) {ProductApp(it)}}
             }}
-            compose.onNodeWithText("Create post").performScrollTo().performClick()
+            compose.onNodeWithContentDescription("More actions for this moment").performClick()
+            compose.onNodeWithText("Create post").performClick()
             compose.onNodeWithText("Quote & discussion").assertExists()
             compose.onNodeWithText("Infographic").assertExists()
             compose.onNodeWithText("Quote & discussion").performClick()

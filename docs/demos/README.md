@@ -12,7 +12,7 @@ was used. Screens and recordings follow source `bad8488` / 0.15.0-alpha.1.
 1. Open **Settings → Playback & headphones** and turn on **Distill with previous-track button**.
 2. Start listening. Map the desired earbud gesture to **Previous track** in the accessory's app, where supported.
 3. When that media-button command arrives, DistillPod saves the preceding minute and keeps playback running.
-4. Open Saved to revisit the moment. The example result shows a takeaway and quote; **Replay source** returns to the original passage.
+4. Open Saved to revisit the moment. The example result shows a takeaway and quote; **Replay** returns to the original passage.
 
 The video sends Android's previous-track media key from the emulator. It does
 not show a physical earbud gesture, the Soundcore app or Bluetooth sound routing.
@@ -26,7 +26,7 @@ or generation speed. See [headphone setup and limits](../android/headphone-disti
 1. Listen in the full player and tap **Distill last 60 seconds**.
 2. The source moment is saved immediately. When ChatGPT is disconnected, it stays available while waiting for the connection.
 3. The walkthrough then supplies an example finished takeaway and quote to show the result screen.
-4. Scroll to **Replay source** and return to the original audio position.
+4. Tap **Replay** and return to the original audio position.
 
 Real generation needs an eligible connected ChatGPT account and a suitable
 source transcript. It includes source review, can take longer, can fail, and

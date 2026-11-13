@@ -54,6 +54,22 @@ class MediaRepository(context: Context, private val db: AppDatabase, private val
     val modelsDirectory = File(context.filesDir, "models").apply { mkdirs() }
     private val locks = ConcurrentHashMap<String, Mutex>()
     private val episodeTransfers = Mutex()
+    internal var cleanupFiles: AudioCleanupFiles = AudioCleanupFiles.SystemFiles
+    private val audioCleanup by lazy {
+        AudioCleanupBackend(db, directory, active, { ids, operation ->
+            episodeTransfers.withLock {
+                suspend fun lockEpisode(index: Int) {
+                    if (index == ids.size) operation()
+                    else locks.getOrPut("episode:${ids[index]}") { Mutex() }.withLock { lockEpisode(index + 1) }
+                }
+                lockEpisode(0)
+            }
+        }, { cleanupFiles })
+    }
+
+    internal suspend fun previewAudioCleanup(): AudioCleanupPreview = audioCleanup.preview()
+    internal suspend fun clearAudio(preview: AudioCleanupPreview,
+        onProgress: (AudioCleanupResult) -> Unit = {}): AudioCleanupResult = audioCleanup.clear(preview, onProgress)
 
     /** Register before checking the file; admission later verifies the same copy is still valid. */
     internal suspend fun preparePlaybackItems(items: List<androidx.media3.common.MediaItem>) =
@@ -99,14 +115,21 @@ class MediaRepository(context: Context, private val db: AppDatabase, private val
 
     internal suspend fun <T> withDownloadedAudio(id: String, read: suspend (File) -> T): T {
         // Select and mark the same copy before deletion can take the transfer lock.
-        val file = episodeTransfers.withLock {
-            downloadEpisode(id) {}.also(active::acquire)
+        val (file, lease) = episodeTransfers.withLock {
+            val selected = downloadEpisode(id) {}
+            // Resolve on IO before acquiring resources; cancellation at the dispatcher boundary
+            // cannot strand a lease which has not yet been exposed to the finally below.
+            val path = withContext(Dispatchers.IO) { selected.canonicalPath }
+            val copy = active.audioOwnership.select(path) ?: throw AudioDeletionBlocked(AudioDeletionBlockReason.ACTIVE)
+            val owned = active.audioOwnership.acquire(copy) ?: throw AudioDeletionBlocked(AudioDeletionBlockReason.ACTIVE)
+            active.acquire(selected)
+            selected to owned
         }
         try {
             currentCoroutineContext().ensureActive()
             return read(file)
         } finally {
-            active.release(file)
+            try { active.release(file) } finally { lease.close() }
         }
     }
 
@@ -117,6 +140,7 @@ class MediaRepository(context: Context, private val db: AppDatabase, private val
         val otherBytes = withContext(Dispatchers.IO) { audioFiles().filter { it.name != "$id.partial" }.sumOf { it.length() } }
         val partial = File(directory, "$id.partial")
         val target = File(directory, "$id-${UUID.randomUUID()}.audio")
+        return@withLock withAudioPartialReservation(partial) {
         try {
             val youtube = dev.distillpod.core.YouTubeUrl.videoId(ep.audioUrl) != null
             val resolved = runInterruptible(Dispatchers.IO) { resolveAudio(ep.audioUrl) }
@@ -162,6 +186,18 @@ class MediaRepository(context: Context, private val db: AppDatabase, private val
             }
             throw error
         }
+        }
+    }
+
+    /** Caller owns its transfer exclusion; the marker outlives the downloader's real writer. */
+    internal suspend fun <T> withAudioPartialReservation(partial: File, operation: suspend () -> T): T {
+        val path = withContext(Dispatchers.IO) {
+            require(partial.canonicalFile.parentFile == directory.canonicalFile) { "Invalid audio path" }
+            partial.canonicalPath
+        }
+        val reservation = active.audioOwnership.reserve(listOf(path))
+            ?: throw AudioDeletionBlocked(AudioDeletionBlockReason.ACTIVE)
+        try { return operation() } finally { reservation.close() }
     }
 
     // Use the same file set for quota enforcement and Settings; Room byte counts can be stale.

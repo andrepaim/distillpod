@@ -16,7 +16,7 @@ the moment was saved; it does not mean generation finished.
 Connect through **Settings → ChatGPT** for generation. If the source needs review,
 read the proposed passage before confirming it. **Expand context and retry** or
 **Transcribe and retry** can help when offered. A takeaway may legitimately omit
-a quote. **Improve this distill** retains the current result, and previous
+a quote. **Improve this distill** (in the moment’s **More actions** menu) retains the current result, and previous
 versions can be restored. Requests can consume account allowance even if they
 fail; retries are deliberate. [Source and review behavior](android/contextual-distills.md).
 

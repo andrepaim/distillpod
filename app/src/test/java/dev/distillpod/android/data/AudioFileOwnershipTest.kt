@@ -4,6 +4,19 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class AudioFileOwnershipTest {
+    @Test fun expectedReservationDistinguishesStaleFromBusyWithoutRevokingOtherPaths() {
+        val ownership = AudioFileOwnership()
+        val one = ownership.select("one")!!
+        val absent = ownership.select("absent")!!
+        val owner = ownership.acquire(one)!!
+        assertEquals(AudioFileOwnership.ExpectedReservation.Busy, ownership.reserveExpected(listOf(one, absent)))
+        owner.close()
+        val success = ownership.reserveExpected(listOf(one, absent)) as AudioFileOwnership.ExpectedReservation.Success
+        assertNull(ownership.select("absent")); success.removal.close()
+        val newer = ownership.select("one")!!
+        assertEquals(AudioFileOwnership.ExpectedReservation.Stale, ownership.reserveExpected(listOf(newer, absent)))
+        ownership.acquire(newer)!!.close()
+    }
     @Test fun removalRevokesEarlierSelectionAndAllowsFreshSelectionAfterwards() {
         val ownership = AudioFileOwnership()
         val old = ownership.select("one")!!

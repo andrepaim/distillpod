@@ -52,7 +52,13 @@ class SubscriptionSyncAccount(private val graph:AppGraph) {
     // Content-free report, once per record kind and process: rules drift is visible without the record.
     private val reportedRejections=java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     private val coordinator by lazy { SubscriptionSyncCoordinator(graph.db,cloud) { kind,error -> if(reportedRejections.add(kind))graph.diagnostics.failure("sync",error) } }
-    private var scheduled:Job?=null
+    private val scheduler by lazy {
+        SubscriptionSyncScheduler(graph.scope,failed={ graph.diagnostics.failure("sync",it) }) { user ->
+            // A paused library needs no runs; resume and connect kick again after enabling it.
+            val active=graph.db.sync().binding()?.enabled==true
+            scheduleSubscriptionWork(WorkManager.getInstance(context),user,active,::subscriptionSyncRequest)
+        }
+    }
     private val connecting=Mutex()
     init {
         if(mutable.value.configured) {
@@ -136,7 +142,7 @@ class SubscriptionSyncAccount(private val graph:AppGraph) {
     }
     suspend fun retryRejected() { store.retryRejected();kick() }
     suspend fun discardRejected() { store.discardRejected();kick() }
-    suspend fun pause() { store.pause();WorkManager.getInstance(context).cancelUniqueWork("subscription-sync") }
+    suspend fun pause() { store.pause();WorkManager.getInstance(context).cancelUniqueWork(SUBSCRIPTION_SYNC_WORK) }
     suspend fun resume() {
         val binding=graph.db.sync().binding() ?: return
         check(auth.currentUser?.uid==binding.uid) { "Sign in with your sync account first." }
@@ -146,16 +152,10 @@ class SubscriptionSyncAccount(private val graph:AppGraph) {
         pause();auth.signOut()
         runCatching { CredentialManager.create(context).clearCredentialState(ClearCredentialStateRequest()) }
     }
-    fun kick() {
-        if(!mutable.value.configured)return
-        scheduled?.cancel()
-        scheduled=graph.scope.launch {
-            delay(300)
-            WorkManager.getInstance(context).enqueueUniqueWork("subscription-sync",ExistingWorkPolicy.APPEND_OR_REPLACE,
-                OneTimeWorkRequestBuilder<SubscriptionSyncWorker>().setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
-                    .setBackoffCriteria(BackoffPolicy.EXPONENTIAL,30,TimeUnit.SECONDS).build())
-        }
-    }
+    /** Safe from any thread; bursts merge with queued or running sync work. */
+    fun kick() { if(mutable.value.configured)scheduler.kick() }
+    /** A user request: no debounce, and work waiting in backoff is replaced by an immediate run. */
+    fun syncNow() { if(mutable.value.configured)scheduler.syncNow() }
     fun signedIn(uid:String):Boolean=mutable.value.configured && auth.currentUser?.uid==uid
     suspend fun syncOnce():Boolean {
         if(!mutable.value.configured)return true
