@@ -19,8 +19,18 @@ import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk=[34])
+@Config(sdk=[34], shadows=[ProducerFixtureFileUtils::class])
 class ContextSummaryOverloadTest {
+    @org.junit.Before fun resetPlatformForces() { ProducerFixtureFileUtils.calls.set(0) }
+    @Test fun `fixture writes real preferences while isolating platform force`() {
+        ProducerFixtureFileUtils.calls.set(0)
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val prefs = context.getSharedPreferences("overload-force-control", 0)
+        assertTrue(prefs.edit().clear().putString("probe", "synthetic-value").commit())
+        val xml = File(context.applicationInfo.dataDir, "shared_prefs/overload-force-control.xml").readText()
+        assertTrue(xml.contains("synthetic-value"))
+        assertTrue("This fixture must intercept the platform force", ProducerFixtureFileUtils.calls.get() > 0)
+    }
     private suspend fun awaitWithMainProgress(barrier: () -> Unit) = withTimeout(5000) {
         coroutineScope {
             val waiting = async(Dispatchers.IO) { runInterruptible { barrier() } }
@@ -143,6 +153,7 @@ class ContextSummaryOverloadTest {
             listOf("FLOOD_PRIVATE","flood-private.invalid","Synthetic thought remains").forEach {
                 assertFalse(payload.contains(it))
             }
+            assertTrue(ProducerFixtureFileUtils.calls.get() > 0)
         } finally {d.consent(false);assertTrue(d.queue.files().isEmpty());db.close();io.sentry.Sentry.close()}
     }
 }
