@@ -86,8 +86,8 @@ class FinishedContent(private val db:AppDatabase,private val isolatedDemo:Boolea
     }
     /**
      * A cheap change key for [snapshot], null exactly when no snapshot exists. It covers the same document
-     * except the segment list, which is summarized by revision and row aggregates: a ready revision's rows
-     * are immutable (see [restore]), so new text arrives as a new revision or as added/replaced rows.
+     * except the segment list, which is summarized by revision and row aggregates. Rows written through
+     * LibraryDao.putSegments also discard the episode's capture record, so in-place text edits are rebuilt too.
      */
     suspend fun sourceKey(episodeId:String):String?=db.withTransaction {
         document(episodeId,summarizeSegments=true)?.let {
@@ -100,7 +100,7 @@ class FinishedContent(private val db:AppDatabase,private val isolatedDemo:Boolea
         val transcript=dao.transcript(episodeId)?.takeIf {it.state=="ready" && it.fingerprint==ep.mediaFingerprint}?:return null
         val segments:Any=if(summarizeSegments) {
             db.sync().segmentSummary(ep.id,transcript.revision).let {s->JSONObject().put("rows",s.rowCount).put("startMs",s.startMs).put("endMs",s.endMs)
-                .put("ordinals",s.ordinals).put("textLength",s.textLength).put("rowIds",s.rowIds)}
+                .put("ordinals",s.ordinals).put("textLength",s.textLength)}
         } else {
             val rows=dao.segments(ep.id,transcript.revision)
             require(rows.size<=100000)

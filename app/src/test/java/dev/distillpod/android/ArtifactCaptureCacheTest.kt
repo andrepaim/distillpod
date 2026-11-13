@@ -87,6 +87,14 @@ class ArtifactCaptureCacheTest {
         db.library().putDistillation(DistillationEntity("d1","e2",0,1000,revision="x1",fingerprint="sha-e2",state="succeeded"))
         db.library().putResearch(ResearchEntity("rs1","d1",state="succeeded",report="Report"))
         assertEquals(ArtifactSync.Capture(rebuilt=1,unchanged=1),artifacts.capture());assertCurrent(db)
+        // A row of the same revision rewritten in place with text of the same length and timings.
+        db.library().putSegments(listOf(SegmentEntity("e","r2",5000,6000,"Mare",1)))
+        assertEquals(ArtifactSync.Capture(rebuilt=1,unchanged=1),artifacts.capture());assertCurrent(db)
+        // Coverage and transcript provenance of the same revision.
+        db.library().putCoverage(CoverageEntity("e2","x1",0,9000))
+        assertEquals(ArtifactSync.Capture(rebuilt=1,unchanged=1),artifacts.capture());assertCurrent(db)
+        db.library().putTranscript(db.library().transcript("e2")!!.copy(model="base"))
+        assertEquals(ArtifactSync.Capture(rebuilt=1,unchanged=1),artifacts.capture());assertCurrent(db)
         // Portable identity metadata.
         db.library().putEpisode(db.library().episode("e")!!.copy(title="Renamed"))
         assertEquals(ArtifactSync.Capture(rebuilt=1,unchanged=1),artifacts.capture());assertCurrent(db)
@@ -102,9 +110,11 @@ class ArtifactCaptureCacheTest {
         db.library().deleteSegments("e2");db.library().deleteCoverage("e2")
         assertEquals(ArtifactSync.Capture(rebuilt=0,unchanged=1),artifacts.capture())
         assertEquals(operation,operations(db,"artifact_e2").single().operationId)
+        // Rewritten rows are rebuilt, but identical content is not uploaded again.
         transcript(db,"e2","x1","Second episode")
-        assertEquals(ArtifactSync.Capture(rebuilt=0,unchanged=2),artifacts.capture())
+        assertEquals(ArtifactSync.Capture(rebuilt=1,unchanged=1),artifacts.capture())
         assertEquals(operation,operations(db,"artifact_e2").single().operationId)
+        assertEquals(ArtifactSync.Capture(rebuilt=0,unchanged=2),artifacts.capture())
         assertCurrent(db)
         // Restoring different content for the same episode is a change.
         transcript(db,"e2","x2","Different text")
@@ -121,6 +131,14 @@ class ArtifactCaptureCacheTest {
         File(db.sync().artifacts("alice","g1").single().localFile).writeText("corrupted staging")
         assertEquals(ArtifactSync.Capture(rebuilt=1,unchanged=0),artifacts.capture());assertCurrent(db)
         assertEquals(ArtifactSync.Capture(rebuilt=0,unchanged=1),artifacts.capture())
+    }
+    @Test fun `a source shared again after its approval was withdrawn reuses its unchanged artifact`()=fixture {
+        val artifacts=artifacts(context)
+        artifacts.capture()
+        db.sync().clearApprovals()
+        assertEquals(ArtifactSync.Capture(),artifacts.capture())
+        db.sync().approve(SyncPublicFeedEntity("p"))
+        assertEquals(ArtifactSync.Capture(rebuilt=0,unchanged=1),artifacts.capture());assertCurrent(db)
     }
     @Test fun `snapshots that cannot be shared are neither built nor cached`()=fixture {
         val artifacts=artifacts(context)

@@ -29,6 +29,7 @@ class ArtifactSync(private val db:AppDatabase,private val files:ContentFiles,pri
             val key="artifact_${transcript.episodeId}";val sourceKey="__artifact_source_${transcript.episodeId}"
             val source=content.sourceKey(transcript.episodeId)?:continue
             // "<source key> <hash> <expanded bytes>": the artifact last built from exactly these inputs.
+            // LibraryDao.putSegments deletes this record whenever the episode's segment rows are written.
             val recorded=db.sync().view(sourceKey)?.sessionId?.split(' ')?.takeIf {it.size==3}
             if(recorded!=null && recorded[0]==source && db.sync().view(key)?.sessionId==recorded[1] &&
                 recorded[2].toLongOrNull()?.let {files.read(owner,recorded[1],it)}!=null){unchanged++;continue}
