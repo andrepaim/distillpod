@@ -114,7 +114,7 @@ class SubscriptionSyncCoordinator(private val db:AppDatabase,private val cloud:S
             withContext(NonCancellable) { update(b){it.copy(status="pending")} }
             throw cancelled
         }
-        catch(error:Exception){update(b){it.copy(status=if(error is java.io.IOException)"offline" else "error")};throw error}
+        catch(error:Exception){update(b){it.copy(status=syncFailureStatus(error))};throw error}
     }
     private suspend fun applyPage(b:SyncBindingEntity,page:List<CloudSubscription>,bootstrap:Boolean=false,done:Boolean=false):Boolean {
         for(record in page) {
