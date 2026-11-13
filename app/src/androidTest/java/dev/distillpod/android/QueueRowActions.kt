@@ -1,5 +1,6 @@
 package dev.distillpod.android
 
+import android.app.UiAutomation
 import android.os.SystemClock
 import android.view.accessibility.AccessibilityNodeInfo
 import androidx.compose.ui.semantics.SemanticsActions
@@ -10,9 +11,15 @@ import androidx.test.platform.app.InstrumentationRegistry
 
 /** Labels of a queue row's custom accessibility actions, from Compose semantics. */
 internal fun ComposeTestRule.queueRowActions(episodeId:String):List<String> {
-    onNodeWithTag("queue-list").performScrollToNode(hasTestTag("queue-row-$episodeId"))
+    scrollQueueTo(hasTestTag("queue-row-$episodeId"))
     return onNodeWithTag("queue-row-$episodeId").fetchSemanticsNode().config
         .getOrNull(SemanticsActions.CustomActions).orEmpty().map { it.label }
+}
+
+/** Scrolls the queue to [matcher], waiting for the list to render the controller's latest state. */
+internal fun ComposeTestRule.scrollQueueTo(matcher:SemanticsMatcher) {
+    runCatching { waitUntil(5000) { runCatching { onNodeWithTag("queue-list").performScrollToNode(matcher) }.isSuccess } }
+    onNodeWithTag("queue-list").performScrollToNode(matcher)
 }
 
 /** Waits for displayed state to reach [expected] TalkBack actions, then asserts them. */
@@ -23,7 +30,7 @@ internal fun ComposeTestRule.assertQueueRowActions(episodeId:String,expected:Lis
 
 /** Opens a row's overflow menu, requires [disabled] items to be unavailable, then selects [label]. */
 internal fun ComposeTestRule.selectQueueMenuAction(title:String,label:String,disabled:List<String> = emptyList()) {
-    onNodeWithTag("queue-list").performScrollToNode(hasContentDescription("Queue actions for $title"))
+    scrollQueueTo(hasContentDescription("Queue actions for $title"))
     onNodeWithContentDescription("Queue actions for $title").performClick()
     disabled.forEach { onNodeWithText(it).assertIsNotEnabled() }
     onNodeWithText(label).assertIsEnabled().performClick()
@@ -36,9 +43,11 @@ internal fun ComposeTestRule.selectQueueMenuAction(title:String,label:String,dis
  * own or descendant text contains [title].
  */
 internal fun ComposeTestRule.performQueueAccessibilityAction(episodeId:String,title:String,label:String) {
-    onNodeWithTag("queue-list").performScrollToNode(hasTestTag("queue-row-$episodeId"))
+    scrollQueueTo(hasTestTag("queue-row-$episodeId"))
     waitForIdle()
-    val automation=InstrumentationRegistry.getInstrumentation().uiAutomation
+    // Never suppress the device's own accessibility services (such as an owner's TalkBack).
+    val automation=InstrumentationRegistry.getInstrumentation()
+        .getUiAutomation(UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES)
     fun AccessibilityNodeInfo.texts():List<String> =
         listOfNotNull(text?.toString(),contentDescription?.toString()) +
             (0 until childCount).flatMap { getChild(it)?.texts().orEmpty() }

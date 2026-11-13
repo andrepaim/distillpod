@@ -65,6 +65,8 @@ class QueueControlsTest {
         // Both sit vertically centred in the row, rather than in a second row of buttons below it.
         listOf(play, menu).forEach { assertEquals(rowBounds.center.y, it.center.y, 1f) }
         assertTrue(play.right <= menu.left)
+        val titleBounds = compose.onNodeWithText("Episode b", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        assertTrue("Controls sit beside the title at default text size", play.left >= titleBounds.right)
     }
 
     @Test fun `custom accessibility actions follow full playlist boundaries and move by identity`() {
@@ -127,7 +129,10 @@ class QueueControlsTest {
         }
         val title = long[2].title
         compose.onNodeWithTag("queue-list").performScrollToNode(hasContentDescription("Queue actions for $title"))
-        compose.onNodeWithContentDescription("Play $title").assertIsDisplayed()
+        val titleBounds = compose.onNodeWithText(title, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        val play = compose.onNodeWithContentDescription("Play $title").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        // Enlarged text keeps the full row width for the episode; the controls move below it.
+        assertTrue("Controls must sit below the title at large text", play.top >= titleBounds.bottom)
         compose.onNodeWithContentDescription("Queue actions for $title").assertIsDisplayed().performClick()
         compose.onNodeWithText("Move down").assertIsDisplayed().assertIsNotEnabled()
         compose.onNodeWithText("Remove from queue").assertIsDisplayed()

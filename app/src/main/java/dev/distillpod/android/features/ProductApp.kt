@@ -35,6 +35,7 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.font.FontFamily
@@ -521,20 +522,26 @@ private val NOT_CURRENT = PlaybackState()
         if (canMoveDown) add(CustomAccessibilityAction("Move down") { onMove(ep.id, 1); true })
         add(CustomAccessibilityAction("Remove from queue") { onRemove(ep.id); true })
     }
+    // Enlarged text needs the row's width for the episode, so the controls move below it.
+    val stacked = LocalDensity.current.fontScale >= 1.5f
     Card(onClick = { onOpen(ep.id) }, modifier = Modifier.testTag("queue-row-${ep.id}").semantics { customActions = actions },
         colors = CardDefaults.cardColors(containerColor = if (current) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface)) {
-        Row(Modifier.padding(start = 12.dp, top = 10.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            if (number != null) Text(number.toString().padStart(2, '0'), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Cover(ep.imageUrl ?: podcast?.imageUrl, Modifier.size(48.dp))
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(ep.title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Text(podcast?.title ?: "Podcast", maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(queueTimeLabel(ep, player), maxLines = 1, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        @Composable fun controls() = Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = { if (current && player.playing) onToggle() else onPlay(ep.id) }) { Icon(if (current && player.playing) Icons.Default.Pause else Icons.Default.PlayArrow, "${if (current && player.playing) "Pause" else "Play"} ${ep.title}") }
+            QueueRowMenu(ep, canMoveUp, canMoveDown, onMove, onRemove)
+        }
+        Column(Modifier.padding(start = 12.dp, top = 10.dp, bottom = if (stacked) 2.dp else 10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (number != null) Text(number.toString().padStart(2, '0'), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Cover(ep.imageUrl ?: podcast?.imageUrl, Modifier.size(48.dp))
+                Column(Modifier.weight(1f).padding(end = if (stacked) 12.dp else 0.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(ep.title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(podcast?.title ?: "Podcast", maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(queueTimeLabel(ep, player), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                if (!stacked) controls()
             }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = { if (current && player.playing) onToggle() else onPlay(ep.id) }) { Icon(if (current && player.playing) Icons.Default.Pause else Icons.Default.PlayArrow, "${if (current && player.playing) "Pause" else "Play"} ${ep.title}") }
-                QueueRowMenu(ep, canMoveUp, canMoveDown, onMove, onRemove)
-            }
+            if (stacked) Box(Modifier.align(Alignment.End)) { controls() }
         }
     }
 }
