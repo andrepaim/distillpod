@@ -93,6 +93,34 @@ class DownloadNetworkPolicyTest {
         assertEquals(enabled, vm.graph.settings.flow.first().wifiOnly)
     }
 
+    @Test fun `user started downloads, models and transcripts offer notification access only once queued`() = runBlocking {
+        fixture { _, vm ->
+            // An Android 13+ phone where notifications were never granted (#193).
+            shadowOf(context.getSystemService(android.app.NotificationManager::class.java)).setNotificationsEnabled(false)
+            shadowOf(context as android.app.Application).denyPermissions(android.Manifest.permission.POST_NOTIFICATIONS)
+            val access = context.getSharedPreferences("notification_access", Context.MODE_PRIVATE)
+            val prompt = vm.notificationPrompt
+            suspend fun started(key: String, start: () -> Unit) { start(); settle { key !in vm.busy.value } }
+            started("transcript:missing") { vm.prepareTranscript("missing") }
+            assertFalse("a start that failed offers nothing", prompt.offered.value)
+            for ((key, start) in listOf<Pair<String, () -> Unit>>(
+                "download:policy-audio" to { vm.download("policy-audio") },
+                "model:tiny" to { vm.downloadModel("tiny") },
+                "transcript:policy-audio" to { vm.prepareTranscript("policy-audio") })) {
+                started(key, start)
+                assertTrue("$key offers notification access", prompt.offered.value)
+                prompt.declined()
+                access.edit().clear().commit()
+            }
+            // Work never waits for the answer.
+            active("download:policy-audio"); active("model:tiny")
+            assertNotNull(vm.graph.db.library().transcript("policy-audio"))
+            prompt.declined()
+            started("download:policy-audio") { vm.download("policy-audio") }
+            assertFalse("offered once", prompt.offered.value)
+        }
+    }
+
     @Test fun `periodic refresh keeps its registration across restarts and updates only real policy changes`() = runBlocking {
         fixture { graph, _ ->
             graph.settings.flag("wifi", false)
