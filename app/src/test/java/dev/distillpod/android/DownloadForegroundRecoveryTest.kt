@@ -66,11 +66,9 @@ class DownloadForegroundRecoveryTest {
     private fun allowed(): ForegroundUpdater = ForegroundUpdater { _, _, _ ->
         CallbackToFutureAdapter.getFuture<Void> { it.set(null); "allowed" }
     }
-    /**
-     * Never completes: the worker is stopped while still waiting for its foreground service. Like WorkManager's queued
-     * start, the test keeps the completer; an unreferenced completer fails its future when collected (#186).
-     */
+    /** An unreferenced completer fails its future when collected (#186); WorkManager's queued start keeps its own. */
     private val pendingStarts = java.util.concurrent.ConcurrentLinkedQueue<CallbackToFutureAdapter.Completer<Void>>()
+    /** Never completes: the worker is stopped while still waiting for its foreground service. */
     private fun pending(reached: CompletableDeferred<Unit>): ForegroundUpdater = ForegroundUpdater { _, _, _ ->
         CallbackToFutureAdapter.getFuture<Void> { pendingStarts += it; "pending" }.also { reached.complete(Unit) }
     }
