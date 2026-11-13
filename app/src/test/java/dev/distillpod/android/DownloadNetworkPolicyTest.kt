@@ -93,6 +93,49 @@ class DownloadNetworkPolicyTest {
         assertEquals(enabled, vm.graph.settings.flow.first().wifiOnly)
     }
 
+    @Test fun `periodic refresh keeps its registration across restarts and updates only real policy changes`() = runBlocking {
+        fixture { graph, _ ->
+            graph.settings.flag("wifi", false)
+            graph.settings.refreshHours(6)
+            graph.settings.flag("refresh", true)
+            graph.jobs.configureRefresh()
+            val first = active("refresh-periodic")
+            assertEquals(TimeUnit.HOURS.toMillis(6), first.periodicityInfo!!.repeatIntervalMillis)
+            assertEquals(NetworkType.CONNECTED, first.constraints.requiredNetworkType)
+            // Every process start and unrelated Settings change reconfigures; an unchanged schedule stays put.
+            repeat(3) { graph.jobs.configureRefresh() }
+            graph.jobs.configureNetworkPolicy()
+            assertEquals(first.id, active("refresh-periodic").id)
+            assertEquals(first.generation, active("refresh-periodic").generation)
+
+            graph.settings.refreshHours(12)
+            graph.jobs.configureRefresh()
+            val interval = active("refresh-periodic")
+            assertEquals(first.id, interval.id)
+            assertTrue(interval.generation > first.generation)
+            assertEquals(TimeUnit.HOURS.toMillis(12), interval.periodicityInfo!!.repeatIntervalMillis)
+            graph.jobs.configureRefresh()
+            assertEquals(interval.generation, active("refresh-periodic").generation)
+
+            graph.settings.flag("wifi", true)
+            graph.jobs.configureNetworkPolicy()
+            val wifi = active("refresh-periodic")
+            assertEquals(first.id, wifi.id)
+            assertTrue(wifi.generation > interval.generation)
+            assertEquals(NetworkType.UNMETERED, wifi.constraints.requiredNetworkType)
+            assertEquals(TimeUnit.HOURS.toMillis(12), wifi.periodicityInfo!!.repeatIntervalMillis)
+
+            graph.settings.flag("refresh", false)
+            graph.jobs.configureRefresh()
+            assertTrue(work("refresh-periodic").all { it.state.isFinished })
+            graph.settings.flag("refresh", true)
+            graph.jobs.configureRefresh()
+            val restored = active("refresh-periodic")
+            assertEquals(NetworkType.UNMETERED, restored.constraints.requiredNetworkType)
+            assertEquals(TimeUnit.HOURS.toMillis(12), restored.periodicityInfo!!.repeatIntervalMillis)
+        }
+    }
+
     @Test fun `queued transcript keeps new network policy after a capture changes next chunk`() = runBlocking {
         fixture { graph, vm ->
             val dao = graph.db.library()

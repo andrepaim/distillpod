@@ -17,7 +17,7 @@
         <provider android:name="androidx.core.content.FileProvider" android:authorities="${applicationId}.post-files" android:exported="false" android:grantUriPermissions="true">
             <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/post_file_paths" />
         </provider>
-        <provider android:name=".auto.AutoArtworkProvider" android:authorities="${applicationId}.auto.artwork" android:exported="true" />
+        <provider android:name=".auto.AutoArtworkProvider" android:authorities="${applicationId}.auto.artwork" android:exported="false" android:grantUriPermissions="true" />
         <meta-data android:name="com.google.android.gms.car.application" android:resource="${automotiveDescriptor}" />
         <meta-data android:name="androidx.car.app.TintableAttributionIcon" android:resource="@drawable/ic_launcher_monochrome" />
         <service android:name=".voice.VoiceCarService" android:label="DistillPod" android:exported="true" android:enabled="${voiceEnabled}">

@@ -128,6 +128,22 @@ class StorageUsageTest {
             }
         }
     }
+    @Test fun quotaFailureNamesTheStorageSettingsThatFreeSpace() = runBlocking {
+        fixture { db, media, settings ->
+            MockWebServer().use { server ->
+                settings.storage(250_000_000)
+                File(media.directory, "orphan.audio").apply { java.io.RandomAccessFile(this, "rw").use { it.setLength(250_000_000) } }
+                db.library().putEpisode(episode().copy(audioUrl = server.url("/audio").toString(), downloadState = "none"))
+                server.enqueue(MockResponse().setBody("audio"))
+                val error = runCatching { media.ensureDownloaded("e") }.exceptionOrNull()!!
+                val shown = db.library().episode("e")!!.error!!
+                assertEquals("failed", db.library().episode("e")!!.downloadState)
+                assertEquals(shown, safeFailure(error))
+                assertTrue(shown, shown.contains("Settings → Storage"))
+                assertTrue(shown, shown.contains("Clear unused audio"))
+            }
+        }
+    }
     @Test fun failedPartialDeletionKeepsResumeMetadata() = runBlocking {
         fixture { db, media, _ ->
             db.library().putEpisode(episode())

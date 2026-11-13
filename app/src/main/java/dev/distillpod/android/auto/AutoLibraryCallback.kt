@@ -41,6 +41,8 @@ class AutoLibraryCallback(
     private val queueCommands: Set<SessionCommand> = emptySet(),
     private val onQueueCommand: ((SessionCommand,Bundle)->ListenableFuture<SessionResult>)? = null,
     private val preparePlaybackItems: suspend (List<MediaItem>) -> List<MediaItem> = { it },
+    /** Lets an external browser read the artwork URIs it is handed; the provider is not exported. */
+    private val allowArtwork: (String) -> Unit = {},
 ): MediaLibrarySession.Callback {
     override fun onPlayerCommandRequest(session: MediaSession, controller: MediaSession.ControllerInfo, playerCommand: Int): Int {
         if (controller.packageName != packageName && playerCommand in setOf(Player.COMMAND_PLAY_PAUSE,
@@ -98,6 +100,7 @@ class AutoLibraryCallback(
             .setMediaButtonPreferences(layout(includeVoice=!notification && voiceEnabled())).build()
     }
     override fun onGetLibraryRoot(session: MediaLibrarySession,browser: MediaSession.ControllerInfo,params: LibraryParams?) = request {
+        if(browser.packageName!=packageName)allowArtwork(browser.packageName)
         LibraryResult.ofItem(catalog.item(AutoCatalog.ROOT)!!,params)
     }
     override fun onGetChildren(session: MediaLibrarySession,browser: MediaSession.ControllerInfo,parentId: String,page: Int,pageSize: Int,params: LibraryParams?) = request {

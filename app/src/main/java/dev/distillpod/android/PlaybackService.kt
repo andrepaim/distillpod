@@ -101,7 +101,7 @@ class PlaybackService : MediaLibraryService() {
             saveMoment={id,position,file->
                 val ep=dao.episode(id)?:error("Episode is unavailable")
                 graph.captures.save(id,position,file!=null && file==ep.localFile)
-            },prepareMoment={id->graph.scope.launch(Dispatchers.IO){runCatching {graph.captures.prepareSaved(id)}.onFailure {graph.diagnostics.failure("capture",it,id)}};Unit},artwork=artwork::uri,
+            },prepareMoment={id->graph.scope.launch(Dispatchers.IO){runCatching {graph.captures.prepareSaved(id)}.onFailure {graph.diagnostics.failure("capture",it,id)}};Unit},artwork=artwork::uri,allowArtwork=artwork::allow,
             voiceEnabled = { resources.getBoolean(R.bool.voice_enabled) },
             openCarVoice = { graph.carVoiceEntry.open() },
             onExternalPlaybackCommand = { graph.voice.cancel(false) },
