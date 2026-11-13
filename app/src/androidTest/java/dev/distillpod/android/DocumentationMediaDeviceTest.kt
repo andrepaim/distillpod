@@ -139,7 +139,7 @@ class DocumentationMediaDeviceTest {
                 screenshot("player")
                 root("saved"); screenshot("saved")
                 route("capture:documentation-example")
-                compose.onNodeWithText("Replay source · 0:30").performScrollTo()
+                compose.onNodeWithText("Replay 0:30").performScrollTo()
                 screenshot("distill-result")
                 route("transcript:$episode"); screenshot("transcript")
                 root("settings"); screenshot("settings")
@@ -176,7 +176,7 @@ class DocumentationMediaDeviceTest {
                 pause(1500)
                 route("capture:${captured!!.id}")
                 pause(3000)
-                val replay = "Replay source · ${timestamp(captured!!.startMs)}"
+                val replay = "Replay ${timestamp(captured!!.startMs)}"
                 compose.onNodeWithText(replay).performScrollTo()
                 pause(2000)
                 compose.onNodeWithText(replay).performClick()

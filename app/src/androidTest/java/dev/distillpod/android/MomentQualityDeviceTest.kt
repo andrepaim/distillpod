@@ -39,9 +39,11 @@ class MomentQualityDeviceTest {
             withContext(Dispatchers.Main) { vm.root("saved") }
             compose.waitUntil(10000) { compose.onAllNodesWithText("Short daily practice helps build a lasting skill.").fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithText("Short daily practice helps build a lasting skill.").performScrollTo().performClick()
-            compose.onNodeWithText("Saved as a takeaway. No suitable standalone quote was selected.").performScrollTo().assertIsDisplayed()
-            compose.onNodeWithText("Replay source · 0:40").performScrollTo().assertIsDisplayed()
-            compose.onNodeWithText("Read source passage").performScrollTo().performClick()
+            // A takeaway without a quote needs no internal explanation; the moment stays usable.
+            compose.onNodeWithText("Saved as a takeaway", substring = true).assertDoesNotExist()
+            compose.onNodeWithText("Replay 0:40").performScrollTo().assertIsDisplayed()
+            compose.onNodeWithText("Source passage").performScrollTo().performClick()
+            compose.onNodeWithText("Original capture").performScrollTo().assertIsDisplayed()
             updated=true;repo.improve(id);repo.run(id)
             try {
                 withTimeout(5000) {

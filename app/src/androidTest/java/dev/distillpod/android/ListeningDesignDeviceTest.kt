@@ -152,7 +152,7 @@ class ListeningDesignDeviceTest {
             compose.onNode(hasScrollAction()).performScrollToNode(hasText("Useful ideas deserve a second listen.", substring = true))
             screenshot("saved")
             compose.onNodeWithText("Useful ideas deserve a second listen.", substring = true).performClick()
-            compose.onNodeWithText("Replay source · 0:05").performScrollTo().assertIsDisplayed()
+            compose.onNodeWithText("Replay 0:05").performScrollTo().assertIsDisplayed()
             screenshot("moment")
             withContext(Dispatchers.Main) {
                 vm.open("player")
