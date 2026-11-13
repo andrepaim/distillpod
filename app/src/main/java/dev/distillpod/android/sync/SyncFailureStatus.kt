@@ -32,3 +32,7 @@ internal suspend fun uploadFailure(error:StorageException,hash:String,expandedBy
     if(existing?.getCustomMetadata("hash")==hash && existing.getCustomMetadata("expandedBytes")==expandedBytes.toString())return null
     return if(storageUploadRejected(error))SyncOperationRejected(error) else error
 }
+
+/** The server refused this operation's own staged writes as malformed (for example an oversized document). */
+internal fun firestoreWriteRejected(error:Exception,staged:Boolean):Boolean=
+    staged && error is FirebaseFirestoreException && error.code==FirebaseFirestoreException.Code.INVALID_ARGUMENT
