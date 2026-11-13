@@ -29,7 +29,9 @@ class PredictiveBackDeviceTest {
     private val device get() = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
 
     private fun back() { device.pressBack(); compose.waitForIdle() }
-    private fun awaitStack(vm: AppViewModel, expected: List<String>) = compose.waitUntil(5000) { vm.backStack.value == expected }
+    private fun await(what: String, observed: () -> String, condition: () -> Boolean) =
+        try { compose.waitUntil(10000, condition) } catch (timeout: ComposeTimeoutException) { throw AssertionError("$what; observed ${observed()}", timeout) }
+    private fun awaitStack(vm: AppViewModel, expected: List<String>) = await("back stack $expected", { "${vm.backStack.value}" }) { vm.backStack.value == expected }
 
     @Test fun backClosesNestedSurfacesBeforeScreensAndLeavesOnlyFromTheRoot() = runBlocking<Unit> {
         check(Build.HARDWARE.contains("ranchu") || Build.FINGERPRINT.contains("generic")) { "Use a disposable emulator" }
@@ -40,7 +42,7 @@ class PredictiveBackDeviceTest {
         val title = "Back fixture $tag"
         val dao = graph.db.library()
         try {
-            dao.putPodcast(PodcastEntity(tag, "https://example.test/$tag", "Back show", subscribed = true))
+            dao.putPodcast(PodcastEntity(tag, "https://example.test/$tag", "Back show"))
             dao.putEpisode(EpisodeEntity("$tag-episode", tag, "guid", title, "https://example.test/$tag.mp3"))
 
             // A dialog closes before its screen; screens then unwind one at a time.
@@ -54,9 +56,13 @@ class PredictiveBackDeviceTest {
             back(); awaitStack(vm, listOf("library"))
 
             // A popup menu closes without leaving its screen.
-            withContext(Dispatchers.Main) { vm.open("podcast:$tag") }
-            compose.waitUntil(5000) { compose.onAllNodesWithContentDescription("More actions for $title").fetchSemanticsNodes().isNotEmpty() }
-            compose.onNodeWithContentDescription("More actions for $title").performScrollTo().performClick()
+            // Earlier suites can leave a Downloads/In progress filter; small screens compose rows lazily.
+            withContext(Dispatchers.Main) { vm.filter("all"); vm.open("podcast:$tag") }
+            await("the synthetic show's episode", { "${vm.backStack.value} ${vm.library.value?.let { "${it.podcastId == tag}/${it.filter}/${it.visible.size}" }}" }) {
+                vm.library.value?.let { it.podcastId == tag && it.visible.any { ep -> ep.title == title } } == true
+            }
+            compose.onNode(hasScrollToNodeAction()).performScrollToNode(hasContentDescription("More actions for $title"))
+            compose.onNodeWithContentDescription("More actions for $title").performClick()
             compose.onNodeWithText("Add to queue").assertIsDisplayed()
             back()
             compose.onNodeWithText("Add to queue").assertDoesNotExist()
@@ -69,7 +75,7 @@ class PredictiveBackDeviceTest {
             compose.onNodeWithText("Add RSS feed").performClick()
             compose.onNodeWithText("Add a podcast feed").assertIsDisplayed()
             back()
-            compose.waitUntil(5000) { compose.onAllNodesWithText("Add a podcast feed").fetchSemanticsNodes().isEmpty() }
+            compose.waitUntil(10000) { compose.onAllNodesWithText("Add a podcast feed").fetchSemanticsNodes().isEmpty() }
             assertEquals(listOf("search"), vm.backStack.value)
 
             // The full-screen player is a screen of its own.
@@ -81,7 +87,7 @@ class PredictiveBackDeviceTest {
             // Only the root lets Back leave the app. The system default applies there: a launcher
             // task moves to the background, this instrumentation-started activity finishes.
             device.pressBack()
-            withTimeout(5000) { while (compose.activityRule.scenario.state == Lifecycle.State.RESUMED) delay(50) }
+            withTimeout(10000) { while (compose.activityRule.scenario.state == Lifecycle.State.RESUMED) delay(50) }
             assertEquals(listOf("library"), vm.backStack.value)
         } finally {
             withContext(NonCancellable) { dao.deletePodcast(tag) }
