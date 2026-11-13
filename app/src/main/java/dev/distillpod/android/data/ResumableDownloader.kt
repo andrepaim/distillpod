@@ -20,7 +20,7 @@ import okhttp3.Request
 data class DownloadProgress(val bytes: Long, val total: Long, val etag: String?, val lastModified: String?)
 data class DownloadResult(val bytes: Long, val sha256: String, val etag: String?, val lastModified: String?)
 
-const val DOWNLOAD_SIZE_MISMATCH = "Download is larger than expected. Please retry."
+const val DOWNLOAD_SIZE_MISMATCH = "The download size does not match the expected file."
 const val STORAGE_LIMIT_MESSAGE = "Not enough room under the audio storage limit. In Settings → Storage, tap Clear unused audio, delete downloads or raise the limit, then retry."
 
 /**
