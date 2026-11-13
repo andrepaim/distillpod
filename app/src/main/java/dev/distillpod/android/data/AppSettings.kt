@@ -24,7 +24,18 @@ data class Preferences(
     val headphoneDistill: Boolean = false,
     val headphoneVoice: Boolean = false,
     val refreshHours: Int = 6,
+    val skipSilence: Boolean = false,
+    val volumeBoost: Boolean = false,
 )
+
+/** Stored per-show speeds, keyed by podcast id; unsupported entries are ignored. */
+internal fun showSpeeds(raw: String?): Map<String, Float> = runCatching {
+    val json = org.json.JSONObject(raw ?: return emptyMap())
+    json.keys().asSequence().mapNotNull { key ->
+        val value = json.opt(key) as? Number ?: return@mapNotNull null
+        dev.distillpod.core.PlaybackSpeeds.normalize(value.toFloat())?.let { key to it }
+    }.toMap()
+}.getOrDefault(emptyMap())
 
 class AppSettings(context: Context, private val store: androidx.datastore.core.DataStore<androidx.datastore.preferences.core.Preferences> = context.applicationContext.settingsDataStore, private val db:AppDatabase?=null, private val portableChanged:()->Unit={}) {
     val shows = store.data.map { p -> ShowPreferences(
@@ -53,7 +64,21 @@ class AppSettings(context: Context, private val store: androidx.datastore.core.D
         p[booleanPreferencesKey("headphoneDistill")] ?: false,
         p[booleanPreferencesKey("headphoneVoice")] ?: false,
         (p[intPreferencesKey("refreshHours")] ?: 6).coerceIn(1, 168),
+        p[booleanPreferencesKey("skipSilence")] ?: false,
+        p[booleanPreferencesKey("volumeBoost")] ?: false,
     ) }
+    private fun speeds(p: androidx.datastore.preferences.core.Preferences) = dev.distillpod.core.SpeedPreferences(
+        p[floatPreferencesKey("playbackSpeed")]?.let(dev.distillpod.core.PlaybackSpeeds::normalize),
+        showSpeeds(p[stringPreferencesKey("showSpeeds")]))
+    /** Device-local playback speeds (#183): not part of backup or sync, like show pins. */
+    val speeds = store.data.map(::speeds)
+    suspend fun updateSpeeds(transform: (dev.distillpod.core.SpeedPreferences) -> dev.distillpod.core.SpeedPreferences) {
+        store.edit { p ->
+            val next = transform(speeds(p))
+            next.global?.let { p[floatPreferencesKey("playbackSpeed")] = it } ?: p.remove(floatPreferencesKey("playbackSpeed"))
+            p[stringPreferencesKey("showSpeeds")] = org.json.JSONObject().apply { next.shows.forEach { (show, speed) -> put(show, speed.toDouble()) } }.toString()
+        }
+    }
     val flow = if(db==null)localFlow else combine(localFlow,db.sync().observePreferences()) {local,rows->
         val p=rows.associate {it.name to it.value}
         local.copy(model=p["model"]?:local.model,language=p["language"]?:local.language,selectedAiModel=p["aiModel"]?:local.selectedAiModel)

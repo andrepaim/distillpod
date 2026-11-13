@@ -61,6 +61,7 @@ class PlaybackService : MediaLibraryService() {
     private var adConfigs = emptyMap<String, AdConfig>()
     private val adSkipping = ReviewedAdSkipping()
     private var sleepTimer: dev.distillpod.android.playback.SleepTimerController? = null
+    private var volumeBoost: dev.distillpod.android.playback.VolumeBoost? = null
     private var widget: dev.distillpod.android.widget.NowPlayingWidgetUpdater? = null
     override fun onCreate() {
         super.onCreate()
@@ -208,6 +209,7 @@ class PlaybackService : MediaLibraryService() {
             }
             override fun onPlaybackStateChanged(playbackState: Int) { if (playbackState == Player.STATE_ENDED) sleep.itemEnded(queueEnded = true) }
         })
+        installPlaybackEffects(engine, player, graph, dao)
         player.addListener(object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState:Int) {
                 when(playbackState) {
@@ -489,6 +491,28 @@ class PlaybackService : MediaLibraryService() {
             }
         }
     }
+    /** Skip silence, volume boost and per-show speeds (#183). */
+    private fun installPlaybackEffects(engine: ExoPlayer, player: Player, graph: AppGraph, dao: LibraryDao) {
+        scope.launch { graph.settings.flow.map { it.skipSilence }.distinctUntilChanged().collect { engine.skipSilenceEnabled = it } }
+        val boost = dev.distillpod.android.playback.VolumeBoost({ session -> dev.distillpod.android.playback.AndroidLoudnessEffect(session) },
+            onFailure = { graph.diagnostics.failure("playback", it) }, publish = { graph.playbackEvents.volumeBoost.value = it })
+        volumeBoost = boost
+        val speeds = dev.distillpod.android.playback.PlaybackSpeedController(scope, object : dev.distillpod.android.playback.SpeedPlayer {
+            override var speed: Float
+                get() = player.playbackParameters.speed
+                set(value) = player.setPlaybackSpeed(value)
+        }, showOf = { id -> withContext(Dispatchers.IO) { graph.ready.await(); dao.episode(id)?.podcastId } },
+            save = graph.settings::updateSpeeds, ignoreChanges = { restoring },
+            onFailure = { graph.diagnostics.failure("playback", it) })
+        player.addListener(object : Player.Listener {
+            override fun onAudioSessionIdChanged(audioSessionId: Int) = boost.sessionChanged(audioSessionId)
+            override fun onMediaItemTransition(item: MediaItem?, reason: Int) = speeds.itemChanged(item?.mediaId)
+            override fun onPlaybackParametersChanged(parameters: androidx.media3.common.PlaybackParameters) = speeds.speedChanged(parameters.speed)
+        })
+        boost.sessionChanged(engine.audioSessionId)
+        scope.launch { graph.settings.flow.map { it.volumeBoost }.distinctUntilChanged().collect(boost::enabledChanged) }
+        scope.launch { graph.settings.speeds.distinctUntilChanged().collect(speeds::preferencesChanged) }
+    }
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? = session
     override fun onDestroy() {
         applicationContext.appGraph.diagnostics.event("playback.service_stopped")
@@ -503,6 +527,7 @@ class PlaybackService : MediaLibraryService() {
         val serviceJob=scope.coroutineContext[Job]
         // The timer is in memory only; stopping the service drops it.
         sleepTimer?.release(); sleepTimer = null
+        volumeBoost?.release(); volumeBoost = null
         widget?.stop(); widget = null
         session?.let { it.player.release(); it.release() }; session = null
         pendingCloudChoice?.choice?.completion?.completeExceptionally(CancellationException("Playback service stopped"))
