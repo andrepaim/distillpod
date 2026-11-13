@@ -20,7 +20,8 @@ class NarrowEpisodeObserversTest {
         val dao = db.library()
         try {
             dao.putPodcast(PodcastEntity("p", "https://example.test/feed", "Show"))
-            dao.putEpisode(EpisodeEntity("a", "p", "a", "A", "https://example.test/a", durationMs = 600_000, lastPlayedAt = 1))
+            dao.putEpisode(EpisodeEntity("a", "p", "a", "A", "https://example.test/a", durationMs = 600_000, lastPlayedAt = 1,
+                localFile = "/media/a.mp3", downloadState = "downloaded"))
             dao.putAnalysis(AnalysisEntity("a", "r1", state = "succeeded"))
             val raw = Collections.synchronizedList(mutableListOf<Any>())
             val source = Collections.synchronizedList(mutableListOf<Any?>())
@@ -39,13 +40,14 @@ class NarrowEpisodeObserversTest {
             settle(1)
             for (second in 1..5) dao.progress("a", second * 1_000L, 600_000, false, 1 + second * 1_000L)
             settle(2)
-            assertEquals(listOf<String?>(null), source.toList())
+            assertEquals(listOf<String?>("/media/a.mp3"), source.toList())
+            assertEquals(1, (ads.single() as List<*>).size)
             assertEquals(1, ads.size)
             assertEquals(1, browse.size)
-            dao.downloadComplete("a", "/media/a.mp3", "sha", 10)
+            dao.downloadComplete("a", "/media/a2.mp3", "sha", 10)
             settle(3)
             withTimeout(10_000) { while (source.size < 2 || ads.size < 2 || browse.size < 2) delay(20) }
-            assertEquals(listOf(null, "/media/a.mp3"), source.toList())
+            assertEquals(listOf("/media/a.mp3", "/media/a2.mp3"), source.toList())
             jobs.forEach { it.cancel() }
         } finally { db.close() }
     }

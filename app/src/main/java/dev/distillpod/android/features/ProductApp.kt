@@ -174,7 +174,8 @@ private val NOT_CURRENT = PlaybackState()
 @OptIn(ExperimentalLayoutApi::class)
 @Composable private fun LibraryPage(vm: AppViewModel, podcasts: List<PodcastEntity>, transcripts: List<TranscriptEntity>, captures: List<DistillationEntity>, player: PlaybackState, podcastId: String?) {
     // Filtering 3,000+ episodes belongs to library changes, not to each live position tick (#141).
-    val listing by remember(podcastId) { vm.libraryListing(podcastId) }.collectAsStateWithLifecycle()
+    val listing by remember(podcastId) { vm.libraryRows(podcastId) }
+        .collectAsStateWithLifecycle(remember(podcastId) { vm.currentLibraryListing(podcastId) })
     val filter = listing.filter
     val subscribed = listing.subscribed
     val selected = listing.selected

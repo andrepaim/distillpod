@@ -142,6 +142,24 @@ class ProgressPersistenceTest {
         assertTrue(db.library().episode("b")!!.lastPlayedAt > 0)
     }
 
+    @Test fun `failed departure write is retried for the departed item`() = fixture("departure-failure.db") {
+        for (second in 0L..3L) writer.write(playing("a", second))
+        failNext.value = true
+        writer.write(PlaybackSnapshot(emptyList(), "a", 8_800, 600_000, false, 1f, boundary = true, playing = true, elapsed = 8_800))
+        assertEquals(0L, db.library().episode("a")!!.positionMs)
+        writer.write(playing("b", 9).copy(position = 0))
+        assertEquals(8_800L, db.library().episode("a")!!.positionMs)
+        assertEquals("b", db.library().playerSession()!!.episodeId)
+    }
+
+    @Test fun `departure write does not trigger an extra write for the current item`() = fixture("departure-extra.db") {
+        writer.write(playing("b", 0))
+        writer.write(PlaybackSnapshot(emptyList(), "a", 4_000, 600_000, false, 1f, boundary = true, playing = true, elapsed = 500))
+        reset()
+        writer.write(playing("b", 1))
+        assertEquals(0L, count("episodes"))
+    }
+
     @Test fun `failed boundary write is recovered by the next snapshot`() = fixture("failure.db") {
         writer.write(playing("a", 0))
         failNext.value = true

@@ -35,7 +35,11 @@ internal class ProgressCheckpoints(private val intervalMs: Long = PROGRESS_CHECK
         playing && (id != lastId || elapsed - lastElapsed >= intervalMs) -> false
         else -> null
     }
-    fun written(id: String, elapsed: Long) { lastId = id; lastElapsed = elapsed; pendingBoundary = false }
+    /** [current] is false for a departed item's boundary, which must not restart the current item's interval. */
+    fun written(id: String, elapsed: Long, current: Boolean = true) {
+        if (current) { lastId = id; lastElapsed = elapsed }
+        pendingBoundary = false
+    }
     fun failed(boundary: Boolean) { if (boundary) pendingBoundary = true else lastId = null }
 }
 
@@ -55,9 +59,18 @@ internal class PlaybackSnapshotWriter(private val db: AppDatabase,
     private val checkpoints: ProgressCheckpoints = ProgressCheckpoints()) {
     /** Queue order last observed as persisted; explicit cloud choices also set it. */
     var lastQueue: List<String>? = null
+    /** A departed item's boundary whose write failed; the next snapshot belongs to another item. */
+    private var failedDeparture: PlaybackSnapshot? = null
 
     suspend fun write(value: PlaybackSnapshot) {
+        failedDeparture?.let { departed ->
+            failedDeparture = null
+            // The same item's next snapshot carries the boundary again with a current position.
+            if (departed.id != value.id) write(departed)
+        }
         val dao = db.library()
+        // Snapshots of the player's current item carry its queue; a departed item's boundary does not.
+        val current = value.ids.isNotEmpty() || value.id == null
         var attempted: Boolean? = null
         try {
             val ep = value.id?.let { dao.episode(it) }
@@ -67,7 +80,7 @@ internal class PlaybackSnapshotWriter(private val db: AppDatabase,
             attempted = progress?.second
             db.withTransaction {
                 if (progress != null) checkpoint(progress.first, value.copy(boundary = progress.second))
-                if (value.ids.isNotEmpty() || value.id == null) {
+                if (current) {
                     val known = value.ids.filter { dao.episode(it) != null }.distinct()
                     if (!value.suppressQueue) {
                         val imported = importedQueue.value == known
@@ -82,10 +95,11 @@ internal class PlaybackSnapshotWriter(private val db: AppDatabase,
                     if (dao.playerSession() != session) dao.putPlayerSession(session)
                 }
             }
-            if (progress != null) checkpoints.written(progress.first, value.elapsed)
+            if (progress != null) checkpoints.written(progress.first, value.elapsed, current)
         } catch (_: Exception) {
             // A later snapshot recovers a transient write failure.
             attempted?.let(checkpoints::failed)
+            if (attempted == true && !current) failedDeparture = value
         }
     }
 }
