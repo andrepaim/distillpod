@@ -396,22 +396,28 @@ class PlaybackService : MediaLibraryService() {
             }
         }
         scope.launch {
-            graph.ready.await()
-            val restore = withContext(Dispatchers.IO) {
-                val queue = dao.queue().mapNotNull { dao.episode(it.episodeId) }
-                val podcasts = dao.podcasts().associateBy { it.id }
-                Triple(queue, podcasts, dao.playerSession())
-            }
-            val prepared = graph.media.preparePlaybackItems(restore.first.map {
-                mediaItem(it.copy(localFile = null), restore.second[it.podcastId])
-            })
-            if (player.mediaItemCount == 0 && restore.first.isNotEmpty()) {
-                val index = restore.first.indexOfFirst { it.id == restore.third?.episodeId }.coerceAtLeast(0)
-                player.setMediaItems(prepared, index, restore.first[index].positionMs)
-                player.setPlaybackSpeed(restore.third?.speed?.coerceIn(0.5f, 3f) ?: 1f)
-                player.prepare()
-            }
-            restoring = false; playbackReady.complete(Unit); snapshot(queueRestored=true)
+            val restored = dev.distillpod.android.playback.runStartupRestore(load = {
+                graph.ready.await()
+                val restore = withContext(Dispatchers.IO) {
+                    val queue = dao.queue().mapNotNull { dao.episode(it.episodeId) }
+                    val podcasts = dao.podcasts().associateBy { it.id }
+                    Triple(queue, podcasts, dao.playerSession())
+                }
+                restore to graph.media.preparePlaybackItems(restore.first.map {
+                    mediaItem(it.copy(localFile = null), restore.second[it.podcastId])
+                })
+            }, apply = { (restore, prepared) ->
+                if (player.mediaItemCount == 0 && restore.first.isNotEmpty()) {
+                    val index = restore.first.indexOfFirst { it.id == restore.third?.episodeId }.coerceAtLeast(0)
+                    player.setMediaItems(prepared, index, restore.first[index].positionMs)
+                    player.setPlaybackSpeed(restore.third?.speed?.coerceIn(0.5f, 3f) ?: 1f)
+                    player.prepare()
+                }
+            }, onFailure = { graph.diagnostics.failure("playback", it) },
+                release = { restoring = false; playbackReady.complete(Unit) })
+            snapshot(queueRestored=true)
+            // A failed startup read is retried once through the queue writer, which re-reads Room.
+            if (!restored) writes.trySend(RestoreQueue(queueRevision))
             while (isActive) { snapshot(player.playbackState == Player.STATE_ENDED); delay(1000) }
         }
         scope.launch {

@@ -13,7 +13,7 @@ internal fun episodeDate(ms: Long, now: Long = System.currentTimeMillis(), zone:
     locale: Locale = Locale.getDefault()): String {
     if (ms <= 0) return ""
     val day = Instant.ofEpochMilli(ms).atZone(zone)
-    val pattern = if (day.year == Instant.ofEpochMilli(now).atZone(zone).year) "dd MMM" else "dd MMM yyyy"
+    val pattern = if (day.year == Instant.ofEpochMilli(now).atZone(zone).year) "d MMM" else "d MMM yyyy"
     return DateTimeFormatter.ofPattern(pattern, locale).format(day)
 }
 

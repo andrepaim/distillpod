@@ -179,6 +179,9 @@ private val NOT_CURRENT = PlaybackState()
 @Composable private fun LibraryPage(vm: AppViewModel, podcasts: List<PodcastEntity>, transcripts: List<TranscriptEntity>, captures: List<DistillationEntity>, player: PlaybackState, podcastId: String?) {
     // Filtering 3,000+ episodes belongs to library changes, not to each live position tick (#141).
     val routed by vm.library.collectAsStateWithLifecycle()
+    val refreshing by remember(vm) { vm.feedRefreshing() }.collectAsStateWithLifecycle(false)
+    val deletionBlocks by vm.audioDeletionBlocks.collectAsStateWithLifecycle()
+    val actions = remember(vm) { vm.episodeActions() }
     val fallback = remember(podcastId) { lazy { vm.currentLibraryListing(podcastId) } }
     val listing = routed?.takeIf { it.podcastId == podcastId } ?: fallback.value
     val filter = listing.filter
@@ -207,7 +210,8 @@ private val NOT_CURRENT = PlaybackState()
             ResumeListeningCard(resume, podcasts.firstOrNull { it.id == resume.podcastId },
                 listeningPosition(resume, player), listeningDuration(resume, player),
                 current && player.playing, { if (current) vm.open("player") else vm.open("episode:${resume.id}") },
-                { if (current) vm.toggle() else vm.play(resume.id) })
+                // A finished episode restarts from the beginning; toggling an ended player would not.
+                { if (current && !resume.completed) vm.toggle() else vm.play(resume.id) })
         }
         if (podcastId == null && subscribed.isNotEmpty()) item(key = "shows") {
             SectionHeading("Your shows", "${subscribed.size} followed", action = "See all", onAction = { vm.open("shows") })
@@ -226,7 +230,9 @@ private val NOT_CURRENT = PlaybackState()
                 } }
             }
         }
-        if (podcasts.any { it.error != null }) item { Text("Some feeds could not refresh. Your saved library is still available.", color = MaterialTheme.colorScheme.tertiary, style = MaterialTheme.typography.bodySmall) }
+        if (listing.feedProblems.isNotEmpty()) item(key = "feed-problems") {
+            FeedProblems(listing.feedProblems, podcastId != null, refreshing, { vm.refresh(it) }, { vm.open("podcast:$it") }, vm::unsubscribe)
+        }
         if (listing.episodeCount > 0) item(key = "filters") {
             SectionHeading(when (filter) { "progress" -> "In progress"; "downloads" -> "Downloaded episodes"; else -> "Latest episodes" }, "${visible.size} available")
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 6.dp)) {
@@ -241,69 +247,10 @@ private val NOT_CURRENT = PlaybackState()
             }
         }
         // Other rows get a constant idle state so position ticks recompose only the current row.
-        items(visible, key = { it.id }) { ep -> EpisodeCard(vm, ep, podcasts.firstOrNull { it.id == ep.podcastId }, if (player.episodeId == ep.id) player else NOT_CURRENT,
-            transcripts.firstOrNull { it.episodeId == ep.id }, captures.count { it.episodeId == ep.id }) }
+        items(visible, key = { it.id }) { ep -> EpisodeRow(ep, podcasts.firstOrNull { it.id == ep.podcastId }, if (player.episodeId == ep.id) player else NOT_CURRENT,
+            transcripts.firstOrNull { it.episodeId == ep.id }?.state == "ready", captures.count { it.episodeId == ep.id }, podcastId == null,
+            deletionBlocks[ep.id]?.feedback, actions) }
     }
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable private fun EpisodeCard(vm: AppViewModel, ep: EpisodeEntity, podcast: PodcastEntity?, player: PlaybackState, transcript: TranscriptEntity? = null, captureCount: Int = 0) {
-    val current = player.episodeId == ep.id
-    val position = listeningPosition(ep, player)
-    val duration = listeningDuration(ep, player)
-    Card(onClick = { vm.open("episode:${ep.id}") }, shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-        Column(Modifier.padding(start = 14.dp, end = 8.dp, top = 14.dp, bottom = 4.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Cover(ep.imageUrl ?: podcast?.imageUrl, Modifier.size(60.dp))
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(podcast?.title ?: "Podcast", maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.secondary)
-                    Text(ep.title, maxLines = 3, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                    Text(listOf(episodeDate(ep.publishedAt), if (position > 0 && !ep.completed) timeRemaining(duration, position) else duration.takeIf { it > 0 }?.let(::timestamp) ?: "").filter(String::isNotBlank).joinToString(" · "), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                FilledTonalIconButton(onClick = { if (current && player.playing) vm.toggle() else vm.play(ep.id) }) {
-                    Icon(if (current && player.playing) Icons.Default.Pause else Icons.Default.PlayArrow, "${if (current && player.playing) "Pause" else "Play"} ${ep.title}")
-                }
-            }
-            if (position > 0 && duration > 0 && !ep.completed) LinearProgressIndicator(progress = { (position.toFloat() / duration).coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth().padding(end = 6.dp).height(3.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                FlowRow(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(5.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                    if (ep.completed) StatusLabel("Played")
-                    if (ep.localFile != null) StatusLabel("Offline", true)
-                    if (transcript?.state == "ready") StatusLabel("Transcript")
-                    if (captureCount > 0) StatusLabel("$captureCount saved", true)
-                    if (ep.downloadState in listOf("queued", "downloading")) StatusLabel(if (ep.totalBytes > 0) "${(ep.downloadedBytes * 100 / ep.totalBytes).coerceIn(0, 100)}%" else "Queued")
-                }
-                if (ep.localFile == null) IconButton(onClick = { if (ep.downloadState in listOf("queued", "downloading")) vm.pauseDownload(ep.id) else vm.download(ep.id) }) {
-                    Icon(if (ep.downloadState in listOf("queued", "downloading")) Icons.Default.PauseCircleOutline else Icons.Default.Download,
-                        "${if (ep.downloadState in listOf("queued", "downloading")) "Pause download for" else "Download"} ${ep.title}")
-                }
-                EpisodeMenu(vm, ep)
-            }
-        }
-    }
-}
-@Composable private fun EpisodeMenu(vm: AppViewModel, ep: EpisodeEntity) {
-    val deletionBlocks by vm.audioDeletionBlocks.collectAsState()
-    val blocked = deletionBlocks[ep.id]
-    var open by remember { mutableStateOf(false) }
-    Box {
-        IconButton(onClick = { open = true }) { Icon(Icons.Default.MoreVert, "More actions for ${ep.title}") }
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            DropdownMenuItem(text = { Text("Play next") }, onClick = { vm.enqueue(ep.id, true); open = false })
-            DropdownMenuItem(text = { Text("Add to queue") }, onClick = { vm.enqueue(ep.id); open = false })
-            DropdownMenuItem(text = { Text(if (ep.completed) "Mark unplayed" else "Mark played") }, onClick = { vm.markCompleted(ep.id, !ep.completed); open = false })
-            if (ep.localFile != null) {
-                DropdownMenuItem(text = { Text("Delete download") }, enabled = blocked == null,
-                    onClick = { vm.deleteDownload(ep.id); open = false })
-                blocked?.let { DropdownMenuItem(text = { Text(it.feedback) }, enabled = false, onClick = {}) }
-            }
-        }
-    }
-}
-@Composable private fun DownloadAction(vm: AppViewModel, ep: EpisodeEntity) {
-    if (ep.downloadState in listOf("queued", "downloading")) TextButton(onClick = { vm.pauseDownload(ep.id) }) {
-        Text(if (ep.totalBytes > 0) "${(ep.downloadedBytes * 100 / ep.totalBytes).coerceIn(0, 100)}% · Pause" else "Queued · Pause")
-    } else if (ep.localFile == null) TextButton(onClick = { vm.download(ep.id) }) { Icon(Icons.Default.Download, null, Modifier.size(18.dp)); Text(if (ep.downloadState in listOf("paused", "failed")) " Resume" else " Download") }
 }
 
 @Composable private fun MiniPlayer(player: PlaybackState, artwork: String?, onOpen: () -> Unit, onToggle: () -> Unit, onQueue: () -> Unit) {
@@ -376,7 +323,7 @@ private val NOT_CURRENT = PlaybackState()
                 val sleepTimer by vm.sleepTimer.collectAsStateWithLifecycle()
                 SleepTimerControl(sleepTimer, onStart = vm::startSleepTimer, onEndOfEpisode = vm::sleepAtEndOfEpisode,
                     onExtend = vm::extendSleepTimer, onCancel = vm::cancelSleepTimer)
-                Button(onClick = vm::captureMoment, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp), shape = RoundedCornerShape(16.dp)) {
+                Button(onClick = vm::captureMoment, enabled = canCaptureMoment(player), modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp), shape = RoundedCornerShape(16.dp)) {
                     Icon(Icons.Default.AutoAwesome, null, Modifier.size(20.dp)); Spacer(Modifier.width(10.dp)); Text("Distill last 60 seconds")
                 }
                 Text("Save the moment now. Generate its insight when the source is ready.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -425,26 +372,10 @@ private val NOT_CURRENT = PlaybackState()
     val needsDetails = ep.needsSourceDetails()
     LaunchedEffect(ep.id, needsDetails) { if (needsDetails) vm.loadEpisodeDetails(ep.id) }
     val metadata = episodeMetadataText(ep, detailStates[ep.id])
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Cover(ep.imageUrl ?: podcast?.imageUrl, Modifier.size(96.dp)); Column(Modifier.weight(1f)) { EpisodeShowLink(podcast, vm::open); Text(metadata.date, style = MaterialTheme.typography.bodySmall) }
-        }
-        Text(ep.title, style = MaterialTheme.typography.headlineSmall)
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Button(onClick = { vm.play(ep.id); vm.open("player") }) { Icon(Icons.Default.PlayArrow, null); val resumeAt = listeningPosition(ep, player); Text(if (resumeAt > 0 && !ep.completed) "Resume ${timestamp(resumeAt)}" else "Play episode") }
-            DownloadAction(vm, ep)
-        }
-        if (ep.downloadState in listOf("downloading", "queued")) Text("${fileSize(ep.downloadedBytes)}${if (ep.totalBytes > 0) " of ${fileSize(ep.totalBytes)}" else ""} · Downloads follow your network settings.", style = MaterialTheme.typography.bodySmall)
-        ep.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+    EpisodeDetail(ep, podcast, metadata, listeningPosition(ep, player), remember(vm) { vm.episodeActions(openPlayer = true) },
+        vm::open, { vm.loadEpisodeDetails(ep.id) }, Modifier.verticalScroll(rememberScrollState())) {
         TranscriptTools(vm, ep)
         EpisodeUnderstandingTools(vm, ep)
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { OutlinedButton(onClick = { vm.enqueue(ep.id, true) }) { Text("Play next") }; OutlinedButton(onClick = { vm.enqueue(ep.id) }) { Text("Add to queue") } }
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text("Description", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-            metadata.description?.let { SelectionContainer { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyLarge) } }
-            metadata.note?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium) }
-            if (metadata.retry) TextButton(onClick = { vm.loadEpisodeDetails(ep.id) }) { Text("Retry") }
-        }
     }
 }
 
