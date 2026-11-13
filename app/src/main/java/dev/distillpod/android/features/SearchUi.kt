@@ -132,7 +132,7 @@ private val topics = listOf(SearchTopic("Technology", Icons.Default.Memory), Sea
                     items(displayed.results.drop(1), key = { it.feedUrl }) { candidate -> SearchResult(candidate, existing(candidate), false, adding,
                         "subscribe:${candidate.feedUrl}" in busy, { preview = candidate }, { follow(candidate) }, onOpenPodcast) }
                 }
-                library.terms != null -> item(key = "directory-prompt") { DirectorySearchPrompt(query, !adding) { submit(query) } }
+                library.terms != null -> item(key = DIRECTORY_PROMPT_KEY) { DirectorySearchPrompt(query, !adding) { submit(query) } }
                 else -> {
                     if (recent.isNotEmpty()) {
                         item { SectionHeading("Recent searches", action = "Clear", onAction = onClearRecent) }
