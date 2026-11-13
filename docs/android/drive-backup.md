@@ -30,7 +30,7 @@ After a successful save/read, an atomic local replacement retains the most recen
 
 Newly created files are written before read-back, avoiding providers that cannot read a newly created empty cloud document. If connecting a replacement file fails, an existing connection is retained where settings storage remains available. Successful file writes are not rolled back merely because recording local connection details fails. Temporary working files are removed after each operation; Android may also reclaim app cache. Local recovery copies are private, excluded from Android cloud/device-transfer backup, and do not replace the need for a verified cloud copy.
 
-Room library merge and optional preference storage are separate transactions. Preference failure reports that the library was restored and explains how to retry preferences. Queue refresh failure gives a reopen instruction. Neither is misreported as a library rollback.
+Room library merge and optional preference storage are separate transactions. Preference failure reports that the library was restored and explains how to retry preferences. Queue refresh failure gives a reopen instruction. Neither is misreported as a library rollback. When library sync is connected, restored progress, completion and saved moments of feeds already shared with sync are queued in the merge transaction and upload like local edits; see [library sync](subscription-sync.md#backup-restore).
 
 ## Data and formats
 
