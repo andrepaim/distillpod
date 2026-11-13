@@ -319,6 +319,9 @@ private val NOT_CURRENT = PlaybackState()
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(0.dp)) {
                     listOf(1f, 1.25f, 1.5f, 2f).forEach { speed -> FilterChip(selected = player.speed == speed, onClick = { vm.speed(speed) }, label = { Text("${speed.toString().removeSuffix(".0")}×") }) }
                 }
+                val sleepTimer by vm.sleepTimer.collectAsStateWithLifecycle()
+                SleepTimerControl(sleepTimer, onStart = vm::startSleepTimer, onEndOfEpisode = vm::sleepAtEndOfEpisode,
+                    onExtend = vm::extendSleepTimer, onCancel = vm::cancelSleepTimer)
                 Button(onClick = vm::captureMoment, enabled = canCaptureMoment(player), modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp), shape = RoundedCornerShape(16.dp)) {
                     Icon(Icons.Default.AutoAwesome, null, Modifier.size(20.dp)); Spacer(Modifier.width(10.dp)); Text("Distill last 60 seconds")
                 }
