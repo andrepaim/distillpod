@@ -361,6 +361,7 @@ Ordinary emulator acceptance uses synthetic data and public speech fixtures. Liv
 
 - `LiveCaptureDeviceTest`, `LiveUnderstandingDeviceTest` and `LiveExploreDeviceTest`: instrumentation argument `allowLiveAccount=true`; `refreshLiveAccount=true` also exercises real token renewal.
 - `PodcastBenchmarkDeviceTest`: `allowBenchmarks=true` for public podcast/model benchmarking.
+- `LibrarySearchBenchmarkDeviceTest`: `librarySearchBenchmark=true` measures library search on a separate synthetic 3,000-episode database, sized with `librarySearchTranscripts` and `librarySearchSegments`. Run it on an emulator only.
 - `FullEpisodeDeviceTest`: `allowPublicEpisode=true` for a complete public enclosure.
 - `PlaybackReliabilityDeviceTest`: follow the [locked-playback protocol](android/background-playback.md), including owner-state restoration.
 
