@@ -79,6 +79,11 @@ class AppViewModel(val graph: AppGraph, private val saved: SavedStateHandle) : V
     val recentSearches = graph.settings.recentSearches.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     val busy = MutableStateFlow<Set<String>>(emptySet())
     val messages = Channel<String>(Channel.BUFFERED)
+    internal val audioCleanup = AudioCleanupController(viewModelScope, graph.media::previewAudioCleanup,
+        { ticket, progress -> graph.media.clearAudio(ticket, progress) },
+        report = { graph.diagnostics.failure("worker", it, source = "phone") },
+        finished = { state -> messages.trySend(audioCleanupSummary(state.result, state.cancelled,
+            state.phase == AudioCleanupPhase.FAILED)) })
     val loaded = MutableStateFlow(false)
     val backupDocuments = BackupDocuments(graph.context, graph.backup, graph.settings, viewModelScope) { graph.playback.synchronizeRestoredQueue() }
     val managedBackups = ManagedBackups(graph.context, graph.backup, graph.settings, viewModelScope, backupDocuments::review)
