@@ -61,6 +61,7 @@ class PlaybackService : MediaLibraryService() {
     private var adConfigs = emptyMap<String, AdConfig>()
     private val adSkipping = ReviewedAdSkipping()
     private var sleepTimer: dev.distillpod.android.playback.SleepTimerController? = null
+    private var widget: dev.distillpod.android.widget.NowPlayingWidgetUpdater? = null
     override fun onCreate() {
         super.onCreate()
         applicationContext.appGraph.diagnostics.event("playback.service_started")
@@ -173,6 +174,7 @@ class PlaybackService : MediaLibraryService() {
         session = MediaLibrarySession.Builder(this, player, libraryCallback).setSessionActivity(activity)
             .setCustomLayout(libraryCallback.playbackLayout())
             .setMediaButtonPreferences(libraryCallback.playbackLayout()).build()
+        widget = dev.distillpod.android.widget.NowPlayingWidgetUpdater.attach(this, player)
         scope.launch {
             graph.ready.await()
             combine(dao.observePodcasts(),dao.observeBrowseSummary(),dao.observeQueue(),browseCurrent) {pods,episodes,queue,current->
@@ -495,6 +497,7 @@ class PlaybackService : MediaLibraryService() {
         val serviceJob=scope.coroutineContext[Job]
         // The timer is in memory only; stopping the service drops it.
         sleepTimer?.release(); sleepTimer = null
+        widget?.stop(); widget = null
         session?.let { it.player.release(); it.release() }; session = null
         pendingCloudChoice?.choice?.completion?.completeExceptionally(CancellationException("Playback service stopped"))
         pendingCloudChoice=null
