@@ -78,20 +78,19 @@ class QueueControlsPhoneDeviceTest {
                 ViewModelProvider(compose.activity, AppViewModel.factory(graph))[AppViewModel::class.java].open("queue")
             }
             compose.waitUntil(15000) { compose.onAllNodesWithText("Clear queue").fetchSemanticsNodes().isNotEmpty() }
-            compose.onNodeWithTag("queue-list").performScrollToNode(hasContentDescription("Move Phone queue item 0 up"))
-            compose.onNodeWithContentDescription("Move Phone queue item 0 up").assertIsNotEnabled()
-            compose.onNodeWithContentDescription("Move Phone queue item 0 down").performClick()
+            // Compact rows: boundary moves are absent from TalkBack actions and disabled in the menu.
+            compose.assertQueueRowActions(ids[0],listOf("Move down", "Remove from queue"))
+            compose.selectQueueMenuAction("Phone queue item 0", "Move down", disabled = listOf("Move up"))
             awaitQueue(ids.reversed())
             assertEquals(ids[0], graph.playback.state.value.episodeId)
             assertFalse(graph.playback.state.value.playing)
             withContext(Dispatchers.Main) { assertEquals(2000L, player.currentPosition) }
-            compose.onNodeWithTag("queue-list").performScrollToNode(hasContentDescription("Move Phone queue item 0 up"))
-            compose.onNodeWithContentDescription("Move Phone queue item 0 up").performClick()
+            compose.assertQueueRowActions(ids[0],listOf("Move up", "Remove from queue"))
+            compose.performQueueAccessibilityAction(ids[0], "Phone queue item 0", "Move up")
             awaitQueue(ids)
             graph.playback.toggle()
             withTimeout(10000) { graph.playback.state.first { it.playing } }
-            compose.onNodeWithTag("queue-list").performScrollToNode(hasContentDescription("Move Phone queue item 0 down"))
-            compose.onNodeWithContentDescription("Move Phone queue item 0 down").performClick()
+            compose.selectQueueMenuAction("Phone queue item 0", "Move down", disabled = listOf("Move up"))
             awaitQueue(ids.reversed())
             assertEquals(ids[0], graph.playback.state.value.episodeId)
             assertTrue(graph.playback.state.value.playing)
