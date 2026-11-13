@@ -14,7 +14,11 @@ import java.io.File
 import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
 
-/** Only resized public cover images are exposed; no library, audio or transcript paths. */
+/**
+ * Only resized public cover images are exposed; no library, audio or transcript paths. The provider is not
+ * exported: which covers are cached would reveal the followed shows, so each artwork URI is granted for
+ * reading only to media controllers the session accepted (see [allow]).
+ */
 class AutoArtwork(private val context:Context,private val http:OkHttpClient,private val scope:CoroutineScope,
     private val changed:()->Unit={}) {
     companion object {
@@ -28,6 +32,25 @@ class AutoArtwork(private val context:Context,private val http:OkHttpClient,priv
     private val directory get()=File(context.cacheDir,"auto-art").apply {mkdirs()}
     private fun key(url:String)=MessageDigest.getInstance("SHA-256").digest(url.toByteArray()).joinToString(""){"%02x".format(it)}+".jpg"
     fun file(key:String)=fileFor(context,key)
+    private val readers=ConcurrentHashMap.newKeySet<String>()
+    private val granted=ConcurrentHashMap.newKeySet<String>()
+    private fun contentUri(name:String)=Uri.Builder().scheme("content").authority(context.packageName+".auto.artwork").appendPath(name).build()
+    private fun grant(reader:String,name:String) {
+        if(!granted.add("$reader/$name"))return
+        try {context.grantUriPermission(reader,contentUri(name),Intent.FLAG_GRANT_READ_URI_PERMISSION)}
+        catch(_:RuntimeException) {granted.remove("$reader/$name")}
+    }
+    /**
+     * Lets an external browser (for example the Android Auto host) read the artwork URIs it is handed from now
+     * on. Only browse results carry provider URIs, so other controllers never need a grant. A new connection
+     * forgets earlier grants for that package because the platform drops them when either app stops.
+     * Grants are not revoked on disconnect; readers are accepted browsers that can browse the library anyway.
+     */
+    fun allow(packageName:String) {
+        if(packageName==context.packageName)return
+        readers.add(packageName)
+        granted.removeIf {it.startsWith("$packageName/")}
+    }
     private fun placeholder():File {
         val dest=File(directory,"placeholder.jpg")
         synchronized(AutoArtwork::class.java) {
@@ -47,7 +70,8 @@ class AutoArtwork(private val context:Context,private val http:OkHttpClient,priv
             finally {active.remove(url)}
         }
         val chosen=cache?:placeholder()
-        return Uri.Builder().scheme("content").authority(context.packageName+".auto.artwork").appendPath(chosen.name).build()
+        for(reader in readers)grant(reader,chosen.name)
+        return contentUri(chosen.name)
     }
     suspend fun warm(url:String)=withContext(Dispatchers.IO) {
         if(!url.startsWith("https://") && !url.startsWith("http://"))return@withContext

@@ -1,0 +1,9 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
+    <uses-permission android:name="android.permission.INTERNET" tools:node="remove" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" tools:node="remove" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" tools:node="remove" />
+    <application android:label="Progress write validation" tools:replace="android:label">
+        <!-- Shell-triggered probe for the isolated validation package only. -->
+        <receiver android:name="dev.distillpod.android.validation.ProgressWriteProbe" android:exported="true" />
+    </application>
+</manifest>

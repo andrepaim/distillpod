@@ -1,8 +1,14 @@
 package dev.distillpod.android
 
+import android.content.ComponentName
 import android.content.Context
+import android.content.ContextWrapper
+import android.content.Intent
+import android.net.Uri
 import androidx.test.core.app.ApplicationProvider
 import dev.distillpod.android.auto.AutoArtwork
+import dev.distillpod.android.auto.AutoArtworkProvider
+import java.io.File
 import kotlinx.coroutines.*
 import org.junit.Assert.*
 import org.junit.Test
@@ -33,5 +39,48 @@ class AutoArtworkTest {
             assertNull(art.file("../database.db"))
             assertNull(art.file("arbitrary"))
         } finally {scope.cancel();server.shutdown()}
+    }
+    @Test fun `provider is private and artwork is granted per URI only to allowed browsers`()=runBlocking {
+        val app=ApplicationProvider.getApplicationContext<Context>()
+        val info=app.packageManager.getProviderInfo(ComponentName(app,AutoArtworkProvider::class.java),0)
+        assertFalse("Other apps must not probe which shows are followed",info.exported)
+        assertTrue(info.grantUriPermissions)
+        val grants=java.util.Collections.synchronizedList(mutableListOf<Pair<String,Uri>>())
+        val context=object:ContextWrapper(app) {
+            override fun grantUriPermission(toPackage:String,uri:Uri,modeFlags:Int) {
+                assertEquals(Intent.FLAG_GRANT_READ_URI_PERMISSION,modeFlags)
+                grants+=toPackage to uri
+            }
+        }
+        val scope=CoroutineScope(SupervisorJob()+Dispatchers.IO)
+        try {
+            fun key(url:String)=java.security.MessageDigest.getInstance("SHA-256").digest(url.toByteArray()).joinToString(""){"%02x".format(it)}+".jpg"
+            val directory=File(app.cacheDir,"auto-art").apply {mkdirs()}
+            // Robolectric has no launcher icon drawable for the generated placeholder.
+            File(directory,"placeholder.jpg").takeUnless {it.isFile}?.writeBytes(byteArrayOf(0))
+            val earlier="https://example.test/earlier-${System.nanoTime()}.png"
+            File(directory,key(earlier)).writeBytes(byteArrayOf(1))
+            val art=AutoArtwork(context,OkHttpClient(),scope)
+            art.uri(null);art.uri(earlier)
+            assertTrue("Nothing is granted before a browser is allowed",grants.isEmpty())
+            art.allow(app.packageName);art.uri(earlier)
+            assertTrue("The app needs no grant for its own provider",grants.isEmpty())
+            art.allow("android.auto.test")
+            assertTrue("Allowing a browser grants nothing up front",grants.isEmpty())
+            val earlierUri=art.uri(earlier)
+            assertEquals(listOf("android.auto.test" to earlierUri),grants.toList())
+            val later="https://example.test/later-${System.nanoTime()}.png"
+            File(directory,key(later)).writeBytes(byteArrayOf(2))
+            val laterUri=art.uri(later)
+            val placeholder=art.uri(null)
+            assertEquals(listOf("android.auto.test" to earlierUri,"android.auto.test" to laterUri,"android.auto.test" to placeholder),grants.toList())
+            art.uri(later);art.uri(null)
+            assertEquals("Each URI is granted once per connection",3,grants.size)
+            // The platform drops grants when either app stops; a new connection is granted again.
+            art.allow("android.auto.test")
+            assertEquals(laterUri,art.uri(later))
+            assertEquals(4,grants.size)
+            assertEquals("android.auto.test" to laterUri,grants.last())
+        } finally {scope.cancel()}
     }
 }

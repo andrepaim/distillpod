@@ -90,7 +90,8 @@ fun fileSize(bytes: Long): String = if (bytes >= 1_000_000_000) "%.1f GB".format
     val title = when {
         route == "library" -> "DistillPod"
         route == "search" -> "Discover"
-        route == "saved" || route.startsWith("capture:") -> "Saved moments"
+        route == "saved" -> "Saved"
+        route.startsWith("capture:") -> "Saved moment"
         route == "posts" || route.startsWith("posts:") -> "Your posts"
         route.startsWith("post:") -> "Create post"
         route == "queue" -> "Listening queue"
@@ -136,7 +137,7 @@ fun fileSize(bytes: Long): String = if (bytes >= 1_000_000_000) "%.1f GB".format
                 screenState.SaveableStateProvider(route) {
                 when {
                     !loaded -> CircularProgressIndicator(Modifier.align(Alignment.Center))
-                    route == "library" || route.startsWith("podcast:") -> LibraryPage(vm, podcasts, episodes, transcripts, captures, player, route.takeIf { it.startsWith("podcast:") }?.substringAfter(':'))
+                    route == "library" || route.startsWith("podcast:") -> LibraryPage(vm, podcasts, transcripts, captures, player, route.takeIf { it.startsWith("podcast:") }?.substringAfter(':'))
                     route == "search" -> SearchPage(vm, podcasts)
                     route == "queue" -> QueuePage(vm, episodes, podcasts, player)
                     route == "posts" || route.startsWith("posts:") -> PostDraftsPage(vm, route.substringAfter(':', "").takeIf { it.isNotBlank() })
@@ -147,7 +148,7 @@ fun fileSize(bytes: Long): String = if (bytes >= 1_000_000_000) "%.1f GB".format
                     route == "backup" -> BackupPage(vm) { vm.open("settings:sync") }
                     route == "player" -> PlayerPage(vm, episodes.firstOrNull { it.id == player.episodeId }, podcasts, player, fullscreenExitRequest) { videoFullscreen = it }
                     route.startsWith("episode:") -> EpisodePage(vm, episodes.firstOrNull { it.id == route.substringAfter(':') }, podcasts, player)
-                    route.startsWith("capture:") -> CapturePage(vm, captures.firstOrNull { it.id == route.substringAfter(':') }, episodes)
+                    route.startsWith("capture:") -> CapturePage(vm, captures.firstOrNull { it.id == route.substringAfter(':') }, episodes, podcasts)
                     route.startsWith("transcript:") -> TranscriptPage(vm, episodes.firstOrNull { it.id == route.substringAfter(':') })
                     route.startsWith("analysis:") -> AnalysisPage(vm, episodes.firstOrNull { it.id == route.substringAfter(':') })
                     route.startsWith("chat:") -> EpisodeChatPage(vm, episodes.firstOrNull { it.id == route.substringAfter(':') })
@@ -160,6 +161,7 @@ fun fileSize(bytes: Long): String = if (bytes >= 1_000_000_000) "%.1f GB".format
     }
 }
 
+private val NOT_CURRENT = PlaybackState()
 @Composable private fun Cover(url: String?, modifier: Modifier = Modifier) = PodcastCover(url, modifier)
 @Composable private fun Empty(title: String, detail: String, action: String? = null, onAction: () -> Unit = {}) {
     Column(Modifier.fillMaxWidth().padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -171,15 +173,16 @@ fun fileSize(bytes: Long): String = if (bytes >= 1_000_000_000) "%.1f GB".format
 }
 
 @OptIn(ExperimentalLayoutApi::class)
-@Composable private fun LibraryPage(vm: AppViewModel, podcasts: List<PodcastEntity>, episodes: List<EpisodeEntity>, transcripts: List<TranscriptEntity>, captures: List<DistillationEntity>, player: PlaybackState, podcastId: String?) {
-    val filter by vm.filter.collectAsStateWithLifecycle()
-    val subscribed = podcasts.filter { it.subscribed }
-    val selected = podcasts.firstOrNull { it.id == podcastId }
-    val library = episodes.filter { ep -> if (podcastId != null) ep.podcastId == podcastId else subscribed.any { it.id == ep.podcastId } || ep.localFile != null || ep.lastPlayedAt > 0 }
-    val visible = library.filter { ep -> when (filter) { "downloads" -> ep.localFile != null; "progress" -> ep.positionMs > 0 && !ep.completed; else -> true } }.let { rows -> if (selected?.feedUrl?.let { dev.distillpod.core.YouTubeUrl.source(it) } != null)
-        rows.sortedBy { it.sourceOrder ?: Int.MAX_VALUE } else rows }
-    val resume = library.firstOrNull { it.id == player.episodeId && !it.completed }
-        ?: library.filter { it.positionMs > 0 && !it.completed }.maxByOrNull { it.lastPlayedAt }
+@Composable private fun LibraryPage(vm: AppViewModel, podcasts: List<PodcastEntity>, transcripts: List<TranscriptEntity>, captures: List<DistillationEntity>, player: PlaybackState, podcastId: String?) {
+    // Filtering 3,000+ episodes belongs to library changes, not to each live position tick (#141).
+    val routed by vm.library.collectAsStateWithLifecycle()
+    val fallback = remember(podcastId) { lazy { vm.currentLibraryListing(podcastId) } }
+    val listing = routed?.takeIf { it.podcastId == podcastId } ?: fallback.value
+    val filter = listing.filter
+    val subscribed = listing.subscribed
+    val selected = listing.selected
+    val visible = listing.visible
+    val resume = listing.resume
     val showResume = podcastId == null && filter == "all" && resume != null
     val list = rememberLazyListState()
     // Room/player flows can insert the resume card above the initial show row.
@@ -189,7 +192,7 @@ fun fileSize(bytes: Long): String = if (bytes >= 1_000_000_000) "%.1f GB".format
         if (selected != null) item {
             Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
                 Cover(selected.imageUrl, Modifier.size(88.dp))
-                Column(Modifier.weight(1f)) { Text(selected.author, color = MaterialTheme.colorScheme.onSurfaceVariant); Text("${library.size} episodes", style = MaterialTheme.typography.labelLarge)
+                Column(Modifier.weight(1f)) { Text(selected.author, color = MaterialTheme.colorScheme.onSurfaceVariant); Text("${listing.episodeCount} episodes", style = MaterialTheme.typography.labelLarge)
                     TextButton(onClick = { if (selected.subscribed) vm.unsubscribe(selected.id) else vm.subscribe(selected.feedUrl) }) { Text(if (selected.subscribed) "Unsubscribe" else "Subscribe") }
                 }
             }
@@ -221,7 +224,7 @@ fun fileSize(bytes: Long): String = if (bytes >= 1_000_000_000) "%.1f GB".format
             }
         }
         if (podcasts.any { it.error != null }) item { Text("Some feeds could not refresh. Your saved library is still available.", color = MaterialTheme.colorScheme.tertiary, style = MaterialTheme.typography.bodySmall) }
-        if (library.isNotEmpty()) item(key = "filters") {
+        if (listing.episodeCount > 0) item(key = "filters") {
             SectionHeading(when (filter) { "progress" -> "In progress"; "downloads" -> "Downloaded episodes"; else -> "Latest episodes" }, "${visible.size} available")
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 6.dp)) {
                 listOf("all" to "Latest", "progress" to "In progress", "downloads" to "Downloads").forEach { (id, title) -> FilterChip(selected = filter == id, onClick = { vm.filter(id) }, label = { Text(title) }) }
@@ -229,12 +232,13 @@ fun fileSize(bytes: Long): String = if (bytes >= 1_000_000_000) "%.1f GB".format
         }
         if (visible.isEmpty()) item {
             when {
-                filter == "downloads" && library.isNotEmpty() -> Empty("Ready for offline listening", "Download an episode from Latest and it will appear here.", "Show latest", { vm.filter("all") })
-                filter == "progress" && library.isNotEmpty() -> Empty("Nothing in progress", "Episodes you start listening to will appear here.", "Show latest", { vm.filter("all") })
+                filter == "downloads" && listing.episodeCount > 0 -> Empty("Ready for offline listening", "Download an episode from Latest and it will appear here.", "Show latest", { vm.filter("all") })
+                filter == "progress" && listing.episodeCount > 0 -> Empty("Nothing in progress", "Episodes you start listening to will appear here.", "Show latest", { vm.filter("all") })
                 else -> Empty(if (subscribed.isEmpty()) "Your library starts here" else "No episodes here yet", "Find a podcast or add its RSS feed. Your library stays available offline.", "Find podcasts", { vm.root("search") })
             }
         }
-        items(visible, key = { it.id }) { ep -> EpisodeCard(vm, ep, podcasts.firstOrNull { it.id == ep.podcastId }, player,
+        // Other rows get a constant idle state so position ticks recompose only the current row.
+        items(visible, key = { it.id }) { ep -> EpisodeCard(vm, ep, podcasts.firstOrNull { it.id == ep.podcastId }, if (player.episodeId == ep.id) player else NOT_CURRENT,
             transcripts.firstOrNull { it.episodeId == ep.id }, captures.count { it.episodeId == ep.id }) }
     }
 }
@@ -423,7 +427,7 @@ fun fileSize(bytes: Long): String = if (bytes >= 1_000_000_000) "%.1f GB".format
         }
         Text(ep.title, style = MaterialTheme.typography.headlineSmall)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Button(onClick = { vm.play(ep.id); vm.open("player") }) { Icon(Icons.Default.PlayArrow, null); Text(if (ep.positionMs > 0 && !ep.completed) "Resume ${timestamp(ep.positionMs)}" else "Play episode") }
+            Button(onClick = { vm.play(ep.id); vm.open("player") }) { Icon(Icons.Default.PlayArrow, null); val resumeAt = listeningPosition(ep, player); Text(if (resumeAt > 0 && !ep.completed) "Resume ${timestamp(resumeAt)}" else "Play episode") }
             DownloadAction(vm, ep)
         }
         if (ep.downloadState in listOf("downloading", "queued")) Text("${fileSize(ep.downloadedBytes)}${if (ep.totalBytes > 0) " of ${fileSize(ep.totalBytes)}" else ""} · Downloads follow your network settings.", style = MaterialTheme.typography.bodySmall)
@@ -526,94 +530,6 @@ fun fileSize(bytes: Long): String = if (bytes >= 1_000_000_000) "%.1f GB".format
                 IconButton(onClick = { onRemove(ep.id) }) { Icon(Icons.Default.Close, "Remove ${ep.title} from queue") }
             }
         }
-    }
-}
-
-private fun captureState(state: String) = when (state) { "waiting_transcript" -> "Waiting for transcript"; "waiting_auth" -> "Connect ChatGPT to continue"; "waiting_quota" -> "Plan allowance unavailable"; "queued", "running" -> "Finding the idea"; "reviewing" -> "Checking the source"; "needs_context" -> "Needs more context"; "unclear_source" -> "Review the transcript"; "failed" -> "Needs retry"; "review_source" -> "Review source"; "no_speech" -> "No speech in this window"; "imported" -> "Imported"; else -> "Saved" }
-@Composable private fun SavedPage(vm: AppViewModel, captures: List<DistillationEntity>, episodes: List<EpisodeEntity>, podcasts: List<PodcastEntity>) {
-
-    var query by rememberSaveable { mutableStateOf("") }
-    val matching = remember(captures,episodes,podcasts,query) { captures.filter { saved ->
-        val ep=episodes.firstOrNull {it.id==saved.episodeId}
-        val show=podcasts.firstOrNull {it.id==ep?.podcastId}
-        query.isBlank() || listOfNotNull(saved.quote,saved.excerpt,saved.insight,ep?.title,show?.title).any {it.contains(query.trim(),ignoreCase=true)}
-    } }
-    Column(Modifier.fillMaxSize().padding(horizontal=20.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
-    TextButton(onClick = { vm.open("posts") }) { Text("Your posts") }
-    LocalSearch(query,{query=it},"Search saved moments","Clear saved search")
-    LazyColumn(contentPadding = PaddingValues(bottom=20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        item { SectionHeading("Your collection", "${matching.size} ${if (matching.size == 1) "moment" else "moments"} to revisit") }
-        if(captures.isEmpty())item { Empty("Keep the moments that matter", "Save the last minute in the player. Your quotes, insights and original sources will appear here.", "Open library", { vm.root("library") }) }
-        else if(matching.isEmpty())item { Text("No matching moments",style=MaterialTheme.typography.titleMedium); TextButton(onClick={query=""}) {Text("Clear search")} }
-        items(matching, key = { it.id }) { saved ->
-            val ep = episodes.firstOrNull { it.id == saved.episodeId }
-            val podcast = podcasts.firstOrNull { it.id == ep?.podcastId }
-            Card(onClick = { vm.open("capture:${saved.id}") }, shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.FormatQuote, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
-                        StatusLabel(captureState(saved.state), saved.state == "succeeded")
-                    }
-                    Text(saved.insight ?: "Moment saved · ${captureState(saved.state)}", maxLines = 5, overflow = TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.titleLarge.copy(fontFamily = FontFamily.Serif, lineHeight = 28.sp), fontWeight = FontWeight.Normal)
-                    saved.quote?.let { Text("“$it”", maxLines = 3, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = .3f))
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Cover(ep?.imageUrl ?: podcast?.imageUrl, Modifier.size(36.dp))
-                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                            Text(ep?.title ?: "Episode", maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelMedium)
-                            Text("${timestamp(saved.sourceStartMs)} – ${timestamp(saved.sourceEndMs)} · Source passage", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        Icon(Icons.Default.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-            }
-        }
-    }
-}
-}
-@Composable private fun CapturePage(vm: AppViewModel, capture: DistillationEntity?, episodes: List<EpisodeEntity>) {
-    if (capture == null) return
-    val context = LocalContext.current
-    val ep = episodes.firstOrNull { it.id == capture.episodeId }
-    var createPost by rememberSaveable { mutableStateOf(false) }
-    if (createPost) CreatePostSheet(vm,capture.id) { createPost = false }
-    val share = listOfNotNull(capture.insight, capture.quote?.let { "“$it”" }, ep?.title?.let { "$it · ${timestamp(capture.sourceStartMs)}–${timestamp(capture.sourceEndMs)}" }).joinToString("\n\n")
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
-        Button(onClick = { createPost = true }, enabled = capture.excerpt.isNotBlank()) { Text("Create post") }
-        TextButton(onClick = { vm.open("posts:${capture.id}") }) { Text("Posts from this moment") }
-        Text(captureState(capture.state), color = MaterialTheme.colorScheme.secondary)
-        if (ep != null && capture.fingerprint.isNotBlank() && capture.fingerprint != ep.mediaFingerprint) Text("The audio source changed since this moment was saved. The saved text is preserved; review the audio before relying on its replay time.", color = MaterialTheme.colorScheme.tertiary, style = MaterialTheme.typography.bodySmall)
-        if (capture.state in listOf("waiting_transcript", "queued", "running", "reviewing")) {
-            LinearProgressIndicator(Modifier.fillMaxWidth())
-            OutlinedButton(onClick = { vm.cancelCapture(capture.id) }) { Text("Pause generation") }
-        }
-        if(capture.state=="saved" && capture.excerpt.isBlank() && ep!=null) OutlinedButton(onClick={vm.generateCapture(capture.id)}) {Text("Prepare saved moment")}
-        if (capture.state == "waiting_transcript" && ep != null) TranscriptTools(vm, ep)
-        if (capture.state == "waiting_auth") Button(onClick = { vm.open("settings:ai") }) { Text("Connect ChatGPT") }
-        if (capture.state == "review_source") Text("Review the proposed source context below before sending it to ChatGPT. The saved result is kept until its replacement passes review.", color = MaterialTheme.colorScheme.tertiary)
-        if (capture.excerpt.isNotBlank() && capture.state in listOf("review_source", "waiting_auth", "waiting_quota", "failed", "saved")) {
-            Button(onClick = { vm.generateCapture(capture.id, true) }) { Text(if (capture.state == "review_source") "Generate insight from this source" else if(capture.state=="saved") "Generate insight" else "Retry insight") }
-            Text("Retrying a request can use more of your ChatGPT allowance.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        capture.insight?.let { SelectionContainer { Text(it, style = MaterialTheme.typography.headlineSmall) } }
-        capture.quote?.let { SelectionContainer { Text("“$it”", style = MaterialTheme.typography.bodyLarge) } }
-        MomentQualityTools(vm, capture, ep)
-        val reports by vm.research.collectAsStateWithLifecycle()
-        val latest = reports.firstOrNull { it.distillationId == capture.id && it.state in listOf("queued", "running", "succeeded") && explanationMatches(it,capture) }
-        if (capture.excerpt.isNotBlank()) OutlinedButton(onClick = { if (latest == null) vm.explain(capture.id) else vm.open("research:${latest.id}") }) { Text(if (latest?.state == "succeeded") "Read explanation" else "Explain this idea") }
-        Text(ep?.title ?: "Episode", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Button(onClick = { vm.play(capture.episodeId, capture.sourceStartMs); vm.open("player") }) { Text("Replay source · ${timestamp(capture.sourceStartMs)}") }
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            OutlinedButton(onClick = { context.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("DistillPod", share)) }) { Text("Copy") }
-            OutlinedButton(onClick = { context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, share), "Share saved moment")) }) { Text("Share") }
-        }
-        capture.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        var showSource by rememberSaveable(capture.id) { mutableStateOf(false) }
-        HorizontalDivider()
-        TextButton(onClick = { showSource = !showSource }) { Text(if(showSource) "Hide source passage" else "Read source passage") }
-        if(showSource) SelectionContainer { Text(capture.excerpt.ifBlank { "The source text is waiting for a transcript." }, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-        TextButton(onClick = { vm.deleteCapture(capture.id); vm.back() }) { Text("Delete saved moment", color = MaterialTheme.colorScheme.error) }
     }
 }
 

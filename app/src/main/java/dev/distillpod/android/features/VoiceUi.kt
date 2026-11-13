@@ -1,8 +1,12 @@
 package dev.distillpod.android.features
 
 import android.Manifest
+import android.content.ActivityNotFoundException
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.os.SystemClock
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
@@ -19,6 +23,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -51,9 +56,14 @@ internal fun VoicePlayerHost(vm: AppViewModel, showLastAnswer: Boolean = true, c
     val voice = vm.graph.voice
     val state by voice.state.collectAsStateWithLifecycle()
     var permissionError by remember { mutableStateOf<String?>(null) }
+    val context = LocalContext.current
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted && vm.graph.voiceApiKey.hasKey()) { permissionError = null; voice.start({ PhoneVoiceInput() }) }
-        else permissionError = "Allow microphone access to ask a question."
+        when {
+            // After repeated denials Android answers without asking, so app settings is the only way back.
+            !granted -> permissionError = MICROPHONE_DENIED
+            !vm.graph.voiceApiKey.hasKey() -> { permissionError = null; vm.open("settings:voice") }
+            else -> { permissionError = null; voice.start({ PhoneVoiceInput() }) }
+        }
     }
     val ask = {
         if (!vm.graph.voiceApiKey.hasKey()) { vm.open("settings:voice"); false }
@@ -67,7 +77,8 @@ internal fun VoicePlayerHost(vm: AppViewModel, showLastAnswer: Boolean = true, c
     }
     VoicePlayerInteraction(state.copy(error = permissionError ?: state.error), ask, voice::finishQuestion,
         content = { _, action -> content(true, state.active, action) }, showLastAnswer = showLastAnswer,
-        onCancel = { voice.cancel(true); permissionError = null })
+        onCancel = { voice.cancel(true); permissionError = null },
+        onOpenSettings = { openAppSettings(context) })
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -77,7 +88,7 @@ internal fun VoicePlayerInteraction(state: VoiceState, onAsk: () -> Boolean, onD
         Button(onClick = ask, enabled = enabled, modifier = Modifier.fillMaxWidth()) {
             Icon(Icons.Default.Mic, null); Spacer(Modifier.width(8.dp)); Text("Ask about this")
         }
-    }, showLastAnswer: Boolean = true) {
+    }, showLastAnswer: Boolean = true, onOpenSettings: (() -> Unit)? = null) {
     var visible by remember { mutableStateOf(false) }
     var running by remember { mutableStateOf(false) }
     var reviewing by remember { mutableStateOf(false) }
@@ -91,13 +102,15 @@ internal fun VoicePlayerInteraction(state: VoiceState, onAsk: () -> Boolean, onD
         val dismiss = { onCancel(); visible = false; running = false }
         ModalBottomSheet(onDismissRequest = dismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
             val displayed = if (!reviewing && !state.active && !running && state.error == null) VoiceState("Preparing") else state
-            VoiceSessionContent(displayed, running, onDone = onDone, onDismiss = dismiss, onRetry = { reviewing = false; onAsk() })
+            VoiceSessionContent(displayed, running, onDone = onDone, onDismiss = dismiss, onRetry = { reviewing = false; onAsk() },
+                onOpenSettings = onOpenSettings)
         }
     }
 }
 
 @Composable
-internal fun VoiceSessionContent(state: VoiceState, running: Boolean, onDone: () -> Unit, onDismiss: () -> Unit, onRetry: () -> Unit) {
+internal fun VoiceSessionContent(state: VoiceState, running: Boolean, onDone: () -> Unit, onDismiss: () -> Unit, onRetry: () -> Unit,
+    onOpenSettings: (() -> Unit)? = null) {
     val levels = remember { mutableStateListOf<Float>() }
     val currentLevel by rememberUpdatedState(state.level)
     var elapsed by remember { mutableStateOf(0L) }
@@ -139,12 +152,25 @@ internal fun VoiceSessionContent(state: VoiceState, running: Boolean, onDone: ()
         if (state.answer.isNotBlank()) VoiceAnswerTranscript(state.answer)
         state.error?.let {
             Text(it, color = MaterialTheme.colorScheme.error)
-            Button(onClick = onRetry, modifier = Modifier.fillMaxWidth()) { Text("Try again") }
+            // Only a denied microphone is fixed in app settings; retrying alone cannot bring the prompt back.
+            val settings = onOpenSettings?.takeIf { _ -> it == MICROPHONE_DENIED }
+            if (settings != null) {
+                Button(onClick = settings, modifier = Modifier.fillMaxWidth()) { Text("Open app settings") }
+                OutlinedButton(onClick = onRetry, modifier = Modifier.fillMaxWidth()) { Text("Try again") }
+            } else Button(onClick = onRetry, modifier = Modifier.fillMaxWidth()) { Text("Try again") }
         }
         OutlinedButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
             Text(when { state.phase == "Answering" -> "Stop and resume"; state.active -> "Cancel and resume"; running || state.error != null -> "Return to podcast"; else -> "Close" })
         }
     }
+}
+
+internal const val MICROPHONE_DENIED = "Microphone access is off. Allow it when asked, or turn it on in app settings."
+
+private fun openAppSettings(context: Context) {
+    try {
+        context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}")))
+    } catch (_: ActivityNotFoundException) { /* No settings app; the message still explains the route. */ }
 }
 
 @Composable
