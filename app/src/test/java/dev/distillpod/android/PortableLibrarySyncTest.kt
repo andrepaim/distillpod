@@ -92,11 +92,68 @@ class PortableLibrarySyncTest {
         sync.deleteMoment("m");SubscriptionSyncCoordinator(db,cloud).run()
         assertNull(db.library().distillation("m"));assertTrue(cloud.rows["moment_m"]!!.deleted)
     }
-    @Test fun `private media locator never uploads even on approved feed`()=fixture {db,sync,_ ->
-        db.library().putEpisode(db.library().episode("e")!!.copy(audioUrl="https://example.test/audio?token=secret"))
+    @Test fun `query-bearing media syncs on an approved feed without its query`()=fixture {db,sync,cloud ->
+        db.library().putEpisode(db.library().episode("e")!!.copy(audioUrl="https://example.test/audio?token=secret#t=5"))
         sync.checkpoint("e",1000,100000,false,1,"sessionA",1000)
         sync.putMoment(DistillationEntity("m","e",0,10000))
-        assertEquals(1000L,db.library().episode("e")!!.positionMs);assertEquals(0,db.sync().count())
+        sync.markCompleted("e",true)
+        val queued=db.sync().operations("alice","g1")
+        assertEquals(setOf("progress_e","moment_m","completion_e"),queued.map {it.entityKey}.toSet())
+        assertTrue(queued.none {"secret" in it.payload || "t=5" in it.payload})
+        assertTrue(queued.all {SubscriptionSyncStore.decode(it.payload)["audioUrl"]=="https://example.test/audio"})
+        assertTrue(SubscriptionSyncCoordinator(db,cloud).run())
+        // The phone keeps its own full enclosure when its own records come back.
+        assertEquals("https://example.test/audio?token=secret#t=5",db.library().episode("e")!!.audioUrl)
+        val restored=Room.inMemoryDatabaseBuilder(ApplicationProvider.getApplicationContext<android.content.Context>(),AppDatabase::class.java).build()
+        try {
+            SubscriptionSyncStore(restored).bind(SyncOwner("alice","g1"))
+            assertTrue(SubscriptionSyncCoordinator(restored,cloud).run())
+            val ep=restored.library().episode("e")!!
+            assertEquals("https://example.test/audio",ep.audioUrl);assertEquals(1000L,ep.positionMs);assertTrue(ep.completed)
+            assertNotNull(restored.library().distillation("m"))
+        } finally {restored.close()}
+    }
+    @Test fun `records an earlier version kept local for query-bearing media are sent once`()=fixture {db,_,cloud ->
+        // Earlier versions saved these on the phone without queueing anything.
+        db.library().putEpisode(db.library().episode("e")!!.copy(audioUrl="https://example.test/audio?token=secret",positionMs=5000,completed=true))
+        db.library().putDistillation(DistillationEntity("m","e",0,10000,"Saved words",state="saved"))
+        db.library().putEpisode(EpisodeEntity("plain","p","guid2","Plain","https://example.test/plain",positionMs=7000))
+        assertTrue(SubscriptionSyncCoordinator(db,cloud).run())
+        assertEquals(setOf("progress_e","completion_e","moment_m"),cloud.rows.keys)
+        assertTrue(cloud.rows.values.all {it.payload["audioUrl"]=="https://example.test/audio"})
+        assertEquals("5000",cloud.rows["progress_e"]!!.payload["positionMs"])
+        val commits=cloud.commits
+        assertTrue(SubscriptionSyncCoordinator(db,cloud).run());assertEquals(commits,cloud.commits)
+    }
+    @Test fun `the one-time send leaves progress to a session playing the episode`()=fixture {db,sync,cloud ->
+        db.library().putEpisode(db.library().episode("e")!!.copy(audioUrl="https://example.test/audio?token=secret",positionMs=5000))
+        db.sync().putView(SyncViewEntity("progress_e",sessionId="playing",active=true))
+        assertTrue(SubscriptionSyncCoordinator(db,cloud).run())
+        assertNull(cloud.rows["progress_e"])
+        sync.checkpoint("e",6000,100000,false,2,"playing",40000,force=true)
+        assertTrue(SubscriptionSyncCoordinator(db,cloud).run())
+        assertEquals("6000",cloud.rows["progress_e"]!!.payload["positionMs"]);assertEquals(0,db.sync().count())
+    }
+    @Test fun `the one-time send leaves a record another phone already sent`()=fixture {db,_,cloud ->
+        db.library().putEpisode(db.library().episode("e")!!.copy(audioUrl="https://example.test/audio?token=secret",positionMs=5000))
+        val other=mapOf("episodeId" to "e","podcastId" to "p","feedUrl" to "https://example.test/feed","originalFeedUrl" to "https://example.test/feed",
+            "podcastTitle" to "Show","podcastAuthor" to "","guid" to "guid","title" to "Episode","audioUrl" to "https://example.test/audio","durationMs" to "100000",
+            "fingerprint" to "sha","positionMs" to "90000","sessionId" to "other","deviceId" to "phoneB","deviceSequence" to "1")
+        cloud.commit(SyncOutboxEntity("other","alice","g1","progress_e",0,org.json.JSONObject(other.toSortedMap()).toString(),false))
+        assertTrue(SubscriptionSyncCoordinator(db,cloud).run())
+        assertEquals(1L,cloud.rows["progress_e"]!!.version);assertEquals(1,cloud.commits)
+        assertEquals(90000L,db.library().episode("e")!!.positionMs)
+        assertEquals(0,db.sync().count())
+    }
+    @Test fun `YouTube videos, credential-bearing media and query-bearing GUIDs stay local`()=fixture {db,sync,_ ->
+        for((url,guid) in listOf("https://www.youtube.com/watch?v=dQw4w9WgXcQ" to "guid","https://user:secret@example.test/audio" to "guid",
+                // A feed without a GUID uses its enclosure, which would otherwise travel as the GUID.
+                "https://example.test/audio?token=secret" to "https://example.test/audio?token=secret")) {
+            db.library().putEpisode(db.library().episode("e")!!.copy(audioUrl=url,guid=guid))
+            sync.checkpoint("e",1000,100000,false,1,"session$url".filter {it.isLetterOrDigit()},1000,force=true)
+            sync.putMoment(DistillationEntity("m","e",0,10000))
+            assertEquals(url,0,db.sync().count())
+        }
     }
     @Test fun `explicit unplayed is not overwritten by stale automatic completion`()=fixture {db,sync,cloud ->
         sync.checkpoint("e",1000,100000,false,1,"sessionA",1000)

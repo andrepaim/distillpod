@@ -49,16 +49,16 @@ class PortableLibrarySync(private val db:AppDatabase,private val isolatedDemo:Bo
         changed()
     }
     /** Called inside a transaction which has already checked the AI attempt/source identity. */
-    internal suspend fun recordMoment(value:DistillationEntity) {
-        val ep=dao.episode(value.episodeId) ?: return
+    internal suspend fun recordMoment(value:DistillationEntity):Boolean {
+        val ep=dao.episode(value.episodeId) ?: return false
         var payload=identity(ep)?.plus(mapOf("momentId" to value.id,"startMs" to value.startMs.toString(),"endMs" to value.endMs.toString(),
             "excerpt" to value.excerpt,"quote" to (value.quote?:""),"insight" to (value.insight?:""),"revision" to value.revision,
-            "fingerprint" to value.fingerprint,"createdAt" to value.createdAt.toString(),"model" to (value.model?:""))) ?: return
+            "fingerprint" to value.fingerprint,"createdAt" to value.createdAt.toString(),"model" to (value.model?:""))) ?: return false
         if(value.sourceJson.isNotBlank() || sync.view("__contextual_moments")!=null) {
             MomentGeneration.validateSource(value.sourceJson,value.startMs,value.endMs)
             payload=payload+mapOf("momentSchema" to "2","sourceJson" to value.sourceJson)
         }
-        enqueue("moment_${value.id}",payload)
+        return enqueue("moment_${value.id}",payload)
     }
     suspend fun deleteMoment(id:String) {
         db.withTransaction {
@@ -81,18 +81,46 @@ class PortableLibrarySync(private val db:AppDatabase,private val isolatedDemo:Bo
     }
     suspend fun releaseSessions() {sync.releasePlaybackViews()}
     internal suspend fun seed(approved:Set<String>) {
-        for(ep in dao.episodes().filter {it.podcastId in approved}) {
+        seedRecords(dao.episodes().filter {it.podcastId in approved},dao.distillations().filter {dao.episode(it.episodeId)?.podcastId in approved})
+    }
+    /**
+     * Queues records a backup restore inserted, inside the restore's transaction; call [uploadSoon]
+     * after it commits. Feeds not shared with sync stay local, as for any other local change.
+     */
+    suspend fun seedRestored(episodeIds:Collection<String>,momentIds:Collection<String>):Boolean=
+        seedRecords(episodeIds.mapNotNull {dao.episode(it)},momentIds.mapNotNull {dao.distillation(it)})
+    fun uploadSoon()=changed()
+    /**
+     * Versions before query-bearing media could sync kept every record of such an episode on the phone.
+     * Queue them once; a record the cloud or outbox already holds (sent by a newer phone) is left as is.
+     */
+    internal suspend fun seedQueryMedia():Boolean {
+        val episodes=dao.episodes().filter {ep->MediaLocator.portable(ep.audioUrl,ep.guid).let {it!=null && it!=ep.audioUrl}}
+        val ids=episodes.map {it.id}.toSet()
+        return seedRecords(episodes,dao.distillations().filter {it.episodeId in ids},onlyNew=true)
+    }
+    private suspend fun seedRecords(episodes:List<EpisodeEntity>,moments:List<DistillationEntity>,onlyNew:Boolean=false):Boolean {
+        val binding=sync.binding() ?: return false
+        suspend fun wanted(key:String)=!onlyNew || (sync.remote(binding.uid,binding.generation,key)==null && sync.forKey(binding.uid,binding.generation,key).isEmpty())
+        var queued=false
+        for(ep in episodes) {
             val identity=identity(ep) ?: continue
-            if(ep.positionMs>0 || ep.lastPlayedAt>0)enqueue("progress_${ep.id}",identity+mapOf("positionMs" to ep.positionMs.toString(),"sessionId" to UUID.randomUUID().toString(),"deviceId" to "initial","deviceSequence" to "0"))
-            if(ep.completed)enqueue("completion_${ep.id}",identity+mapOf("completed" to "true","origin" to "explicit","sessionId" to UUID.randomUUID().toString()))
+            // A session playing this episode sends its own checkpoints; a seed beside it would only conflict.
+            if((ep.positionMs>0 || ep.lastPlayedAt>0) && sync.view("progress_${ep.id}")?.active!=true && wanted("progress_${ep.id}"))
+                queued=enqueue("progress_${ep.id}",identity+mapOf("positionMs" to ep.positionMs.toString(),"sessionId" to UUID.randomUUID().toString(),"deviceId" to "initial","deviceSequence" to "0")) || queued
+            if(ep.completed && wanted("completion_${ep.id}"))
+                queued=enqueue("completion_${ep.id}",identity+mapOf("completed" to "true","origin" to "explicit","sessionId" to UUID.randomUUID().toString())) || queued
         }
-        for(moment in dao.distillations())if(dao.episode(moment.episodeId)?.podcastId in approved)recordMoment(moment)
+        for(moment in moments)if(wanted("moment_${moment.id}"))queued=recordMoment(moment) || queued
+        return queued
     }
     internal suspend fun identity(ep:EpisodeEntity):Map<String,String>? {
         if(!allowed() || sync.approved(ep.podcastId)==null)return null
         val p=dao.podcast(ep.podcastId) ?: return null
+        // Signed or tokenized enclosure queries never leave the phone; feed and GUID identify the episode.
+        val audioUrl=MediaLocator.portable(ep.audioUrl,ep.guid) ?: return null
         val identity=mapOf("episodeId" to ep.id,"podcastId" to p.id,"feedUrl" to p.feedUrl,"originalFeedUrl" to p.originalFeedUrl.ifBlank {p.feedUrl},
-            "podcastTitle" to p.title,"podcastAuthor" to p.author,"guid" to ep.guid,"title" to ep.title,"audioUrl" to ep.audioUrl,"durationMs" to ep.durationMs.toString(),"fingerprint" to ep.mediaFingerprint)
+            "podcastTitle" to p.title,"podcastAuthor" to p.author,"guid" to ep.guid,"title" to ep.title,"audioUrl" to audioUrl,"durationMs" to ep.durationMs.toString(),"fingerprint" to ep.mediaFingerprint)
         // Validate all locators before enqueue, even when the outgoing action is a tombstone.
         return identity.takeIf {runCatching {SyncProtocol.validate(SyncMutation("check",SyncOwner("check","check"),"identity",0,it))}.isSuccess}
     }

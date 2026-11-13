@@ -68,8 +68,12 @@ class FinishedContentTest {
         assertTrue(value.contains("Saved summary"));assertTrue(value.contains("Saved answer"))
         assertFalse(value.contains("private-attempt"));assertFalse(value.contains("private-error"));assertFalse(value.contains("Partial secret answer"))
     }
-    @Test fun `private media and mismatched audio content remain local`()=fixture {db,content ->
-        db.library().putEpisode(db.library().episode("e")!!.copy(audioUrl="https://example.test/audio?secret=token"))
+    @Test fun `private media remains local and query-bearing media is shared without its query`()=fixture {db,content ->
+        db.library().putEpisode(db.library().episode("e")!!.copy(audioUrl="https://user:token@example.test/audio"))
         assertNull(content.snapshot("e"))
+        db.library().putEpisode(db.library().episode("e")!!.copy(audioUrl="https://example.test/audio?secret=token"))
+        val value=ContentArtifacts.decode(content.snapshot("e")!!).toString(Charsets.UTF_8)
+        assertFalse(value.contains("token"))
+        assertEquals("https://example.test/audio",org.json.JSONObject(value).getJSONObject("identity").getString("audioUrl"))
     }
 }

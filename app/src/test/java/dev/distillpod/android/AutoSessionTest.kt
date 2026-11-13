@@ -26,6 +26,7 @@ class AutoSessionTest {
         queueHandler:((SessionCommand,Bundle)->com.google.common.util.concurrent.ListenableFuture<SessionResult>)?=null,
         prepareItems: suspend (List<MediaItem>) -> List<MediaItem> = { it },
         allowArtwork: (String) -> Unit = {},
+        sleepHandler:((SessionCommand,Bundle)->SessionResult)?=null,
         block:(AutoLibraryCallback,MediaLibrarySession,MediaSession.ControllerInfo)->Unit) {
         val context=ApplicationProvider.getApplicationContext<Context>()
         val db=Room.inMemoryDatabaseBuilder(context,AppDatabase::class.java).build()
@@ -38,7 +39,7 @@ class AutoSessionTest {
         val ready=CompletableDeferred(Unit)
         val callback=AutoLibraryCallback(context.packageName,db,ready,scope,playbackReady?:ready,voiceEnabled={voice},openCarVoice=openVoice,
             queueCommands=if(queueHandler==null)emptySet() else setOf(dev.distillpod.android.playback.QueueWriteCommands.BARRIER,dev.distillpod.android.playback.QueueWriteCommands.IMPORT),
-            onQueueCommand=queueHandler,preparePlaybackItems=prepareItems,allowArtwork=allowArtwork)
+            onQueueCommand=queueHandler,preparePlaybackItems=prepareItems,allowArtwork=allowArtwork,onSleepTimerCommand=sleepHandler)
         val player=ExoPlayer.Builder(context).build()
         val session=MediaLibrarySession.Builder(context,player,callback).build()
         val controller=MediaSession.ControllerInfo.createTestOnlyControllerInfo("android.auto.test",1,1000,1,1,true,Bundle.EMPTY)
@@ -141,6 +142,38 @@ class AutoSessionTest {
             }
             assertEquals(2,calls)
         }
+    }
+    @Test fun `sleep timer commands are private to this application and never reach car layouts`() {
+        val received=mutableListOf<Pair<String,Long>>()
+        fixture(sleepHandler={command,args->received+=command.customAction to args.getLong(dev.distillpod.android.playback.SleepTimerCommands.DURATION_MS);SessionResult(SessionResult.RESULT_SUCCESS)}) {callback,session,car ->
+            val context=ApplicationProvider.getApplicationContext<Context>()
+            val ownUid=android.os.Process.myUid()
+            val commands=dev.distillpod.android.playback.SleepTimerCommands.all
+            val carResult=callback.onConnect(session,car)
+            assertTrue(carResult.customLayout!!.none {it.sessionCommand in commands})
+            for(command in commands) {
+                for((name,uid) in listOf("trusted.car" to ownUid,context.packageName to ownUid+1)) {
+                    val external=MediaSession.ControllerInfo.createTestOnlyControllerInfo(name,1,uid,1,1,true,Bundle.EMPTY)
+                    assertFalse(callback.onConnect(session,external).availableSessionCommands.contains(command))
+                    assertEquals(SessionError.ERROR_PERMISSION_DENIED,callback.onCustomCommand(session,external,command,Bundle.EMPTY).get().resultCode)
+                }
+            }
+            assertTrue("Denied calls must not reach the timer",received.isEmpty())
+            val own=MediaSession.ControllerInfo.createTestOnlyControllerInfo(context.packageName,1,ownUid,1,1,true,Bundle.EMPTY)
+            val ownCommands=callback.onConnect(session,own).availableSessionCommands
+            assertTrue(commands.all {ownCommands.contains(it)})
+            val start=dev.distillpod.android.playback.SleepTimerCommands.START
+            assertEquals(SessionResult.RESULT_SUCCESS,callback.onCustomCommand(session,own,start,
+                dev.distillpod.android.playback.SleepTimerCommands.duration(900_000)).get().resultCode)
+            assertEquals(listOf(start.customAction to 900_000L),received)
+        }
+    }
+    @Test fun `sleep timer commands are unsupported without a timer owner`() = fixture { callback,session,_ ->
+        val own=MediaSession.ControllerInfo.createTestOnlyControllerInfo(ApplicationProvider.getApplicationContext<Context>().packageName,1,
+            android.os.Process.myUid(),1,1,true,Bundle.EMPTY)
+        val command=dev.distillpod.android.playback.SleepTimerCommands.CANCEL
+        assertFalse(callback.onConnect(session,own).availableSessionCommands.contains(command))
+        assertEquals(SessionError.ERROR_NOT_SUPPORTED,callback.onCustomCommand(session,own,command,Bundle.EMPTY).get().resultCode)
     }
     @Test fun `selection waits for startup restoration before resolving`() {
         val restored=CompletableDeferred<Unit>()
