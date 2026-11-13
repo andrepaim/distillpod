@@ -41,7 +41,8 @@ class AppGraph internal constructor(val context: Context, val scope: CoroutineSc
     val socialResults by lazy { SocialResultRepository(db) { id, attempt -> dev.distillpod.android.work.SocialPostJobs.enqueue(context, id, attempt) } }
     val socialTools by lazy { dev.distillpod.android.ai.AccountSocialTools(account.session, settings) }
     val postAssets by lazy { dev.distillpod.android.sharing.PostAssets(java.io.File(context.filesDir, "post-images")) }
-    val backup by lazy { LibraryBackup(db, postAssets) }
+    // Restored progress, completions and moments of shared feeds upload like local edits.
+    val backup by lazy { LibraryBackup(db, postAssets, portable = portableSync) }
     val importedQueue=kotlinx.coroutines.flow.MutableStateFlow<List<String>?>(null)
     val playbackEvents = dev.distillpod.android.playback.PlaybackEvents()
     val playback by lazy { dev.distillpod.android.playback.PlaybackRepository(context, db, scope) }

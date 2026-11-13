@@ -13,7 +13,7 @@ class CollectionSync(private val db:AppDatabase,private val isolatedDemo:Boolean
             db.library().clearQueue();db.library().insertQueue(unique.mapIndexed {i,id->QueueEntryEntity(id,i)})
             if(SubscriptionCloudAccess.instrumentation && !isolatedDemo)return@withTransaction
             if(db.sync().view("__extended_scope")==null)return@withTransaction
-            val public=unique.mapNotNull {id->db.library().episode(id)?.let {ep->portable.identity(ep)?.let {id to it}}}
+            val public=unique.mapNotNull {id->db.library().episode(id)?.let {ep->portable.queueIdentity(ep)?.let {id to it}}}
             db.sync().putView(SyncViewEntity("__queue_excluded",sequence=(unique.size-public.size).toLong()))
             // Large queues remain local until the bounded representation can be approved.
             if(public.size>200){db.sync().putView(SyncViewEntity("__queue_excluded",sequence=unique.size.toLong()));return@withTransaction}
@@ -54,15 +54,22 @@ internal suspend fun projectCollection(db:AppDatabase,r:CloudSubscription,force:
             val localIds=db.library().queue().map {it.episodeId}
             val view=db.sync().view(r.key)
             if(!force && view?.active==true) {
-                val visiblePublic=localIds.filter {id->db.library().episode(id)?.let {PortableLibrarySync(db,isolatedDemo=true).identity(it)}!=null}
+                val visiblePublic=localIds.filter {id->db.library().episode(id)?.let {PortableLibrarySync(db,isolatedDemo=true).queueIdentity(it)}!=null}
                 if(visiblePublic!=ids)CollectionSync(db,isolatedDemo=true).queue(localIds)
                 else db.sync().putView(view.copy(version=r.version))
                 return
             }
-            val localPrivate=db.library().queue().map {it.episodeId}.filter {id->db.library().episode(id)?.let {PortableLibrarySync(db,isolatedDemo=true).identity(it)}==null}
+            val localPrivate=db.library().queue().map {it.episodeId}.filter {id->db.library().episode(id)?.let {PortableLibrarySync(db,isolatedDemo=true).queueIdentity(it)}==null}
             db.library().clearQueue();db.library().insertQueue((ids+localPrivate).distinct().mapIndexed {i,id->QueueEntryEntity(id,i)})
         }
     }
     val view=db.sync().view(r.key)?:SyncViewEntity(r.key)
     db.sync().putView(view.copy(version=r.version))
 }
+
+/**
+ * Queue order carries only episodes whose full media address is portable. A query-bearing episode
+ * keeps its local queue place as before: a cloud queue written without it, by an older version or
+ * before this phone sent it, would otherwise drop it from this phone's queue.
+ */
+internal suspend fun PortableLibrarySync.queueIdentity(ep:EpisodeEntity)=identity(ep)?.takeIf {MediaLocator.portable(ep.audioUrl)==ep.audioUrl}

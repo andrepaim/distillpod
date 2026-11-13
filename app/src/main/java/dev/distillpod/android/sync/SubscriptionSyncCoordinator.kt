@@ -21,6 +21,8 @@ interface SubscriptionCloud {
     suspend fun changes(after:Long,through:Long):List<CloudSubscription>
     suspend fun commit(operation:SyncOutboxEntity):CloudSubscription
 }
+/** Marks the one-time send of records that versions before query-bearing media sync kept local. */
+internal const val QUERY_MEDIA_SEEDED="__query_media_seeded"
 class SubscriptionConflict(val current:CloudSubscription?):Exception("Subscription changed on another device")
 class SubscriptionSyncCoordinator(private val db:AppDatabase,private val cloud:SubscriptionCloud,private val rejected:(String,SyncOperationRejected)->Unit={_,_->}) {
     private val dao get()=db.sync()
@@ -62,6 +64,11 @@ class SubscriptionSyncCoordinator(private val db:AppDatabase,private val cloud:S
                 if(!applyPage(b,page))return@withLock false
             }
             if(dao.binding()!!.cursor<head.sequence){update(b){it.copy(status="pending")};return@withLock false}
+            // After replay, so records another phone already sent are known and left alone.
+            if(dao.view(QUERY_MEDIA_SEEDED)==null && !db.withTransaction {
+                if(!valid(b))return@withTransaction false
+                PortableLibrarySync(db,isolatedDemo=true).seedQueryMedia();dao.putView(SyncViewEntity(QUERY_MEDIA_SEEDED));true
+            })return@withLock false
             repeat(20) {
                 if(!valid(b))return@withLock false
                 val op=dao.nextOperation(b.uid,b.generation) ?: return@repeat

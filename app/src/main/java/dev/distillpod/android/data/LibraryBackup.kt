@@ -21,7 +21,8 @@ data class BackupPreview internal constructor(internal val payload: String, val 
 
 /** A bounded, versioned data transfer. Only allowlisted library tables enter this format. */
 class LibraryBackup(private val db: AppDatabase, private val assets: dev.distillpod.android.sharing.PostAssets? = null,
-    private val now: () -> Long = System::currentTimeMillis) {
+    private val now: () -> Long = System::currentTimeMillis,
+    private val portable: dev.distillpod.android.sync.PortableLibrarySync = dev.distillpod.android.sync.PortableLibrarySync(db)) {
     private data class Column(val name: String, val type: String, val required: Boolean, val primary: Boolean)
     private fun columns(table: String): List<Column> = db.openHelper.readableDatabase.query("PRAGMA table_info(`$table`)").use { cursor ->
         buildList { while (cursor.moveToNext()) {
@@ -122,8 +123,26 @@ class LibraryBackup(private val db: AppDatabase, private val assets: dev.distill
         }
     }
 
-    /** Keep existing rows. A malformed or conflicting relationship rolls the entire import back. */
-    suspend fun merge(preview: BackupPreview): Int = db.withTransaction {
+    /**
+     * Keep existing rows. A malformed or conflicting relationship rolls the entire import back.
+     * Inserted progress, completions and moments are queued for sync in the same transaction.
+     */
+    suspend fun merge(preview: BackupPreview): Int {
+        var queued = false
+        val inserted = db.withTransaction {
+            val restoredEpisodes = mutableListOf<String>(); val restoredMoments = mutableListOf<String>()
+            val count = insert(preview) { table, row ->
+                if (table == "episodes") restoredEpisodes += row.getString("id")
+                if (table == "distillations") restoredMoments += row.getString("id")
+            }
+            queued = portable.seedRestored(restoredEpisodes, restoredMoments)
+            count
+        }
+        if (queued) portable.uploadSoon()
+        return inserted
+    }
+
+    private suspend fun insert(preview: BackupPreview, inserted: (String, JSONObject) -> Unit): Int {
         val tables = validated(preview.payload)
         require(PostBackupBundle.references(tables) == preview.assets.keys) { "Backup infographic assets changed" }
         if (preview.assets.isNotEmpty()) {
@@ -133,7 +152,7 @@ class LibraryBackup(private val db: AppDatabase, private val assets: dev.distill
         // Immutable files precede the transaction commit: a failed merge may leave harmless unreferenced
         // blobs, but can never commit a post pointing to an absent image or remove a concurrent image.
         mapExistingIdentities(tables)
-        var inserted = 0
+        var count = 0
         val importedAt = now().coerceAtLeast(0)
         var queueOrder = db.library().queue().maxOfOrNull { it.sortOrder } ?: -1
         for (table in backupTables) {
@@ -158,11 +177,12 @@ class LibraryBackup(private val db: AppDatabase, private val assets: dev.distill
                     // Only the newly inserted local revision receives an age; conflicts remain untouched.
                     if (table == "transcripts") db.openHelper.writableDatabase.execSQL(
                         "UPDATE transcripts SET localCreatedAt=? WHERE episodeId=?", arrayOf(importedAt, row.getString("episodeId")))
-                    inserted++
+                    inserted(table, row)
+                    count++
                 }
             }
         }
-        inserted
+        return count
     }
 
     private suspend fun mapExistingIdentities(tables: JSONObject) {
