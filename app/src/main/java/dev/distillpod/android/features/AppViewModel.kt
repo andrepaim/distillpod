@@ -141,6 +141,11 @@ class AppViewModel(val graph: AppGraph, private val saved: SavedStateHandle) : V
     fun seek(position: Long) = action("seek") { graph.voice.cancel(false); graph.playback.seek(position) }
     fun skip(delta: Long) = action("seek") { graph.voice.cancel(false); graph.playback.skip(delta) }
     fun speed(value: Float) = action("speed") { graph.playback.speed(value) }
+    val sleepTimer = graph.playback.sleepTimer
+    fun startSleepTimer(durationMs: Long) = action("sleep-timer-start") { graph.playback.startSleepTimer(durationMs) }
+    fun sleepAtEndOfEpisode() = action("sleep-timer-start") { graph.playback.sleepAtEndOfEpisode() }
+    fun extendSleepTimer() = action("sleep-timer-extend") { graph.playback.extendSleepTimer() }
+    fun cancelSleepTimer() = action("sleep-timer-cancel") { graph.playback.cancelSleepTimer() }
     private val queueActions = QueueActions(viewModelScope) { error ->
         graph.diagnostics.failure("worker", error, source="phone")
         messages.send(safeFailure(error))
