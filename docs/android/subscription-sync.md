@@ -39,7 +39,7 @@ The dedicated project is `distillpod-native-sync`, with a Standard/default Fires
 
 ## Local and CI acceptance
 
-JVM/Room tests cover durable changes, safe owner binding, public-feed review/provenance, coalescing unsent changes, lost acknowledgement, interruption, stale edits, conflict choices, rejected-change retry/discard, trigger coalescing and Sync now scheduling, and independent local databases. Java 21/Node 22 run the isolated Firestore rules tests; Android remains on Java 17.
+JVM/Room tests cover durable changes, safe owner binding, public-feed review/provenance, coalescing unsent changes, lost acknowledgement, interruption, stale edits, conflict choices, rejected-change retry/discard, trigger coalescing and Sync now scheduling, independent local databases, and recovery from compacted history. Java 21/Node 22 run the isolated Firestore rules tests; Android remains on Java 17.
 
 ```sh
 npm ci --prefix firebase --ignore-scripts --no-audit --no-fund
@@ -59,7 +59,7 @@ The ordinary [emulator suite](../development.md#isolated-emulator-acceptance) al
 firebase/node_modules/.bin/firebase --config firebase/firebase.json emulators:exec --only auth,firestore,storage --project demo-distillpod-sync 'env DISTILLPOD_SERIAL=emulator-5554 scripts/sync-device-tests.sh'
 ```
 
-Set `DISTILLPOD_ADB` to Windows ADB when using WSL. The script verifies an emulator target. The SDK tests use independently authenticated named Firebase apps and separate Room databases on one Android emulator, not two physical phones. They cover concurrent edits, restore, sign-out/account denial and cross-user rules. A separate two-phase test force-stops the package between recording an offline intent and uploading it in a new process. Firebase emulators remain running across those phases.
+Set `DISTILLPOD_ADB` to Windows ADB when using WSL. The script verifies an emulator target. The SDK tests use independently authenticated named Firebase apps and separate Room databases on one Android emulator, not two physical phones. They cover concurrent edits, restore, sign-out/account denial, cross-user rules and recovery from compacted history (`SyncCompactionDeviceTest`, which needs the protocol-4 rules in `firebase/firestore.rules`; `DISTILLPOD_SYNC_COMPACTION=false` omits it when testing against the deployed protocol-3 rules). A separate two-phase test force-stops the package between recording an offline intent and uploading it in a new process. Firebase emulators remain running across those phases.
 
 CI runs ordinary Android regressions and then this targeted Auth/Firestore/Storage acceptance. Storage cases exercise the disabled finished-content experiment with injected demo clients. The ordinary script excludes SDK/server-specific cases; the explicit cloud stage runs them with required arguments. The isolated test runner disables automatic production sync and deferred intent recording before Application creation, even in configured APKs. Demo stores opt in separately. Test fixtures use only the demo project and synthetic accounts. No live Google sign-in, production test library upload or owner-phone update is claimed by these tests. Google account selection/provider behavior still needs a live manual check before treating the sign-in path as verified on a real phone.
 
@@ -90,6 +90,16 @@ not enable Cloud Storage or upload full transcripts. Only published moment
 snapshots sync; generation attempts, full source context and version history
 remain local and are included in manual backups. Queue/preferences work at both
 protocols 2 and 3. See [contextual-distill compatibility](contextual-distills.md#sync-rollout).
+
+### History compaction and protocol 4
+
+Each change keeps an immutable history entry and receipt in Firestore, so an account's history grows with every progress checkpoint. Protocol 4 adds a `compactedThrough` watermark below which installations may delete that history; current records (`entities`) are never deleted. Compaction is **off in all builds** until the owner deploys the protocol-4 rules and publishes a release built with `-PdistillpodSyncCompaction=true`; see the [rules design, owner checklist and rollback](../../firebase/README.md#history-compaction-protocol-4).
+
+Every build from this version on reads compacted accounts, independent of the flag. An installation that has not synced since history it needed was compacted (its cursor is below the watermark), or that meets compaction during a replay, rebuilds its cloud view from the current records like a new installation. Its pending local changes stay in the outbox and are sent afterwards; a change to a record another phone also changed becomes an ordinary conflict. A change whose upload reached the cloud but whose confirmation was lost, and whose receipt was later compacted, completes normally when the cloud already holds exactly that change; otherwise it remains a conflict for review. Accounts without a watermark (all accounts under the current rules) are unaffected.
+
+When enabled, an installation that completed a sync run checks at most hourly. On a protocol-3 account whose head is more than 10,000 changes long it upgrades the account to protocol 4, then compacts only history that is more than 10,000 changes behind the head and that it observed more than 30 days earlier, never past its own position, deleting at most 200 history documents per run. Protocol 1–2 accounts are never upgraded, because protocol 4 includes the queue/preferences and contextual-moment scopes. Older app versions stop at the upgraded account with a sync error and keep their local library; update them before enabling compaction. A phone that does not sync for longer than the window rebuilds once, reading every current record.
+
+JVM/Room tests cover rebuilding below the watermark with pending edits, conflicts after rebuilding, installations already past the watermark, compaction racing a replay, an unexplained history gap, a lost acknowledgement with a compacted receipt, and bounded resumable compaction with the default-off flag. The Android sync acceptance compacts an emulator account and recovers an offline edit and a lost acknowledgement with the real SDK.
 
 ### Inactive finished-content experiment
 

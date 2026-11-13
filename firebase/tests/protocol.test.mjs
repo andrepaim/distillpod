@@ -133,6 +133,11 @@ test('deployed protocol-3 rules refuse the compaction upgrade, watermark and del
  await assertFails(deleteDoc(doc(a,'users/alice/changes/1')));
  await assertFails(deleteDoc(doc(a,'users/alice/receipts/op1')));
 });
+test('rolling back to the deployed protocol-3 rules keeps a compacted account syncing',{skip:!deployedProtocol3&&'only with deployed protocol-3 rules'},async()=>{
+ await seed('alice',4,{compactedThrough:0});const a=db('alice');
+ const first=await commit(a);assert.match(first.signature,/^[a-f0-9]{64}$/);
+ assert.deepEqual(await commit(a),first);assert.equal((await commit(a,{id:'op2',key:'subscription_item2'})).sequence,2);
+});
 test('protocol four upgrade is owner-only and only from protocol three',protocol4,async()=>{
  for(const protocol of [1,2]) { await seed('alice',protocol);await assertFails(updateDoc(doc(db('alice'),'users/alice'),{protocol:4})); }
  await seed('alice',3);
