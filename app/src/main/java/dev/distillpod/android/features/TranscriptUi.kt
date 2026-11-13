@@ -1,6 +1,10 @@
 package dev.distillpod.android.features
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.*
@@ -91,7 +95,21 @@ import dev.distillpod.android.data.TranscriptStage
     }
 }
 
-@Composable fun TranscriptPage(vm: AppViewModel, ep: EpisodeEntity?) {
+/** A transcript page route, optionally positioned at the passage containing [atMs] (#179). */
+internal fun transcriptRoute(episodeId: String, atMs: Long? = null) = "transcript:$episodeId" + (atMs?.let { "@$it" } ?: "")
+internal data class TranscriptTarget(val episodeId: String, val atMs: Long?)
+internal fun transcriptTarget(route: String): TranscriptTarget {
+    val rest = route.removePrefix("transcript:")
+    val at = rest.substringAfterLast('@', "").toLongOrNull()
+    return if (at != null) TranscriptTarget(rest.substringBeforeLast('@'), at) else TranscriptTarget(rest, null)
+}
+
+/** The passage containing [atMs], else the last one starting before it; -1 without passages. */
+internal fun transcriptFocusIndex(segments: List<SegmentEntity>, atMs: Long): Int =
+    segments.indexOfFirst { atMs >= it.startMs && atMs < it.endMs }.takeIf { it >= 0 }
+        ?: segments.indexOfLast { it.startMs <= atMs }.takeIf { it >= 0 } ?: if (segments.isEmpty()) -1 else 0
+
+@Composable fun TranscriptPage(vm: AppViewModel, ep: EpisodeEntity?, focusMs: Long? = null) {
     if (ep == null) return
     val transcripts by vm.transcripts.collectAsStateWithLifecycle()
     val row = transcripts.firstOrNull { it.episodeId == ep.id }
@@ -101,9 +119,14 @@ import dev.distillpod.android.data.TranscriptStage
     var options by rememberSaveable(ep.id) { mutableStateOf(false) }
     val player by vm.player.collectAsStateWithLifecycle()
     val matching=remember(segments,query) {segments.filter {query.isBlank() || it.text.contains(query.trim(),ignoreCase=true)}}
+    val focused = remember(matching, focusMs) { focusMs?.let { matching.getOrNull(transcriptFocusIndex(matching, it)) } }
+    val list = rememberLazyListState()
+    // Opened from a search result: bring its passage into view once, after the passages load.
+    var positioned by rememberSaveable(ep.id, focusMs) { mutableStateOf(false) }
+    LaunchedEffect(focused) { if (focused != null && !positioned) { list.scrollToItem(1 + matching.indexOf(focused)); positioned = true } }
     Column(Modifier.fillMaxSize().padding(horizontal=20.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
         LocalSearch(query,{query=it},"Search transcript","Clear transcript search")
-        LazyColumn(contentPadding = PaddingValues(bottom=20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        LazyColumn(state = list, contentPadding = PaddingValues(bottom=20.dp), verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.testTag("transcript-passages")) {
             item {
                 Text(ep.title,style=MaterialTheme.typography.titleLarge)
                 Text("${matching.size} passages · tap a time to listen",modifier=Modifier.padding(top=8.dp),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
@@ -119,7 +142,10 @@ import dev.distillpod.android.data.TranscriptStage
             }
             items(matching, key = { "${it.startMs}:${it.ordinal}" }) { segment ->
                 val active=player.episodeId==ep.id && player.positionMs>=segment.startMs && player.positionMs<segment.endMs
-                Surface(shape=RoundedCornerShape(18.dp),color=if(active)MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,modifier=Modifier.fillMaxWidth().semantics {selected=active}) {
+                val found=segment==focused
+                Surface(shape=RoundedCornerShape(18.dp),color=if(active)MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
+                    border=if(found)BorderStroke(2.dp,MaterialTheme.colorScheme.secondary) else null,
+                    modifier=Modifier.fillMaxWidth().semantics {selected=active; if(found)stateDescription="Search result"}.then(if(found)Modifier.testTag("transcript-focus") else Modifier)) {
                     Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
                         TextButton(onClick={vm.play(ep.id,segment.startMs)},contentPadding=PaddingValues(horizontal=0.dp)) {Text("${timestamp(segment.startMs)} · Listen")}
                         SelectionContainer {Text(segment.text,style=MaterialTheme.typography.bodyLarge.copy(lineHeight=28.sp))}
