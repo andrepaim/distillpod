@@ -49,8 +49,9 @@ class SubscriptionSyncAccount(private val graph:AppGraph) {
     private val cloud by lazy { FirebaseSubscriptionCloud(auth,FirebaseFirestore.getInstance(app).apply {
         firestoreSettings=FirebaseFirestoreSettings.Builder().setLocalCacheSettings(MemoryCacheSettings.newBuilder().build()).build()
     },if(contentConfigured)artifacts else null) }
-    // Content-free report: rules drift should be visible without sending the refused record.
-    private val coordinator by lazy { SubscriptionSyncCoordinator(graph.db,cloud) { graph.diagnostics.failure("sync",it) } }
+    // Content-free report, once per record kind and process: rules drift is visible without the record.
+    private val reportedRejections=java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    private val coordinator by lazy { SubscriptionSyncCoordinator(graph.db,cloud) { kind,error -> if(reportedRejections.add(kind))graph.diagnostics.failure("sync",error) } }
     private var scheduled:Job?=null
     private val connecting=Mutex()
     init {

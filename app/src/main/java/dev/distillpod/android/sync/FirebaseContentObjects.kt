@@ -52,13 +52,10 @@ class FirebaseContentObjects(private val auth:FirebaseAuth,private val storage:F
         } catch(error:StorageException) {
             // An expired upload URI can be discarded; authentication/permission failures are not retried as fresh uploads.
             if(error.httpResultCode==410)sessions?.clear(owner,artifact.hash)
-            else {
-                val existing=runCatching {ref.metadata.await()}.getOrNull()
-                if(existing?.getCustomMetadata("hash")!=artifact.hash || existing.getCustomMetadata("expandedBytes")!=artifact.expandedBytes.toString()) {
-                    // The read above was allowed, so a refused create is specific to this object; a retry starts a fresh session.
-                    if(storageUploadRejected(error)){sessions?.clear(owner,artifact.hash);throw SyncOperationRejected(error)}
-                    throw error
-                }
+            else uploadFailure(error,artifact.hash,artifact.expandedBytes) {ref.metadata.await()}?.let { failure ->
+                // A user retry of a refused object starts a fresh upload session.
+                if(failure is SyncOperationRejected)sessions?.clear(owner,artifact.hash)
+                throw failure
             }
             if(error.httpResultCode==410)throw error
         }

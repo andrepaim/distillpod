@@ -72,8 +72,18 @@ class SubscriptionSyncStore(private val db: AppDatabase, private val isolatedDem
     }
     /** A user retry, for example after an app update; another refusal returns them to rejected. */
     suspend fun retryRejected() = changeRejected { uid,generation -> db.sync().retryRejected(uid,generation) }
-    /** Stops sending refused changes. The local library already holds them and is not changed. */
-    suspend fun discardRejected() = changeRejected { uid,generation -> db.sync().discardRejected(uid,generation) }
+    /** Stops sending refused changes. Local edits stay unless a newer cloud revision arrived meanwhile. */
+    suspend fun discardRejected() = changeRejected { uid,generation ->
+        val refused=db.sync().rejected(uid,generation)
+        db.sync().discardRejected(uid,generation)
+        for(op in refused) {
+            // Cloud edits received while this change was set aside were not shown; apply them now.
+            // Staged finished content is applied by the next sync run instead.
+            if(op.entityKey.startsWith("artifact_") || db.sync().forKey(uid,generation,op.entityKey).isNotEmpty())continue
+            val remote=db.sync().remote(uid,generation,op.entityKey)?.takeIf { it.version>op.baseVersion } ?: continue
+            projectSubscription(db,CloudSubscription(remote.entityKey,remote.version,decode(remote.payload),remote.deleted,remote.sequence))
+        }
+    }
     private suspend fun changeRejected(change:suspend (String,String)->Unit) = db.withTransaction {
         check(allowed()) { "Production sync changes are disabled during instrumentation." }
         val binding=db.sync().binding() ?: error("Connect your sync account first.")

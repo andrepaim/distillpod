@@ -6,6 +6,7 @@ import com.google.firebase.firestore.FirebaseFirestoreException
 import dev.distillpod.android.data.*
 import dev.distillpod.android.sync.*
 import dev.distillpod.core.sync.SyncOwner
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Test
@@ -118,6 +119,39 @@ class SubscriptionRejectedOperationTest {
         try{SubscriptionSyncCoordinator(db,cloud).run();fail("Failure must propagate")}catch(_:FirebaseFirestoreException){}
         assertEquals("offline",db.sync().binding()!!.status);assertEquals(listOf(firstKey to "uploading"),states(db))
         cloud.failure=null;assertTrue(SubscriptionSyncCoordinator(db,cloud).run())
+    }
+    @Test fun `operation superseded while uploading is dropped instead of rejected`()=fixture { db,store,cloud ->
+        store.follow(first,true);cloud.rejectedKeys+=firstKey
+        cloud.beforeRejection={cloud.rejectedKeys.clear();store.follow(first.copy(title="Edited during upload"),true)}
+        assertTrue(SubscriptionSyncCoordinator(db,cloud).run())
+        assertEquals(emptyList<Pair<String,String>>(),states(db));assertEquals("Edited during upload",cloud.inner.rows[firstKey]!!.payload["title"])
+    }
+    @Test fun `discard applies cloud changes held back by the rejected change`()=fixture { db,store,cloud ->
+        store.follow(first,true);assertTrue(SubscriptionSyncCoordinator(db,cloud).run())
+        store.follow(first.copy(title="Local"),true);cloud.rejectedKeys+=firstKey
+        assertFalse(SubscriptionSyncCoordinator(db,cloud).run())
+        cloud.inner.commit(SyncOutboxEntity("external","alice","g1",firstKey,1,org.json.JSONObject(SubscriptionSyncStore.payload(first.copy(title="Cloud"))).toString(),false))
+        assertFalse(SubscriptionSyncCoordinator(db,cloud).run())
+        assertEquals("Local",db.library().podcast("p1")!!.title)
+        store.discardRejected()
+        assertEquals("Cloud",db.library().podcast("p1")!!.title)
+    }
+    @Test fun `discard without newer cloud changes keeps the local edit`()=fixture { db,store,cloud ->
+        store.follow(first,true);assertTrue(SubscriptionSyncCoordinator(db,cloud).run())
+        store.follow(first.copy(title="Local"),true);cloud.rejectedKeys+=firstKey
+        assertFalse(SubscriptionSyncCoordinator(db,cloud).run());store.discardRejected()
+        assertEquals("Local",db.library().podcast("p1")!!.title);assertTrue(SubscriptionSyncCoordinator(db,cloud).run())
+    }
+    @Test fun `rejections are reported by record kind only`()=fixture { db,store,cloud ->
+        val reported=mutableListOf<String>()
+        store.follow(first,true);store.follow(second,true);cloud.rejectedKeys+=firstKey;cloud.rejectedKeys+=SubscriptionSyncStore.key(second)
+        assertFalse(SubscriptionSyncCoordinator(db,cloud) { kind,_ -> reported+=kind }.run())
+        assertEquals(listOf("subscription","subscription"),reported)
+    }
+    @Test fun `visible rejected count belongs to the bound account`()=fixture { db,store,cloud ->
+        rejectFirst(db,store,cloud)
+        db.sync().enqueue(SyncOutboxEntity("other","bob","g9","subscription_other",0,"{}",true,state="rejected"))
+        assertEquals(1,db.sync().observeRejectedCount().first())
     }
     @Test fun `retry and discard leave other accounts and states untouched`()=fixture { db,store,cloud ->
         rejectFirst(db,store,cloud)

@@ -22,7 +22,7 @@ interface SubscriptionCloud {
     suspend fun commit(operation:SyncOutboxEntity):CloudSubscription
 }
 class SubscriptionConflict(val current:CloudSubscription?):Exception("Subscription changed on another device")
-class SubscriptionSyncCoordinator(private val db:AppDatabase,private val cloud:SubscriptionCloud,private val rejected:(SyncOperationRejected)->Unit={}) {
+class SubscriptionSyncCoordinator(private val db:AppDatabase,private val cloud:SubscriptionCloud,private val rejected:(String,SyncOperationRejected)->Unit={_,_->}) {
     private val dao get()=db.sync()
     private val mutex=Mutex()
     private suspend fun valid(b:SyncBindingEntity):Boolean {
@@ -99,9 +99,12 @@ class SubscriptionSyncCoordinator(private val db:AppDatabase,private val cloud:S
                     // Retrying an unchanged refused write cannot succeed; keep it for the user and continue.
                     if(!db.withTransaction {
                         if(!valid(b))return@withTransaction false
-                        dao.state(op.operationId,"rejected");true
+                        // A newer local edit queued during the upload replaces the refused intent.
+                        if(dao.forKey(b.uid,b.generation,op.entityKey).any { it.operationId!=op.operationId })dao.acknowledge(b.uid,b.generation,op.operationId)
+                        else dao.state(op.operationId,"rejected")
+                        true
                     })return@withLock false
-                    rejected(refused)
+                    rejected(op.entityKey.substringBefore('_'),refused)
                 }
             }
             db.withTransaction {

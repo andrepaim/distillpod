@@ -40,7 +40,7 @@ interface SyncDao {
     @Query("UPDATE sync_outbox SET state='queued' WHERE uid=:uid AND generation=:generation AND state='upgrade_required'") suspend fun resumeContextualOperations(uid: String, generation: String)
     @Query("SELECT * FROM sync_outbox WHERE state='conflict' ORDER BY rowid LIMIT 20") fun observeConflicts(): kotlinx.coroutines.flow.Flow<List<SyncOutboxEntity>>
     @Query("SELECT * FROM sync_outbox WHERE uid=:uid AND generation=:generation AND state='rejected' ORDER BY rowid") suspend fun rejected(uid:String,generation:String): List<SyncOutboxEntity>
-    @Query("SELECT COUNT(*) FROM sync_outbox WHERE state='rejected'") fun observeRejectedCount(): kotlinx.coroutines.flow.Flow<Int>
+    @Query("SELECT COUNT(*) FROM sync_outbox o JOIN sync_binding b ON b.id=0 AND o.uid=b.uid AND o.generation=b.generation WHERE o.state='rejected'") fun observeRejectedCount(): kotlinx.coroutines.flow.Flow<Int>
     @Query("UPDATE sync_outbox SET state='queued' WHERE uid=:uid AND generation=:generation AND state='rejected'") suspend fun retryRejected(uid:String,generation:String)
     @Query("DELETE FROM sync_outbox WHERE uid=:uid AND generation=:generation AND state='rejected'") suspend fun discardRejected(uid:String,generation:String)
     @Query("SELECT COUNT(*) FROM sync_outbox") fun observeCount(): kotlinx.coroutines.flow.Flow<Int>

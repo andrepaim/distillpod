@@ -25,7 +25,7 @@ class SyncStatusTextTest {
         assertEquals("Sign in with this library's original account",librarySyncStatus(binding,true,"bob",0,0))
     }
     @Test fun `rejected guidance counts changes and keeps the local library`() {
-        assertEquals("1 change was not accepted by the cloud and is no longer sent automatically. Your library on this phone is unchanged. Retry after updating DistillPod, or discard it to stop sending it.",rejectedChangesText(1))
+        assertEquals("1 change was not accepted by the cloud and is no longer sent automatically. It stays on this phone. Retry later, or discard it to stop sending it and accept newer changes from other phones.",rejectedChangesText(1))
         assertTrue(rejectedChangesText(3).startsWith("3 changes were not accepted by the cloud"))
     }
 }

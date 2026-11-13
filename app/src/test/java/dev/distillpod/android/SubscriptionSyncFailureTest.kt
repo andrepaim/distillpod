@@ -53,6 +53,19 @@ class SubscriptionSyncFailureTest {
             assertFalse(code.toString(),storageUploadRejected(com.google.firebase.storage.StorageException.fromExceptionAndHttpCode(null,code)!!))
         assertFalse(storageUploadRejected(com.google.firebase.storage.StorageException.fromException(java.io.IOException("synthetic"))!!))
     }
+    private fun storage(code:Int)=com.google.firebase.storage.StorageException.fromExceptionAndHttpCode(null,code)!!
+    private fun metadata(hash:String)=com.google.firebase.storage.StorageMetadata.Builder().setCustomMetadata("hash",hash).setCustomMetadata("expandedBytes","10").build()
+    @Test fun storageUploadRefusalNeedsAnAllowedObjectRead()=runBlocking {
+        val refused=storage(403)
+        assertTrue(uploadFailure(refused,"h",10) { throw storage(404) } is SyncOperationRejected)
+        assertTrue(uploadFailure(refused,"h",10) { metadata("other") } is SyncOperationRejected)
+        assertSame(refused,uploadFailure(refused,"h",10) { throw storage(403) })
+        assertSame(refused,uploadFailure(refused,"h",10) { throw java.io.IOException("synthetic") })
+        assertNull(uploadFailure(refused,"h",10) { metadata("h") })
+        val unavailable=storage(503)
+        assertSame(unavailable,uploadFailure(unavailable,"h",10) { throw storage(404) })
+        try { uploadFailure(refused,"h",10) { throw CancellationException("synthetic") };fail() } catch(_:CancellationException) {}
+    }
     @Test fun rejectionDiagnosticsAreContentFree() {
         val refused=SyncOperationRejected(FirebaseFirestoreException("SECRET record title",FirebaseFirestoreException.Code.PERMISSION_DENIED))
         assertEquals("rejected",dev.distillpod.android.diagnostics.Diagnostics.reason(refused))

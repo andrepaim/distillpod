@@ -171,5 +171,5 @@ internal fun librarySyncStatus(binding:SyncBindingEntity?,connected:Boolean,uid:
 
 /** Counts only: refused records may be private and are never described here. */
 internal fun rejectedChangesText(count:Int):String=
-    if(count==1)"1 change was not accepted by the cloud and is no longer sent automatically. Your library on this phone is unchanged. Retry after updating DistillPod, or discard it to stop sending it."
-    else "$count changes were not accepted by the cloud and are no longer sent automatically. Your library on this phone is unchanged. Retry after updating DistillPod, or discard them to stop sending them."
+    if(count==1)"1 change was not accepted by the cloud and is no longer sent automatically. It stays on this phone. Retry later, or discard it to stop sending it and accept newer changes from other phones."
+    else "$count changes were not accepted by the cloud and are no longer sent automatically. They stay on this phone. Retry later, or discard them to stop sending them and accept newer changes from other phones."
