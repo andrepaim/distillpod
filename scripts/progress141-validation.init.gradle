@@ -1,0 +1,14 @@
+// Offline, separately installed playback progress write-frequency probe (#141). Never use for production.
+allprojects {
+    afterEvaluate {
+        if (path == ':app') {
+            if (System.getenv('SENTRY_DSN')) throw new GradleException('Validation requires empty SENTRY_DSN')
+            if (project.hasProperty('distillpodFirebaseConfig')) throw new GradleException('Validation forbids Firebase configuration')
+            android.defaultConfig.applicationId = project.findProperty('progress141Package') ?: 'dev.distillpod.android.validation.progress141'
+            if (!android.defaultConfig.applicationId.startsWith('dev.distillpod.android.validation.progress141'))
+                throw new GradleException('Validation package must be dev.distillpod.android.validation.progress141*')
+            android.sourceSets.debug.java.srcDir('src/validationProgress141/java')
+            android.sourceSets.debug.manifest.srcFile('src/validationProgress141/AndroidManifest.xml')
+        }
+    }
+}
