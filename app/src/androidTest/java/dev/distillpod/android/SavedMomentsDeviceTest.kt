@@ -74,7 +74,7 @@ class SavedMomentsDeviceTest {
             compose.onNodeWithText("Cancel").performClick()
             assertNotNull(dao.distillation("$id-0"))
             compose.onNodeWithText("Source passage").performScrollTo().performClick()
-            compose.onNodeWithText("Synthetic source passage 0.").assertIsDisplayed()
+            compose.onNodeWithText("Synthetic source passage 0.").performScrollTo().assertIsDisplayed()
 
             withContext(Dispatchers.Main) { vm.root("saved") }
             compose.onNodeWithText("Posts").performClick()

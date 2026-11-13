@@ -12,6 +12,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Article
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -22,6 +23,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -174,9 +176,10 @@ internal fun momentShareText(moment: DistillationEntity, episodeTitle: String?) 
     val versions by remember(capture.id) { dao.observeMomentVersions(capture.id) }.collectAsStateWithLifecycle(emptyList())
     val reports by vm.research.collectAsStateWithLifecycle()
     val latest = reports.firstOrNull { it.distillationId == capture.id && it.state in listOf("queued", "running", "succeeded") && explanationMatches(it, capture) }
-    val reviewContext = pending?.takeIf { capture.state == "review_source" }?.let { attempt ->
-        runCatching { if (JSONObject(attempt.contextJson).has("spans")) MomentGeneration.context(attempt.contextJson).spans.joinToString(" ") { it.text } else null }.getOrNull()
-    }
+    val contextJson = pending?.takeIf { capture.state == "review_source" }?.contextJson
+    val reviewContext = remember(contextJson) { contextJson?.let { json ->
+        runCatching { if (JSONObject(json).has("spans")) MomentGeneration.context(json).spans.joinToString(" ") { it.text } else null }.getOrNull()
+    } }
     val share = momentShareText(capture, ep?.title)
     MomentDetail(capture, ep, show?.title, latest, versions, reviewContext, MomentActions(
         replay = { vm.play(capture.episodeId, capture.sourceStartMs); vm.open("player") },
@@ -242,9 +245,10 @@ private val contextStates = setOf("needs_context", "unclear_source")
                 }
             }
         }
-        if (versions.isNotEmpty()) Disclosure("Previous versions (${versions.size})", capture.id + ":versions") {
-            versions.forEach { version ->
-                val previous = remember(version.id, capture) { runCatching { restoreMomentSnapshot(capture, version.snapshot) }.getOrNull() } ?: return@forEach
+        // Unreadable snapshots are left out of both the list and its count.
+        val restorable = remember(versions, capture) { versions.mapNotNull { v -> runCatching { v to restoreMomentSnapshot(capture, v.snapshot) }.getOrNull() } }
+        if (restorable.isNotEmpty()) Disclosure("Previous versions (${restorable.size})", capture.id + ":versions") {
+            restorable.forEach { (version, previous) ->
                 Card(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(previous.insight.orEmpty())
@@ -296,7 +300,7 @@ private val contextStates = setOf("needs_context", "unclear_source")
                     }
                 }, leadingIcon = { Icon(icon, null) }, enabled = enabled, onClick = { open = false; onClick() })
             entry("Create post", Icons.Default.PostAdd, enabled = capture.excerpt.isNotBlank(), onClick = actions.createPost)
-            entry("Posts from this moment", Icons.Default.Article, onClick = actions.openPosts)
+            entry("Posts from this moment", Icons.AutoMirrored.Filled.Article, onClick = actions.openPosts)
             if (capture.excerpt.isNotBlank())
                 entry(if (explanation?.state == "succeeded") "Read explanation" else "Explain this idea", Icons.Default.Lightbulb, onClick = actions.explain)
             if (!working && ep != null && capture.insight != null)
@@ -325,10 +329,10 @@ private val contextStates = setOf("needs_context", "unclear_source")
             if (capture.state == "review_source") {
                 Text("Review the proposed source context below before sending it to ChatGPT. The saved result is kept until its replacement passes review.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.tertiary)
-                reviewContext?.let {
-                    Text("Proposed source context", style = MaterialTheme.typography.titleSmall)
-                    SelectionContainer { Text(it, style = MaterialTheme.typography.bodyMedium) }
-                }
+                Text("Proposed source context", style = MaterialTheme.typography.titleSmall)
+                if (reviewContext != null) SelectionContainer { Text(reviewContext, style = MaterialTheme.typography.bodyMedium) }
+                else Text("The proposed source context isn’t available to show. Don’t generate until it appears.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             if (capture.excerpt.isNotBlank() && capture.state in retryStates) {
                 Button(onClick = actions.generate) {
@@ -339,7 +343,7 @@ private val contextStates = setOf("needs_context", "unclear_source")
             if (!working && ep != null && capture.state in contextStates) {
                 OutlinedButton(onClick = actions.expandContext) { Text("Expand context and retry") }
                 OutlinedButton(onClick = actions.retranscribe) { Text("Transcribe and retry") }
-                Text("For clearer speech recognition, select Base in Settings before transcribing again. Generation and source review use two AI requests.",
+                Text("For clearer speech recognition, select Base in Settings before transcribing again. Generation and source review use two AI requests; your current saved result is kept while a replacement is prepared.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             capture.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
@@ -352,8 +356,8 @@ private val contextStates = setOf("needs_context", "unclear_source")
     var expanded by rememberSaveable(key) { mutableStateOf(false) }
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).clip(RoundedCornerShape(10.dp))
-            .clickable(onClickLabel = if (expanded) "Hide" else "Show") { expanded = !expanded }
-            .semantics(mergeDescendants = true) { stateDescription = if (expanded) "Expanded" else "Collapsed" },
+            .clickable(onClickLabel = if (expanded) "Hide" else "Show", role = Role.Button) { expanded = !expanded }
+            .semantics { stateDescription = if (expanded) "Expanded" else "Collapsed" },
             verticalAlignment = Alignment.CenterVertically) {
             Text(label, Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
             Icon(if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)

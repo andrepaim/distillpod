@@ -127,6 +127,25 @@ class MomentDetailLayoutTest {
         assertEquals(listOf("pause"), calls)
     }
 
+    @Test fun `source review without readable context says so`() {
+        show(moment(state = "review_source"))
+        compose.onNodeWithText("Proposed source context").assertIsDisplayed()
+        compose.onNodeWithText("isn’t available to show", substring = true).assertIsDisplayed()
+    }
+
+    @Test fun `source disclosure announces itself as a button with its state`() {
+        show(moment())
+        compose.onNodeWithText("Source passage").assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, androidx.compose.ui.semantics.Role.Button))
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Collapsed")).performClick()
+        compose.onNodeWithText("Source passage").assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Expanded"))
+    }
+
+    @Test fun `unreadable previous versions are not counted`() {
+        val previous = moment(insight = "An earlier takeaway.")
+        show(moment(), listOf(MomentVersionEntity("v1", "m", momentSnapshot(previous)), MomentVersionEntity("bad", "m", "not json")))
+        compose.onNodeWithText("Previous versions (1)").assertExists()
+    }
+
     @Test fun `previous versions remain restorable`() {
         val previous = moment(insight = "An earlier takeaway.")
         show(moment(), listOf(MomentVersionEntity("v1", "m", momentSnapshot(previous))))

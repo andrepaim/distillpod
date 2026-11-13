@@ -60,9 +60,11 @@ class SavedMomentsLayoutTest {
     }
 
     @Test fun `status chip appears only for moments that are not finished`() {
-        content(listOf(item(1), item(2, "running"), item(3, "imported"), item(4, "failed")))
+        content(listOf(item(1), item(3, "imported"), item(2, "running"), item(4, "failed")))
+        compose.onNodeWithText("Moment 3", substring = true).assertExists() // the imported card is composed
         compose.onAllNodesWithText("Saved", useUnmergedTree = true).assertCountEquals(0)
         compose.onAllNodesWithText("Imported", useUnmergedTree = true).assertCountEquals(0)
+        compose.onNodeWithTag("saved-list").performScrollToNode(hasText("Moment 2", substring = true))
         compose.onNodeWithText("Finding the idea", useUnmergedTree = true).assertExists()
         compose.onNodeWithTag("saved-list").performScrollToNode(hasText("Needs retry"))
         compose.onNodeWithText("Needs retry", useUnmergedTree = true).assertExists()
