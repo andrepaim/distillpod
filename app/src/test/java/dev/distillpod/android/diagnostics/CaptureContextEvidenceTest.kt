@@ -17,8 +17,18 @@ import java.io.File
 import java.util.UUID
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk=[34])
+@Config(sdk=[34], shadows=[ProducerFixtureFileUtils::class])
 class CaptureContextEvidenceTest {
+    @org.junit.Before fun resetPlatformForces() { ProducerFixtureFileUtils.calls.set(0) }
+    @Test fun `fixture writes real preferences while isolating platform force`() {
+        ProducerFixtureFileUtils.calls.set(0)
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val prefs = context.getSharedPreferences("capture-force-control", 0)
+        assertTrue(prefs.edit().clear().putString("probe", "synthetic-value").commit())
+        val xml = File(context.applicationInfo.dataDir, "shared_prefs/capture-force-control.xml").readText()
+        assertTrue(xml.contains("synthetic-value"))
+        assertTrue("This fixture must intercept the platform force", ProducerFixtureFileUtils.calls.get() > 0)
+    }
     private val secret="Private sentence. Another private sentence."
     private fun scenario(kind:String):Map<String,Any> = runBlocking {
         val context=ApplicationProvider.getApplicationContext<Context>()
@@ -72,6 +82,7 @@ class CaptureContextEvidenceTest {
             if(kind=="invalid")dao.putDistillation(dao.distillation(id)!!.copy(startMs=-1))
             if(kind=="invalid_range")dao.putDistillation(dao.distillation(id)!!.copy(endMs=-1))
             diagnostics.consent(true);barrier.awaitIdle()
+            assertTrue(ProducerFixtureFileUtils.calls.get() > 0)
             if(kind=="budget")context.getSharedPreferences("diagnostics",0).edit()
                 .putInt("budget_routine",800).putInt("sent",800).commit()
             if(kind in setOf("invalid_range","cancelled","exception","callback")) {
