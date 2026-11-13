@@ -165,7 +165,7 @@ class SubscriptionSyncAccount(private val graph:AppGraph) {
         } catch(error:Exception) {
             graph.diagnostics.failure("sync",error)
             if(error is CancellationException)throw error
-            graph.db.sync().binding()?.let {graph.db.sync().putBinding(it.copy(status=syncFailureStatus(error)))}
+            graph.db.sync().binding()?.let {graph.db.sync().putBinding(it.copy(status="error"))}
             throw error
         }
         return coordinator.run()
