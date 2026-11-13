@@ -40,10 +40,6 @@ internal fun swapCurrentSource(player: Player, desired: MediaItem, position: Lon
 internal fun voicePositionChanged(reason: Int, oldId: String?, newId: String?, oldMs: Long, newMs: Long) =
     reason != Player.DISCONTINUITY_REASON_AUTO_TRANSITION || oldId != newId || oldMs != newMs
 
-/** Source replacements/reorders of the same episode must not checkpoint a removal. */
-internal fun shouldCheckpointRemoval(reason: Int, oldId: String?, newId: String?) =
-    reason == Player.DISCONTINUITY_REASON_REMOVE && oldId != null && oldId != newId
-
 /** Clear-and-stop must also clear play intent so a later enqueue cannot auto-start. */
 internal fun clearPlaybackQueue(player: Player) { player.pause(); player.clearMediaItems() }
 

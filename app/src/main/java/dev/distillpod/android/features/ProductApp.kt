@@ -137,7 +137,7 @@ fun fileSize(bytes: Long): String = if (bytes >= 1_000_000_000) "%.1f GB".format
                 screenState.SaveableStateProvider(route) {
                 when {
                     !loaded -> CircularProgressIndicator(Modifier.align(Alignment.Center))
-                    route == "library" || route.startsWith("podcast:") -> LibraryPage(vm, podcasts, episodes, transcripts, captures, player, route.takeIf { it.startsWith("podcast:") }?.substringAfter(':'))
+                    route == "library" || route.startsWith("podcast:") -> LibraryPage(vm, podcasts, transcripts, captures, player, route.takeIf { it.startsWith("podcast:") }?.substringAfter(':'))
                     route == "search" -> SearchPage(vm, podcasts)
                     route == "queue" -> QueuePage(vm, episodes, podcasts, player)
                     route == "posts" || route.startsWith("posts:") -> PostDraftsPage(vm, route.substringAfter(':', "").takeIf { it.isNotBlank() })
@@ -161,6 +161,7 @@ fun fileSize(bytes: Long): String = if (bytes >= 1_000_000_000) "%.1f GB".format
     }
 }
 
+private val NOT_CURRENT = PlaybackState()
 @Composable private fun Cover(url: String?, modifier: Modifier = Modifier) = PodcastCover(url, modifier)
 @Composable private fun Empty(title: String, detail: String, action: String? = null, onAction: () -> Unit = {}) {
     Column(Modifier.fillMaxWidth().padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -172,15 +173,16 @@ fun fileSize(bytes: Long): String = if (bytes >= 1_000_000_000) "%.1f GB".format
 }
 
 @OptIn(ExperimentalLayoutApi::class)
-@Composable private fun LibraryPage(vm: AppViewModel, podcasts: List<PodcastEntity>, episodes: List<EpisodeEntity>, transcripts: List<TranscriptEntity>, captures: List<DistillationEntity>, player: PlaybackState, podcastId: String?) {
-    val filter by vm.filter.collectAsStateWithLifecycle()
-    val subscribed = podcasts.filter { it.subscribed }
-    val selected = podcasts.firstOrNull { it.id == podcastId }
-    val library = episodes.filter { ep -> if (podcastId != null) ep.podcastId == podcastId else subscribed.any { it.id == ep.podcastId } || ep.localFile != null || ep.lastPlayedAt > 0 }
-    val visible = library.filter { ep -> when (filter) { "downloads" -> ep.localFile != null; "progress" -> ep.positionMs > 0 && !ep.completed; else -> true } }.let { rows -> if (selected?.feedUrl?.let { dev.distillpod.core.YouTubeUrl.source(it) } != null)
-        rows.sortedBy { it.sourceOrder ?: Int.MAX_VALUE } else rows }
-    val resume = library.firstOrNull { it.id == player.episodeId && !it.completed }
-        ?: library.filter { it.positionMs > 0 && !it.completed }.maxByOrNull { it.lastPlayedAt }
+@Composable private fun LibraryPage(vm: AppViewModel, podcasts: List<PodcastEntity>, transcripts: List<TranscriptEntity>, captures: List<DistillationEntity>, player: PlaybackState, podcastId: String?) {
+    // Filtering 3,000+ episodes belongs to library changes, not to each live position tick (#141).
+    val routed by vm.library.collectAsStateWithLifecycle()
+    val fallback = remember(podcastId) { lazy { vm.currentLibraryListing(podcastId) } }
+    val listing = routed?.takeIf { it.podcastId == podcastId } ?: fallback.value
+    val filter = listing.filter
+    val subscribed = listing.subscribed
+    val selected = listing.selected
+    val visible = listing.visible
+    val resume = listing.resume
     val showResume = podcastId == null && filter == "all" && resume != null
     val list = rememberLazyListState()
     // Room/player flows can insert the resume card above the initial show row.
@@ -190,7 +192,7 @@ fun fileSize(bytes: Long): String = if (bytes >= 1_000_000_000) "%.1f GB".format
         if (selected != null) item {
             Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
                 Cover(selected.imageUrl, Modifier.size(88.dp))
-                Column(Modifier.weight(1f)) { Text(selected.author, color = MaterialTheme.colorScheme.onSurfaceVariant); Text("${library.size} episodes", style = MaterialTheme.typography.labelLarge)
+                Column(Modifier.weight(1f)) { Text(selected.author, color = MaterialTheme.colorScheme.onSurfaceVariant); Text("${listing.episodeCount} episodes", style = MaterialTheme.typography.labelLarge)
                     TextButton(onClick = { if (selected.subscribed) vm.unsubscribe(selected.id) else vm.subscribe(selected.feedUrl) }) { Text(if (selected.subscribed) "Unsubscribe" else "Subscribe") }
                 }
             }
@@ -222,7 +224,7 @@ fun fileSize(bytes: Long): String = if (bytes >= 1_000_000_000) "%.1f GB".format
             }
         }
         if (podcasts.any { it.error != null }) item { Text("Some feeds could not refresh. Your saved library is still available.", color = MaterialTheme.colorScheme.tertiary, style = MaterialTheme.typography.bodySmall) }
-        if (library.isNotEmpty()) item(key = "filters") {
+        if (listing.episodeCount > 0) item(key = "filters") {
             SectionHeading(when (filter) { "progress" -> "In progress"; "downloads" -> "Downloaded episodes"; else -> "Latest episodes" }, "${visible.size} available")
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 6.dp)) {
                 listOf("all" to "Latest", "progress" to "In progress", "downloads" to "Downloads").forEach { (id, title) -> FilterChip(selected = filter == id, onClick = { vm.filter(id) }, label = { Text(title) }) }
@@ -230,12 +232,13 @@ fun fileSize(bytes: Long): String = if (bytes >= 1_000_000_000) "%.1f GB".format
         }
         if (visible.isEmpty()) item {
             when {
-                filter == "downloads" && library.isNotEmpty() -> Empty("Ready for offline listening", "Download an episode from Latest and it will appear here.", "Show latest", { vm.filter("all") })
-                filter == "progress" && library.isNotEmpty() -> Empty("Nothing in progress", "Episodes you start listening to will appear here.", "Show latest", { vm.filter("all") })
+                filter == "downloads" && listing.episodeCount > 0 -> Empty("Ready for offline listening", "Download an episode from Latest and it will appear here.", "Show latest", { vm.filter("all") })
+                filter == "progress" && listing.episodeCount > 0 -> Empty("Nothing in progress", "Episodes you start listening to will appear here.", "Show latest", { vm.filter("all") })
                 else -> Empty(if (subscribed.isEmpty()) "Your library starts here" else "No episodes here yet", "Find a podcast or add its RSS feed. Your library stays available offline.", "Find podcasts", { vm.root("search") })
             }
         }
-        items(visible, key = { it.id }) { ep -> EpisodeCard(vm, ep, podcasts.firstOrNull { it.id == ep.podcastId }, player,
+        // Other rows get a constant idle state so position ticks recompose only the current row.
+        items(visible, key = { it.id }) { ep -> EpisodeCard(vm, ep, podcasts.firstOrNull { it.id == ep.podcastId }, if (player.episodeId == ep.id) player else NOT_CURRENT,
             transcripts.firstOrNull { it.episodeId == ep.id }, captures.count { it.episodeId == ep.id }) }
     }
 }
@@ -424,7 +427,7 @@ fun fileSize(bytes: Long): String = if (bytes >= 1_000_000_000) "%.1f GB".format
         }
         Text(ep.title, style = MaterialTheme.typography.headlineSmall)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Button(onClick = { vm.play(ep.id); vm.open("player") }) { Icon(Icons.Default.PlayArrow, null); Text(if (ep.positionMs > 0 && !ep.completed) "Resume ${timestamp(ep.positionMs)}" else "Play episode") }
+            Button(onClick = { vm.play(ep.id); vm.open("player") }) { Icon(Icons.Default.PlayArrow, null); val resumeAt = listeningPosition(ep, player); Text(if (resumeAt > 0 && !ep.completed) "Resume ${timestamp(resumeAt)}" else "Play episode") }
             DownloadAction(vm, ep)
         }
         if (ep.downloadState in listOf("downloading", "queued")) Text("${fileSize(ep.downloadedBytes)}${if (ep.totalBytes > 0) " of ${fileSize(ep.totalBytes)}" else ""} · Downloads follow your network settings.", style = MaterialTheme.typography.bodySmall)
