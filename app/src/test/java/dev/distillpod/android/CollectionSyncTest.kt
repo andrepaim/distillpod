@@ -69,4 +69,19 @@ class CollectionSyncTest {
         assertTrue(db.sync().operations("alice","g1").none {it.payload.contains("secret")})
         assertEquals("e2",SubscriptionSyncStore.decode(db.sync().forKey("alice","g1","queue_library").single().payload)["items"])
     }
+    @Test fun `a query-bearing queue episode keeps its local place while its progress syncs`()=fixture {db,sync,cloud ->
+        db.library().putEpisode(db.library().episode("e1")!!.copy(audioUrl="https://example.test/private?token=secret"))
+        sync.queue(listOf("e1","e2"));PortableLibrarySync(db).markCompleted("e1",true)
+        assertTrue(db.sync().operations("alice","g1").none {it.payload.contains("secret")})
+        assertEquals(setOf("episode_e2","queue_library","completion_e1"),db.sync().operations("alice","g1").map {it.entityKey}.toSet())
+        assertTrue(SubscriptionSyncCoordinator(db,cloud).run())
+        // Another phone's queue order arrives; the entry the cloud queue cannot carry keeps its place here.
+        cloud.commit(SyncOutboxEntity("other-order","alice","g1","queue_library",cloud.rows["queue_library"]!!.version,"{\"items\":\"e2\"}",false))
+        assertTrue(SubscriptionSyncCoordinator(db,cloud).run())
+        assertEquals(setOf("e1","e2"),db.library().queue().map {it.episodeId}.toSet())
+        db.sync().releasePlaybackViews()
+        cloud.commit(SyncOutboxEntity("other-again","alice","g1","queue_library",cloud.rows["queue_library"]!!.version,"{\"items\":\"e2\"}",false))
+        assertTrue(SubscriptionSyncCoordinator(db,cloud).run())
+        assertEquals(listOf("e2","e1"),db.library().queue().map {it.episodeId})
+    }
 }

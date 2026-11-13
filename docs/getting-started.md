@@ -19,15 +19,17 @@ Complete browser sign-in and return to DistillPod for its final connection resul
 
 ## Follow your shows
 
-Open Search and enter a show name or creator. Preview the artwork and publisher, then Follow. Search uses Apple’s iTunes podcast directory, so a show might require its public RSS address instead. Add RSS feed accepts that address directly. Settings also imports OPML subscription lists.
+Search also finds what is already yours: as you type, it lists matching followed shows, library episodes, transcript passages and saved moments, all searched on the phone. Tap a transcript passage to open the transcript at that point. To find a new show, tap **Search the podcast directory** or the keyboard's search key, preview the artwork and publisher, then Follow. Search uses Apple’s iTunes podcast directory, so a show might require its public RSS address instead. Add RSS feed accepts that address directly. Settings also imports OPML subscription lists.
 
 A subscription fetches feed metadata and episode listings. Download audio explicitly from an episode when you want offline playback. Search history is local and can be cleared.
 
 ## Listen
 
-The library offers Continue listening, followed shows and recent episodes. The show gallery lists followed shows alphabetically and offers local search. Saved and transcript screens also offer text search. Use Play next or Add to queue to choose what comes next. The mini-player opens the full player and queue. The player rewinds 10 seconds and advances 30 seconds; speed choices are 1×, 1.25×, 1.5× and 2×. Playback can continue with the screen locked; Android media controls offer transport actions. Your position is saved when you pause, seek, change or remove an episode and when playback stops, and about every 10 seconds while playing; if Android ends DistillPod during playback, it resumes at most about 10 seconds earlier.
+The library offers Continue listening, followed shows and recent episodes. The show gallery lists followed shows alphabetically and offers local search. Saved and transcript screens also offer text search. Use Play next or Add to queue to choose what comes next. The mini-player opens the full player and queue. In the queue, each episode's **Queue actions** menu moves it up or down or removes it; TalkBack offers the same actions on the row. The player rewinds 10 seconds and advances 30 seconds; speed has quick choices of 1×, 1.25×, 1.5× and 2×, and − / + steps of 0.1× from 0.5× to 3×. **Keep this speed for** a show remembers its own speed: its episodes start at that speed, and changes made while it plays update it; other shows use the last speed chosen for a show without its own. **Skip silence** shortens pauses, and **Volume boost** raises quiet shows by about 6 dB (if a phone cannot provide the effect, the player says so and playback continues normally). These choices are stored on this device only; they are not part of backups or sync. **Sleep timer** on the full player pauses after 5, 10, 15, 30, 45 or 60 minutes of playing time, or at the end of the current episode instead of starting the next one. The volume fades out over the last 15 seconds; a manual pause freezes the countdown, and it is cancelled if the queue ends first. The player shows the remaining time, **+5 min** and **Cancel**. The timer keeps running with the screen locked or the app closed, but not if Android stops playback or DistillPod; it is not offered in Android Auto or the media notification. Playback can continue with the screen locked; Android media controls offer transport actions. Your position is saved when you pause, seek, change or remove an episode and when playback stops, and about every 10 seconds while playing; if Android ends DistillPod during playback, it resumes at most about 10 seconds earlier.
 
 Downloaded episodes can play without a network connection. Streaming requires access to the publisher's audio host. Listen from the original source timeline; reviewed ad ranges are optional, and seeking into a range lets you hear it normally.
+
+Continue listening shows the episode loaded in the player, the same one as the mini-player; with nothing loaded, it offers your most recently played unfinished episode. Each episode row's **⋮** menu holds Play next, Add to queue, Download (or Pause download) and Mark played; an episode page offers the same actions under Play, before its description. If a followed show's feed cannot refresh, the library names the show with the reason (no connection, an HTTP error from the feed server or an unreadable feed) and offers **Retry**, **Open show** and **Unsubscribe**; a show page shows only its own refresh error. **Distill last 60 seconds** becomes available once some of the episode has played.
 
 | Library | Full player |
 | --- | --- |
@@ -74,6 +76,10 @@ of repeatedly capturing the same instant. See [contextual distills](android/cont
 | Headphone setup | Example finished moment |
 | --- | --- |
 | ![Playback and headphone capture settings](demos/headphone-settings.png) | ![Takeaway, supporting quote and replay controls using demo text](demos/distill-result.png) |
+
+### Home-screen widget
+
+Add the DistillPod **Now playing** widget from your launcher's widget list. It shows the current episode and show (the same titles as the media notification), a play/pause button and **Distill last 60 seconds**, which saves the moment exactly like the notification or Android Auto button. Distill is dimmed while nothing is loaded or playback is paused at 0:00, and a short message confirms the save or explains why it could not happen. Tap the titles to open the full player. The widget updates only when playback changes, never on a timer; it is not offered on the lock screen. If Android has closed DistillPod, the widget may show the last episode until you tap it: taps always act on the current playback state.
 
 ## Sync supported library data
 

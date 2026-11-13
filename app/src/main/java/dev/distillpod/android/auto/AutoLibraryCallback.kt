@@ -43,6 +43,8 @@ class AutoLibraryCallback(
     private val preparePlaybackItems: suspend (List<MediaItem>) -> List<MediaItem> = { it },
     /** Lets an external browser read the artwork URIs it is handed; the provider is not exported. */
     private val allowArtwork: (String) -> Unit = {},
+    /** The service-owned sleep timer; its commands are offered to this application only. */
+    private val onSleepTimerCommand: ((SessionCommand,Bundle)->SessionResult)? = null,
 ): MediaLibrarySession.Callback {
     override fun onPlayerCommandRequest(session: MediaSession, controller: MediaSession.ControllerInfo, playerCommand: Int): Int {
         if (controller.packageName != packageName && playerCommand in setOf(Player.COMMAND_PLAY_PAUSE,
@@ -50,7 +52,11 @@ class AutoLibraryCallback(
                 Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)) onExternalPlaybackCommand()
         return super.onPlayerCommandRequest(session, controller, playerCommand)
     }
-    companion object { const val DISTILL="dev.distillpod.android.DISTILL_MOMENT" }
+    companion object {
+        const val DISTILL="dev.distillpod.android.DISTILL_MOMENT"
+        /** Optional DISTILL argument: "phone" for this app's own surfaces (the home-screen widget, #189). */
+        const val CAPTURE_SOURCE="dev.distillpod.android.CAPTURE_SOURCE"
+    }
     private val catalog=AutoCatalog(db,artwork)
     private val playback=AutoPlayback(db)
     private val subscriptions=mutableSetOf<String>()
@@ -89,8 +95,10 @@ class AutoLibraryCallback(
         val notification=session.isMediaNotificationController(controller)
         val commands=base.availableSessionCommands.buildUpon().add(SessionCommand(DISTILL,Bundle.EMPTY))
         commands.add(PlaybackControls.back).add(PlaybackControls.forward)
-        if (controller.packageName == packageName && controller.uid == android.os.Process.myUid())
+        if (controller.packageName == packageName && controller.uid == android.os.Process.myUid()) {
             queueCommands.forEach { commands.add(it) }
+            if (onSleepTimerCommand != null) dev.distillpod.android.playback.SleepTimerCommands.all.forEach { commands.add(it) }
+        }
         if (!notification && voiceEnabled()) commands.add(dev.distillpod.android.voice.CarVoiceEntry.ASK)
         if (controller.packageName == packageName) commands.add(dev.distillpod.android.voice.CarVoiceEntry.TOKEN)
         return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
@@ -193,6 +201,15 @@ class AutoLibraryCallback(
             return onQueueCommand?.invoke(customCommand,args)
                 ?: com.google.common.util.concurrent.Futures.immediateFuture(SessionResult(SessionError.ERROR_NOT_SUPPORTED))
         }
+        if (customCommand in dev.distillpod.android.playback.SleepTimerCommands.all) {
+            val handler = onSleepTimerCommand
+            val result = when {
+                controller.packageName != packageName || controller.uid != android.os.Process.myUid() -> SessionResult(SessionError.ERROR_PERMISSION_DENIED)
+                handler == null -> SessionResult(SessionError.ERROR_NOT_SUPPORTED)
+                else -> handler(customCommand,args)
+            }
+            return com.google.common.util.concurrent.Futures.immediateFuture(result)
+        }
         if (customCommand == dev.distillpod.android.voice.CarVoiceEntry.TOKEN) {
             val result = if (controller.packageName == packageName) SessionResult(SessionResult.RESULT_SUCCESS,
                 Bundle().apply { putParcelable(dev.distillpod.android.voice.CarVoiceEntry.TOKEN_EXTRA, session.platformToken) })
@@ -211,7 +228,9 @@ class AutoLibraryCallback(
             return com.google.common.util.concurrent.Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
         }
         if(customCommand.customAction!=DISTILL)return super.onCustomCommand(session,controller,customCommand,args)
-        return captureMoment(session)
+        // Only this app's own controller (the home-screen widget) may attribute a capture to the phone.
+        val own=controller.packageName==packageName && controller.uid==android.os.Process.myUid()
+        return captureMoment(session,if(own && args.getString(CAPTURE_SOURCE)=="phone") "phone" else "car")
     }
     private fun captureMoment(session: MediaSession,source:String="car"): ListenableFuture<SessionResult> {
         diagnostics?.event("capture.requested",source=source)

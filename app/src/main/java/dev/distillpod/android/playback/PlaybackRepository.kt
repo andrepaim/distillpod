@@ -22,6 +22,10 @@ data class PlaybackState(val episodeId: String? = null, val title: String = "", 
 class PlaybackEvents {
     val lastSkipped = MutableStateFlow<SkippedMoment?>(null)
     val videoFailure = MutableStateFlow<Pair<String, String>?>(null)
+    /** Published by the playback service's sleep timer; null when no timer is set. */
+    val sleepTimer = MutableStateFlow<dev.distillpod.core.SleepTimerStatus?>(null)
+    /** Published by the playback service's volume boost (#183). */
+    val volumeBoost = MutableStateFlow(VolumeBoostStatus())
 }
 data class SkippedMoment(val episodeId: String, val positionMs: Long, val endMs: Long)
 
@@ -120,6 +124,18 @@ class PlaybackRepository(private val context: Context, private val db: AppDataba
     }
     private suspend fun controller() = withContext(Dispatchers.IO) { future.get(10, TimeUnit.SECONDS) }
     suspend fun sessionPlayer(): Player = controller()
+    val sleepTimer: StateFlow<dev.distillpod.core.SleepTimerStatus?>
+        get() = (context.applicationContext as dev.distillpod.android.DistillPodApplication).graph.playbackEvents.sleepTimer
+    suspend fun startSleepTimer(durationMs: Long) = sleepTimerCommand(SleepTimerCommands.START, SleepTimerCommands.duration(durationMs))
+    suspend fun sleepAtEndOfEpisode() = sleepTimerCommand(SleepTimerCommands.END_OF_EPISODE)
+    suspend fun extendSleepTimer() = sleepTimerCommand(SleepTimerCommands.EXTEND)
+    suspend fun cancelSleepTimer() = sleepTimerCommand(SleepTimerCommands.CANCEL)
+    private suspend fun sleepTimerCommand(command: androidx.media3.session.SessionCommand, args: android.os.Bundle = android.os.Bundle.EMPTY) {
+        val c = controller()
+        val reply = withContext(Dispatchers.Main) { c.sendCustomCommand(command, args) }
+        val result = withContext(Dispatchers.IO) { reply.get(10, TimeUnit.SECONDS) }
+        check(result.resultCode == androidx.media3.session.SessionResult.RESULT_SUCCESS) { "The sleep timer could not be changed. Check that an episode is loaded and try again." }
+    }
     val videoFailure get() = (context.applicationContext as dev.distillpod.android.DistillPodApplication).graph.playbackEvents.videoFailure
     fun leaveVideo(episodeId: String) { scope.launch { runCatching { video(episodeId, false) } } }
 
@@ -196,13 +212,16 @@ class PlaybackRepository(private val context: Context, private val db: AppDataba
         val podcasts = db.library().podcasts().associateBy { it.id }
         val restored = db.library().queue().map { it.episodeId }.filter { it in episodes }
         val saved = db.library().playerSession()
+        val seedSpeed = (context.applicationContext as dev.distillpod.android.DistillPodApplication).graph.settings.speeds.first().global == null
         val c = controller()
         withContext(Dispatchers.Main) {
             if (c.mediaItemCount == 0 && restored.isNotEmpty()) {
                 val index = restored.indexOf(saved?.episodeId).coerceAtLeast(0)
                 c.pause()
                 c.setMediaItems(restored.map { mediaItem(episodes.getValue(it), podcasts[episodes.getValue(it).podcastId]) }, index, episodes.getValue(restored[index]).positionMs)
-                c.setPlaybackSpeed(saved?.speed ?: 1f)
+                // The playback service applies stored speeds on item changes (#183). The saved session speed
+                // only seeds them before any speed has been chosen on this device.
+                if (seedSpeed) c.setPlaybackSpeed(saved?.speed ?: 1f)
             } else {
                 val existing = (0 until c.mediaItemCount).map { c.getMediaItemAt(it).mediaId }.toSet()
                 restored.filter { it !in existing }.forEach { c.addMediaItem(mediaItem(episodes.getValue(it), podcasts[episodes.getValue(it).podcastId])) }

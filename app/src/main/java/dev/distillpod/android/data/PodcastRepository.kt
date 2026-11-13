@@ -213,7 +213,7 @@ class PodcastRepository(private val db: AppDatabase, private val http: OkHttpCli
             }.build()
             http.newCall(request).execute().use { response ->
                 if (response.code == 304) { initializeAutomation(id); dao.putPodcast(podcast.copy(refreshedAt = System.currentTimeMillis(), error = null)); return@use }
-                check(response.isSuccessful) { "Feed refresh failed" }
+                if (!response.isSuccessful) throw FeedHttpException(response.code)
                 val feed = response.body!!.byteStream().use { parseFeedStream(id, it, response.request.url.toString()) }
                 db.withTransaction {
                     // Keep stable IDs and locally saved state when redirect/metadata changes.
@@ -226,7 +226,7 @@ class PodcastRepository(private val db: AppDatabase, private val http: OkHttpCli
             }
         } catch (error: Exception) {
             if (error is kotlinx.coroutines.CancellationException) throw error
-            dao.podcast(id)?.let { dao.putPodcast(it.copy(error = "Refresh failed. Saved episodes are still available.")) }
+            dao.podcast(id)?.let { dao.putPodcast(it.copy(error = feedRefreshError(error))) }
             throw error
         }
     }
@@ -245,7 +245,7 @@ class PodcastRepository(private val db: AppDatabase, private val http: OkHttpCli
                 // A refresh that cannot supply a description (e.g. outside YouTube's feed window) keeps the known one.
                 description = item.description.ifBlank { base.description },
                 imageUrl = item.imageUrl, sourceOrder = item.sourceOrder ?: base.sourceOrder, publishedAt = item.publishedAt?.let { runCatching { Instant.parse(it).toEpochMilli() }.getOrDefault(0) } ?: base.publishedAt,
-                durationMs = item.durationMs ?: base.durationMs, mimeType = item.mimeType, transcriptUrl = item.transcriptUrl, transcriptType = item.transcriptType,
+                durationMs = refreshedDuration(old, changed, item.durationMs), mimeType = item.mimeType, transcriptUrl = item.transcriptUrl, transcriptType = item.transcriptType,
                 localFile = if (changed) null else base.localFile, downloadState = if (changed) "none" else base.downloadState,
                 localDownloadedAt = if (changed) 0 else base.localDownloadedAt,
                 downloadedBytes = if (changed) 0 else base.downloadedBytes, totalBytes = if (changed) 0 else base.totalBytes,
@@ -266,6 +266,24 @@ class PodcastRepository(private val db: AppDatabase, private val http: OkHttpCli
                 .forEach { db.automation().insertJob(EpisodeAutomationEntity(it.id, podcastId)) }
             initializeAutomation(podcastId)
         }
+    }
+
+    /**
+     * Duration precedence on refresh (#152). The player's measurement of this enclosure beats the
+     * feed's declaration, which is often wrong for dynamically inserted ads:
+     * - unchanged enclosure already played here: keep the stored value, which the playback checkpoint
+     *   overwrites with the player's duration whenever the player knows it;
+     * - changed enclosure: the new declaration, or unknown (0) because a measurement of the previous
+     *   audio does not describe its replacement; the next playback measures it again;
+     * - otherwise: the declaration, or the last known value when the feed omits it.
+     * Online transcript matching and publisher transcript bounds therefore compare against the audio the
+     * player actually plays once an episode has been played.
+     */
+    private fun refreshedDuration(old: EpisodeEntity?, changed: Boolean, declared: Long?): Long = when {
+        old == null -> declared ?: 0
+        changed -> declared ?: 0
+        old.lastPlayedAt > 0 && old.durationMs > 0 -> old.durationMs
+        else -> declared ?: old.durationMs
     }
 
     private suspend fun initializeAutomation(id: String) {

@@ -80,6 +80,8 @@ android {
     defaultConfig {
         // Owner-selected Spark deployment: paid content storage must remain disabled.
         resValue("bool", "sync_content_enabled", "false")
+        // Firestore history compaction (#176) stays off until the owner deploys the protocol-4 rules; see firebase/README.md.
+        resValue("bool", "sync_compaction_enabled", providers.gradleProperty("distillpodSyncCompaction").getOrElse("false").toBooleanStrict().toString())
         val sentryDsn = providers.environmentVariable("SENTRY_DSN").getOrElse("")
         require(sentryDsn.matches(Regex("[A-Za-z0-9_.:/@-]*"))) { "Invalid Sentry DSN" }
         resValue("string", "diagnostics_dsn", sentryDsn)

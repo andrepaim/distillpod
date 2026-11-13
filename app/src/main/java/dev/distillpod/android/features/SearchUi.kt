@@ -39,9 +39,10 @@ import dev.distillpod.core.YouTubeUrl
     val state by vm.search.collectAsStateWithLifecycle()
     val recent by vm.recentSearches.collectAsStateWithLifecycle()
     val busy by vm.busy.collectAsStateWithLifecycle()
+    val library by vm.librarySearch.collectAsStateWithLifecycle()
     SearchScreen(query, state, recent, podcasts, busy, vm::query,
         { term -> vm.query(term); vm.search() }, vm::clearSearches, vm::subscribe,
-        { vm.open("podcast:$it") }, { vm.open("recommendations") }, vm::retrySearch)
+        { vm.open("podcast:$it") }, { vm.open("recommendations") }, vm::retrySearch, library, vm::open)
 }
 
 private data class SearchTopic(val name: String, val icon: ImageVector)
@@ -52,9 +53,13 @@ private val topics = listOf(SearchTopic("Technology", Icons.Default.Memory), Sea
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable internal fun SearchScreen(query: String, state: SearchState, recent: List<String>, podcasts: List<PodcastEntity>, busy: Set<String>,
     onQuery: (String) -> Unit, onSearch: (String) -> Unit, onClearRecent: () -> Unit, onFollow: (String) -> Unit,
-    onOpenPodcast: (String) -> Unit, onExplore: () -> Unit, onRetryProvider: (String) -> Unit = {}) {
+    onOpenPodcast: (String) -> Unit, onExplore: () -> Unit, onRetryProvider: (String) -> Unit = {},
+    library: LibrarySearchState = LibrarySearchState(), onOpenRoute: (String) -> Unit = {}) {
     var format by rememberSaveable { mutableStateOf("All") }
     fun accepts(provider: String) = format == "All" || (provider == "youtube") == (format == "Video")
+    val librarySections = remember(library.matches, format) { librarySections(library.matches, format) }
+    // Sections showing all their rows, for the current library search only.
+    var expanded by rememberSaveable(library.terms?.joinToString(" ")) { mutableStateOf("") }
     val pending = state.loadingProviders.filter(::accepts).toSet()
     val displayed = state.copy(
         results = state.results.filter { format == "All" || (YouTubeUrl.source(it.feedUrl) != null) == (format == "Video") },
@@ -68,7 +73,10 @@ private val topics = listOf(SearchTopic("Technology", Icons.Default.Memory), Sea
     var rssDraft by rememberSaveable { mutableStateOf("") }
     val adding = busy.any { it.startsWith("subscribe:") }
     val list = rememberLazyListState()
-    LaunchedEffect(displayed.submittedQuery, format) { list.scrollToItem(0) }
+    // Back from a result keeps the list where it was; only a new search or filter starts at the top.
+    val listKey = "${displayed.submittedQuery}|$format|${library.terms}"
+    var scrolledFor by rememberSaveable { mutableStateOf(listKey) }
+    LaunchedEffect(listKey) { if (scrolledFor != listKey) { list.scrollToItem(0); scrolledFor = listKey } }
     fun existing(candidate: PodcastCandidate) = podcasts.firstOrNull { it.subscribed && (it.feedUrl == candidate.feedUrl || it.originalFeedUrl == candidate.feedUrl) }
     fun submit(term: String) {
         if (term.trim().length < 2) return
@@ -80,17 +88,17 @@ private val topics = listOf(SearchTopic("Technology", Icons.Default.Memory), Sea
     Column(Modifier.fillMaxSize().imePadding()) {
         Column(Modifier.padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 8.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(query, onQuery, placeholder = { Text("Search podcasts or videos", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                OutlinedTextField(query, onQuery, placeholder = { Text("Search your library or find shows", maxLines = 1, overflow = TextOverflow.Ellipsis) },
                     leadingIcon = { Icon(Icons.Default.Search, null) }, trailingIcon = {
                         if (query.isNotEmpty()) IconButton(onClick = { onQuery("") }) { Icon(Icons.Default.Close, "Clear search") }
                     }, singleLine = true, shape = RoundedCornerShape(18.dp),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search), keyboardActions = KeyboardActions(onSearch = { submit(query) }),
-                    modifier = Modifier.weight(1f).semantics { contentDescription = "Search podcasts" })
+                    modifier = Modifier.weight(1f).semantics { contentDescription = "Search your library and podcasts" })
                 FilledIconButton(onClick = { submit(query) }, enabled = query.trim().length >= 2 && !adding, modifier = Modifier.size(48.dp)) {
                     Icon(if (isFeedAddress(query)) Icons.Default.RssFeed else Icons.Default.ArrowForward, if (isFeedAddress(query)) "Preview RSS feed" else "Submit search")
                 }
             }
-            Text("Find a podcast, video channel or playlist.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Find your episodes, transcripts and saved moments, or a new show.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf("All", "Audio", "Video").forEach { option ->
@@ -98,6 +106,8 @@ private val topics = listOf(SearchTopic("Technology", Icons.Default.Memory), Sea
             }
         }
         LazyColumn(state = list, modifier = Modifier.weight(1f).testTag("Podcast search results"), contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 6.dp, bottom = 20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            if (library.terms != null) librarySearchResults(library, query, librarySections, expanded.split(' ').toSet(),
+                { expanded = "$expanded $it".trim() }, onOpenRoute)
             when {
                 displayed.loading && displayed.results.isEmpty() -> item {
                     SearchMessage("Searching shows", "Looking for “${displayed.submittedQuery.orEmpty()}”…")
@@ -111,7 +121,7 @@ private val topics = listOf(SearchTopic("Technology", Icons.Default.Memory), Sea
                     TextButton(onClick = { onQuery("") }) { Text("Browse topics") }
                 }
                 displayed.results.isNotEmpty() -> {
-                    item { SectionHeading("Results", "${displayed.results.size} shows for “${displayed.submittedQuery ?: query}”") }
+                    item { SectionHeading("Podcast directory", "${displayed.results.size} shows for “${displayed.submittedQuery ?: query}”") }
                     item { Text("TOP RESULT", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.secondary) }
                     item(key = "top:${displayed.results.first().feedUrl}") {
                         val candidate = displayed.results.first()
@@ -122,6 +132,7 @@ private val topics = listOf(SearchTopic("Technology", Icons.Default.Memory), Sea
                     items(displayed.results.drop(1), key = { it.feedUrl }) { candidate -> SearchResult(candidate, existing(candidate), false, adding,
                         "subscribe:${candidate.feedUrl}" in busy, { preview = candidate }, { follow(candidate) }, onOpenPodcast) }
                 }
+                library.terms != null -> item(key = DIRECTORY_PROMPT_KEY) { DirectorySearchPrompt(query, !adding) { submit(query) } }
                 else -> {
                     if (recent.isNotEmpty()) {
                         item { SectionHeading("Recent searches", action = "Clear", onAction = onClearRecent) }

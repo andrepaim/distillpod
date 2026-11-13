@@ -60,6 +60,9 @@ class PlaybackService : MediaLibraryService() {
     private data class AdConfig(val file: String, val ranges: List<TimeRange>)
     private var adConfigs = emptyMap<String, AdConfig>()
     private val adSkipping = ReviewedAdSkipping()
+    private var sleepTimer: dev.distillpod.android.playback.SleepTimerController? = null
+    private var volumeBoost: dev.distillpod.android.playback.VolumeBoost? = null
+    private var widget: dev.distillpod.android.widget.NowPlayingWidgetUpdater? = null
     override fun onCreate() {
         super.onCreate()
         applicationContext.appGraph.diagnostics.event("playback.service_started")
@@ -107,6 +110,9 @@ class PlaybackService : MediaLibraryService() {
             onExternalPlaybackCommand = { graph.voice.cancel(false) },
             diagnostics = graph.diagnostics,
             preparePlaybackItems = graph.media::preparePlaybackItems,
+            onSleepTimerCommand = { command, args ->
+                sleepTimer?.command(command, args) ?: androidx.media3.session.SessionResult(androidx.media3.session.SessionError.ERROR_INVALID_STATE)
+            },
             queueCommands = setOf(dev.distillpod.android.playback.QueueWriteCommands.BARRIER, dev.distillpod.android.playback.QueueWriteCommands.IMPORT),
             onQueueCommand = { command, args ->
                 if(command==dev.distillpod.android.playback.QueueWriteCommands.IMPORT) {
@@ -169,6 +175,7 @@ class PlaybackService : MediaLibraryService() {
         session = MediaLibrarySession.Builder(this, player, libraryCallback).setSessionActivity(activity)
             .setCustomLayout(libraryCallback.playbackLayout())
             .setMediaButtonPreferences(libraryCallback.playbackLayout()).build()
+        widget = dev.distillpod.android.widget.NowPlayingWidgetUpdater.attach(this, player)
         scope.launch {
             graph.ready.await()
             combine(dao.observePodcasts(),dao.observeBrowseSummary(),dao.observeQueue(),browseCurrent) {pods,episodes,queue,current->
@@ -185,6 +192,24 @@ class PlaybackService : MediaLibraryService() {
                 player.currentPosition.coerceAtLeast(0), player.duration.coerceAtLeast(0), complete, player.playbackParameters.speed, boundary=boundary, playing=player.isPlaying,queueBoundary=queueBoundary,queueRestored=queueRestored,suppressQueue=pendingCloudChoice!=null)))
             previousId = id; previousDuration = player.duration.coerceAtLeast(0); previousPosition = player.currentPosition.coerceAtLeast(0)
         }
+        val sleep = dev.distillpod.android.playback.SleepTimerController(
+            dev.distillpod.android.playback.PlayerSleepTimerPlayback(player) { engine.pauseAtEndOfMediaItems = it }, scope,
+            clock = android.os.SystemClock::elapsedRealtime, publish = { graph.playbackEvents.sleepTimer.value = it },
+            onExpired = { endOfEpisode ->
+                // The timer paused through the player, so its play/pause boundary already checkpointed
+                // progress. An item that played to its end is also recorded as finished.
+                if (endOfEpisode) snapshot(complete = true, boundary = true)
+            })
+        sleepTimer = sleep
+        player.addListener(object : Player.Listener {
+            override fun onIsPlayingChanged(isPlaying: Boolean) = sleep.playingChanged()
+            override fun onMediaItemTransition(item: MediaItem?, reason: Int) = sleep.itemChanged()
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                if (!playWhenReady && reason == Player.PLAY_WHEN_READY_CHANGE_REASON_END_OF_MEDIA_ITEM) sleep.itemEnded()
+            }
+            override fun onPlaybackStateChanged(playbackState: Int) { if (playbackState == Player.STATE_ENDED) sleep.itemEnded(queueEnded = true) }
+        })
+        installPlaybackEffects(engine, player, graph, dao)
         player.addListener(object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState:Int) {
                 when(playbackState) {
@@ -373,22 +398,28 @@ class PlaybackService : MediaLibraryService() {
             }
         }
         scope.launch {
-            graph.ready.await()
-            val restore = withContext(Dispatchers.IO) {
-                val queue = dao.queue().mapNotNull { dao.episode(it.episodeId) }
-                val podcasts = dao.podcasts().associateBy { it.id }
-                Triple(queue, podcasts, dao.playerSession())
-            }
-            val prepared = graph.media.preparePlaybackItems(restore.first.map {
-                mediaItem(it.copy(localFile = null), restore.second[it.podcastId])
-            })
-            if (player.mediaItemCount == 0 && restore.first.isNotEmpty()) {
-                val index = restore.first.indexOfFirst { it.id == restore.third?.episodeId }.coerceAtLeast(0)
-                player.setMediaItems(prepared, index, restore.first[index].positionMs)
-                player.setPlaybackSpeed(restore.third?.speed?.coerceIn(0.5f, 3f) ?: 1f)
-                player.prepare()
-            }
-            restoring = false; playbackReady.complete(Unit); snapshot(queueRestored=true)
+            val restored = dev.distillpod.android.playback.runStartupRestore(load = {
+                graph.ready.await()
+                val restore = withContext(Dispatchers.IO) {
+                    val queue = dao.queue().mapNotNull { dao.episode(it.episodeId) }
+                    val podcasts = dao.podcasts().associateBy { it.id }
+                    Triple(queue, podcasts, dao.playerSession())
+                }
+                restore to graph.media.preparePlaybackItems(restore.first.map {
+                    mediaItem(it.copy(localFile = null), restore.second[it.podcastId])
+                })
+            }, apply = { (restore, prepared) ->
+                if (player.mediaItemCount == 0 && restore.first.isNotEmpty()) {
+                    val index = restore.first.indexOfFirst { it.id == restore.third?.episodeId }.coerceAtLeast(0)
+                    player.setMediaItems(prepared, index, restore.first[index].positionMs)
+                    player.setPlaybackSpeed(restore.third?.speed?.coerceIn(0.5f, 3f) ?: 1f)
+                    player.prepare()
+                }
+            }, onFailure = { graph.diagnostics.failure("playback", it) },
+                release = { restoring = false; playbackReady.complete(Unit) })
+            snapshot(queueRestored=true)
+            // A failed startup read is retried once through the queue writer, which re-reads Room.
+            if (!restored) writes.trySend(RestoreQueue(queueRevision))
             while (isActive) { snapshot(player.playbackState == Player.STATE_ENDED); delay(1000) }
         }
         scope.launch {
@@ -460,6 +491,28 @@ class PlaybackService : MediaLibraryService() {
             }
         }
     }
+    /** Skip silence, volume boost and per-show speeds (#183). */
+    private fun installPlaybackEffects(engine: ExoPlayer, player: Player, graph: AppGraph, dao: LibraryDao) {
+        scope.launch { graph.settings.flow.map { it.skipSilence }.distinctUntilChanged().collect { engine.skipSilenceEnabled = it } }
+        val boost = dev.distillpod.android.playback.VolumeBoost({ session -> dev.distillpod.android.playback.AndroidLoudnessEffect(session) },
+            onFailure = { graph.diagnostics.failure("playback", it) }, publish = { graph.playbackEvents.volumeBoost.value = it })
+        volumeBoost = boost
+        val speeds = dev.distillpod.android.playback.PlaybackSpeedController(scope, object : dev.distillpod.android.playback.SpeedPlayer {
+            override var speed: Float
+                get() = player.playbackParameters.speed
+                set(value) = player.setPlaybackSpeed(value)
+        }, showOf = { id -> withContext(Dispatchers.IO) { graph.ready.await(); dao.episode(id)?.podcastId } },
+            save = graph.settings::updateSpeeds, ignoreChanges = { restoring },
+            onFailure = { graph.diagnostics.failure("playback", it) })
+        player.addListener(object : Player.Listener {
+            override fun onAudioSessionIdChanged(audioSessionId: Int) = boost.sessionChanged(audioSessionId)
+            override fun onMediaItemTransition(item: MediaItem?, reason: Int) = speeds.itemChanged(item?.mediaId)
+            override fun onPlaybackParametersChanged(parameters: androidx.media3.common.PlaybackParameters) = speeds.speedChanged(parameters.speed)
+        })
+        boost.sessionChanged(engine.audioSessionId)
+        scope.launch { graph.settings.flow.map { it.volumeBoost }.distinctUntilChanged().collect(boost::enabledChanged) }
+        scope.launch { graph.settings.speeds.distinctUntilChanged().collect(speeds::preferencesChanged) }
+    }
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? = session
     override fun onDestroy() {
         applicationContext.appGraph.diagnostics.event("playback.service_stopped")
@@ -472,6 +525,10 @@ class PlaybackService : MediaLibraryService() {
         val stoppedAt=System.currentTimeMillis()
         val stoppedElapsed=android.os.SystemClock.elapsedRealtime()
         val serviceJob=scope.coroutineContext[Job]
+        // The timer is in memory only; stopping the service drops it.
+        sleepTimer?.release(); sleepTimer = null
+        volumeBoost?.release(); volumeBoost = null
+        widget?.stop(); widget = null
         session?.let { it.player.release(); it.release() }; session = null
         pendingCloudChoice?.choice?.completion?.completeExceptionally(CancellationException("Playback service stopped"))
         pendingCloudChoice=null

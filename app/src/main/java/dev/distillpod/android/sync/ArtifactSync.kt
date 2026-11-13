@@ -15,15 +15,29 @@ class ArtifactSync(private val db:AppDatabase,private val files:ContentFiles,pri
         return artifact
     }
     suspend fun probe(owner:SyncOwner) {objects.probe(owner)}
+    /** Work done by one capture: [rebuilt] snapshots were serialized; [unchanged] reused their staged artifact. */
+    data class Capture(val rebuilt:Int=0,val unchanged:Int=0)
     suspend fun capture()=withContext(Dispatchers.IO){captureOnIo()}
-    private suspend fun captureOnIo() {
-        if(SubscriptionCloudAccess.instrumentation && !isolatedDemo)return
-        if(db.sync().view("__extended_scope")==null)return
-        val binding=db.sync().binding()?.takeIf {it.enabled}?:return
+    private suspend fun captureOnIo():Capture {
+        if(SubscriptionCloudAccess.instrumentation && !isolatedDemo)return Capture()
+        if(db.sync().view("__extended_scope")==null)return Capture()
+        val binding=db.sync().binding()?.takeIf {it.enabled}?:return Capture()
         val owner=SyncOwner(binding.uid,binding.generation)
+        var rebuilt=0;var unchanged=0
         for(transcript in db.library().transcripts().filter {it.state=="ready"}) {
-            val artifact=FinishedContent(db,isolatedDemo).snapshot(transcript.episodeId)?:continue
-            val key="artifact_${transcript.episodeId}"
+            val content=FinishedContent(db,isolatedDemo)
+            val key="artifact_${transcript.episodeId}";val sourceKey="__artifact_source_${transcript.episodeId}"
+            val source=content.sourceKey(transcript.episodeId)?:continue
+            // "<source key> <hash> <expanded bytes>": the artifact last built from exactly these inputs.
+            // LibraryDao.putSegments deletes this record whenever the episode's segment rows are written.
+            val recorded=db.sync().view(sourceKey)?.sessionId?.split(' ')?.takeIf {it.size==3}
+            if(recorded!=null && recorded[0]==source && db.sync().view(key)?.sessionId==recorded[1] &&
+                recorded[2].toLongOrNull()?.let {files.read(owner,recorded[1],it)}!=null){unchanged++;continue}
+            // The key is recomputed with the snapshot so the record never pairs older inputs with newer content.
+            val (built,artifact)=db.withTransaction {content.sourceKey(transcript.episodeId) to content.snapshot(transcript.episodeId)}
+            if(built==null || artifact==null)continue
+            rebuilt++
+            db.sync().putView((db.sync().view(sourceKey)?:SyncViewEntity(sourceKey)).copy(sessionId="$built ${artifact.hash} ${artifact.expandedBytes}"))
             val same=db.sync().view(key)?.sessionId==artifact.hash
             if(same && files.read(owner,artifact.hash,artifact.expandedBytes)!=null)continue
             files.save(owner,artifact)
@@ -40,12 +54,18 @@ class ArtifactSync(private val db:AppDatabase,private val files:ContentFiles,pri
                 db.sync().putView(view.copy(sessionId=artifact.hash))
             }
         }
+        return Capture(rebuilt=rebuilt,unchanged=unchanged)
     }
     suspend fun upload(operation:SyncOutboxEntity) {
         val payload=SubscriptionSyncStore.decode(operation.payload)
         val owner=SyncOwner(operation.uid,operation.generation)
-        val artifact=files.read(owner,payload.getValue("hash"),payload.getValue("expandedBytes").toLong())?:error("The saved content upload needs recovery")
-        validateArtifactIdentity(artifact,payload)
+        val hash=payload.getValue("hash");val expanded=payload.getValue("expandedBytes").toLong()
+        // Staging lost after capture is rebuilt when local content still produces it; otherwise retrying this unchanged operation cannot upload it.
+        val artifact=files.read(owner,hash,expanded)
+            ?:FinishedContent(db,isolatedDemo).snapshot(payload.getValue("episodeId"))?.takeIf {it.hash==hash && it.expandedBytes==expanded}?.also {files.save(owner,it)}
+            ?:throw SyncOperationRejected(IllegalStateException("The saved content can no longer be rebuilt on this phone"))
+        // The file is addressed by its content, so a different source identity never changes on retry.
+        try {validateArtifactIdentity(artifact,payload)} catch(changed:IllegalArgumentException) {throw SyncOperationRejected(changed)}
         objects.put(owner,artifact)
         db.sync().artifact(owner.uid,owner.generation,artifact.hash)?.let {db.sync().putArtifact(it.copy(state="uploaded"))}
     }

@@ -46,6 +46,9 @@ class ListeningDesignDeviceTest {
         val vm = withContext(Dispatchers.Main) { ViewModelProvider(compose.activity, AppViewModel.factory(graph))[AppViewModel::class.java] }
         val future = withContext(Dispatchers.Main) { MediaController.Builder(graph.context, SessionToken(graph.context, ComponentName(graph.context, PlaybackService::class.java))).buildAsync() }
         val c = withContext(Dispatchers.IO) { future.get(15, TimeUnit.SECONDS) }
+        describePlayer = { "current=${c.currentMediaItem?.mediaId}, state=${c.playbackState}, playing=${c.isPlaying}, " +
+            "playWhenReady=${c.playWhenReady}, position=${c.currentPosition}, speed=${c.playbackParameters.speed}, " +
+            "items=${c.mediaItemCount}, error=${c.playerError?.errorCodeName}, connected=${c.isConnected}" }
         val directory = File(graph.context.filesDir, "validation").apply { mkdirs() }
         val backup = File(directory, "ui-original.json")
         check(!backup.exists()) { "Recover the private UI playback snapshot before another run" }
@@ -85,6 +88,13 @@ class ListeningDesignDeviceTest {
             await { !c.isPlaying }
             compose.waitUntil(5000) { compose.onAllNodesWithContentDescription("Resume listening").fetchSemanticsNodes().isNotEmpty() }
             screenshot("library")
+            // #146: the card follows the mini-player's episode even when that episode is marked played,
+            // instead of falling back to another in-progress episode.
+            dao.markCompleted(ids[0], true)
+            compose.waitUntil(5000) { vm.library.value?.resume?.let { it.id == ids[0] && it.completed } == true }
+            compose.onNode(hasTestTag("resume-card") and hasText(titles[0])).assertIsDisplayed()
+            dao.markCompleted(ids[0], false)
+            compose.waitUntil(5000) { vm.episodes.value.firstOrNull { it.id == ids[0] }?.completed == false }
             withContext(Dispatchers.Main) { c.seekTo(45000) }
             compose.onNodeWithContentDescription("Open now playing").performClick()
             compose.onNodeWithContentDescription("Back 10 seconds").performClick()
@@ -141,9 +151,8 @@ class ListeningDesignDeviceTest {
             screenshot("player")
             compose.onNodeWithContentDescription("Open queue").performClick()
             compose.onNodeWithText("Playback order").assertIsDisplayed()
-            // A small emulator may not have composed the last lazy-list row yet.
-            compose.onNode(hasScrollAction()).performScrollToNode(hasContentDescription("Move ${titles[2]} up"))
-            compose.onNodeWithContentDescription("Move ${titles[2]} up").performClick()
+            // The helper scrolls first: a small emulator may not have composed the last row yet.
+            compose.selectQueueMenuAction(titles[2], "Move up", disabled = listOf("Move down"))
             await { (0 until c.mediaItemCount).map { c.getMediaItemAt(it).mediaId } == listOf(ids[0], ids[2], ids[1]) }
             compose.waitUntil(5000) { vm.player.value.queue == listOf(ids[0], ids[2], ids[1]) }
             assertEquals(65000L, withContext(Dispatchers.Main) { c.currentPosition })
@@ -200,6 +209,12 @@ class ListeningDesignDeviceTest {
             }
             compose.onNode(hasScrollAction()).performScrollToNode(hasText(titles[0]))
             compose.onNodeWithText(titles[0]).assertIsDisplayed()
+            // #146: a failed refresh names the reason on its own show page, with a retry.
+            dao.putPodcast(dao.podcast(id)!!.copy(error = "Couldn't reach the feed. Check your connection and try again."))
+            compose.onNode(hasScrollAction()).performScrollToNode(hasText("This show couldn't refresh"))
+            compose.onNodeWithText("Couldn't reach the feed. Check your connection and try again.").assertIsDisplayed()
+            compose.onNodeWithContentDescription("Retry Design validation show").assertIsDisplayed()
+            screenshot("show-feed-error")
         } finally {
             val originalIds = original.getJSONArray("queue").let { a -> (0 until a.length()).map { a.getString(it) } }
             val episodes = originalIds.mapNotNull { dao.episode(it) }
@@ -221,5 +236,16 @@ class ListeningDesignDeviceTest {
         }
     }
 
-    private suspend fun await(predicate: () -> Boolean) = withTimeout(15000) { while (!withContext(Dispatchers.Main) { predicate() }) delay(100) }
+    /** Player state for a failed wait; set once the controller exists. */
+    private var describePlayer: () -> String = { "no controller" }
+
+    private suspend fun await(predicate: () -> Boolean) {
+        // Name the waiting step and the player's state in a timeout, instead of an anonymous coroutine timeout.
+        val caller = Throwable().stackTrace.firstOrNull { it.className.startsWith(ListeningDesignDeviceTest::class.java.name) && "await" !in it.className && it.methodName != "await" }
+        try { withTimeout(15000) { while (!withContext(Dispatchers.Main) { predicate() }) delay(100) } }
+        catch (timeout: TimeoutCancellationException) {
+            throw AssertionError("Wait at ${caller?.fileName}:${caller?.lineNumber} timed out; " +
+                withContext(Dispatchers.Main) { describePlayer() }, timeout)
+        }
+    }
 }

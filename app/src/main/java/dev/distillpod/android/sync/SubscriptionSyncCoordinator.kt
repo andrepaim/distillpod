@@ -11,7 +11,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.json.JSONObject
 
-data class CloudHead(val owner:SyncOwner,val sequence:Long,val protocol:Int=1)
+data class CloudHead(val owner:SyncOwner,val sequence:Long,val protocol:Int=1,val compactedThrough:Long=0)
 data class CloudSubscription(val key:String,val version:Long,val payload:Map<String,String>,val deleted:Boolean,val sequence:Long)
 interface SubscriptionCloud {
     val uid:String?
@@ -21,6 +21,8 @@ interface SubscriptionCloud {
     suspend fun changes(after:Long,through:Long):List<CloudSubscription>
     suspend fun commit(operation:SyncOutboxEntity):CloudSubscription
 }
+/** Marks the one-time send of records that versions before query-bearing media sync kept local. */
+internal const val QUERY_MEDIA_SEEDED="__query_media_seeded"
 class SubscriptionConflict(val current:CloudSubscription?):Exception("Subscription changed on another device")
 class SubscriptionSyncCoordinator(private val db:AppDatabase,private val cloud:SubscriptionCloud,private val rejected:(String,SyncOperationRejected)->Unit={_,_->}) {
     private val dao get()=db.sync()
@@ -37,13 +39,15 @@ class SubscriptionSyncCoordinator(private val db:AppDatabase,private val cloud:S
         val b=dao.binding()?.takeIf { it.enabled && it.uid==cloud.uid } ?: return@withLock false
         try {
             val head=cloud.head()
-            check(head.protocol in 1..3) { "Update the app to read this sync account." }
+            check(head.protocol in 1..SyncCompaction.PROTOCOL) { "Update the app to read this sync account." }
             check(head.owner==SyncOwner(b.uid,b.generation)) { "Sync account changed; reconnect to review the library." }
             if(!valid(b)) return@withLock false
             if(head.protocol>=3) { dao.putView(SyncViewEntity("__contextual_moments",version=1));dao.resumeContextualOperations(b.uid,b.generation) }
             if(!update(b){it.copy(status="syncing")})return@withLock false
+            // History this installation has not replayed was compacted: rebuild from entities, as a new installation does.
+            if(dao.binding()!!.let { it.bootstrapped && it.cursor<head.compactedThrough } && !rebootstrap(b,head))return@withLock false
             if(!dao.binding()!!.bootstrapped) {
-                if(b.bootstrapAfter.isEmpty())update(b){it.copy(bootstrapHead=head.sequence)}
+                if(dao.binding()!!.bootstrapAfter.isEmpty())update(b){it.copy(bootstrapHead=head.sequence)}
                 repeat(5) {
                     val state=dao.binding()!!
                     if(!state.bootstrapped) {
@@ -58,10 +62,21 @@ class SubscriptionSyncCoordinator(private val db:AppDatabase,private val cloud:S
             while(dao.binding()!!.cursor<head.sequence && pages++<5) {
                 val cursor=dao.binding()!!.cursor
                 val page=cloud.changes(cursor,head.sequence)
-                check(page.isNotEmpty() && page.first().sequence==cursor+1 && page.zipWithNext().all { (a,c)->c.sequence==a.sequence+1 }) { "Cloud history gap; recovery is required." }
+                if(!(page.isNotEmpty() && page.first().sequence==cursor+1 && page.zipWithNext().all { (a,c)->c.sequence==a.sequence+1 })) {
+                    // Another installation may have compacted this history after the head was read.
+                    val latest=cloud.head()
+                    check(latest.owner==head.owner && latest.compactedThrough>cursor) { "Cloud history gap; recovery is required." }
+                    if(rebootstrap(b,latest))update(b){it.copy(status="pending")}
+                    return@withLock false
+                }
                 if(!applyPage(b,page))return@withLock false
             }
             if(dao.binding()!!.cursor<head.sequence){update(b){it.copy(status="pending")};return@withLock false}
+            // After replay, so records another phone already sent are known and left alone.
+            if(dao.view(QUERY_MEDIA_SEEDED)==null && !db.withTransaction {
+                if(!valid(b))return@withTransaction false
+                PortableLibrarySync(db,isolatedDemo=true).seedQueryMedia();dao.putView(SyncViewEntity(QUERY_MEDIA_SEEDED));true
+            })return@withLock false
             repeat(20) {
                 if(!valid(b))return@withLock false
                 val op=dao.nextOperation(b.uid,b.generation) ?: return@repeat
@@ -130,6 +145,8 @@ class SubscriptionSyncCoordinator(private val db:AppDatabase,private val cloud:S
         }
         catch(error:Exception){update(b){it.copy(status=syncFailureStatus(error))};throw error}
     }
+    /** Restarts the entity bootstrap; the outbox stays, so pending local edits remain above the rebuilt remote base. */
+    private suspend fun rebootstrap(b:SyncBindingEntity,head:CloudHead)=update(b){it.copy(bootstrapped=false,bootstrapAfter="",bootstrapHead=head.sequence)}
     private suspend fun applyPage(b:SyncBindingEntity,page:List<CloudSubscription>,bootstrap:Boolean=false,done:Boolean=false):Boolean {
         for(record in page) {
             validate(b,record)
