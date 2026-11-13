@@ -60,6 +60,7 @@ class PlaybackService : MediaLibraryService() {
     private data class AdConfig(val file: String, val ranges: List<TimeRange>)
     private var adConfigs = emptyMap<String, AdConfig>()
     private val adSkipping = ReviewedAdSkipping()
+    private var sleepTimer: dev.distillpod.android.playback.SleepTimerController? = null
     override fun onCreate() {
         super.onCreate()
         applicationContext.appGraph.diagnostics.event("playback.service_started")
@@ -107,6 +108,9 @@ class PlaybackService : MediaLibraryService() {
             onExternalPlaybackCommand = { graph.voice.cancel(false) },
             diagnostics = graph.diagnostics,
             preparePlaybackItems = graph.media::preparePlaybackItems,
+            onSleepTimerCommand = { command, args ->
+                sleepTimer?.command(command, args) ?: androidx.media3.session.SessionResult(androidx.media3.session.SessionError.ERROR_INVALID_STATE)
+            },
             queueCommands = setOf(dev.distillpod.android.playback.QueueWriteCommands.BARRIER, dev.distillpod.android.playback.QueueWriteCommands.IMPORT),
             onQueueCommand = { command, args ->
                 if(command==dev.distillpod.android.playback.QueueWriteCommands.IMPORT) {
@@ -185,6 +189,23 @@ class PlaybackService : MediaLibraryService() {
                 player.currentPosition.coerceAtLeast(0), player.duration.coerceAtLeast(0), complete, player.playbackParameters.speed, boundary=boundary, playing=player.isPlaying,queueBoundary=queueBoundary,queueRestored=queueRestored,suppressQueue=pendingCloudChoice!=null)))
             previousId = id; previousDuration = player.duration.coerceAtLeast(0); previousPosition = player.currentPosition.coerceAtLeast(0)
         }
+        val sleep = dev.distillpod.android.playback.SleepTimerController(
+            dev.distillpod.android.playback.PlayerSleepTimerPlayback(player) { engine.pauseAtEndOfMediaItems = it }, scope,
+            clock = android.os.SystemClock::elapsedRealtime, publish = { graph.playbackEvents.sleepTimer.value = it },
+            onExpired = { endOfEpisode ->
+                // The timer paused through the player, so its play/pause boundary already checkpointed
+                // progress. An item that played to its end is also recorded as finished.
+                if (endOfEpisode) snapshot(complete = true, boundary = true)
+            })
+        sleepTimer = sleep
+        player.addListener(object : Player.Listener {
+            override fun onIsPlayingChanged(isPlaying: Boolean) = sleep.playingChanged()
+            override fun onMediaItemTransition(item: MediaItem?, reason: Int) = sleep.itemChanged()
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                if (!playWhenReady && reason == Player.PLAY_WHEN_READY_CHANGE_REASON_END_OF_MEDIA_ITEM) sleep.itemEnded()
+            }
+            override fun onPlaybackStateChanged(playbackState: Int) { if (playbackState == Player.STATE_ENDED) sleep.itemEnded(queueEnded = true) }
+        })
         player.addListener(object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState:Int) {
                 when(playbackState) {
@@ -472,6 +493,8 @@ class PlaybackService : MediaLibraryService() {
         val stoppedAt=System.currentTimeMillis()
         val stoppedElapsed=android.os.SystemClock.elapsedRealtime()
         val serviceJob=scope.coroutineContext[Job]
+        // The timer is in memory only; stopping the service drops it.
+        sleepTimer?.release(); sleepTimer = null
         session?.let { it.player.release(); it.release() }; session = null
         pendingCloudChoice?.choice?.completion?.completeExceptionally(CancellationException("Playback service stopped"))
         pendingCloudChoice=null
