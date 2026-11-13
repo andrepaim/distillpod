@@ -11,7 +11,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROCESSING" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
-    <application android:name=".DistillPodApplication" android:usesCleartextTraffic="true" android:label="DistillPod" android:allowBackup="false" android:dataExtractionRules="@xml/data_extraction_rules" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher" android:supportsRtl="true" android:theme="@android:style/Theme.Material.NoActionBar">
+    <application android:name=".DistillPodApplication" android:usesCleartextTraffic="true" android:label="DistillPod" android:allowBackup="false" android:dataExtractionRules="@xml/data_extraction_rules" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher" android:supportsRtl="true" android:enableOnBackInvokedCallback="true" android:theme="@android:style/Theme.Material.NoActionBar">
         <meta-data android:name="io.sentry.auto-init" android:value="false" />
         <meta-data android:name="androidx.car.app.minCarApiLevel" android:value="${voiceMinCarApi}" />
         <provider android:name="androidx.core.content.FileProvider" android:authorities="${applicationId}.post-files" android:exported="false" android:grantUriPermissions="true">
