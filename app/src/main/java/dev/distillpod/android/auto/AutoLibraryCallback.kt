@@ -52,7 +52,11 @@ class AutoLibraryCallback(
                 Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)) onExternalPlaybackCommand()
         return super.onPlayerCommandRequest(session, controller, playerCommand)
     }
-    companion object { const val DISTILL="dev.distillpod.android.DISTILL_MOMENT" }
+    companion object {
+        const val DISTILL="dev.distillpod.android.DISTILL_MOMENT"
+        /** Optional DISTILL argument: "phone" for this app's own surfaces (the home-screen widget, #189). */
+        const val CAPTURE_SOURCE="dev.distillpod.android.CAPTURE_SOURCE"
+    }
     private val catalog=AutoCatalog(db,artwork)
     private val playback=AutoPlayback(db)
     private val subscriptions=mutableSetOf<String>()
@@ -224,7 +228,9 @@ class AutoLibraryCallback(
             return com.google.common.util.concurrent.Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
         }
         if(customCommand.customAction!=DISTILL)return super.onCustomCommand(session,controller,customCommand,args)
-        return captureMoment(session)
+        // Only this app's own controller (the home-screen widget) may attribute a capture to the phone.
+        val own=controller.packageName==packageName && controller.uid==android.os.Process.myUid()
+        return captureMoment(session,if(own && args.getString(CAPTURE_SOURCE)=="phone") "phone" else "car")
     }
     private fun captureMoment(session: MediaSession,source:String="car"): ListenableFuture<SessionResult> {
         diagnostics?.event("capture.requested",source=source)

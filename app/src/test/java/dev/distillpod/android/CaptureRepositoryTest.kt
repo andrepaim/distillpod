@@ -68,6 +68,7 @@ class CaptureRepositoryTest {
             seed(db)
             val repo=CaptureRepository(db,ai("unused"),{false},{},{},diagnostics=diagnostics)
             val id=repo.capture("ep",10000,true)
+            keepInDuplicateWindow(db,id)
             val first=db.library().momentAttempt(db.library().distillation(id)!!.attempt)!!
             val metadata=JSONObject(first.contextJson).getJSONObject("_diagnostics")
             val request=metadata.getString("capture_request_id")
@@ -236,6 +237,16 @@ class CaptureRepositoryTest {
             assertFalse(diagnostics.queue.files().any {it.readText().contains(old.captureRequestId!!)})
             assertFalse(diagnostics.journal.latest().any {it.operation==id})
         } finally {diagnostics.consent(false);db.close()}
+    }
+    /**
+     * save() treats a same-position tap as a duplicate only within two wall-clock seconds of the saved row's
+     * createdAt. Enabled diagnostics fsync the journal synchronously on this path (and contend for their lock
+     * with the diagnostics executor), so a loaded host can exceed that window between taps (#192).
+     * Pin the row inside the window so the duplicate-tap precondition holds.
+     */
+    private suspend fun keepInDuplicateWindow(db: AppDatabase, id: String) {
+        val saved = db.library().distillation(id)!!
+        db.library().putDistillation(saved.copy(createdAt = System.currentTimeMillis() + 60 * 60 * 1000L))
     }
     private fun database() = Room.inMemoryDatabaseBuilder(ApplicationProvider.getApplicationContext<Context>(), AppDatabase::class.java).build()
     private suspend fun seed(db: AppDatabase) {
