@@ -1,0 +1,12 @@
+// Fresh offline application for the in-context notification request (#193) on a phone. Never use for production.
+allprojects {
+    afterEvaluate {
+        if (path == ':app') {
+            if (System.getenv('SENTRY_DSN')) throw new GradleException('Validation requires empty SENTRY_DSN')
+            if (project.hasProperty('distillpodFirebaseConfig')) throw new GradleException('Validation forbids Firebase configuration')
+            android.defaultConfig.applicationId = 'dev.distillpod.android.validation.notify193'
+            android.defaultConfig.testApplicationId = 'dev.distillpod.android.validation.notify193.test'
+            android.sourceSets.debug.manifest.srcFile('src/validationNotify193/AndroidManifest.xml')
+        }
+    }
+}

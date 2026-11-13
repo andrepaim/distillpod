@@ -1,0 +1,14 @@
+// Offline, separately installed home-screen widget probe (#189). Never use for production.
+allprojects {
+    afterEvaluate {
+        if (path == ':app') {
+            if (System.getenv('SENTRY_DSN')) throw new GradleException('Validation requires empty SENTRY_DSN')
+            if (project.hasProperty('distillpodFirebaseConfig')) throw new GradleException('Validation forbids Firebase configuration')
+            android.defaultConfig.applicationId = project.findProperty('widget189Package') ?: 'dev.distillpod.android.validation.widget189'
+            if (!android.defaultConfig.applicationId.startsWith('dev.distillpod.android.validation.widget189'))
+                throw new GradleException('Validation package must be dev.distillpod.android.validation.widget189*')
+            android.sourceSets.debug.java.srcDir('src/validationWidget189/java')
+            android.sourceSets.debug.manifest.srcFile('src/validationWidget189/AndroidManifest.xml')
+        }
+    }
+}

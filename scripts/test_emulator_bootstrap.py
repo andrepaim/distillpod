@@ -82,7 +82,8 @@ elif cmd[:3]==['shell','am','instrument']:
         # Cloud-emulator acceptance runs in scripts/sync-device-tests.sh only.
         self.assertIn("dev.distillpod.android.SyncCompactionDeviceTest", excluded)
         phases=[call for call in calls if call[:3]==["shell","am","instrument"]]
-        self.assertEqual(8,len(phases))
+        self.assertEqual(10,len(phases))
+        self.assertIn("dev.distillpod.android.NotificationPromptDeviceTest",excluded)
         self.assertIn("dev.distillpod.android.CloudQueueTeardownDeviceTest",excluded)
         self.assertIn("dev.distillpod.android.CloudQueueChoicePhoneDeviceTest",excluded)
         self.assertEqual("dev.distillpod.android.CloudQueueTeardownDeviceTest",phases[1][phases[1].index("class")+1])
@@ -165,19 +166,26 @@ elif cmd[:3]==['shell','am','instrument']:
         calls = [json.loads(line) for line in file.read_text().splitlines()] if file.exists() else []
         return result, calls
 
-    def test_notification_runner_runs_three_phases_with_revocation_between_processes(self):
+    def test_notification_runner_runs_five_phases_with_revocation_between_processes(self):
         result, calls = self.notification_fixture()
         self.assertEqual(0, result.returncode, result.stdout + result.stderr)
         phases = [call for call in calls if call[:3] == ["shell", "am", "instrument"]]
-        self.assertEqual(3, len(phases))
-        for command, phase in zip(phases, ["recovery", "verifyRevoked", "runtimeGrant"]):
-            self.assertEqual("dev.distillpod.android.NotificationAccessDeviceTest", command[command.index("class") + 1])
+        self.assertEqual(5, len(phases))
+        access, prompt = "dev.distillpod.android.NotificationAccessDeviceTest", "dev.distillpod.android.NotificationPromptDeviceTest"
+        for command, (phase, test) in zip(phases, [("recovery", access), ("verifyRevoked", access), ("runtimeGrant", access),
+                                                   ("promptDeny", prompt), ("promptGrant", prompt)]):
+            self.assertEqual(test, command[command.index("class") + 1])
             self.assertEqual(phase, command[command.index("notificationPhase") + 1])
         revokes = [i for i, call in enumerate(calls) if call[:3] == ["shell", "pm", "revoke"]]
-        self.assertEqual(2, len(revokes))
+        self.assertEqual(4, len(revokes))
         self.assertLess(revokes[0], calls.index(phases[0]))
         self.assertLess(calls.index(phases[0]), revokes[1])
         self.assertLess(revokes[1], calls.index(phases[1]))
+        # Each in-context phase starts from a revocation made after the previous process ended.
+        self.assertLess(calls.index(phases[2]), revokes[2])
+        self.assertLess(revokes[2], calls.index(phases[3]))
+        self.assertLess(calls.index(phases[3]), revokes[3])
+        self.assertLess(revokes[3], calls.index(phases[4]))
 
     def test_notification_runner_refuses_phone_before_any_adb_action(self):
         result, calls = self.notification_fixture(serial="OWNER_PHONE")
