@@ -104,9 +104,10 @@ internal fun transcriptTarget(route: String): TranscriptTarget {
     return if (at != null) TranscriptTarget(rest.substringBeforeLast('@'), at) else TranscriptTarget(rest, null)
 }
 
-/** The passage containing [atMs], else the last one starting before it; -1 without passages. */
+/** The passage starting at [atMs], else one containing it, else the last one before it; -1 without passages. */
 internal fun transcriptFocusIndex(segments: List<SegmentEntity>, atMs: Long): Int =
-    segments.indexOfFirst { atMs >= it.startMs && atMs < it.endMs }.takeIf { it >= 0 }
+    segments.indexOfFirst { it.startMs == atMs }.takeIf { it >= 0 }
+        ?: segments.indexOfFirst { atMs >= it.startMs && atMs < it.endMs }.takeIf { it >= 0 }
         ?: segments.indexOfLast { it.startMs <= atMs }.takeIf { it >= 0 } ?: if (segments.isEmpty()) -1 else 0
 
 @Composable fun TranscriptPage(vm: AppViewModel, ep: EpisodeEntity?, focusMs: Long? = null) {
@@ -119,11 +120,15 @@ internal fun transcriptFocusIndex(segments: List<SegmentEntity>, atMs: Long): In
     var options by rememberSaveable(ep.id) { mutableStateOf(false) }
     val player by vm.player.collectAsStateWithLifecycle()
     val matching=remember(segments,query) {segments.filter {query.isBlank() || it.text.contains(query.trim(),ignoreCase=true)}}
-    val focused = remember(matching, focusMs) { focusMs?.let { matching.getOrNull(transcriptFocusIndex(matching, it)) } }
+    // The search result's passage, chosen from the whole transcript so the in-page filter cannot move it.
+    val focused = remember(segments, focusMs) { focusMs?.let { segments.getOrNull(transcriptFocusIndex(segments, it)) } }
     val list = rememberLazyListState()
-    // Opened from a search result: bring its passage into view once, after the passages load.
-    var positioned by rememberSaveable(ep.id, focusMs) { mutableStateOf(false) }
-    LaunchedEffect(focused) { if (focused != null && !positioned) { list.scrollToItem(1 + matching.indexOf(focused)); positioned = true } }
+    // Opened from a search result: bring its passage into view once per visit, after the passages load.
+    var positioned by remember(ep.id, focusMs) { mutableStateOf(false) }
+    LaunchedEffect(focused) {
+        val index = matching.indexOf(focused)
+        if (focused != null && !positioned && index >= 0) { list.scrollToItem(1 + index); positioned = true }
+    }
     Column(Modifier.fillMaxSize().padding(horizontal=20.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
         LocalSearch(query,{query=it},"Search transcript","Clear transcript search")
         LazyColumn(state = list, contentPadding = PaddingValues(bottom=20.dp), verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.testTag("transcript-passages")) {

@@ -26,29 +26,20 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 
-/** One library section's rows after the Search tab's format filter. */
-private data class LibrarySection(val key: String, val title: String, val noun: String, val rows: List<Any>)
-
 /**
  * Library matches on the Search tab (#179), before any directory results. [expanded] holds the
- * sections showing more than their first rows; [accepts] is the All/Audio/Video filter.
+ * sections showing more than their first rows; [sections] are already format-filtered.
  */
-internal fun LazyListScope.librarySearchResults(state: LibrarySearchState, query: String, accepts: (Boolean) -> Boolean,
+internal fun LazyListScope.librarySearchResults(state: LibrarySearchState, query: String, sections: List<LibrarySection>,
     expanded: Set<String>, onExpand: (String) -> Unit, onOpen: (String) -> Unit) {
     val matches = state.matches
-    val sections = if (matches == null) emptyList() else listOf(
-        LibrarySection("shows", "Shows", "shows", matches.shows.filter { accepts(it.video) }),
-        LibrarySection("episodes", "Episodes", "episodes", matches.episodes.filter { accepts(it.video) }),
-        LibrarySection("passages", "Transcripts", "transcripts", matches.passages.filter { accepts(it.video) }),
-        LibrarySection("moments", "Saved moments", "moments", matches.moments.filter { accepts(it.video) }),
-    ).filter { it.rows.isNotEmpty() }
     val terms = matches?.terms ?: state.terms.orEmpty()
     item(key = "library:heading") {
         Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Text("In your library", Modifier.semantics { heading() }, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
             val detail = when {
                 state.failed -> "Library search could not finish. Edit the search to try again."
-                matches == null -> "Searching your library…"
+                matches == null || state.loading && sections.isEmpty() -> "Searching your library…"
                 sections.isEmpty() && !state.loading -> "Nothing in your library matches “${query.trim()}”."
                 else -> "Results from your library stay on this phone."
             }

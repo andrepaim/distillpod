@@ -95,6 +95,9 @@ class LibrarySearchTest {
     @Test fun `the focused passage is the one containing the position, else the last before it`() {
         val segments = listOf(SegmentEntity("e", "r", 0, 9_000, "a"), SegmentEntity("e", "r", 10_000, 19_000, "b"), SegmentEntity("e", "r", 30_000, 39_000, "c"))
         assertEquals(1, transcriptFocusIndex(segments, 10_000))
+        // Overlapping passages: the one starting exactly at the match wins over an earlier one containing it.
+        val overlapping = listOf(SegmentEntity("e", "r", 0, 20_000, "long"), SegmentEntity("e", "r", 5_000, 8_000, "match"))
+        assertEquals(1, transcriptFocusIndex(overlapping, 5_000))
         assertEquals(1, transcriptFocusIndex(segments, 25_000))
         assertEquals(0, transcriptFocusIndex(segments, 0))
         assertEquals(-1, transcriptFocusIndex(emptyList(), 5))
@@ -201,6 +204,43 @@ class LibrarySearchTest {
         queries.value = "c"; advanceUntilIdle()
         assertEquals(LibrarySearchState(), states.last())
         job.cancel()
+    }
+
+    @Test fun `library changes re-run the current search without a new query`() = runTest {
+        val queries = MutableStateFlow("tax")
+        val library = MutableStateFlow(0)
+        val calls = mutableListOf<Int>()
+        val states = mutableListOf<LibrarySearchState>()
+        val job = launch(UnconfinedTestDispatcher(testScheduler)) {
+            librarySearchStates(queries, library, debounceMs = 50) { terms -> calls += library.value; LibraryMatches(terms) }.toList(states)
+        }
+        advanceUntilIdle()
+        library.value = 1; advanceUntilIdle()
+        assertEquals(listOf(0, 1), calls)
+        // A refresh keeps the shown rows while it runs.
+        library.value = 2
+        assertEquals(listOf("tax"), states.last().matches?.terms)
+        // Clearing the field before the refresh's debounce ends cancels it; changes without terms search nothing.
+        queries.value = "c"; advanceUntilIdle()
+        library.value = 3; advanceUntilIdle()
+        assertEquals(listOf(0, 1), calls)
+        assertEquals(LibrarySearchState(), states.last())
+        job.cancel()
+    }
+
+    @Test fun `a new collection starts from the last shown matches`() = runTest {
+        val memory = LibrarySearchMemory()
+        val first = mutableListOf<LibrarySearchState>()
+        val job = launch(UnconfinedTestDispatcher(testScheduler)) {
+            librarySearchStates(MutableStateFlow("tax"), MutableStateFlow(0), 50, memory) { LibraryMatches(it) }.toList(first)
+        }
+        advanceUntilIdle(); job.cancel()
+        val again = mutableListOf<LibrarySearchState>()
+        val second = launch(UnconfinedTestDispatcher(testScheduler)) {
+            librarySearchStates(MutableStateFlow("tax"), MutableStateFlow(0), 50, memory) { LibraryMatches(it) }.toList(again)
+        }
+        assertEquals(listOf("tax"), again.first().matches?.terms)
+        second.cancel()
     }
 
     @Test fun `results stay visible while the next search loads and failures are reported`() = runTest {

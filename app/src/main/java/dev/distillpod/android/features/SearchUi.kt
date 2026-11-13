@@ -57,7 +57,7 @@ private val topics = listOf(SearchTopic("Technology", Icons.Default.Memory), Sea
     library: LibrarySearchState = LibrarySearchState(), onOpenRoute: (String) -> Unit = {}) {
     var format by rememberSaveable { mutableStateOf("All") }
     fun accepts(provider: String) = format == "All" || (provider == "youtube") == (format == "Video")
-    fun acceptsVideo(video: Boolean) = format == "All" || video == (format == "Video")
+    val librarySections = remember(library.matches, format) { librarySections(library.matches, format) }
     // Sections showing all their rows, for the current library search only.
     var expanded by rememberSaveable(library.terms?.joinToString(" ")) { mutableStateOf("") }
     val pending = state.loadingProviders.filter(::accepts).toSet()
@@ -73,7 +73,10 @@ private val topics = listOf(SearchTopic("Technology", Icons.Default.Memory), Sea
     var rssDraft by rememberSaveable { mutableStateOf("") }
     val adding = busy.any { it.startsWith("subscribe:") }
     val list = rememberLazyListState()
-    LaunchedEffect(displayed.submittedQuery, format, library.terms) { list.scrollToItem(0) }
+    // Back from a result keeps the list where it was; only a new search or filter starts at the top.
+    val listKey = "${displayed.submittedQuery}|$format|${library.terms}"
+    var scrolledFor by rememberSaveable { mutableStateOf(listKey) }
+    LaunchedEffect(listKey) { if (scrolledFor != listKey) { list.scrollToItem(0); scrolledFor = listKey } }
     fun existing(candidate: PodcastCandidate) = podcasts.firstOrNull { it.subscribed && (it.feedUrl == candidate.feedUrl || it.originalFeedUrl == candidate.feedUrl) }
     fun submit(term: String) {
         if (term.trim().length < 2) return
@@ -103,7 +106,7 @@ private val topics = listOf(SearchTopic("Technology", Icons.Default.Memory), Sea
             }
         }
         LazyColumn(state = list, modifier = Modifier.weight(1f).testTag("Podcast search results"), contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 6.dp, bottom = 20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            if (library.terms != null) librarySearchResults(library, query, ::acceptsVideo, expanded.split(' ').toSet(),
+            if (library.terms != null) librarySearchResults(library, query, librarySections, expanded.split(' ').toSet(),
                 { expanded = "$expanded $it".trim() }, onOpenRoute)
             when {
                 displayed.loading && displayed.results.isEmpty() -> item {

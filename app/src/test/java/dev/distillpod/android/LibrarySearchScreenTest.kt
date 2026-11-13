@@ -67,10 +67,10 @@ class LibrarySearchScreenTest {
     @Test fun `each kind of match opens its own page`() {
         val opened = mutableListOf<String>()
         screen(onOpen = { opened += it })
-        listOf("Carbon Weekly" to "podcast:p1", "Carbon episode 2" to "episode:e2",
+        listOf("Studio North" to "podcast:p1", "Carbon episode 2" to "episode:e2",
             "…the carbon tax returns…" to "transcript:e1@61000", "Carbon pricing works when it is predictable." to "capture:m1").forEach { (text, _) ->
             results.performScrollToNode(hasText(text))
-            compose.onAllNodesWithText(text).onFirst().performClick()
+            compose.onAllNodes(hasClickAction() and hasText(text)).onFirst().performClick()
         }
         assertEquals(listOf("podcast:p1", "episode:e2", "transcript:e1@61000", "capture:m1"), opened)
         results.performScrollToNode(hasText("1:01 · 3 matches", substring = true))

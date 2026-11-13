@@ -111,28 +111,55 @@ internal fun matchSnippet(text: String, terms: List<String>, radius: Int = 90): 
     return (if (start > 0) "…" else "") + clean.substring(start, end).trim() + (if (end < clean.length) "…" else "")
 }
 
+/** One library section's rows after the Search tab's All/Audio/Video filter. */
+internal data class LibrarySection(val key: String, val title: String, val noun: String, val rows: List<Any>)
+
+internal fun librarySections(matches: LibraryMatches?, format: String): List<LibrarySection> {
+    if (matches == null) return emptyList()
+    fun accepts(video: Boolean) = format == "All" || video == (format == "Video")
+    return listOf(
+        LibrarySection("shows", "Shows", "shows", matches.shows.filter { accepts(it.video) }),
+        LibrarySection("episodes", "Episodes", "episodes", matches.episodes.filter { accepts(it.video) }),
+        LibrarySection("passages", "Transcripts", "transcripts", matches.passages.filter { accepts(it.video) }),
+        LibrarySection("moments", "Saved moments", "moments", matches.moments.filter { accepts(it.video) }),
+    ).filter { it.rows.isNotEmpty() }
+}
+
 internal fun <T> visibleLibraryRows(rows: List<T>, expanded: Boolean): List<T> =
     rows.take(if (expanded) LIBRARY_SECTION_CAP else LIBRARY_SECTION_PREVIEW)
 
+/** The last matches shown, kept across collections so returning to Search does not blank them. */
+internal class LibrarySearchMemory { @Volatile var matches: LibraryMatches? = null }
+
 /**
- * Library search states for the Search field. Each change waits [debounceMs]; a newer query cancels
- * the running one, so stale results are never published. Previous matches stay visible while loading.
+ * Library search states for the Search field. Each query or [changes] emission (library, moment or
+ * transcript changes) waits [debounceMs]; a newer one cancels the running search, so a superseded
+ * search never replaces a newer one. The previous matches stay visible, marked loading, meanwhile.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
-internal fun librarySearchStates(queries: Flow<String>, debounceMs: Long = LIBRARY_SEARCH_DEBOUNCE_MS,
-    search: suspend (List<String>) -> LibraryMatches): Flow<LibrarySearchState> = flow {
-    var shown: LibraryMatches? = null
-    emitAll(queries.map(::librarySearchTerms).distinctUntilChanged().transformLatest { terms ->
-        if (terms == null) { shown = null; emit(LibrarySearchState()); return@transformLatest }
-        emit(LibrarySearchState(terms, loading = true, matches = shown))
-        delay(debounceMs)
-        val state = try { LibrarySearchState(terms, matches = search(terms)) }
-            catch (cancelled: CancellationException) { throw cancelled }
-            catch (_: Exception) { LibrarySearchState(terms, failed = true) }
-        shown = state.matches
-        emit(state)
-    })
-}
+internal fun librarySearchStates(queries: Flow<String>, changes: Flow<Any?> = flowOf(Unit), debounceMs: Long = LIBRARY_SEARCH_DEBOUNCE_MS,
+    memory: LibrarySearchMemory = LibrarySearchMemory(), search: suspend (List<String>) -> LibraryMatches): Flow<LibrarySearchState> =
+    combine(queries.map(::librarySearchTerms).distinctUntilChanged(), changes) { terms, change -> terms to change }
+        .distinctUntilChanged().transformLatest { (terms, _) ->
+            if (terms == null) { memory.matches = null; emit(LibrarySearchState()); return@transformLatest }
+            emit(LibrarySearchState(terms, loading = true, matches = memory.matches))
+            delay(debounceMs)
+            val state = try { LibrarySearchState(terms, matches = search(terms)) }
+                catch (cancelled: CancellationException) { throw cancelled }
+                catch (_: Exception) { LibrarySearchState(terms, failed = true) }
+            memory.matches = state.matches
+            emit(state)
+        }
+
+/**
+ * Emits when searchable library content changes: shows, episode titles, moments, or transcript
+ * revisions and progress. Live playback position writes do not re-run a search.
+ */
+internal fun librarySearchChanges(podcasts: Flow<List<PodcastEntity>>, episodes: Flow<List<EpisodeEntity>>,
+    captures: Flow<List<DistillationEntity>>, transcripts: Flow<List<TranscriptEntity>>): Flow<Any?> =
+    combine(podcasts, episodes.map { rows -> rows.size to rows.sumOf { 31 * it.id.hashCode() + it.title.hashCode() } }.distinctUntilChanged(),
+        captures, transcripts.map { rows -> rows.map { Triple(it.episodeId, it.revision, it.processedMs) } }.distinctUntilChanged()) { p, e, c, t -> listOf(p, e, c, t) }
+        .distinctUntilChanged()
 
 /** Searches the library rows already held in memory and the stored transcripts, off the main thread. */
 internal class LibrarySearcher(private val transcripts: suspend (List<String>) -> List<TranscriptHit>,

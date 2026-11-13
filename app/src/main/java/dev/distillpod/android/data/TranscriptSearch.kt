@@ -14,16 +14,18 @@ data class TranscriptHit(val episodeId: String, val matches: Int, val startMs: L
  * Only segments of an existing transcript row's current revision are read, so superseded revisions
  * and transcripts that were deleted or suppressed (#60) never match. Every term must occur in the
  * same passage. The segment table is scanned in rowid ranges: a newer query cancels a stale one
- * between ranges, and no schema change or derived index is needed.
+ * between ranges, and no schema change or derived index is needed. Ranges are not one snapshot: a
+ * transcript rewritten during a scan can be missed or counted from its previous revision until the
+ * next search, which reruns when transcripts change.
  */
 class TranscriptSearch(private val db: AppDatabase, private val rowsPerRange: Long = 20_000,
     private val beforeRange: () -> Unit = {}) {
     suspend fun find(terms: List<String>): List<TranscriptHit> = withContext(Dispatchers.IO) {
-        require(terms.isNotEmpty())
+        require(terms.isNotEmpty() && rowsPerRange > 0)
         val patterns = terms.map(::likePatterns)
         val where = patterns.joinToString(" AND ") { variants -> variants.joinToString(" OR ", "(", ")") { "s.text LIKE ? ESCAPE '\\'" } }
         val sql = "SELECT s.episodeId, COUNT(*), MIN(s.startMs), s.endMs, s.text FROM segments s " +
-            "INNER JOIN transcripts t ON t.episodeId=s.episodeId AND t.revision=s.revision " +
+            "CROSS JOIN transcripts t ON t.episodeId=s.episodeId AND t.revision=s.revision " +
             "WHERE s.rowid BETWEEN ? AND ? AND $where GROUP BY s.episodeId"
         val bounds = db.query(SimpleSQLiteQuery("SELECT MIN(rowid), MAX(rowid) FROM segments")).use { cursor ->
             if (cursor.moveToFirst() && !cursor.isNull(0)) cursor.getLong(0)..cursor.getLong(1) else null
@@ -33,7 +35,7 @@ class TranscriptSearch(private val db: AppDatabase, private val rowsPerRange: Lo
         while (start <= bounds.last) {
             ensureActive()
             beforeRange()
-            val end = (start + rowsPerRange - 1).coerceAtMost(bounds.last)
+            val end = if (bounds.last - start < rowsPerRange) bounds.last else start + rowsPerRange - 1
             val args: Array<Any> = (listOf<Any>(start, end) + patterns.flatten()).toTypedArray()
             db.query(SimpleSQLiteQuery(sql, args)).use { cursor ->
                 while (cursor.moveToNext()) {
