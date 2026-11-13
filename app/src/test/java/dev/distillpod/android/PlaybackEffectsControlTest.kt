@@ -82,4 +82,18 @@ class PlaybackEffectsControlTest {
         show()
         compose.onNodeWithText("Volume boost isn't available on this device", substring = true).assertExists()
     }
+
+    /** Player screens find their own switches by sibling text; this control must not join their sibling set. */
+    @Test fun itsSwitchesAreNotSiblingsOfNeighbouringPlayerControls() {
+        compose.setContent {
+            androidx.compose.foundation.layout.Column {
+                androidx.compose.foundation.layout.Row {
+                    androidx.compose.material3.Text("Skip marked ads")
+                    androidx.compose.material3.Switch(checked = false, onCheckedChange = {})
+                }
+                PlaybackEffectsControl(state.value, onSpeed = {}, onKeepForShow = {}, onSkipSilence = {}, onVolumeBoost = {})
+            }
+        }
+        compose.onAllNodes(isToggleable() and hasAnySibling(hasText("Skip marked ads"))).assertCountEquals(1)
+    }
 }

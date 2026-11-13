@@ -12,6 +12,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.isTraversalGroup
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -30,7 +32,8 @@ internal data class PlaybackEffectsState(val speed: Float = 1f, val showTitle: S
     onSkipSilence: (Boolean) -> Unit, onVolumeBoost: (Boolean) -> Unit) {
     val speed = PlaybackSpeeds.normalize(state.speed) ?: 1f
     val label = PlaybackSpeeds.label(speed)
-    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    // One traversal group: speed and effects are read together and stay separate from neighbouring player controls.
+    Column(Modifier.fillMaxWidth().semantics { isTraversalGroup = true }, verticalArrangement = Arrangement.spacedBy(4.dp)) {
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.Center) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = { onSpeed(PlaybackSpeeds.slower(speed)) }, enabled = PlaybackSpeeds.canSlowDown(speed)) {
