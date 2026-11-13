@@ -16,6 +16,10 @@ interface SyncDao {
     @Query("SELECT * FROM sync_artifacts WHERE uid=:uid AND generation=:generation AND hash=:hash") suspend fun artifact(uid:String,generation:String,hash:String):SyncArtifactEntity?
     @Query("SELECT * FROM sync_artifacts WHERE uid=:uid AND generation=:generation") suspend fun artifacts(uid:String,generation:String):List<SyncArtifactEntity>
     @Query("SELECT * FROM sync_artifacts") fun observeArtifacts():kotlinx.coroutines.flow.Flow<List<SyncArtifactEntity>>
+    /** Change detection for finished-content capture, without reading segment text. TOTAL never overflows. */
+    @Query("SELECT COUNT(*) AS rowCount,TOTAL(startMs) AS startMs,TOTAL(endMs) AS endMs,TOTAL(ordinal) AS ordinals,"+
+        "TOTAL(LENGTH(text)) AS textLength FROM segments WHERE episodeId=:episodeId AND revision=:revision")
+    suspend fun segmentSummary(episodeId:String,revision:String):SegmentSummary
 
     @Upsert suspend fun putPreference(value:SyncPreferenceEntity)
     @Query("SELECT * FROM sync_preferences") fun observePreferences():kotlinx.coroutines.flow.Flow<List<SyncPreferenceEntity>>
@@ -81,6 +85,9 @@ data class SyncViewEntity(@PrimaryKey val entityKey:String,val version:Long=0,va
 
 @Entity(tableName="sync_preferences")
 data class SyncPreferenceEntity(@PrimaryKey val name:String,val value:String)
+
+/** Row aggregates of one transcript revision's segments; rewritten rows are detected by LibraryDao.putSegments. */
+data class SegmentSummary(val rowCount:Long,val startMs:Double,val endMs:Double,val ordinals:Double,val textLength:Double)
 
 @Entity(tableName="sync_artifacts",primaryKeys=["uid","generation","hash"])
 data class SyncArtifactEntity(val uid:String,val generation:String,val hash:String,val expandedBytes:Long,val state:String,val localFile:String,val episodeId:String,val revision:String)
