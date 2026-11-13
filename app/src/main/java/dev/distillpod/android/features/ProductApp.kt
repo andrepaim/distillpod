@@ -369,9 +369,7 @@ private val NOT_CURRENT = PlaybackState()
                         Column(horizontalAlignment = Alignment.CenterHorizontally) { Icon(Icons.Default.Forward30, "Forward 30 seconds", Modifier.size(28.dp)); Text("30 s", style = MaterialTheme.typography.labelSmall) }
                     }
                 }
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(0.dp)) {
-                    listOf(1f, 1.25f, 1.5f, 2f).forEach { speed -> FilterChip(selected = player.speed == speed, onClick = { vm.speed(speed) }, label = { Text("${speed.toString().removeSuffix(".0")}×") }) }
-                }
+                PlayerEffects(vm, player.speed, podcast)
                 val sleepTimer by vm.sleepTimer.collectAsStateWithLifecycle()
                 SleepTimerControl(sleepTimer, onStart = vm::startSleepTimer, onEndOfEpisode = vm::sleepAtEndOfEpisode,
                     onExtend = vm::extendSleepTimer, onCancel = vm::cancelSleepTimer)

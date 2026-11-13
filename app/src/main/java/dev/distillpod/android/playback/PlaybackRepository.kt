@@ -24,6 +24,8 @@ class PlaybackEvents {
     val videoFailure = MutableStateFlow<Pair<String, String>?>(null)
     /** Published by the playback service's sleep timer; null when no timer is set. */
     val sleepTimer = MutableStateFlow<dev.distillpod.core.SleepTimerStatus?>(null)
+    /** Published by the playback service's volume boost (#183). */
+    val volumeBoost = MutableStateFlow(VolumeBoostStatus())
 }
 data class SkippedMoment(val episodeId: String, val positionMs: Long, val endMs: Long)
 

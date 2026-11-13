@@ -141,6 +141,10 @@ class AppViewModel(val graph: AppGraph, private val saved: SavedStateHandle) : V
     fun seek(position: Long) = action("seek") { graph.voice.cancel(false); graph.playback.seek(position) }
     fun skip(delta: Long) = action("seek") { graph.voice.cancel(false); graph.playback.skip(delta) }
     fun speed(value: Float) = action("speed") { graph.playback.speed(value) }
+    /** Keeps [speed] for [show] from now on, or returns the show to the global speed (#183). */
+    fun keepShowSpeed(show: String, speed: Float, keep: Boolean) = action("speed") {
+        graph.settings.updateSpeeds { if (keep) it.keep(show, speed) else it.forget(show) }
+    }
     val sleepTimer = graph.playback.sleepTimer
     fun startSleepTimer(durationMs: Long) = action("sleep-timer-start") { graph.playback.startSleepTimer(durationMs) }
     fun sleepAtEndOfEpisode() = action("sleep-timer-start") { graph.playback.sleepAtEndOfEpisode() }
