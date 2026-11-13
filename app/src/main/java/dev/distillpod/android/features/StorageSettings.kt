@@ -69,6 +69,7 @@ import kotlinx.coroutines.CancellationException
     }) { Text("Clear unused audio") }
     Text("Removes leftover cache files after feed changes. Downloads, resumable paused partials, queued audio and processing files are kept.",
         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    BulkAudioSettings(vm.audioCleanup) { refresh++ }
     OutlinedButton(onClick = { manage = !manage }) { Text(if (manage) "Hide downloads" else "Manage downloads") }
     if (manage) {
         Text("Deleting audio keeps saved insights and listening progress. Playing, queued and transcribing audio is protected.",
