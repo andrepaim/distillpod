@@ -47,6 +47,30 @@ The ordinary emulator runner excludes notification permission mutations from
 its shared instrumentation invocation, then calls
 `scripts/notification-device-tests.sh` for three separate invocations: denial
 and blocked recovery, external revocation, and a fresh runtime grant. Each result
-must be nonempty and successful. The runner requires both an emulator serial
-and the emulator system property before changing permissions; it cannot be used
-for the separate physical-phone validation described above.
+must be nonempty and successful. Two further invocations run the in-context
+`promptDeny` and `promptGrant` phases, each after a fresh revocation. The runner
+requires both an emulator serial and the emulator system property before
+changing permissions; it cannot be used for the separate physical-phone
+validation described above.
+
+## In-context request (#193)
+
+On Android 13 and later, the first episode download, model download or transcript
+preparation the user starts (episode row or page, player, transcript tools,
+Downloads & storage or Settings → Transcript preparation) is queued first. Then,
+if notifications are off, the runtime permission is not granted and neither this
+offer nor the Settings runtime request was used before, a short explanation offers
+**Allow notifications** or **Not now**. Allow records the same attempt marker as
+Settings and shows Android's dialog. A denial, **Not now** or dismissal is never
+asked again; a single snackbar then links to Settings → Notification access, which
+remains the way back. Work continues whatever the answer. Background and automatic
+work never prompts, and Android 10–12L has no runtime request to offer.
+
+`NotificationPromptTest` covers when the offer appears and when it does not, and
+`DownloadNetworkPolicyTest` covers the view-model entry points. In
+`NotificationPromptDeviceTest`, the `promptDeny` and `promptGrant` phases tap a
+synthetic episode's Download button and answer Android's real dialog. Each starts
+from a fresh revocation. For a physical phone, build with
+`scripts/notify193-validation.init.gradle` (offline
+`dev.distillpod.android.validation.notify193` and `.test` IDs). Revoke only that
+package's permission before each phase and remove both packages afterwards.

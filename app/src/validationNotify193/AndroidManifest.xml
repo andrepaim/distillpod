@@ -1,0 +1,5 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
+    <!-- Offline: the in-context notification request (#193) needs no network. -->
+    <uses-permission android:name="android.permission.INTERNET" tools:node="remove" />
+    <application android:label="Notification validation" tools:replace="android:label" />
+</manifest>

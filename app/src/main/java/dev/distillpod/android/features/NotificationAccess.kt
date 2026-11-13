@@ -25,18 +25,22 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 
+internal const val NOTIFICATION_ACCESS_PREFS = "notification_access"
+/** Records an app-initiated runtime request, shared with the in-context offer (#193). */
+internal const val RUNTIME_REQUESTED = "runtime_requested"
+
 /** The platform is the source of truth, including changes made outside this screen. */
 @Composable
 internal fun NotificationAccess() {
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
-    val prefs = remember(context) { context.getSharedPreferences("notification_access", Context.MODE_PRIVATE) }
+    val prefs = remember(context) { context.getSharedPreferences(NOTIFICATION_ACCESS_PREFS, Context.MODE_PRIVATE) }
     var enabled by remember(context) { mutableStateOf(NotificationManagerCompat.from(context).areNotificationsEnabled()) }
-    var requested by remember(context) { mutableStateOf(prefs.getBoolean("runtime_requested", false)) }
+    var requested by remember(context) { mutableStateOf(prefs.getBoolean(RUNTIME_REQUESTED, false)) }
     var runtimeGranted by remember(context) { mutableStateOf(notificationRuntimeGranted(context)) }
     fun refresh() {
         enabled = NotificationManagerCompat.from(context).areNotificationsEnabled()
-        requested = prefs.getBoolean("runtime_requested", false)
+        requested = prefs.getBoolean(RUNTIME_REQUESTED, false)
         runtimeGranted = notificationRuntimeGranted(context)
     }
     DisposableEffect(context, lifecycle) {
@@ -63,7 +67,7 @@ internal fun NotificationAccess() {
             if (canRequest) {
                 OutlinedButton(onClick = {
                     // Record an attempt, not an inference about Android's denial flags.
-                    prefs.edit().putBoolean("runtime_requested", true).apply()
+                    prefs.edit().putBoolean(RUNTIME_REQUESTED, true).apply()
                     requested = true
                     permission.launch(Manifest.permission.POST_NOTIFICATIONS)
                 }) { Text("Enable notifications") }
@@ -73,5 +77,5 @@ internal fun NotificationAccess() {
     }
 }
 
-private fun notificationRuntimeGranted(context: Context): Boolean = Build.VERSION.SDK_INT < 33 ||
+internal fun notificationRuntimeGranted(context: Context): Boolean = Build.VERSION.SDK_INT < 33 ||
     ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED

@@ -85,6 +85,8 @@ class AppViewModel(val graph: AppGraph, private val saved: SavedStateHandle) : V
     internal val librarySearch = librarySearchStates(query, librarySearchChanges(podcasts, episodes, captures, localTranscripts),
         memory = LibrarySearchMemory(), search = LibrarySearcher(TranscriptSearch(graph.db)::find, podcasts::value, episodes::value, captures::value)::search).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), LibrarySearchState())
     val recentSearches = graph.settings.recentSearches.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    /** Offered once the first user-started download or transcript preparation is queued (#193). */
+    internal val notificationPrompt = NotificationPrompt(graph.context)
     val busy = MutableStateFlow<Set<String>>(emptySet())
     val messages = Channel<String>(Channel.BUFFERED)
     internal val audioCleanup = AudioCleanupController(viewModelScope, graph.media::previewAudioCleanup,
@@ -154,13 +156,13 @@ class AppViewModel(val graph: AppGraph, private val saved: SavedStateHandle) : V
     fun enqueue(id: String, next: Boolean = false) = queueActions.submit { graph.playback.enqueue(id, next); messages.send(if (next) "Added to play next" else "Added to queue") }
     fun removeQueue(id: String) = queueActions.submit { graph.playback.remove(id) }
     fun moveQueue(id: String, offset: Int) = queueActions.submit { graph.playback.move(id, offset) }
-    fun download(id: String) = action("download:$id") { graph.jobs.download(id); messages.send("Download queued") }
+    fun download(id: String) = action("download:$id") { graph.jobs.download(id); notificationPrompt.workStarted(); messages.send("Download queued") }
     fun pauseDownload(id: String) = action("pause:$id") { graph.jobs.pauseDownload(id) }
     fun deleteDownload(id: String) = action("delete:$id") { graph.media.deleteDownload(id) }
     fun clearUnusedAudio() = action("storage") { messages.send("Cleared ${fileSize(graph.media.clearUnusedAudio())} of unused audio. Queued and active files were kept.") }
     fun markCompleted(id: String, complete: Boolean) = action("completed:$id") { graph.portableSync.markCompleted(id, complete) }
     fun unsubscribe(id: String) = action("unsubscribe:$id") { graph.automation.setEnabled(id, false); graph.podcasts.unsubscribe(id); root("library") }
-    fun downloadModel(id: String) = action("model:$id") { graph.jobs.model(id) }
+    fun downloadModel(id: String) = action("model:$id") { graph.jobs.model(id); notificationPrompt.workStarted() }
     fun pauseModel(id: String) = action("pause-model:$id") { graph.jobs.pauseModel(id) }
     fun deleteModel(id: String) = action("model:$id") { graph.media.deleteModel(id) }
     fun flag(key: String, value: Boolean) = action("settings") {
@@ -174,7 +176,7 @@ class AppViewModel(val graph: AppGraph, private val saved: SavedStateHandle) : V
     fun duplicatePost(id: String) = action("post:$id") { open("post:${graph.posts.duplicate(id).id}") }
     fun deletePost(id: String) = action("post:$id") { graph.posts.delete(id) }
     fun deleteCapture(id: String) = action("capture:$id") { graph.portableSync.deleteMoment(id) }
-    fun prepareTranscript(id: String, local: Boolean = false) = action("transcript:$id") { graph.diagnostics.usage("transcription");graph.transcription.prepare(id, local); messages.send("Transcript preparation queued") }
+    fun prepareTranscript(id: String, local: Boolean = false) = action("transcript:$id") { graph.diagnostics.usage("transcription");graph.transcription.prepare(id, local); notificationPrompt.workStarted(); messages.send("Transcript preparation queued") }
     fun pauseTranscript(id: String) = action("transcript:$id") { graph.transcription.pause(id) }
     fun captureMoment() = captureMoment(openSaved = true)
     fun captureMomentInPlayer() = captureMoment(openSaved = false)
