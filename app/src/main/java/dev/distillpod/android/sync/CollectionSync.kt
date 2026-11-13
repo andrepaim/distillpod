@@ -72,4 +72,4 @@ internal suspend fun projectCollection(db:AppDatabase,r:CloudSubscription,force:
  * keeps its local queue place as before: a cloud queue written without it, by an older version or
  * before this phone sent it, would otherwise drop it from this phone's queue.
  */
-internal suspend fun PortableLibrarySync.queueIdentity(ep:EpisodeEntity)=identity(ep)?.takeIf {MediaLocator.portable(ep.audioUrl)==ep.audioUrl}
+internal suspend fun PortableLibrarySync.queueIdentity(ep:EpisodeEntity)=identity(ep)?.takeIf {MediaLocator.portable(ep.audioUrl,ep.guid)==ep.audioUrl}

@@ -36,4 +36,17 @@ class MediaLocatorTest {
         for (url in listOf("https://www.youtube.com/watch?v=dQw4w9WgXcQ", "https://youtu.be/dQw4w9WgXcQ?t=5", "https://www.youtube.com/playlist?list=PL1234567890"))
             assertNull(url, MediaLocator.portable(url))
     }
+    @Test fun `YouTube hosts stay local whatever their port or subdomain`() {
+        for (url in listOf("https://www.youtube.com:443/watch?v=dQw4w9WgXcQ", "https://music.youtube.com/watch?v=dQw4w9WgXcQ", "https://YOUTU.BE/dQw4w9WgXcQ?t=1"))
+            assertNull(url, MediaLocator.portable(url))
+    }
+    @Test fun `an episode whose GUID repeats its query-bearing address stays local`() {
+        val audio = "https://cdn.example.test/episode.mp3?token=secret"
+        assertEquals("https://cdn.example.test/episode.mp3", MediaLocator.portable(audio, "tag:example.test,2026:episode-1"))
+        // Feeds without a GUID use the enclosure itself; some put it there explicitly or with an older token.
+        for (guid in listOf(audio, "urn:x:episode.mp3?token=secret", "https://cdn.example.test/episode.mp3?token=older", "HTTP://other.test/?p=1#x"))
+            assertNull(guid, MediaLocator.portable(audio, guid))
+        // A plain address keeps its GUID, query-bearing or not, as before.
+        assertEquals("https://cdn.example.test/a.mp3", MediaLocator.portable("https://cdn.example.test/a.mp3", "https://example.test/?p=1"))
+    }
 }

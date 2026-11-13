@@ -145,9 +145,11 @@ class PortableLibrarySyncTest {
         assertEquals(90000L,db.library().episode("e")!!.positionMs)
         assertEquals(0,db.sync().count())
     }
-    @Test fun `YouTube videos and credential-bearing media stay local`()=fixture {db,sync,_ ->
-        for(url in listOf("https://www.youtube.com/watch?v=dQw4w9WgXcQ","https://user:secret@example.test/audio")) {
-            db.library().putEpisode(db.library().episode("e")!!.copy(audioUrl=url))
+    @Test fun `YouTube videos, credential-bearing media and query-bearing GUIDs stay local`()=fixture {db,sync,_ ->
+        for((url,guid) in listOf("https://www.youtube.com/watch?v=dQw4w9WgXcQ" to "guid","https://user:secret@example.test/audio" to "guid",
+                // A feed without a GUID uses its enclosure, which would otherwise travel as the GUID.
+                "https://example.test/audio?token=secret" to "https://example.test/audio?token=secret")) {
+            db.library().putEpisode(db.library().episode("e")!!.copy(audioUrl=url,guid=guid))
             sync.checkpoint("e",1000,100000,false,1,"session$url".filter {it.isLetterOrDigit()},1000,force=true)
             sync.putMoment(DistillationEntity("m","e",0,10000))
             assertEquals(url,0,db.sync().count())

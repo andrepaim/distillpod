@@ -95,7 +95,7 @@ class PortableLibrarySync(private val db:AppDatabase,private val isolatedDemo:Bo
      * Queue them once; a record the cloud or outbox already holds (sent by a newer phone) is left as is.
      */
     internal suspend fun seedQueryMedia():Boolean {
-        val episodes=dao.episodes().filter {ep->MediaLocator.portable(ep.audioUrl).let {it!=null && it!=ep.audioUrl}}
+        val episodes=dao.episodes().filter {ep->MediaLocator.portable(ep.audioUrl,ep.guid).let {it!=null && it!=ep.audioUrl}}
         val ids=episodes.map {it.id}.toSet()
         return seedRecords(episodes,dao.distillations().filter {it.episodeId in ids},onlyNew=true)
     }
@@ -118,7 +118,7 @@ class PortableLibrarySync(private val db:AppDatabase,private val isolatedDemo:Bo
         if(!allowed() || sync.approved(ep.podcastId)==null)return null
         val p=dao.podcast(ep.podcastId) ?: return null
         // Signed or tokenized enclosure queries never leave the phone; feed and GUID identify the episode.
-        val audioUrl=MediaLocator.portable(ep.audioUrl) ?: return null
+        val audioUrl=MediaLocator.portable(ep.audioUrl,ep.guid) ?: return null
         val identity=mapOf("episodeId" to ep.id,"podcastId" to p.id,"feedUrl" to p.feedUrl,"originalFeedUrl" to p.originalFeedUrl.ifBlank {p.feedUrl},
             "podcastTitle" to p.title,"podcastAuthor" to p.author,"guid" to ep.guid,"title" to ep.title,"audioUrl" to audioUrl,"durationMs" to ep.durationMs.toString(),"fingerprint" to ep.mediaFingerprint)
         // Validate all locators before enqueue, even when the outgoing action is a tombstone.
