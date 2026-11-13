@@ -50,8 +50,24 @@ class LibraryListingTest {
         assertEquals(listOf("offline"), libraryListing(podcasts, episodes, "downloads", null, null).visible.map { it.id })
         assertEquals(listOf("half", "played"), libraryListing(podcasts, episodes, "progress", null, null).visible.map { it.id })
         assertEquals("new", libraryListing(podcasts, episodes, "all", null, "new").resume?.id)
-        // A finished current episode does not replace the resume candidate.
-        assertEquals("played", libraryListing(podcasts, episodes, "all", null, "done").resume?.id)
+    }
+
+    @Test fun `continue listening shows the episode loaded in the player, even when it is finished (#146)`() {
+        // The mini-player shows the loaded episode; the card must never show a different one.
+        assertEquals("done", libraryListing(podcasts, episodes, "all", null, "done").resume?.id)
+        // Also for an episode outside the Library's collection (an unfollowed show, never played here).
+        assertEquals("stranger", libraryListing(podcasts, episodes, "all", null, "stranger").resume?.id)
+        // A stale player id that no longer matches a stored episode falls back to the last played one.
+        assertEquals("played", libraryListing(podcasts, episodes, "all", null, "removed").resume?.id)
+    }
+
+    @Test fun `feed problems count followed shows on the Library and only the open show on its page (#146)`() {
+        val failing = listOf(followed.copy(error = "Couldn't reach the feed."), other.copy(error = "Old error"), channel)
+        // An unfollowed show is never refreshed, so its old error must not keep the notice up.
+        assertEquals(listOf("p1"), libraryListing(failing, episodes, "all", null, null).feedProblems.map { it.id })
+        assertEquals(listOf("p2"), libraryListing(failing, episodes, "all", "p2", null).feedProblems.map { it.id })
+        assertEquals(emptyList<String>(), libraryListing(failing, episodes, "all", "yt", null).feedProblems.map { it.id })
+        assertEquals(emptyList<String>(), libraryListing(podcasts, episodes, "all", null, null).feedProblems.map { it.id })
     }
 
     @Test fun `show page lists only that show and keeps source order for video channels`() {
