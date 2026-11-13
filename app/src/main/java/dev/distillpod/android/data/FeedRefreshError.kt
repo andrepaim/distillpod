@@ -19,5 +19,12 @@ fun feedRefreshError(error: Throwable): String = when (error) {
     }
     is SAXException -> "The feed couldn't be read. It may not be a valid podcast feed."
     is IOException -> "Couldn't reach the feed. Check your connection and try again."
-    else -> "Refresh failed. Saved episodes are still available."
+    else -> FEED_REFRESH_FAILED
 }
+
+private const val FEED_REFRESH_FAILED = "The feed couldn't be refreshed."
+/** Stored by earlier versions; its second sentence repeats the Library notice. */
+private const val LEGACY_FEED_REFRESH_FAILED = "Refresh failed. Saved episodes are still available."
+
+/** The stored reason as shown to the user. */
+fun feedErrorText(stored: String): String = if (stored == LEGACY_FEED_REFRESH_FAILED) FEED_REFRESH_FAILED else stored

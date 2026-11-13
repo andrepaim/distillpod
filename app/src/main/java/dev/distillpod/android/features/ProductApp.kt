@@ -176,7 +176,7 @@ private val NOT_CURRENT = PlaybackState()
 @Composable private fun LibraryPage(vm: AppViewModel, podcasts: List<PodcastEntity>, transcripts: List<TranscriptEntity>, captures: List<DistillationEntity>, player: PlaybackState, podcastId: String?) {
     // Filtering 3,000+ episodes belongs to library changes, not to each live position tick (#141).
     val routed by vm.library.collectAsStateWithLifecycle()
-    val busy by vm.busy.collectAsStateWithLifecycle()
+    val refreshing by remember(vm) { vm.feedRefreshing() }.collectAsStateWithLifecycle(false)
     val deletionBlocks by vm.audioDeletionBlocks.collectAsStateWithLifecycle()
     val actions = remember(vm) { vm.episodeActions() }
     val fallback = remember(podcastId) { lazy { vm.currentLibraryListing(podcastId) } }
@@ -207,7 +207,8 @@ private val NOT_CURRENT = PlaybackState()
             ResumeListeningCard(resume, podcasts.firstOrNull { it.id == resume.podcastId },
                 listeningPosition(resume, player), listeningDuration(resume, player),
                 current && player.playing, { if (current) vm.open("player") else vm.open("episode:${resume.id}") },
-                { if (current) vm.toggle() else vm.play(resume.id) })
+                // A finished episode restarts from the beginning; toggling an ended player would not.
+                { if (current && !resume.completed) vm.toggle() else vm.play(resume.id) })
         }
         if (podcastId == null && subscribed.isNotEmpty()) item(key = "shows") {
             SectionHeading("Your shows", "${subscribed.size} followed", action = "See all", onAction = { vm.open("shows") })
@@ -227,7 +228,7 @@ private val NOT_CURRENT = PlaybackState()
             }
         }
         if (listing.feedProblems.isNotEmpty()) item(key = "feed-problems") {
-            FeedProblems(listing.feedProblems, podcastId != null, "refresh" in busy, { vm.refresh(it) }, { vm.open("podcast:$it") }, vm::unsubscribe)
+            FeedProblems(listing.feedProblems, podcastId != null, refreshing, { vm.refresh(it) }, { vm.open("podcast:$it") }, vm::unsubscribe)
         }
         if (listing.episodeCount > 0) item(key = "filters") {
             SectionHeading(when (filter) { "progress" -> "In progress"; "downloads" -> "Downloaded episodes"; else -> "Latest episodes" }, "${visible.size} available")

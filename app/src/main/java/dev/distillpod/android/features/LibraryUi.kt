@@ -25,7 +25,10 @@ import androidx.compose.ui.unit.dp
 import dev.distillpod.android.data.EpisodeEntity
 import dev.distillpod.android.data.PodcastEntity
 import dev.distillpod.android.data.ShowSummary
+import dev.distillpod.android.data.feedErrorText
 import dev.distillpod.android.playback.PlaybackState
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import java.time.ZoneId
 import java.util.Locale
 
@@ -45,6 +48,9 @@ internal fun AppViewModel.episodeActions(openPlayer: Boolean = false) = EpisodeA
     open = { open("episode:$it") }, play = { play(it); if (openPlayer) open("player") }, toggle = ::toggle,
     enqueue = ::enqueue, markPlayed = ::markCompleted, download = ::download, pauseDownload = ::pauseDownload,
     deleteDownload = ::deleteDownload)
+
+/** Whether a feed refresh runs, without recomposing the Library for every other busy action. */
+internal fun AppViewModel.feedRefreshing() = busy.map { "refresh" in it }.distinctUntilChanged()
 
 /** "Distill last 60 seconds" needs some audio before the current position; at 0:00 there is none. */
 internal fun canCaptureMoment(player: PlaybackState): Boolean = player.episodeId != null && player.positionMs >= 1_000
@@ -149,6 +155,7 @@ private val ACTIVE_DOWNLOAD = listOf("queued", "downloading")
  * Followed shows whose last refresh failed, each with its reason and a way out (#146). On a show page,
  * only that show's own error appears.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable internal fun FeedProblems(problems: List<PodcastEntity>, showPage: Boolean, refreshing: Boolean, onRetry: (String) -> Unit,
     onOpen: (String) -> Unit, onUnsubscribe: (String) -> Unit, now: Long = System.currentTimeMillis()) {
     if (problems.isEmpty()) return
@@ -180,10 +187,10 @@ private val ACTIVE_DOWNLOAD = listOf("queued", "downloading")
             if (showPage || problems.size == 1 || expanded) problems.forEach { show ->
                 Column(Modifier.padding(start = 30.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     if (!showPage) Text(show.title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    show.error?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                    show.error?.let { Text(feedErrorText(it), style = MaterialTheme.typography.bodySmall) }
                     if (show.refreshedAt > 0) Text("Last updated ${episodeDate(show.refreshedAt, now)}",
                         style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Row(Modifier.offset(x = (-12).dp)) {
+                    FlowRow(Modifier.offset(x = (-12).dp)) {
                         TextButton(onClick = { onRetry(show.id) }, enabled = !refreshing,
                             modifier = Modifier.semantics { contentDescription = "Retry ${show.title}" }) { Text("Retry") }
                         if (!showPage) {
@@ -205,7 +212,7 @@ private val ACTIVE_DOWNLOAD = listOf("queued", "downloading")
 @Composable internal fun EpisodeDetail(ep: EpisodeEntity, podcast: PodcastEntity?, metadata: EpisodeMetadataText, resumeAt: Long,
     actions: EpisodeActions, onOpenShow: (String) -> Unit, onRetryDetails: () -> Unit, modifier: Modifier = Modifier,
     tools: @Composable () -> Unit) {
-    Column(modifier.fillMaxSize().padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    Column(Modifier.fillMaxSize().then(modifier).padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
             PodcastCover(ep.imageUrl ?: podcast?.imageUrl, Modifier.size(96.dp))
             Column(Modifier.weight(1f)) { EpisodeShowLink(podcast, onOpenShow); Text(metadata.date, style = MaterialTheme.typography.bodySmall) }

@@ -34,7 +34,10 @@ class FeedRefreshErrorTest {
         assertEquals("The feed server answered HTTP 429.", feedRefreshError(FeedHttpException(429)))
         assertEquals("The feed couldn't be read. It may not be a valid podcast feed.", feedRefreshError(SAXException("bad xml")))
         // Raw exception text can contain URLs or provider details, so unknown failures stay generic.
-        assertEquals("Refresh failed. Saved episodes are still available.", feedRefreshError(IllegalStateException("https://private.example.test/token")))
+        assertEquals("The feed couldn't be refreshed.", feedRefreshError(IllegalStateException("https://private.example.test/token")))
+        // The generic text stored by earlier versions repeats the notice's own reassurance.
+        assertEquals("The feed couldn't be refreshed.", feedErrorText("Refresh failed. Saved episodes are still available."))
+        assertEquals("The feed refused access (HTTP 403).", feedErrorText("The feed refused access (HTTP 403)."))
     }
 
     @Test fun `refresh stores the reason and a later success clears it`() = runBlocking {

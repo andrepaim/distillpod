@@ -88,7 +88,7 @@ class ListeningDesignDeviceTest {
             // #146: the card follows the mini-player's episode even when that episode is marked played,
             // instead of falling back to another in-progress episode.
             dao.markCompleted(ids[0], true)
-            compose.waitUntil(5000) { vm.episodes.value.firstOrNull { it.id == ids[0] }?.completed == true }
+            compose.waitUntil(5000) { vm.library.value?.resume?.let { it.id == ids[0] && it.completed } == true }
             compose.onNode(hasTestTag("resume-card") and hasText(titles[0])).assertIsDisplayed()
             dao.markCompleted(ids[0], false)
             compose.waitUntil(5000) { vm.episodes.value.firstOrNull { it.id == ids[0] }?.completed == false }
