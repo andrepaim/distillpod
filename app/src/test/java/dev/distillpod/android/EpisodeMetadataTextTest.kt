@@ -18,7 +18,9 @@ class EpisodeMetadataTextTest {
 
     @Test fun `dates show the local day and add the year outside the current year`() {
         assertEquals("10 Nov", episodeDate(Instant.parse("2026-11-10T23:52:20Z").toEpochMilli(), now, brazil, Locale.ENGLISH))
-        assertEquals("03 Feb 2019", episodeDate(Instant.parse("2019-02-03T22:17:34Z").toEpochMilli(), now, brazil, Locale.ENGLISH))
+        // One format across show cards, episode rows and the episode page (#146): no leading zero.
+        assertEquals("3 Nov", episodeDate(Instant.parse("2026-11-03T12:00:00Z").toEpochMilli(), now, brazil, Locale.ENGLISH))
+        assertEquals("3 Feb 2019", episodeDate(Instant.parse("2019-02-03T22:17:34Z").toEpochMilli(), now, brazil, Locale.ENGLISH))
         // A date-only source stored at 12:00 UTC keeps its calendar day in UTC-3.
         assertEquals("10 Nov", episodeDate(Instant.parse("2026-11-10T12:00:00Z").toEpochMilli(), now, brazil, Locale.ENGLISH))
         assertEquals("", episodeDate(0, now, brazil, Locale.ENGLISH))
