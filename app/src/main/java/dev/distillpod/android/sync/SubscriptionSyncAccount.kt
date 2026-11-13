@@ -51,6 +51,7 @@ class SubscriptionSyncAccount(private val graph:AppGraph) {
     },if(contentConfigured)artifacts else null) }
     // Content-free report, once per record kind and process: rules drift is visible without the record.
     private val reportedRejections=java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    private val compactor by lazy { SyncHistoryCompactor(graph.db,cloud,SyncCompactionPolicy(context.resources.getBoolean(R.bool.sync_compaction_enabled))) }
     private val coordinator by lazy { SubscriptionSyncCoordinator(graph.db,cloud) { kind,error -> if(reportedRejections.add(kind))graph.diagnostics.failure("sync",error) } }
     private val scheduler by lazy {
         SubscriptionSyncScheduler(graph.scope,failed={ graph.diagnostics.failure("sync",it) }) { user ->
@@ -173,7 +174,10 @@ class SubscriptionSyncAccount(private val graph:AppGraph) {
             graph.db.sync().binding()?.let {graph.db.sync().putBinding(it.copy(status="error"))}
             throw error
         }
-        return coordinator.run()
+        val completed=coordinator.run()
+        // Optional upkeep after a complete run; a failure never changes the sync outcome.
+        if(completed)try { compactor.run() } catch(cancelled:CancellationException) { throw cancelled } catch(error:Exception) { graph.diagnostics.failure("sync",error) }
+        return completed
     }
 }
 class SubscriptionSyncWorker(context:Context,parameters:WorkerParameters):CoroutineWorker(context,parameters) {
