@@ -36,6 +36,7 @@ internal fun widgetAction(action: String?, hasItem: Boolean, positionMs: Long): 
     else -> null
 }
 
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 internal fun captureResultMessage(resultCode: Int): String = when (resultCode) {
     SessionResult.RESULT_SUCCESS -> "Moment saved"
     SessionError.INFO_CANCELLED -> "Already saving a moment"
