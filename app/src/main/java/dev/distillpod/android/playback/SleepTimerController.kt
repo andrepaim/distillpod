@@ -64,6 +64,7 @@ internal class PlayerSleepTimerPlayback(private val player: Player, private val 
  * play/pause boundary checkpoint persists progress. [publish] receives anchored presentation state
  * on changes only; [onExpired] reports whether an end-of-episode timer finished its item.
  */
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 internal class SleepTimerController(
     private val playback: SleepTimerPlayback,
     private val scope: CoroutineScope,
