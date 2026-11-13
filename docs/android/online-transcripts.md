@@ -31,6 +31,16 @@ Search titles nominate candidates; they never prove identity. A result must matc
 
 Known episode and provider durations must agree within two seconds. Results need finite ordered segment starts, positive bounded ranges, nonempty text and a final segment near the declared end. Plain text, zero-timed passages, previews, malformed data, oversized data and materially different durations fall back to local transcription. These checks cannot prove perfect timing for dynamically inserted ads; the UI makes that limitation explicit.
 
+### Duration reference
+
+The episode's stored duration is the reference for that two-second check and for publisher transcript bounds. Its precedence on a feed refresh (#152):
+
+- An unchanged enclosure that has been played on this device keeps the stored value. Each playback checkpoint overwrites it with the player's measured duration when the player knows it, so it describes the audio that actually plays rather than the feed's declaration, which differs for dynamically inserted ads.
+- A changed enclosure takes its new declaration, or becomes unknown (zero) when the feed declares none, because a measurement of the earlier audio does not describe its replacement. Its next playback measures it again. Replacement audio served at the same URL is not detectable; the next playback measures it.
+- Otherwise the feed's declaration applies, and the last known value is kept when the feed omits it.
+
+Consequently, after an episode has been played, a provider transcript must match the measured length, not the declared one, and publisher segments are bounded by the measured length. Never-played episodes behave as before. A played episode whose player never reported a duration keeps its last declaration until a playback measures it. No schema or backup change is involved; an imported backup carries the stored value and last-played time unchanged. Local Whisper coverage uses each transcript revision's own decoded duration and is unaffected.
+
 Bounds: one page of at most 20 candidates, at most three detail reads, a 15-second lookup deadline and 12-second per-call timeout. Responses are bounded to 2 MB, cached segment JSON to 1 million characters, with at most 30,000 passages and 24 hours of audio. Redirects are not followed. Requests participate in coroutine cancellation, including cancellation of the underlying HTTP call.
 
 A missing result is cached for 24 hours. Service/parse/transport failures back off for 15 minutes; HTTP 429 honors numeric `Retry-After` bounded to one minute–24 hours. The cache is keyed to episode title and audio URL, so changed identity permits a new attempt. No service error prevents the Whisper fallback. Network policy is checked before lookup; downloaded audio can still transcribe locally offline or while service requests are disallowed.
