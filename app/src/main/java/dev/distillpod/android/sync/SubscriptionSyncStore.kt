@@ -70,6 +70,16 @@ class SubscriptionSyncStore(private val db: AppDatabase, private val isolatedDem
         } else projectSubscription(db,CloudSubscription(key,remote.version,decode(remote.payload),remote.deleted,remote.sequence))
         db.sync().putBinding(binding.copy(status=if(binding.enabled)"pending" else "paused"))
     }
+    /** A user retry, for example after an app update; another refusal returns them to rejected. */
+    suspend fun retryRejected() = changeRejected { uid,generation -> db.sync().retryRejected(uid,generation) }
+    /** Stops sending refused changes. The local library already holds them and is not changed. */
+    suspend fun discardRejected() = changeRejected { uid,generation -> db.sync().discardRejected(uid,generation) }
+    private suspend fun changeRejected(change:suspend (String,String)->Unit) = db.withTransaction {
+        check(allowed()) { "Production sync changes are disabled during instrumentation." }
+        val binding=db.sync().binding() ?: error("Connect your sync account first.")
+        change(binding.uid,binding.generation)
+        db.sync().putBinding(binding.copy(status=if(binding.enabled)"pending" else "paused"))
+    }
     suspend fun pendingCount(): Int = db.sync().count()
     suspend fun activeOwner(): SyncOwner? = db.sync().binding()?.takeIf { it.enabled }?.let { SyncOwner(it.uid,it.generation) }
     companion object {

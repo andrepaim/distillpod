@@ -47,6 +47,17 @@ class SubscriptionSyncFailureTest {
             assertEquals(code.name,expected,syncFailureStatus(failure(code)))
         }
     }
+    @Test fun onlyStorageAuthorizationDenialRejectsUpload() {
+        assertTrue(storageUploadRejected(com.google.firebase.storage.StorageException.fromExceptionAndHttpCode(null,403)!!))
+        for(code in listOf(401,404,408,410,429,500,503))
+            assertFalse(code.toString(),storageUploadRejected(com.google.firebase.storage.StorageException.fromExceptionAndHttpCode(null,code)!!))
+        assertFalse(storageUploadRejected(com.google.firebase.storage.StorageException.fromException(java.io.IOException("synthetic"))!!))
+    }
+    @Test fun rejectionDiagnosticsAreContentFree() {
+        val refused=SyncOperationRejected(FirebaseFirestoreException("SECRET record title",FirebaseFirestoreException.Code.PERMISSION_DENIED))
+        assertEquals("rejected",dev.distillpod.android.diagnostics.Diagnostics.reason(refused))
+        assertFalse(refused.message!!.contains("SECRET"))
+    }
     @Test fun unavailableIsOffline()=checkFailure(failure(FirebaseFirestoreException.Code.UNAVAILABLE),"offline")
     @Test fun deadlineIsOffline()=checkFailure(failure(FirebaseFirestoreException.Code.DEADLINE_EXCEEDED),"offline")
     @Test fun permissionDeniedRemainsError()=checkFailure(failure(FirebaseFirestoreException.Code.PERMISSION_DENIED),"error")

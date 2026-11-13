@@ -32,6 +32,7 @@ class SubscriptionSyncAccount(private val graph:AppGraph) {
     val state=mutable.asStateFlow()
     val pending=graph.db.sync().observeCount()
     val conflicts=graph.db.sync().observeConflicts()
+    val rejected=graph.db.sync().observeRejectedCount()
     private val app by lazy {
         FirebaseApp.getApps(context).firstOrNull { it.name=="distillpod-sync" } ?: FirebaseApp.initializeApp(context,
             FirebaseOptions.Builder().setApplicationId(context.getString(R.string.sync_app_id)).setApiKey(context.getString(R.string.sync_api_key))
@@ -48,7 +49,8 @@ class SubscriptionSyncAccount(private val graph:AppGraph) {
     private val cloud by lazy { FirebaseSubscriptionCloud(auth,FirebaseFirestore.getInstance(app).apply {
         firestoreSettings=FirebaseFirestoreSettings.Builder().setLocalCacheSettings(MemoryCacheSettings.newBuilder().build()).build()
     },if(contentConfigured)artifacts else null) }
-    private val coordinator by lazy { SubscriptionSyncCoordinator(graph.db,cloud) }
+    // Content-free report: rules drift should be visible without sending the refused record.
+    private val coordinator by lazy { SubscriptionSyncCoordinator(graph.db,cloud) { graph.diagnostics.failure("sync",it) } }
     private var scheduled:Job?=null
     private val connecting=Mutex()
     init {
@@ -131,6 +133,8 @@ class SubscriptionSyncAccount(private val graph:AppGraph) {
         if(graph.db.sync().view("__extended_scope")!=null)graph.collectionSync.queue(graph.db.library().queue().map {it.episodeId})
         kick()
     }
+    suspend fun retryRejected() { store.retryRejected();kick() }
+    suspend fun discardRejected() { store.discardRejected();kick() }
     suspend fun pause() { store.pause();WorkManager.getInstance(context).cancelUniqueWork("subscription-sync") }
     suspend fun resume() {
         val binding=graph.db.sync().binding() ?: return

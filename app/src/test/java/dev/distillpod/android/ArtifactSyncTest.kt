@@ -19,8 +19,9 @@ import java.util.UUID
 @Config(sdk=[34])
 class ArtifactSyncTest {
     class Objects:ContentObjects {
-        val rows=mutableMapOf<String,ContentArtifact>();var failAfterUpload=false
+        val rows=mutableMapOf<String,ContentArtifact>();var failAfterUpload=false;var reject=false
         override suspend fun put(owner:SyncOwner,artifact:ContentArtifact) {
+            if(reject)throw SyncOperationRejected(com.google.firebase.storage.StorageException.fromExceptionAndHttpCode(null,403)!!)
             rows["${owner.uid}/${owner.generation}/${artifact.hash}"]=artifact
             if(failAfterUpload){failAfterUpload=false;throw java.io.IOException("Connection interrupted after object upload")}
         }
@@ -75,5 +76,17 @@ class ArtifactSyncTest {
             assertEquals("Finished content",restored.library().segments("e","r1").single().text)
             assertNull(restored.library().episode("e")!!.localFile)
         } finally {restored.close();dir.deleteRecursively()}
+    }
+    @Test fun `rejected content upload is retained without leaving sync pending`()=fixture {db,artifacts,objects,cloud ->
+        artifacts.capture();objects.reject=true
+        assertFalse(SubscriptionSyncCoordinator(db,transport(cloud,artifacts)).run())
+        assertEquals("rejected",db.sync().operations("alice","g1").single().state)
+        assertEquals("rejected",db.sync().binding()!!.status)
+        assertEquals("prepared",db.sync().artifacts("alice","g1").single().state)
+        assertTrue(objects.rows.isEmpty());assertTrue(cloud.rows.isEmpty())
+        artifacts.capture();assertEquals(1,db.sync().count())
+        objects.reject=false;SubscriptionSyncStore(db).retryRejected()
+        assertTrue(SubscriptionSyncCoordinator(db,transport(cloud,artifacts)).run())
+        assertEquals(1,cloud.rows.size);assertEquals(1,objects.rows.size)
     }
 }

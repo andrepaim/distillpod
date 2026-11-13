@@ -54,7 +54,11 @@ class FirebaseContentObjects(private val auth:FirebaseAuth,private val storage:F
             if(error.httpResultCode==410)sessions?.clear(owner,artifact.hash)
             else {
                 val existing=runCatching {ref.metadata.await()}.getOrNull()
-                if(existing?.getCustomMetadata("hash")!=artifact.hash || existing.getCustomMetadata("expandedBytes")!=artifact.expandedBytes.toString())throw error
+                if(existing?.getCustomMetadata("hash")!=artifact.hash || existing.getCustomMetadata("expandedBytes")!=artifact.expandedBytes.toString()) {
+                    // The read above was allowed, so a refused create is specific to this object; a retry starts a fresh session.
+                    if(storageUploadRejected(error)){sessions?.clear(owner,artifact.hash);throw SyncOperationRejected(error)}
+                    throw error
+                }
             }
             if(error.httpResultCode==410)throw error
         }

@@ -13,6 +13,8 @@ class SubscriptionWorkPolicyTest {
     @Test fun `unfinished bootstrap continues without local uploads`() {assertTrue(shouldRetrySubscriptionWork(false,binding.copy(status="pending"),true,false))}
     @Test fun `unresolved conflicts wait for user choice`() {assertFalse(shouldRetrySubscriptionWork(false,binding.copy(status="conflict"),true,false))}
     @Test fun `conflicts do not block unrelated pending changes`() {assertTrue(shouldRetrySubscriptionWork(false,binding.copy(status="conflict"),true,true))}
+    @Test fun `rejected changes wait for user choice`() {assertFalse(shouldRetrySubscriptionWork(false,binding.copy(status="rejected"),true,false))}
+    @Test fun `rejected changes do not block unrelated pending changes`() {assertTrue(shouldRetrySubscriptionWork(false,binding.copy(status="rejected"),true,true))}
     @Test fun `protocol upgrade waits for user action`() { assertFalse(shouldRetrySubscriptionWork(false,binding.copy(status="upgrade_required"),true,true)) }
     @Test fun `completed work needs no retry`() {assertFalse(shouldRetrySubscriptionWork(true,binding,true,false))}
 }

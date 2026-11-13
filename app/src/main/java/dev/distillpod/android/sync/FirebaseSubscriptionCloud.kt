@@ -65,10 +65,14 @@ class FirebaseSubscriptionCloud(private val auth:FirebaseAuth,private val firest
         val signature=JSONObject().put("key",operation.entityKey).put("baseVersion",operation.baseVersion)
             .put("payload",JSONObject(payload.toSortedMap())).put("deleted",operation.deleted).put("generation",operation.generation).toString()
         var observed:Long?=null
+        // Whether this attempt's transaction reached its writes; a read denial is an account problem.
+        var staged=false
         repeat(5) { attempt ->
             account(operation.uid)
+            staged=false
             try {
                 return firestore.runTransaction { tx ->
+                    staged=false
                     val entity=root.collection("entities").document(operation.entityKey)
                     val receipt=root.collection("receipts").document(operation.operationId)
                     val h=tx.get(root);val old=tx.get(entity);val previous=tx.get(receipt)
@@ -81,6 +85,7 @@ class FirebaseSubscriptionCloud(private val auth:FirebaseAuth,private val firest
                     }
                     if((old.getLong("version")?:0)!=operation.baseVersion)throw SubscriptionConflict(if(old.exists())parse(old.id,old) else null)
                     val sequence=observed!!+1
+                    staged=true
                     val data=mapOf("version" to operation.baseVersion+1,"payload" to if(operation.deleted)emptyMap() else payload,
                         "deleted" to operation.deleted,"generation" to operation.generation,"sequence" to sequence,"operationId" to operation.operationId)
                     tx.update(root,"sequence",sequence);tx.set(entity,data)
@@ -92,7 +97,9 @@ class FirebaseSubscriptionCloud(private val auth:FirebaseAuth,private val firest
                 generateSequence<Throwable>(error){it.cause}.filterIsInstance<SubscriptionConflict>().firstOrNull()?.let { throw it }
                 if(error !is FirebaseFirestoreException || error.code!=FirebaseFirestoreException.Code.PERMISSION_DENIED || observed==null || attempt==4)throw error
                 val latest=root.get(Source.SERVER).await()
-                if(latest.getBoolean("active")!=true || latest.getString("generation")!=operation.generation || (latest.getLong("sequence")?:0)<=observed!!)throw error
+                if(latest.getBoolean("active")!=true || latest.getString("generation")!=operation.generation)throw error
+                // No competing commit advanced the head: the rules refused this operation's own writes.
+                if((latest.getLong("sequence")?:0)<=observed!!)throw if(staged)SyncOperationRejected(error) else error
             }
         }
         error("Cloud transaction did not complete")

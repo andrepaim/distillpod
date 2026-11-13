@@ -8,7 +8,7 @@ Implemented on `main`. This is an incremental implementation of the [complete sy
 2. Choose Connect Google & sync library. Review existing feeds and select only public sources whose metadata, listening progress and saved moments you want stored in the cloud. Leave private access links unselected. New directory-result follows are recognized as public sources.
 3. Continue with Google and choose the account for this library. Existing cloud subscriptions are merged/restored; ambiguous changes remain explicit conflicts.
 4. Sign into the same account on another installation. An empty local library can continue through the review with no feeds selected and restore the account's subscriptions, progress, completion and saved moments.
-5. Follow/unfollow offline. Changes save in Room and retry when connected. Sync status shows pending, active, paused, offline/error or conflict states. Pause/sign-out retains the local library and pending changes.
+5. Follow/unfollow offline. Changes save in Room and retry when connected. Sync status shows pending, active, paused, offline/error, conflict or rejected states. A change the cloud deterministically refuses (for example a rules or Storage authorization denial of its own write, not an account, offline or concurrent-commit failure) is kept on the phone as rejected, is no longer sent automatically and no longer blocks later changes; Settings shows only a count with Retry and Discard. Discard stops sending those changes without altering the local library, and a newer local edit of the same record replaces a rejected one. Pause/sign-out retains the local library and pending changes.
 
 Use Add existing subscriptions to sync to approve other local feeds later. A public HTTP or HTTPS address is supported; password-bearing and query-bearing addresses stay local. Private tokens in paths cannot be inferred reliably, which is why existing/manual sources require review. Sharing a feed with a private access link may grant access to that source; select public feeds only.
 
@@ -37,7 +37,7 @@ The dedicated project is `distillpod-native-sync`, with a Standard/default Fires
 
 ## Local and CI acceptance
 
-JVM/Room tests cover durable changes, safe owner binding, public-feed review/provenance, coalescing unsent changes, lost acknowledgement, interruption, stale edits, conflict choices and independent local databases. Java 21/Node 22 run the isolated Firestore rules tests; Android remains on Java 17.
+JVM/Room tests cover durable changes, safe owner binding, public-feed review/provenance, coalescing unsent changes, lost acknowledgement, interruption, stale edits, conflict choices, rejected-change retry/discard and independent local databases. Java 21/Node 22 run the isolated Firestore rules tests; Android remains on Java 17.
 
 ```sh
 npm ci --prefix firebase --ignore-scripts --no-audit --no-fund

@@ -36,16 +36,20 @@ interface SyncDao {
     @Upsert suspend fun putBinding(value: SyncBindingEntity)
     @Query("SELECT * FROM sync_outbox WHERE uid=:uid AND generation=:generation ORDER BY rowid LIMIT 100") suspend fun operations(uid: String, generation: String): List<SyncOutboxEntity>
     @Query("SELECT * FROM sync_outbox WHERE uid=:uid AND generation=:generation AND entityKey=:key ORDER BY rowid") suspend fun forKey(uid:String,generation:String,key:String): List<SyncOutboxEntity>
-    @Query("SELECT * FROM sync_outbox WHERE uid=:uid AND generation=:generation AND state NOT IN ('conflict','upgrade_required') ORDER BY rowid LIMIT 1") suspend fun nextOperation(uid:String,generation:String): SyncOutboxEntity?
+    @Query("SELECT * FROM sync_outbox WHERE uid=:uid AND generation=:generation AND state NOT IN ('conflict','upgrade_required','rejected') ORDER BY rowid LIMIT 1") suspend fun nextOperation(uid:String,generation:String): SyncOutboxEntity?
     @Query("UPDATE sync_outbox SET state='queued' WHERE uid=:uid AND generation=:generation AND state='upgrade_required'") suspend fun resumeContextualOperations(uid: String, generation: String)
     @Query("SELECT * FROM sync_outbox WHERE state='conflict' ORDER BY rowid LIMIT 20") fun observeConflicts(): kotlinx.coroutines.flow.Flow<List<SyncOutboxEntity>>
+    @Query("SELECT * FROM sync_outbox WHERE uid=:uid AND generation=:generation AND state='rejected' ORDER BY rowid") suspend fun rejected(uid:String,generation:String): List<SyncOutboxEntity>
+    @Query("SELECT COUNT(*) FROM sync_outbox WHERE state='rejected'") fun observeRejectedCount(): kotlinx.coroutines.flow.Flow<Int>
+    @Query("UPDATE sync_outbox SET state='queued' WHERE uid=:uid AND generation=:generation AND state='rejected'") suspend fun retryRejected(uid:String,generation:String)
+    @Query("DELETE FROM sync_outbox WHERE uid=:uid AND generation=:generation AND state='rejected'") suspend fun discardRejected(uid:String,generation:String)
     @Query("SELECT COUNT(*) FROM sync_outbox") fun observeCount(): kotlinx.coroutines.flow.Flow<Int>
     @Query("SELECT COUNT(*) FROM sync_outbox") suspend fun count(): Int
     @Query("SELECT * FROM sync_outbox WHERE uid=:uid AND generation=:generation") fun observeOperations(uid:String,generation:String): kotlinx.coroutines.flow.Flow<List<SyncOutboxEntity>>
     @Query("SELECT * FROM sync_remote WHERE uid=:uid AND generation=:generation AND entityKey=:key") suspend fun remote(uid:String,generation:String,key:String): SyncRemoteEntity?
     @Query("SELECT * FROM sync_remote WHERE uid=:uid AND generation=:generation AND entityKey=:key") fun observeRemote(uid:String,generation:String,key:String):kotlinx.coroutines.flow.Flow<SyncRemoteEntity?>
     @Upsert suspend fun putRemote(value: SyncRemoteEntity)
-    @Query("DELETE FROM sync_outbox WHERE uid=:uid AND generation=:generation AND entityKey=:key AND state='queued'") suspend fun removeQueued(uid:String,generation:String,key:String)
+    @Query("DELETE FROM sync_outbox WHERE uid=:uid AND generation=:generation AND entityKey=:key AND state IN ('queued','rejected')") suspend fun removeQueued(uid:String,generation:String,key:String)
     @Query("UPDATE sync_outbox SET state=:state WHERE operationId=:id") suspend fun state(id:String,state:String)
     @Query("UPDATE sync_outbox SET baseVersion=:version WHERE uid=:uid AND generation=:generation AND entityKey=:key AND baseVersion=:oldVersion AND state='queued'") suspend fun advanceOwnBase(uid:String,generation:String,key:String,oldVersion:Long,version:Long)
 
