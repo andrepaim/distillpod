@@ -57,16 +57,16 @@ For headphones, enable **Next track → Ask about the podcast** under **Playback
 
 ## Keep a moment
 
-While listening, select Distill last 60 seconds. DistillPod records that original source window immediately. Open Saved to revisit the excerpt and replay it. Source preparation or AI failure retains the capture for review and retry.
+While listening, select Distill last 60 seconds. DistillPod records that original source window immediately. Open Saved to revisit the excerpt and replay it. Each moment page leads with its episode and passage time, then **Replay**, **Share** and **Copy**; less frequent actions, including deletion, are under **More actions**. Source preparation or AI failure retains the capture for review and retry.
 
-With ChatGPT connected and the source transcript ready, DistillPod can generate a quote and concise insight for the saved moment. Source review may be required before generation. Choose **Explain this idea** to explore the excerpt further through an explanation, practical reflection and questions to investigate. Explanations use the transcript; they do not search the web.
+With ChatGPT connected and the source transcript ready, DistillPod can generate a quote and concise insight for the saved moment. Source review may be required before generation. Choose **Explain this idea** from the moment’s **More actions** menu to explore the excerpt further through an explanation, practical reflection and questions to investigate. Explanations use the transcript; they do not search the web.
 
 To capture from headphones, enable **Settings → Playback & headphones → Previous track → Save moment** (off by default). In the Soundcore app, assign your Liberty 4 NC gesture, such as triple tap, to **Previous track**, if available. While DistillPod handles playback, that button command saves the preceding minute without skipping. Other gestures or accessories sending the same button command will also distill. Turning the option off restores the usual previous-track action; single-earbud controls may need separate setup.
 
 A pen-scribble sound confirms a new saved moment, independently of later insight generation. Adjust **Moment saved sound** on the same settings page; it uses media volume. See [headphone setup, design and validation limits](android/headphone-distill.md). Actual Liberty 4 NC gesture and Bluetooth routing still require physical-device validation.
 
 The completed takeaway may have no quote when the source does not support a
-standalone quotation. **Improve this distill** keeps the current result while
+standalone quotation. **Improve this distill** (under **More actions**) keeps the current result while
 preparing a replacement; **Previous versions** can restore an earlier result.
 If more context is needed, use the offered context/transcription retry instead
 of repeatedly capturing the same instant. See [contextual distills](android/contextual-distills.md).
@@ -100,11 +100,11 @@ Developer checks are diagnostics for deliberate testing. They are not needed for
 
 ## Create a social post
 
-Open a prepared saved moment and tap **Create post**. Choose **Quote & discussion** for a well-spaced text post built around an exact quote, or **Infographic** for an illustrated explanation enriched with web research. The app chooses language, structure and visual treatment automatically and begins generation immediately through the connected ChatGPT account.
+Open a prepared saved moment, open **More actions** and tap **Create post**. Choose **Quote & discussion** for a well-spaced text post built around an exact quote, or **Infographic** for an illustrated explanation enriched with web research. The app chooses language, structure and visual treatment automatically and begins generation immediately through the connected ChatGPT account.
 
 The completed result offers **Share** and an optional **Change** instruction. The menu includes copying, direct discussion editing, undo, image saving and deletion as applicable. You can leave the screen during generation; failed or canceled changes preserve the last completed version. Finish publication in the receiving app, and copy the infographic description separately if the recipient does not retain it.
 
-Find results through **Saved → Your posts**, even after deleting the original moment. Posts and infographic assets are local and included in bounded library backups; library sync does not upload them. Infographics use AI-designed vector scenes rendered locally because the current account connection does not support the hosted image-generation tool. Reopening or sharing a completed result does not regenerate it.
+Find results through **Saved → Posts**, even after deleting the original moment. Posts and infographic assets are local and included in bounded library backups; library sync does not upload them. Infographics use AI-designed vector scenes rendered locally because the current account connection does not support the hosted image-generation tool. Reopening or sharing a completed result does not regenerate it.
 
 ## When something needs attention
 
