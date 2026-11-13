@@ -113,6 +113,7 @@ fun fileSize(bytes: Long): String = if (bytes >= 1_000_000_000) "%.1f GB".format
     }
     DistillTheme {
         BackupDocumentLaunchers(vm)
+        NotificationPromptHost(vm.notificationPrompt, snackbar) { vm.open("settings:notifications") }
         Scaffold(containerColor = ink, snackbarHost = { SnackbarHost(snackbar) }, topBar = {
             if (!videoFullscreen) TopAppBar(title = { Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold) },
                 navigationIcon = { if (stack.size > 1) IconButton(onClick = vm::back) { Icon(Icons.Default.ArrowBack, "Back") } },
@@ -319,9 +320,7 @@ private val NOT_CURRENT = PlaybackState()
                         Column(horizontalAlignment = Alignment.CenterHorizontally) { Icon(Icons.Default.Forward30, "Forward 30 seconds", Modifier.size(28.dp)); Text("30 s", style = MaterialTheme.typography.labelSmall) }
                     }
                 }
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(0.dp)) {
-                    listOf(1f, 1.25f, 1.5f, 2f).forEach { speed -> FilterChip(selected = player.speed == speed, onClick = { vm.speed(speed) }, label = { Text("${speed.toString().removeSuffix(".0")}×") }) }
-                }
+                PlayerEffects(vm, player.speed, podcast)
                 val sleepTimer by vm.sleepTimer.collectAsStateWithLifecycle()
                 SleepTimerControl(sleepTimer, onStart = vm::startSleepTimer, onEndOfEpisode = vm::sleepAtEndOfEpisode,
                     onExtend = vm::extendSleepTimer, onCancel = vm::cancelSleepTimer)
