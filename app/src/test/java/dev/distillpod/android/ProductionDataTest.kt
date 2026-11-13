@@ -6,6 +6,7 @@ import androidx.room.withTransaction
 import androidx.test.core.app.ApplicationProvider
 import dev.distillpod.android.data.*
 import dev.distillpod.core.episodeId
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.MockResponse
@@ -73,6 +74,28 @@ class ProductionDataTest {
             dao.insertQueue(listOf(QueueEntryEntity(first, 0)))
             assertTrue(runCatching { db.withTransaction { dao.clearQueue(); dao.insertQueue(listOf(QueueEntryEntity("missing", 0))) } }.isFailure)
             assertEquals(first, dao.queue().single().episodeId)
+        }
+    }
+    @Test fun `stopping a refresh-all run cancels it instead of continuing to the next feed`() = runBlocking {
+        database().useDatabase { db ->
+            val dao = db.library()
+            dao.putPodcast(PodcastEntity("first", "https://first.example.test/feed", "First"))
+            dao.putPodcast(PodcastEntity("second", "https://second.example.test/feed", "Second"))
+            val requests = java.util.concurrent.atomic.AtomicInteger()
+            lateinit var run: kotlinx.coroutines.Job
+            // The worker is stopped while the first feed is in flight, which aborts that call.
+            val http = OkHttpClient.Builder().addInterceptor {
+                requests.incrementAndGet(); run.cancel(); throw java.io.IOException("Canceled")
+            }.build()
+            var returnedNormally = false
+            run = launch(kotlinx.coroutines.Dispatchers.IO, start = kotlinx.coroutines.CoroutineStart.LAZY) {
+                PodcastRepository(db, http).refreshAll()
+                returnedNormally = true
+            }
+            run.start(); run.join()
+            assertTrue(run.isCancelled)
+            assertFalse("A stopped refresh must propagate its cancellation", returnedNormally)
+            assertEquals(1, requests.get())
         }
     }
     @Test fun `refresh preserves imported episode identifiers by feed scoped GUID`() = runBlocking {
