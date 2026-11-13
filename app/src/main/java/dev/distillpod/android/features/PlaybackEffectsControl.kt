@@ -35,6 +35,11 @@ internal data class PlaybackEffectsState(val speed: Float = 1f, val showTitle: S
     // One traversal group: speed and effects are read together and stay separate from neighbouring player controls.
     Column(Modifier.fillMaxWidth().semantics { isTraversalGroup = true }, verticalArrangement = Arrangement.spacedBy(4.dp)) {
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.Center) {
+            // Presets first: they keep the place the speed choices had before the finer steps (#183).
+            PlaybackSpeeds.presets.forEach { preset ->
+                FilterChip(selected = speed == preset, onClick = { onSpeed(preset) }, label = { Text(PlaybackSpeeds.label(preset)) },
+                    modifier = Modifier.align(Alignment.CenterVertically))
+            }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = { onSpeed(PlaybackSpeeds.slower(speed)) }, enabled = PlaybackSpeeds.canSlowDown(speed)) {
                     Icon(Icons.Default.Remove, "Slower")
@@ -44,10 +49,6 @@ internal data class PlaybackEffectsState(val speed: Float = 1f, val showTitle: S
                 IconButton(onClick = { onSpeed(PlaybackSpeeds.faster(speed)) }, enabled = PlaybackSpeeds.canSpeedUp(speed)) {
                     Icon(Icons.Default.Add, "Faster")
                 }
-            }
-            PlaybackSpeeds.presets.forEach { preset ->
-                FilterChip(selected = speed == preset, onClick = { onSpeed(preset) }, label = { Text(PlaybackSpeeds.label(preset)) },
-                    modifier = Modifier.align(Alignment.CenterVertically))
             }
         }
         state.showTitle?.let { show ->

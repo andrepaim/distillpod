@@ -1,6 +1,7 @@
 package dev.distillpod.android
 
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.foundation.layout.width
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import dev.distillpod.android.features.PlaybackEffectsControl
@@ -95,5 +96,23 @@ class PlaybackEffectsControlTest {
             }
         }
         compose.onAllNodes(isToggleable() and hasAnySibling(hasText("Skip marked ads"))).assertCountEquals(1)
+    }
+
+    /** On a small phone the quick presets stay where the speed choices were before; the stepper follows them. */
+    @Test fun presetsComeFirstOnANarrowPlayer() {
+        compose.setContent {
+            androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.width(androidx.compose.ui.unit.Dp(320f))) {
+                PlaybackEffectsControl(state.value, onSpeed = {}, onKeepForShow = {}, onSkipSilence = {}, onVolumeBoost = {})
+            }
+        }
+        val first = compose.onNodeWithText("1×").getUnclippedBoundsInRoot().top
+        listOf("1.25×", "1.5×", "2×").forEach {
+            assertEquals("$it is on the first line", first, compose.onNodeWithText(it).getUnclippedBoundsInRoot().top)
+        }
+        assertTrue("The stepper follows the presets",
+            compose.onNodeWithContentDescription("Slower").getUnclippedBoundsInRoot().top >= first)
+        assertTrue(compose.onNodeWithContentDescription("Slower").getUnclippedBoundsInRoot().top >
+            compose.onNodeWithText("2×").getUnclippedBoundsInRoot().top || compose.onNodeWithContentDescription("Slower")
+            .getUnclippedBoundsInRoot().left > compose.onNodeWithText("2×").getUnclippedBoundsInRoot().left)
     }
 }

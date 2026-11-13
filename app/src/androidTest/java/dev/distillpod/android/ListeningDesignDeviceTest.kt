@@ -228,7 +228,7 @@ class ListeningDesignDeviceTest {
 
     private suspend fun await(predicate: () -> Boolean) {
         // Name the waiting step and the player's state in a timeout, instead of an anonymous coroutine timeout.
-        val caller = Throwable().stackTrace.firstOrNull { it.className.startsWith(ListeningDesignDeviceTest::class.java.name) && it.methodName != "await" }
+        val caller = Throwable().stackTrace.firstOrNull { it.className.startsWith(ListeningDesignDeviceTest::class.java.name) && "await" !in it.className && it.methodName != "await" }
         try { withTimeout(15000) { while (!withContext(Dispatchers.Main) { predicate() }) delay(100) } }
         catch (timeout: TimeoutCancellationException) {
             throw AssertionError("Wait at ${caller?.fileName}:${caller?.lineNumber} timed out; " +
