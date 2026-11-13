@@ -53,7 +53,7 @@ internal fun LazyListScope.librarySearchResults(state: LibrarySearchState, query
         item(key = "library:${section.key}") {
             Text(section.title, Modifier.padding(top = 4.dp).semantics { heading() }, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
         }
-        items(visibleLibraryRows(section.rows, open), key = { "library:${section.key}:${rowKey(it)}" }) { row ->
+        items(visibleLibraryRows(section.rows, open), key = { libraryRowKey(section.key, rowKey(it)) }) { row ->
             when (row) {
                 is ShowMatch -> LibraryRow(row.title, row.author, row.imageUrl, "Open show") { onOpen("podcast:${row.id}") }
                 is EpisodeMatch -> LibraryRow(row.title, listOfNotNull(row.showTitle, episodeDate(row.publishedAt).ifBlank { null }).joinToString(" · "),
@@ -73,6 +73,12 @@ internal fun LazyListScope.librarySearchResults(state: LibrarySearchState, query
         }
     }
 }
+
+/** The lazy-list key of a library result row; device tests scroll to rows by these keys (#197). */
+internal fun libraryRowKey(section: String, id: String) = "library:$section:$id"
+
+/** The lazy-list key of the prompt that sends the words to the podcast directory. */
+internal const val DIRECTORY_PROMPT_KEY = "directory-prompt"
 
 private fun rowKey(row: Any) = when (row) {
     is ShowMatch -> row.id; is EpisodeMatch -> row.id; is PassageMatch -> row.episodeId; is MomentMatch -> row.id; else -> row.hashCode().toString()

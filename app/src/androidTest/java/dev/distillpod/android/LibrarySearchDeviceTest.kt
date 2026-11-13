@@ -45,22 +45,28 @@ class LibrarySearchDeviceTest {
             compose.waitUntil(10000) { compose.onAllNodesWithText("Results from your library stay on this phone.").fetchSemanticsNodes().isNotEmpty() }
             // Typing searches only the phone; the directory is never queried without an explicit request.
             assertNull(vm.search.value.submittedQuery)
+            // Scroll to rows by key (#197). performScrollToNode scrolls by deltas, which schedule
+            // LazyColumn prefetch; work deferred to a later frame escapes Compose's idle sync, and its
+            // main-thread composition can race this thread's semantics reads. Jumping to an index
+            // schedules no prefetch (foundation 1.7.x).
             val results = compose.onNodeWithTag("Podcast search results")
-            results.performScrollToNode(hasText("Winds named $word")); compose.onNodeWithText("Winds named $word").assertIsDisplayed()
+            val episode = libraryRowKey("episodes", id); val passage = libraryRowKey("passages", "$id-2"); val moment = libraryRowKey("moments", "$id-moment")
+            results.performScrollToKey(episode); compose.onNodeWithText("Winds named $word").assertIsDisplayed()
             screenshot("results")
-            results.performScrollToNode(hasText("10:10 · 1 match"))
-            compose.onNodeWithText("10:10 · 1 match", substring = true).assertIsDisplayed()
-            results.performScrollToNode(hasText("A $word is a warm wind", substring = true))
-            results.performScrollToNode(hasText("Search the podcast directory", substring = true))
+            results.performScrollToKey(passage)
+            compose.onNodeWithText("10:10 · 1 match").assertIsDisplayed()
+            results.performScrollToKey(moment)
+            compose.onNodeWithText("A $word is a warm wind", substring = true).assertIsDisplayed()
+            results.performScrollToKey(DIRECTORY_PROMPT_KEY)
             compose.onNodeWithText("Search the podcast directory", substring = true).assertIsDisplayed()
-            results.performScrollToNode(hasText("10:10 · 1 match", substring = true))
+            results.performScrollToKey(passage)
             compose.onNodeWithText("10:10 · 1 match", substring = true).performClick()
             compose.waitUntil(10000) { compose.onAllNodesWithTag("transcript-focus").fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithTag("transcript-focus").assertIsDisplayed()
             compose.onNodeWithText("Then a $word wind crossed the valley.").assertIsDisplayed()
             screenshot("passage")
             withContext(Dispatchers.Main) { vm.back() }
-            results.performScrollToNode(hasText("A $word is a warm wind", substring = true))
+            results.performScrollToKey(moment)
             compose.onNodeWithText("A $word is a warm wind", substring = true).performClick()
             compose.waitUntil(5000) { vm.backStack.value.last() == "capture:$id-moment" }
             withContext(Dispatchers.Main) { vm.back() }
