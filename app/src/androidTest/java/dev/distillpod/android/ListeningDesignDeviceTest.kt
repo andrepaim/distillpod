@@ -141,9 +141,8 @@ class ListeningDesignDeviceTest {
             screenshot("player")
             compose.onNodeWithContentDescription("Open queue").performClick()
             compose.onNodeWithText("Playback order").assertIsDisplayed()
-            // A small emulator may not have composed the last lazy-list row yet.
-            compose.onNode(hasScrollAction()).performScrollToNode(hasContentDescription("Move ${titles[2]} up"))
-            compose.onNodeWithContentDescription("Move ${titles[2]} up").performClick()
+            // The helper scrolls first: a small emulator may not have composed the last row yet.
+            compose.selectQueueMenuAction(titles[2], "Move up", disabled = listOf("Move down"))
             await { (0 until c.mediaItemCount).map { c.getMediaItemAt(it).mediaId } == listOf(ids[0], ids[2], ids[1]) }
             compose.waitUntil(5000) { vm.player.value.queue == listOf(ids[0], ids[2], ids[1]) }
             assertEquals(65000L, withContext(Dispatchers.Main) { c.currentPosition })

@@ -43,6 +43,8 @@ class AutoLibraryCallback(
     private val preparePlaybackItems: suspend (List<MediaItem>) -> List<MediaItem> = { it },
     /** Lets an external browser read the artwork URIs it is handed; the provider is not exported. */
     private val allowArtwork: (String) -> Unit = {},
+    /** The service-owned sleep timer; its commands are offered to this application only. */
+    private val onSleepTimerCommand: ((SessionCommand,Bundle)->SessionResult)? = null,
 ): MediaLibrarySession.Callback {
     override fun onPlayerCommandRequest(session: MediaSession, controller: MediaSession.ControllerInfo, playerCommand: Int): Int {
         if (controller.packageName != packageName && playerCommand in setOf(Player.COMMAND_PLAY_PAUSE,
@@ -89,8 +91,10 @@ class AutoLibraryCallback(
         val notification=session.isMediaNotificationController(controller)
         val commands=base.availableSessionCommands.buildUpon().add(SessionCommand(DISTILL,Bundle.EMPTY))
         commands.add(PlaybackControls.back).add(PlaybackControls.forward)
-        if (controller.packageName == packageName && controller.uid == android.os.Process.myUid())
+        if (controller.packageName == packageName && controller.uid == android.os.Process.myUid()) {
             queueCommands.forEach { commands.add(it) }
+            if (onSleepTimerCommand != null) dev.distillpod.android.playback.SleepTimerCommands.all.forEach { commands.add(it) }
+        }
         if (!notification && voiceEnabled()) commands.add(dev.distillpod.android.voice.CarVoiceEntry.ASK)
         if (controller.packageName == packageName) commands.add(dev.distillpod.android.voice.CarVoiceEntry.TOKEN)
         return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
@@ -192,6 +196,15 @@ class AutoLibraryCallback(
                 return com.google.common.util.concurrent.Futures.immediateFuture(SessionResult(SessionError.ERROR_PERMISSION_DENIED))
             return onQueueCommand?.invoke(customCommand,args)
                 ?: com.google.common.util.concurrent.Futures.immediateFuture(SessionResult(SessionError.ERROR_NOT_SUPPORTED))
+        }
+        if (customCommand in dev.distillpod.android.playback.SleepTimerCommands.all) {
+            val handler = onSleepTimerCommand
+            val result = when {
+                controller.packageName != packageName || controller.uid != android.os.Process.myUid() -> SessionResult(SessionError.ERROR_PERMISSION_DENIED)
+                handler == null -> SessionResult(SessionError.ERROR_NOT_SUPPORTED)
+                else -> handler(customCommand,args)
+            }
+            return com.google.common.util.concurrent.Futures.immediateFuture(result)
         }
         if (customCommand == dev.distillpod.android.voice.CarVoiceEntry.TOKEN) {
             val result = if (controller.packageName == packageName) SessionResult(SessionResult.RESULT_SUCCESS,

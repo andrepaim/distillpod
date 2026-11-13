@@ -22,6 +22,8 @@ data class PlaybackState(val episodeId: String? = null, val title: String = "", 
 class PlaybackEvents {
     val lastSkipped = MutableStateFlow<SkippedMoment?>(null)
     val videoFailure = MutableStateFlow<Pair<String, String>?>(null)
+    /** Published by the playback service's sleep timer; null when no timer is set. */
+    val sleepTimer = MutableStateFlow<dev.distillpod.core.SleepTimerStatus?>(null)
 }
 data class SkippedMoment(val episodeId: String, val positionMs: Long, val endMs: Long)
 
@@ -120,6 +122,18 @@ class PlaybackRepository(private val context: Context, private val db: AppDataba
     }
     private suspend fun controller() = withContext(Dispatchers.IO) { future.get(10, TimeUnit.SECONDS) }
     suspend fun sessionPlayer(): Player = controller()
+    val sleepTimer: StateFlow<dev.distillpod.core.SleepTimerStatus?>
+        get() = (context.applicationContext as dev.distillpod.android.DistillPodApplication).graph.playbackEvents.sleepTimer
+    suspend fun startSleepTimer(durationMs: Long) = sleepTimerCommand(SleepTimerCommands.START, SleepTimerCommands.duration(durationMs))
+    suspend fun sleepAtEndOfEpisode() = sleepTimerCommand(SleepTimerCommands.END_OF_EPISODE)
+    suspend fun extendSleepTimer() = sleepTimerCommand(SleepTimerCommands.EXTEND)
+    suspend fun cancelSleepTimer() = sleepTimerCommand(SleepTimerCommands.CANCEL)
+    private suspend fun sleepTimerCommand(command: androidx.media3.session.SessionCommand, args: android.os.Bundle = android.os.Bundle.EMPTY) {
+        val c = controller()
+        val reply = withContext(Dispatchers.Main) { c.sendCustomCommand(command, args) }
+        val result = withContext(Dispatchers.IO) { reply.get(10, TimeUnit.SECONDS) }
+        check(result.resultCode == androidx.media3.session.SessionResult.RESULT_SUCCESS) { "The sleep timer could not be changed. Check that an episode is loaded and try again." }
+    }
     val videoFailure get() = (context.applicationContext as dev.distillpod.android.DistillPodApplication).graph.playbackEvents.videoFailure
     fun leaveVideo(episodeId: String) { scope.launch { runCatching { video(episodeId, false) } } }
 
