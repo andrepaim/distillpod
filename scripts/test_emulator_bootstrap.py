@@ -77,6 +77,8 @@ elif cmd[:3]==['shell','am','instrument']:
         self.assertIn("dev.distillpod.android.HeadphoneVoiceDeviceTest", excluded)
         self.assertIn("dev.distillpod.android.YouTubeAcceptanceDeviceTest", excluded)
         self.assertIn("dev.distillpod.android.OwnerVideocastDeviceTest", excluded)
+        # Opt-in measurement; an assumption skip would fail the ordinary result check.
+        self.assertIn("dev.distillpod.android.LibrarySearchBenchmarkDeviceTest", excluded)
         phases=[call for call in calls if call[:3]==["shell","am","instrument"]]
         self.assertEqual(8,len(phases))
         self.assertIn("dev.distillpod.android.CloudQueueTeardownDeviceTest",excluded)

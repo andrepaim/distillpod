@@ -144,11 +144,11 @@ class SearchDesignDeviceTest {
             compose.waitUntil(10000) { followed.value.isNotEmpty() }
             compose.onNodeWithText("Open podcast").performClick()
             assertEquals(created, opened)
-            compose.onNodeWithContentDescription("Search podcasts").performTextReplacement("nothing")
+            compose.onNodeWithContentDescription("Search your library and podcasts").performTextReplacement("nothing")
             compose.onNodeWithContentDescription("Submit search").performClick()
             compose.waitUntil(10000) { compose.onAllNodesWithText("No podcasts found").fetchSemanticsNodes().isNotEmpty() }
             screenshot("empty")
-            compose.onNodeWithContentDescription("Search podcasts").performTextReplacement("offline")
+            compose.onNodeWithContentDescription("Search your library and podcasts").performTextReplacement("offline")
             compose.onNodeWithContentDescription("Submit search").performClick()
             compose.waitUntil(10000) { compose.onAllNodesWithText("Search unavailable").fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithText("Try again").performClick()
