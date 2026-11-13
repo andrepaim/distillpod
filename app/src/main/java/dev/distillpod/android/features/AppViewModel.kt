@@ -68,6 +68,12 @@ class AppViewModel(val graph: AppGraph, private val saved: SavedStateHandle) : V
     }
 
     val player = graph.playback.state
+    private val libraryListings = mutableMapOf<String?, StateFlow<LibraryListing>>()
+    /** Library tab (null) or show page rows, filtered here instead of on every recomposition (#141). */
+    internal fun libraryListing(podcastId: String?): StateFlow<LibraryListing> = libraryListings.getOrPut(podcastId) {
+        libraryListings(podcasts, episodes, filter, player, podcastId).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000),
+            libraryListing(podcasts.value, episodes.value, filter.value, podcastId, player.value.episodeId))
+    }
     private val directorySearch = PodcastSearch(viewModelScope, graph.podcasts::search, graph.settings::rememberSearch,
         graph.podcasts.searchProviderNames, graph.podcasts::searchProviders)
     val search = directorySearch.state

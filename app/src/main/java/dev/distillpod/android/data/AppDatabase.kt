@@ -40,6 +40,11 @@ data class EpisodeEntity(
 @Entity(tableName = "queue", foreignKeys = [ForeignKey(entity = EpisodeEntity::class, parentColumns = ["id"], childColumns = ["episodeId"], onDelete = ForeignKey.CASCADE)], indices = [Index("sortOrder")])
 data class QueueEntryEntity(@PrimaryKey val episodeId: String, val sortOrder: Int)
 
+/** Episode columns that decide reviewed ad skipping for a downloaded file. */
+data class AdSourceRow(val id: String, val localFile: String?, val mediaFingerprint: String, val durationMs: Long)
+/** Episode columns shown by media browsers; lastPlayedAt is compared at minute resolution. */
+data class BrowseRow(val id: String, val title: String, val completed: Boolean, val localFile: String?, val downloadState: String, val lastPlayedAt: Long)
+
 @Entity(tableName = "player_session")
 data class PlayerSessionEntity(@PrimaryKey val id: Int = 0, val episodeId: String?, val speed: Float = 1f)
 
@@ -137,6 +142,11 @@ interface LibraryDao {
         LIMIT :limit OFFSET :offset""")
     suspend fun autoEpisodes(section: String, show: String, current: String?, limit: Int, offset: Long): List<EpisodeEntity>
     @Query("SELECT * FROM episodes WHERE id=:id") suspend fun episode(id: String): EpisodeEntity?
+    /** Narrow playback observers (#141): progress columns are excluded so their writes do not re-emit. */
+    @Query("SELECT localFile FROM episodes WHERE id=:id") fun observeEpisodeLocalFile(id: String): Flow<String?>
+    @Query("SELECT id, localFile, mediaFingerprint, durationMs FROM episodes WHERE localFile IS NOT NULL AND id IN (SELECT episodeId FROM analyses WHERE state='succeeded') ORDER BY id")
+    fun observeAdSources(): Flow<List<AdSourceRow>>
+    @Query("SELECT id, title, completed, localFile, downloadState, lastPlayedAt FROM episodes ORDER BY id") fun observeBrowseRows(): Flow<List<BrowseRow>>
     @Upsert suspend fun putEpisode(value: EpisodeEntity)
     @Upsert suspend fun putEpisodes(values: List<EpisodeEntity>)
     @Query("UPDATE episodes SET positionMs=:position, durationMs=CASE WHEN :duration>0 THEN :duration ELSE durationMs END, completed=CASE WHEN :complete THEN 1 ELSE completed END, lastPlayedAt=:at WHERE id=:id")
