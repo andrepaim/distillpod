@@ -5,6 +5,7 @@ import android.os.Build
 import androidx.media3.common.MediaItem
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
+import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import dev.distillpod.android.data.*
@@ -53,6 +54,9 @@ class NowPlayingWidgetDeviceTest {
         file.writeBytes(bytes.array())
         val dao = graph.db.library()
         var controller: MediaController? = null
+        // The user had DistillPod open, as when choosing an episode; Android 15 grants audio focus to the top app.
+        // Starting playback from the background with only the widget is a physical-device check.
+        val activity = ActivityScenario.launch(MainActivity::class.java)
         fun moments() = runBlocking { dao.distillations().filter { it.episodeId == episodeId } }
         try {
             runBlocking {
@@ -95,6 +99,7 @@ class NowPlayingWidgetDeviceTest {
             assertEquals(1, moments().size)
         } finally {
             main { controller?.let { it.stop(); it.clearMediaItems(); it.release() } }
+            activity.close()
             runBlocking {
                 graph.settings.flag("transcribeOnPlayback", prefs.transcribeOnPlayback)
                 graph.settings.flag("distillSound", prefs.distillSound)
