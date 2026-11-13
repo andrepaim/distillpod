@@ -45,7 +45,7 @@ class ArtifactSync(private val db:AppDatabase,private val files:ContentFiles,pri
         val payload=SubscriptionSyncStore.decode(operation.payload)
         val owner=SyncOwner(operation.uid,operation.generation)
         val hash=payload.getValue("hash");val expanded=payload.getValue("expandedBytes").toLong()
-        // Staging lost after capture is rebuilt when local content still produces it; otherwise no retry can find it.
+        // Staging lost after capture is rebuilt when local content still produces it; otherwise retrying this unchanged operation cannot upload it.
         val artifact=files.read(owner,hash,expanded)
             ?:FinishedContent(db,isolatedDemo).snapshot(payload.getValue("episodeId"))?.takeIf {it.hash==hash && it.expandedBytes==expanded}?.also {files.save(owner,it)}
             ?:throw SyncOperationRejected(IllegalStateException("The saved content can no longer be rebuilt on this phone"))

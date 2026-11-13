@@ -60,7 +60,10 @@ class FirebaseSubscriptionCloud(private val auth:FirebaseAuth,private val firest
     override suspend fun commit(operation:SyncOutboxEntity):CloudSubscription {
         val root=account(operation.uid)
         val payload=commitPayload(operation)
-        if(operation.entityKey.startsWith("artifact_"))(artifacts?:error("Cloud content storage is unavailable in this build")).upload(operation)
+        if(operation.entityKey.startsWith("artifact_")) {
+            val content=artifacts?:error("Cloud content storage is unavailable in this build")
+            uploadContent(operation,{content.upload(operation)}) {root.collection("receipts").document(operation.operationId).get(Source.SERVER).await().exists()}
+        }
         val signature=JSONObject().put("key",operation.entityKey).put("baseVersion",operation.baseVersion)
             .put("payload",JSONObject(payload.toSortedMap())).put("deleted",operation.deleted).put("generation",operation.generation).toString()
         var observed:Long?=null
@@ -119,4 +122,13 @@ internal fun commitPayload(operation:SyncOutboxEntity):Map<String,String> {
         SyncProtocol.validate(SyncMutation(operation.operationId,SyncOwner(operation.uid,operation.generation),operation.entityKey,operation.baseVersion,payload,operation.deleted))
     } catch(invalid:IllegalArgumentException) { throw SyncOperationRejected(invalid) }
     return payload
+}
+
+/**
+ * Uploads an operation's content. An attempt that reached upload before may already be published:
+ * its receipt then completes the commit, so a refusal of the content stands only without one.
+ */
+internal suspend fun uploadContent(operation:SyncOutboxEntity,upload:suspend ()->Unit,published:suspend ()->Boolean) {
+    try { upload() }
+    catch(refused:SyncOperationRejected) { if(operation.state!="uploading" || !published())throw refused }
 }

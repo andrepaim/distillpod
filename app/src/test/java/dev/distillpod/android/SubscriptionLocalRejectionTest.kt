@@ -41,6 +41,19 @@ class SubscriptionLocalRejectionTest {
         assertFalse(firestoreWriteRejected(java.io.IOException("synthetic"),staged=true))
     }
 
+    @Test fun `a refused upload of an attempt the cloud already recorded completes from its receipt`()=runBlocking {
+        val refused=SyncOperationRejected(IllegalStateException("synthetic"))
+        val interrupted=operation("artifact_e",emptyMap()).copy(state="uploading")
+        var checked=0
+        uploadContent(interrupted,{throw refused}) {checked++;true}
+        assertEquals(1,checked)
+        for((op,published) in listOf(interrupted to false,interrupted.copy(state="queued") to true)) {
+            try {uploadContent(op,{throw refused}) {published};fail()} catch(actual:SyncOperationRejected) {assertSame(refused,actual)}
+        }
+        try {uploadContent(interrupted,{throw refused}) {throw java.io.IOException("offline")};fail()} catch(_:java.io.IOException) {}
+        uploadContent(interrupted,{}) {error("No receipt lookup after a successful upload")}
+    }
+
     private class Fixture(val db:AppDatabase,val artifacts:ArtifactSync,val objects:ArtifactSyncTest.Objects,val cloud:SubscriptionCoordinatorTest.Cloud) {
         /** Mirrors FirebaseSubscriptionCloud.commit: validate, upload content, then publish the record. */
         val transport=object:SubscriptionCloud {
@@ -51,7 +64,7 @@ class SubscriptionLocalRejectionTest {
             override suspend fun prepareContent(owner:SyncOwner,record:CloudSubscription)=artifacts.fetch(owner,record)
             override suspend fun commit(operation:SyncOutboxEntity):CloudSubscription {
                 commitPayload(operation)
-                if(operation.entityKey.startsWith("artifact_"))artifacts.upload(operation)
+                if(operation.entityKey.startsWith("artifact_"))uploadContent(operation,{artifacts.upload(operation)}) {operation.operationId in cloud.receipts}
                 return cloud.commit(operation)
             }
         }
@@ -116,7 +129,23 @@ class SubscriptionLocalRejectionTest {
         assertEquals(db.sync().view("artifact_e")!!.sessionId,published.payload["hash"])
         assertEquals(1,objects.rows.size)
     }
-    @Test fun `staging that local content can rebuild is repaired rather than rejected`()=fixture {
+    @Test fun `a lost staged copy of an already recorded change completes it before newer content`()=fixture {
+        assertTrue(run())
+        artifacts.capture()
+        val old=db.sync().operations("alice","g1").single()
+        // The earlier attempt uploaded and committed, and replay passed that change, but the process died before acknowledging it.
+        artifacts.upload(old);cloud.commit(old);db.sync().state(old.operationId,"uploading")
+        db.sync().putBinding(db.sync().binding()!!.copy(cursor=cloud.log.size.toLong()))
+        File(db.sync().artifacts("alice","g1").single().localFile).delete()
+        db.library().putTranscript(TranscriptEntity("e","r2","sha","tiny","en",state="ready",durationMs=10000))
+        db.library().putSegments(listOf(SegmentEntity("e","r2",0,10000,"Newer content")))
+        artifacts.capture()
+        assertTrue(run())
+        assertTrue(db.sync().operations("alice","g1").isEmpty())
+        assertEquals(2,cloud.rows["artifact_e"]!!.version)
+        assertEquals(db.sync().view("artifact_e")!!.sessionId,cloud.rows["artifact_e"]!!.payload["hash"])
+    }
+    @Test fun `staging that capture can rebuild is repaired rather than rejected`()=fixture {
         artifacts.capture()
         File(db.sync().artifacts("alice","g1").single().localFile).delete()
         artifacts.capture()
