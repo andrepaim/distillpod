@@ -85,6 +85,13 @@ class SubscriptionSyncSchedulingTest {
         // The user request survives both failures, including a cancelled WorkManager future.
         assertEquals(listOf(true,true,true),calls);assertEquals(2,failures.size)
     }
+    @Test fun `a failing failure report does not stop scheduling`()=runTest {
+        var attempts=0
+        val scheduler=scheduler({ error("report unavailable") }) { attempts++;if(attempts==1)error("synthetic") }
+        scheduler.kick();advanceTimeBy(1_000);runCurrent()
+        scheduler.kick();advanceTimeBy(1_000);runCurrent()
+        assertEquals(2,attempts)
+    }
     @Test fun `concurrent kicks from many threads coalesce without losing the last one`()=runBlocking {
         val count=AtomicInteger();val scope=CoroutineScope(SupervisorJob()+Dispatchers.Default)
         try {

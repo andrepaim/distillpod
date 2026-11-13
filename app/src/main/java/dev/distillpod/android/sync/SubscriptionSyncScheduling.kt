@@ -86,7 +86,8 @@ internal class SubscriptionSyncScheduler(scope:CoroutineScope,private val deboun
                     // A cancelled WorkManager future is also a CancellationException; only our own cancellation ends the loop.
                     if(error is CancellationException)currentCoroutineContext().ensureActive()
                     if(requested)user.set(true)
-                    failed(error)
+                    // Reporting must never end the consumer.
+                    try { failed(error) } catch(_:Exception) {}
                 }
             }
         }
