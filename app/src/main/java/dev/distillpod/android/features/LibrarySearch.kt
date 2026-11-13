@@ -44,6 +44,8 @@ internal data class LibrarySearchState(val terms: List<String>? = null, val load
     val matches: LibraryMatches? = null, val failed: Boolean = false)
 
 private fun String.hasAll(terms: List<String>) = terms.all { contains(it, ignoreCase = true) }
+/** Every term appears in at least one of [fields]; avoids joining long notes for each row. */
+private fun allIn(terms: List<String>, vararg fields: String?) = terms.all { term -> fields.any { it?.contains(term, ignoreCase = true) == true } }
 
 /**
  * Ranks library rows for [terms]. Shows are followed shows; episodes are the Library tab's own
@@ -56,7 +58,7 @@ internal fun libraryMatches(terms: List<String>, podcasts: List<PodcastEntity>, 
     fun PodcastEntity?.video() = this != null && YouTubeUrl.source(feedUrl) != null
     fun EpisodeEntity.art() = imageUrl ?: showById[podcastId]?.imageUrl
 
-    val shows = podcasts.filter { it.subscribed && "${it.title}\n${it.author}".hasAll(terms) }
+    val shows = podcasts.filter { it.subscribed && allIn(terms, it.title, it.author) }
         .sortedWith(compareByDescending<PodcastEntity> { it.title.contains(phrase, true) }.thenBy { it.title.lowercase() })
         .map { ShowMatch(it.id, it.title, it.author, it.imageUrl, it.video()) }
 
@@ -68,8 +70,8 @@ internal fun libraryMatches(terms: List<String>, podcasts: List<PodcastEntity>, 
             val score = when {
                 ep.title.contains(phrase, true) -> 3
                 ep.title.hasAll(terms) -> 2
-                "${ep.title}\n$show".hasAll(terms) -> 1
-                "${ep.title}\n$show\n${ep.description}".hasAll(terms) -> 0
+                allIn(terms, ep.title, show) -> 1
+                allIn(terms, ep.title, show, ep.description) -> 0
                 else -> return@mapNotNull null
             }
             score to ep
@@ -86,10 +88,9 @@ internal fun libraryMatches(terms: List<String>, podcasts: List<PodcastEntity>, 
             PassageMatch(ep.id, ep.title, show?.title, ep.art(), hit.startMs, matchSnippet(hit.text, terms), hit.matches, show.video()) }
 
     val moments = savedMomentItems(captures, episodes, podcasts).zip(captures).mapNotNull { (item, saved) ->
-        val own = listOfNotNull(item.insight, item.quote, item.excerpt).joinToString("\n")
         val score = when {
-            own.hasAll(terms) -> 1
-            "$own\n${item.episodeTitle.orEmpty()}\n${item.showTitle.orEmpty()}".hasAll(terms) -> 0
+            allIn(terms, item.insight, item.quote, item.excerpt) -> 1
+            allIn(terms, item.insight, item.quote, item.excerpt, item.episodeTitle, item.showTitle) -> 0
             else -> return@mapNotNull null
         }
         score to MomentMatch(item.id, item.insight ?: item.quote ?: item.excerpt.ifBlank { "Moment at ${timestamp(item.startMs)}" },
