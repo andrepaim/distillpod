@@ -33,7 +33,8 @@ class SleepTimerProbe : BroadcastReceiver() {
         graph.scope.launch {
             try {
                 withContext(Dispatchers.IO) { graph.ready.await() }
-                when (val action = intent.getStringExtra("action")) {
+                val action = intent.getStringExtra("action")
+                when (action) {
                     "seed" -> withContext(Dispatchers.IO) { seed(context, graph); graph.settings.flag("transcribeOnPlayback", false) }
                     "play" -> { graph.playback.play(FIRST, intent.getLongExtra("position", 0)); graph.playback.enqueue(SECOND) }
                     "sleep" -> graph.playback.startSleepTimer(intent.getLongExtra("ms", 60_000))
@@ -57,7 +58,8 @@ class SleepTimerProbe : BroadcastReceiver() {
         val timer = graph.playback.sleepTimer.value
         val timerText = timer?.let { "endOfEpisode=${it.endOfEpisode} remaining=${it.remainingAt(SystemClock.elapsedRealtime())} counting=${it.counting}" } ?: "none"
         val saved = withContext(Dispatchers.IO) {
-            listOf(FIRST, SECOND).joinToString(" ") { id -> graph.db.library().episode(id)?.let { "$id:position=${it.positionMs},completed=${it.completed}" } ?: "$id:missing" }
+            listOf(FIRST, SECOND).map { id -> id to graph.db.library().episode(id) }
+                .joinToString(" ") { (id, ep) -> ep?.let { "$id:position=${it.positionMs},completed=${it.completed}" } ?: "$id:missing" }
         }
         Log.i(TAG, "status $live timer=[$timerText] saved=[$saved]")
     }
