@@ -87,7 +87,7 @@ class ProductFlowDeviceTest {
             compose.waitUntil(10000) { compose.onAllNodesWithText("The speaker urges people to contribute to their community.", substring = true).fetchSemanticsNodes().isNotEmpty() }
             compose.activityRule.scenario.recreate()
             compose.onNodeWithText("The speaker urges people to contribute to their community.", substring = true).assertIsDisplayed().performClick()
-            compose.onNodeWithText("Replay source · ${dev.distillpod.android.features.timestamp(dao.distillation(capture)!!.sourceStartMs)}").performScrollTo().performClick()
+            compose.onNodeWithText("Replay ${dev.distillpod.android.features.timestamp(dao.distillation(capture)!!.sourceStartMs)}").performScrollTo().performClick()
             await("saved source replay starts") { graph.playback.state.value.episodeId == episode && graph.playback.state.value.playing }
             assertEquals(dao.episode(episode)!!.localFile, graph.playback.captureSource().third)
             assertEquals(10000L, dao.distillation(capture)!!.endMs)
