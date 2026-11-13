@@ -35,22 +35,21 @@ class AutoArtwork(private val context:Context,private val http:OkHttpClient,priv
     private val readers=ConcurrentHashMap.newKeySet<String>()
     private val granted=ConcurrentHashMap.newKeySet<String>()
     private fun contentUri(name:String)=Uri.Builder().scheme("content").authority(context.packageName+".auto.artwork").appendPath(name).build()
-    private fun grant(reader:String,name:String,again:Boolean=false) {
-        if(!granted.add("$reader/$name") && !again)return
+    private fun grant(reader:String,name:String) {
+        if(!granted.add("$reader/$name"))return
         try {context.grantUriPermission(reader,contentUri(name),Intent.FLAG_GRANT_READ_URI_PERMISSION)}
         catch(_:RuntimeException) {granted.remove("$reader/$name")}
     }
     /**
-     * Lets an accepted external controller (for example the Android Auto host) read artwork: URIs handed out
-     * before it connected are granted now, later ones as they are handed out. This app needs no grant.
+     * Lets an external browser (for example the Android Auto host) read the artwork URIs it is handed from now
+     * on. Only browse results carry provider URIs, so other controllers never need a grant. A new connection
+     * forgets earlier grants for that package because the platform drops them when either app stops.
+     * Grants are not revoked on disconnect; readers are accepted browsers that can browse the library anyway.
      */
-    fun allow(packageName:String):Job {
-        if(packageName==context.packageName)return Job().apply {complete()}
+    fun allow(packageName:String) {
+        if(packageName==context.packageName)return
         readers.add(packageName)
-        return scope.launch(Dispatchers.IO) {
-            val names=directory.listFiles()?.map {it.name}?.filter {fileFor(context,it)!=null}.orEmpty()+"placeholder.jpg"
-            for(name in names.distinct())grant(packageName,name,again=true)
-        }
+        granted.removeIf {it.startsWith("$packageName/")}
     }
     private fun placeholder():File {
         val dest=File(directory,"placeholder.jpg")

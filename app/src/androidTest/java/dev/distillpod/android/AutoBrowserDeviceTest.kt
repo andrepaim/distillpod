@@ -125,7 +125,7 @@ class AutoBrowserDeviceTest {
             assertFalse(main {browser.isPlaying})
         } finally {main {browser.stop();browser.release()}}
     }
-    /** Another application (the shell here) reads artwork only through grants made for allowed controllers. */
+    /** Another application (the shell here) reads artwork only through per-URI grants for an allowed browser. */
     @Test fun artworkIsReadableByAnotherAppOnlyAfterItIsAllowed() {
         val reader="com.android.shell"
         val info=context.packageManager.getProviderInfo(ComponentName(context,dev.distillpod.android.auto.AutoArtworkProvider::class.java),0)
@@ -144,7 +144,9 @@ class AutoBrowserDeviceTest {
         val earlierUri=art.uri(earlier)
         try {
             assertEquals("Ungranted artwork must not be readable by other apps",0,shellRead(earlierUri).size)
-            runBlocking {art.allow(reader).join()}
+            art.allow(reader)
+            assertEquals("Allowing alone grants nothing",0,shellRead(earlierUri).size)
+            assertEquals(earlierUri,art.uri(earlier))
             assertArrayEquals(earlierFile.readBytes(),shellRead(earlierUri))
             laterFile.writeBytes("later artwork".toByteArray())
             val laterUri=art.uri(later)

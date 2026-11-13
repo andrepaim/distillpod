@@ -40,7 +40,7 @@ class AutoArtworkTest {
             assertNull(art.file("arbitrary"))
         } finally {scope.cancel();server.shutdown()}
     }
-    @Test fun `provider is private and artwork is granted per URI only to allowed controllers`()=runBlocking {
+    @Test fun `provider is private and artwork is granted per URI only to allowed browsers`()=runBlocking {
         val app=ApplicationProvider.getApplicationContext<Context>()
         val info=app.packageManager.getProviderInfo(ComponentName(app,AutoArtworkProvider::class.java),0)
         assertFalse("Other apps must not probe which shows are followed",info.exported)
@@ -61,21 +61,26 @@ class AutoArtworkTest {
             val earlier="https://example.test/earlier-${System.nanoTime()}.png"
             File(directory,key(earlier)).writeBytes(byteArrayOf(1))
             val art=AutoArtwork(context,OkHttpClient(),scope)
-            val placeholder=art.uri(null)
-            val earlierUri=art.uri(earlier)
-            assertTrue("Nothing is granted before a controller is allowed",grants.isEmpty())
-            art.allow(app.packageName).join()
+            art.uri(null);art.uri(earlier)
+            assertTrue("Nothing is granted before a browser is allowed",grants.isEmpty())
+            art.allow(app.packageName);art.uri(earlier)
             assertTrue("The app needs no grant for its own provider",grants.isEmpty())
-            art.allow("android.auto.test").join()
-            assertTrue(("android.auto.test" to placeholder) in grants)
-            assertTrue("URIs handed out before the controller connected stay readable",("android.auto.test" to earlierUri) in grants)
-            grants.clear()
+            art.allow("android.auto.test")
+            assertTrue("Allowing a browser grants nothing up front",grants.isEmpty())
+            val earlierUri=art.uri(earlier)
+            assertEquals(listOf("android.auto.test" to earlierUri),grants.toList())
             val later="https://example.test/later-${System.nanoTime()}.png"
             File(directory,key(later)).writeBytes(byteArrayOf(2))
             val laterUri=art.uri(later)
-            assertEquals(listOf("android.auto.test" to laterUri),grants.toList())
+            val placeholder=art.uri(null)
+            assertEquals(listOf("android.auto.test" to earlierUri,"android.auto.test" to laterUri,"android.auto.test" to placeholder),grants.toList())
             art.uri(later);art.uri(null)
-            assertEquals("Each URI is granted once per controller",1,grants.size)
+            assertEquals("Each URI is granted once per connection",3,grants.size)
+            // The platform drops grants when either app stops; a new connection is granted again.
+            art.allow("android.auto.test")
+            assertEquals(laterUri,art.uri(later))
+            assertEquals(4,grants.size)
+            assertEquals("android.auto.test" to laterUri,grants.last())
         } finally {scope.cancel()}
     }
 }

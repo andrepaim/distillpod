@@ -103,16 +103,16 @@ class AutoSessionTest {
         val token = result.extras.getParcelable<android.media.session.MediaSession.Token>(dev.distillpod.android.voice.CarVoiceEntry.TOKEN_EXTRA)
         assertEquals(s.platformToken,token)
     }
-    @Test fun `only accepted external controllers are allowed to read artwork`() {
+    @Test fun `only external library browsers are allowed to read artwork`() {
         val readers = mutableListOf<String>()
-        fixture(allowArtwork = { readers += it }) { c, s, trusted ->
+        fixture(allowArtwork = { readers += it }) { c, s, browser ->
             val context = ApplicationProvider.getApplicationContext<Context>()
-            val untrusted = MediaSession.ControllerInfo.createTestOnlyControllerInfo("untrusted",1,1000,1,1,false,Bundle.EMPTY)
             val own = MediaSession.ControllerInfo.createTestOnlyControllerInfo(context.packageName,1,android.os.Process.myUid(),1,1,true,Bundle.EMPTY)
-            assertFalse(c.onConnect(s,untrusted).isAccepted)
-            assertTrue(c.onConnect(s,own).isAccepted)
+            assertTrue(c.onConnect(s,browser).isAccepted)
+            assertTrue("Controllers that never browse receive no artwork URIs and need no grant", readers.isEmpty())
+            assertEquals(LibraryResult.RESULT_SUCCESS, c.onGetLibraryRoot(s,own,null).get(5,TimeUnit.SECONDS).resultCode)
             assertTrue("The app reads its own provider without a grant", readers.isEmpty())
-            assertTrue(c.onConnect(s,trusted).isAccepted)
+            assertEquals(LibraryResult.RESULT_SUCCESS, c.onGetLibraryRoot(s,browser,null).get(5,TimeUnit.SECONDS).resultCode)
             assertEquals(listOf("android.auto.test"), readers)
         }
     }

@@ -41,7 +41,7 @@ class AutoLibraryCallback(
     private val queueCommands: Set<SessionCommand> = emptySet(),
     private val onQueueCommand: ((SessionCommand,Bundle)->ListenableFuture<SessionResult>)? = null,
     private val preparePlaybackItems: suspend (List<MediaItem>) -> List<MediaItem> = { it },
-    /** Grants an accepted external controller read access to artwork URIs; the provider is not exported. */
+    /** Lets an external browser read the artwork URIs it is handed; the provider is not exported. */
     private val allowArtwork: (String) -> Unit = {},
 ): MediaLibrarySession.Callback {
     override fun onPlayerCommandRequest(session: MediaSession, controller: MediaSession.ControllerInfo, playerCommand: Int): Int {
@@ -85,7 +85,6 @@ class AutoLibraryCallback(
     }
     override fun onConnect(session: MediaSession,controller: MediaSession.ControllerInfo): MediaSession.ConnectionResult {
         if(controller.packageName!=packageName && !controller.isTrusted)return MediaSession.ConnectionResult.reject()
-        if(controller.packageName!=packageName)allowArtwork(controller.packageName)
         val base=super.onConnect(session,controller)
         val notification=session.isMediaNotificationController(controller)
         val commands=base.availableSessionCommands.buildUpon().add(SessionCommand(DISTILL,Bundle.EMPTY))
@@ -101,6 +100,7 @@ class AutoLibraryCallback(
             .setMediaButtonPreferences(layout(includeVoice=!notification && voiceEnabled())).build()
     }
     override fun onGetLibraryRoot(session: MediaLibrarySession,browser: MediaSession.ControllerInfo,params: LibraryParams?) = request {
+        if(browser.packageName!=packageName)allowArtwork(browser.packageName)
         LibraryResult.ofItem(catalog.item(AutoCatalog.ROOT)!!,params)
     }
     override fun onGetChildren(session: MediaLibrarySession,browser: MediaSession.ControllerInfo,parentId: String,page: Int,pageSize: Int,params: LibraryParams?) = request {
