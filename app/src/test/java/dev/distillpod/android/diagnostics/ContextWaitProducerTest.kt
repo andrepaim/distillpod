@@ -9,6 +9,11 @@ import dev.distillpod.android.data.*
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Test
+import org.junit.Before
+import org.robolectric.annotation.Implementation
+import org.robolectric.annotation.Implements
+import java.io.FileOutputStream
+import java.util.concurrent.atomic.AtomicInteger
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
@@ -16,8 +21,19 @@ import java.io.File
 import java.util.UUID
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk=[34])
+@Config(sdk=[34],shadows=[ProducerFixtureFileUtils::class])
 class ContextWaitProducerTest {
+    @Before fun resetPlatformForces() { ProducerFixtureFileUtils.calls.set(0) }
+
+    @Test fun `platform force isolation retains actual preference file writes`() {
+        val context=ApplicationProvider.getApplicationContext<Context>()
+        val prefs=context.getSharedPreferences("fixture-force-control",0)
+        assertTrue(prefs.edit().clear().putString("probe","synthetic-value").commit())
+        val xml=File(context.applicationInfo.dataDir,"shared_prefs/fixture-force-control.xml").readText()
+        assertTrue(xml.contains("synthetic-value"))
+        assertTrue(ProducerFixtureFileUtils.calls.get()>0)
+    }
+
     @Test fun `normal wait rechecks preserve changed identities reset failures and later terminal evidence`()=runBlocking {
         val context=ApplicationProvider.getApplicationContext<Context>()
         val prefs=context.getSharedPreferences("diagnostics",0)
@@ -118,6 +134,23 @@ class ContextWaitProducerTest {
             assertEquals(1,payloads("distillation.attempt_summary").size)
             assertTrue(payloads("operation.summary").any {it.contains(id) && it.contains("failed")})
             assertTrue(prefs.getInt("budget_critical",0)<160)
+            assertTrue(ProducerFixtureFileUtils.calls.get()>0)
         } finally {d.consent(false);db.close();io.sentry.Sentry.close()}
+    }
+}
+
+/** Class-scoped producer fixture only: real XML writes remain, physical fsync durability is excluded. */
+@Implements(className="android.os.FileUtils",isInAndroidSdk=false)
+class ProducerFixtureFileUtils {
+    companion object {
+        val calls=AtomicInteger()
+        @JvmStatic @Implementation
+        fun sync(stream:FileOutputStream?):Boolean {
+            if(stream!=null) {
+                check(stream.fd.valid())
+                calls.incrementAndGet()
+            }
+            return true
+        }
     }
 }
