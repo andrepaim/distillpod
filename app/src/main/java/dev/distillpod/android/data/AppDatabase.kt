@@ -188,7 +188,14 @@ interface LibraryDao {
     suspend fun transitionTranscriptState(id: String, revision: String, fromStates: List<String>, state: String, error: String?): Int
     @Query("SELECT * FROM segments WHERE episodeId=:id AND revision=:revision ORDER BY startMs,ordinal") suspend fun segments(id: String, revision: String): List<SegmentEntity>
     @Query("SELECT * FROM segments WHERE episodeId=:id AND revision=:revision AND endMs>:start AND startMs<:end ORDER BY startMs,ordinal") suspend fun window(id: String, revision: String, start: Long, end: Long): List<SegmentEntity>
-    @Upsert suspend fun putSegments(values: List<SegmentEntity>)
+    /** Every application segment write: finished-content capture must rebuild an episode whose rows were written. */
+    @Transaction suspend fun putSegments(values: List<SegmentEntity>) {
+        writeSegments(values)
+        forgetArtifactSources(values.map { "__artifact_source_${it.episodeId}" }.distinct())
+    }
+    // Room primitive; application writes use the transactional entry point above.
+    @Upsert suspend fun writeSegments(values: List<SegmentEntity>)
+    @Query("DELETE FROM sync_views WHERE entityKey IN (:keys)") suspend fun forgetArtifactSources(keys: List<String>)
     @Query("SELECT * FROM transcript_coverage WHERE episodeId=:id AND revision=:revision ORDER BY startMs") suspend fun coverage(id: String, revision: String): List<CoverageEntity>
     @Upsert suspend fun putCoverage(value: CoverageEntity)
     @Query("DELETE FROM segments WHERE episodeId=:id") suspend fun deleteSegments(id: String)

@@ -59,9 +59,11 @@ class FirebaseSubscriptionCloud(private val auth:FirebaseAuth,private val firest
         .get(Source.SERVER).await().documents.map { parse(it.getString("key")?:error("Invalid cloud change"),it) }
     override suspend fun commit(operation:SyncOutboxEntity):CloudSubscription {
         val root=account(operation.uid)
-        val payload=SubscriptionSyncStore.decode(operation.payload)
-        SyncProtocol.validate(SyncMutation(operation.operationId,SyncOwner(operation.uid,operation.generation),operation.entityKey,operation.baseVersion,payload,operation.deleted))
-        if(operation.entityKey.startsWith("artifact_"))(artifacts?:error("Cloud content storage is unavailable in this build")).upload(operation)
+        val payload=commitPayload(operation)
+        if(operation.entityKey.startsWith("artifact_")) {
+            val content=artifacts?:error("Cloud content storage is unavailable in this build")
+            uploadContent(operation,{content.upload(operation)}) {root.collection("receipts").document(operation.operationId).get(Source.SERVER).await().exists()}
+        }
         val signature=JSONObject().put("key",operation.entityKey).put("baseVersion",operation.baseVersion)
             .put("payload",JSONObject(payload.toSortedMap())).put("deleted",operation.deleted).put("generation",operation.generation).toString()
         var observed:Long?=null
@@ -95,6 +97,7 @@ class FirebaseSubscriptionCloud(private val auth:FirebaseAuth,private val firest
                 }.await()
             } catch(error:Exception) {
                 generateSequence<Throwable>(error){it.cause}.filterIsInstance<SubscriptionConflict>().firstOrNull()?.let { throw it }
+                if(firestoreWriteRejected(error,staged))throw SyncOperationRejected(error)
                 if(error !is FirebaseFirestoreException || error.code!=FirebaseFirestoreException.Code.PERMISSION_DENIED || observed==null || attempt==4)throw error
                 val latest=root.get(Source.SERVER).await()
                 if(latest.getBoolean("active")!=true || latest.getString("generation")!=operation.generation)throw error
@@ -110,4 +113,22 @@ class FirebaseSubscriptionCloud(private val auth:FirebaseAuth,private val firest
         return CloudSubscription(key,snapshot.getLong("version")?:error("Invalid cloud version"),fields,
             snapshot.getBoolean("deleted")?:error("Invalid deletion state"),snapshot.getLong("sequence")?:error("Invalid cloud sequence"))
     }
+}
+
+/** The operation's payload, validated as the protocol requires before any cloud write; an invalid stored operation never becomes valid. */
+internal fun commitPayload(operation:SyncOutboxEntity):Map<String,String> {
+    val payload=SubscriptionSyncStore.decode(operation.payload)
+    try {
+        SyncProtocol.validate(SyncMutation(operation.operationId,SyncOwner(operation.uid,operation.generation),operation.entityKey,operation.baseVersion,payload,operation.deleted))
+    } catch(invalid:IllegalArgumentException) { throw SyncOperationRejected(invalid) }
+    return payload
+}
+
+/**
+ * Uploads an operation's content. An attempt that reached upload before may already be published:
+ * its receipt then completes the commit, so a refusal of the content stands only without one.
+ */
+internal suspend fun uploadContent(operation:SyncOutboxEntity,upload:suspend ()->Unit,published:suspend ()->Boolean) {
+    try { upload() }
+    catch(refused:SyncOperationRejected) { if(operation.state!="uploading" || !published())throw refused }
 }
