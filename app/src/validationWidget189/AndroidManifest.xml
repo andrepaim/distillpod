@@ -1,0 +1,11 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
+    <uses-permission android:name="android.permission.INTERNET" tools:node="remove" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" tools:node="remove" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" tools:node="remove" />
+    <application android:label="Widget validation" tools:replace="android:label">
+        <!-- Shell-triggered probe and pin request for the isolated validation package only. -->
+        <receiver android:name="dev.distillpod.android.validation.WidgetProbe" android:exported="true" />
+        <activity android:name="dev.distillpod.android.validation.PinWidgetActivity" android:exported="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+    </application>
+</manifest>
