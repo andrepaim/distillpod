@@ -69,6 +69,7 @@ class FirebaseSubscriptionCloud(private val auth:FirebaseAuth,private val firest
         val canonical=JSONObject().put("key",operation.entityKey).put("baseVersion",operation.baseVersion)
             .put("payload",JSONObject(payload.toSortedMap())).put("deleted",operation.deleted).put("generation",operation.generation).toString()
         var observed:Long?=null
+        var observedProtocol:Long?=null
         // Whether this attempt's transaction reached its writes; a read denial is an account problem.
         var staged=false
         repeat(5) { attempt ->
@@ -82,7 +83,8 @@ class FirebaseSubscriptionCloud(private val auth:FirebaseAuth,private val firest
                     val h=tx.get(root);val old=tx.get(entity);val previous=tx.get(receipt)
                     check(h.getBoolean("active")==true && h.getString("generation")==operation.generation) { "Cloud account changed." }
                     observed=h.getLong("sequence")?:error("Invalid cloud sequence")
-                    val protocol=(h.getLong("protocol")?:1).toInt()
+                    observedProtocol=h.getLong("protocol")
+                    val protocol=(observedProtocol?:1).toInt()
                     if(previous.exists()) {
                         check(SyncCompaction.receiptMatches(previous.getString("signature"),canonical)) { "Operation identity mismatch." }
                         return@runTransaction CloudSubscription(operation.entityKey,previous.getLong("version")?:error("Invalid receipt"),
@@ -109,8 +111,9 @@ class FirebaseSubscriptionCloud(private val auth:FirebaseAuth,private val firest
                 if(error !is FirebaseFirestoreException || error.code!=FirebaseFirestoreException.Code.PERMISSION_DENIED || observed==null || attempt==4)throw error
                 val latest=root.get(Source.SERVER).await()
                 if(latest.getBoolean("active")!=true || latest.getString("generation")!=operation.generation)throw error
-                // No competing commit advanced the head: the rules refused this operation's own writes.
-                if((latest.getLong("sequence")?:0)<=observed!!)throw if(staged)SyncOperationRejected(error) else error
+                // No competing commit advanced the head and no compaction upgrade changed the receipt format:
+                // the rules refused this operation's own writes.
+                if((latest.getLong("sequence")?:0)<=observed!! && latest.getLong("protocol")==observedProtocol)throw if(staged)SyncOperationRejected(error) else error
             }
         }
         error("Cloud transaction did not complete")

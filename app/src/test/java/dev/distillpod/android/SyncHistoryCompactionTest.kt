@@ -5,6 +5,7 @@ import androidx.test.core.app.ApplicationProvider
 import dev.distillpod.android.data.*
 import dev.distillpod.android.sync.*
 import dev.distillpod.core.sync.*
+import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import org.junit.Assert.*
@@ -28,8 +29,9 @@ class SyncHistoryCompactionTest {
         var sequence=0L;var protocol=3;var compactedThrough=0L
         var loseAck=false;var heads=0;var entityReads=0
         var beforeChanges:(suspend ()->Unit)?=null
+        var headGate:kotlinx.coroutines.CompletableDeferred<Unit>?=null
         val calls=mutableListOf<String>()
-        override suspend fun head():CloudHead { heads++;return CloudHead(owner,sequence,protocol,compactedThrough) }
+        override suspend fun head():CloudHead { heads++;headGate?.await();return CloudHead(owner,sequence,protocol,compactedThrough) }
         override suspend fun entities(after:String):List<CloudSubscription> { entityReads++;return rows.values.filter { it.key>after }.sortedBy { it.key }.take(100) }
         override suspend fun changes(after:Long,through:Long):List<CloudSubscription> {
             beforeChanges?.invoke()
@@ -233,6 +235,17 @@ class SyncHistoryCompactionTest {
             cloud.protocol=protocol;cloud.sequence=50_000;caughtUp(db,50_000)
             clock+=31*day;compactor.run();clock+=31*day;compactor.run()
             assertEquals(protocol,cloud.protocol);assertTrue(cloud.calls.isEmpty())
+        }
+    }
+    @Test fun `overlapping compaction runs do not both contact the cloud`()=one { db,_,cloud ->
+        cloud.sequence=50_000;caughtUp(db,50_000)
+        val compactor=SyncHistoryCompactor(db,cloud,SyncCompactionPolicy(true,intervalMs=0)) { clock }
+        cloud.headGate=kotlinx.coroutines.CompletableDeferred()
+        kotlinx.coroutines.coroutineScope {
+            val first=async { compactor.run() }
+            while(cloud.heads==0)kotlinx.coroutines.yield()
+            assertEquals(0,compactor.run());assertEquals(1,cloud.heads)
+            cloud.headGate!!.complete(Unit);first.await()
         }
     }
     @Test fun `paused other-account or unbootstrapped installations do not compact`()=one { db,store,cloud ->

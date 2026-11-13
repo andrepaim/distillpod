@@ -28,14 +28,14 @@ async function adminHead(uid,fields) { await env.withSecurityRulesDisabled(async
 const sha256 = value => createHash('sha256').update(value,'utf8').digest('hex');
 const validPayload={subscribed:'true',podcastId:'podcast1',feedUrl:'https://example.test/feed',originalFeedUrl:'https://example.test/feed',title:'Show',author:'Author'};
 async function commit(database, {uid='alice',id='op1',key='subscription_item1',baseVersion=0,payload=validPayload,deleted=false,generation='g1',fullSignature=false}={}) {
- let observedSequence, staged=false;
+ let observedSequence, observedProtocol, staged=false;
  for(let attempt=0;attempt<5;attempt++) {
  staged=false;
  try { return await runTransaction(database,async tx=>{
   staged=false;
   const headRef=doc(database,control(uid)), entityRef=doc(database,`${control(uid)}/entities/${key}`), receiptRef=doc(database,`${control(uid)}/receipts/${id}`);
   const [head,entity,receipt]=await Promise.all([tx.get(headRef),tx.get(entityRef),tx.get(receiptRef)]);
-  observedSequence=head.data().sequence;
+  observedSequence=head.data().sequence;observedProtocol=head.data().protocol;
   const canonical=JSON.stringify({key,baseVersion,payload,deleted,generation});
   // Protocol 4 stores only the canonical signature's SHA-256; either stored form identifies the operation.
   const signature=head.data().protocol>=4 && !fullSignature ? sha256(canonical) : canonical;
@@ -56,7 +56,8 @@ async function commit(database, {uid='alice',id='op1',key='subscription_item1',b
    if(!latest.active || latest.generation!==generation) throw error;
    // Without head advancement, refused staged writes are this operation's deterministic rejection;
    // FirebaseSubscriptionCloud reports it as SyncOperationRejected and the outbox continues.
-   if(latest.sequence<=observedSequence) { if(staged) error.rejected=true; throw error; }
+   // A concurrent protocol-4 upgrade changes the required receipt form; retry that too.
+   if(latest.sequence<=observedSequence && latest.protocol===observedProtocol) { if(staged) error.rejected=true; throw error; }
  }
  }
 }

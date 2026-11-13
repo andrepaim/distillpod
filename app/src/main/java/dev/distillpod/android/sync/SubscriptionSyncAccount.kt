@@ -176,10 +176,13 @@ class SubscriptionSyncAccount(private val graph:AppGraph) {
         }
         val completed=coordinator.run()
         // Optional upkeep after a complete run; a failure never changes the sync outcome.
-        if(completed)try { compactor.run() } catch(cancelled:CancellationException) { throw cancelled } catch(error:Exception) { graph.diagnostics.failure("sync",error) }
+        // Its own short budget keeps a slow compaction from failing the worker's completed sync.
+        if(completed)try { withTimeoutOrNull(COMPACTION_BUDGET_MS) { compactor.run() } }
+            catch(cancelled:CancellationException) { throw cancelled } catch(error:Exception) { graph.diagnostics.failure("sync",error) }
         return completed
     }
 }
+private const val COMPACTION_BUDGET_MS=15_000L
 class SubscriptionSyncWorker(context:Context,parameters:WorkerParameters):CoroutineWorker(context,parameters) {
     override suspend fun doWork():Result {
         val graph=applicationContext.appGraph

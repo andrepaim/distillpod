@@ -2,6 +2,7 @@ package dev.distillpod.android.sync
 
 import dev.distillpod.android.data.AppDatabase
 import dev.distillpod.core.sync.*
+import kotlinx.coroutines.sync.Mutex
 
 /** Cloud operations for protocol-4 history compaction; reading a compacted account needs none of them. */
 interface SyncHistoryCloud {
@@ -28,9 +29,13 @@ data class SyncCompactionPolicy(val enabled:Boolean,val retainedSequences:Long=S
  */
 class SyncHistoryCompactor(private val db:AppDatabase,private val cloud:SyncHistoryCloud,private val policy:SyncCompactionPolicy,
     private val now:()->Long=System::currentTimeMillis) {
-    /** Returns the number of history documents deleted. */
+    private val running=Mutex()
+    /** Returns the number of history documents deleted; a run already in progress makes this one a no-op. */
     suspend fun run():Int {
-        if(!policy.enabled)return 0
+        if(!policy.enabled || !running.tryLock())return 0
+        try { return compact() } finally { running.unlock() }
+    }
+    private suspend fun compact():Int {
         val dao=db.sync()
         val b=dao.binding()?.takeIf { it.enabled && it.bootstrapped && it.uid==cloud.uid } ?: return 0
         val time=now()
