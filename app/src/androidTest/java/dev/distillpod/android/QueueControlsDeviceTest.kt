@@ -96,10 +96,9 @@ class QueueControlsDeviceTest {
             phase("queue controls visible") {
                 compose.waitUntil(15000) { compose.onAllNodesWithText("Clear queue").fetchSemanticsNodes().isNotEmpty() }
             }
-            compose.onNodeWithTag("queue-list").performScrollToNode(hasContentDescription("Move Queue item 0 up"))
-            compose.onNodeWithContentDescription("Move Queue item 0 up").assertIsNotEnabled()
-            compose.onNodeWithTag("queue-list").performScrollToNode(hasContentDescription("Move Queue item 0 down"))
-            compose.onNodeWithContentDescription("Move Queue item 0 down").performClick()
+            // Compact rows: boundary moves are absent from TalkBack actions and disabled in the menu.
+            compose.assertQueueRowActions(ids[0],listOf("Move down","Remove from queue"))
+            compose.selectQueueMenuAction("Queue item 0","Move down",disabled=listOf("Move up"))
             awaitQueue(listOf(ids[1],ids[0],ids[2]))
             assertEquals(ids[0],graph.playback.state.value.episodeId)
             assertFalse(graph.playback.state.value.playing)
@@ -116,11 +115,11 @@ class QueueControlsDeviceTest {
             // External controller changes use the same displayed and persisted source of truth.
             withContext(Dispatchers.Main) { player.moveMediaItem(2,0) }
             awaitQueue(listOf(ids[2],ids[0],ids[1]))
-            compose.onNodeWithTag("queue-list").performScrollToNode(hasContentDescription("Move Queue item 2 up"))
-            compose.onNodeWithContentDescription("Move Queue item 2 up").assertIsNotEnabled()
+            compose.assertQueueRowActions(ids[2],listOf("Move down","Remove from queue"))
             graph.playback.play(ids[0],3000)
             phase("playing current item") { withTimeout(10000) { graph.playback.state.first { it.playing } } }
-            graph.playback.move(ids[0],1)
+            // The platform accessibility action moves the playing item without interrupting it.
+            phase("accessibility move of playing item") { compose.performQueueAccessibilityAction(ids[0],"Queue item 0","Move down") }
             awaitQueue(listOf(ids[2],ids[1],ids[0]))
             assertEquals(ids[0],graph.playback.state.value.episodeId)
             assertTrue(graph.playback.state.value.playing)
@@ -170,9 +169,7 @@ class QueueControlsDeviceTest {
             // Single item and clear during actual playback retain the latest progress as well.
             graph.playback.play(ids[1],2000)
             phase("playing single item") { withTimeout(10000) { graph.playback.state.first { it.playing && it.queue==listOf(ids[1]) } } }
-            compose.onNodeWithTag("queue-list").performScrollToNode(hasContentDescription("Move Queue item 1 up"))
-            compose.onNodeWithContentDescription("Move Queue item 1 up").assertIsNotEnabled()
-            compose.onNodeWithContentDescription("Move Queue item 1 down").assertIsNotEnabled()
+            compose.assertQueueRowActions(ids[1],listOf("Remove from queue"))
             // MediaController extrapolates positions and masks REMOVE locally before the server
             // handles it. Observe the actual service ExoPlayer, not that predicted callback.
             val removed=CompletableDeferred<Long>()
@@ -215,7 +212,9 @@ class QueueControlsDeviceTest {
             // Removing current with a successor retains the removed episode, not the successor position.
             graph.playback.play(ids[0],1000);graph.playback.pause();graph.playback.enqueue(ids[2])
             awaitQueue(listOf(ids[0],ids[2]))
-            graph.playback.seek(3456);graph.playback.remove(ids[0])
+            // Removing the current item from its row menu keeps the removal checkpoint semantics.
+            graph.playback.seek(3456)
+            compose.selectQueueMenuAction("Queue item 0","Remove from queue")
             awaitQueue(listOf(ids[2]))
             awaitProgress(0,"3456") { it==3456L }
             assertFalse(dao.episode(ids[0])!!.completed)
