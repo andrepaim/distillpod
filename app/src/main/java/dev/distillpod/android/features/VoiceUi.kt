@@ -5,8 +5,8 @@ import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import android.provider.Settings
 import android.os.SystemClock
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
@@ -22,8 +22,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -58,9 +58,12 @@ internal fun VoicePlayerHost(vm: AppViewModel, showLastAnswer: Boolean = true, c
     var permissionError by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted && vm.graph.voiceApiKey.hasKey()) { permissionError = null; voice.start({ PhoneVoiceInput() }) }
-        // After repeated denials Android answers without asking, so app settings is the only way back.
-        else permissionError = if (granted) "Allow microphone access to ask a question." else MICROPHONE_DENIED
+        when {
+            // After repeated denials Android answers without asking, so app settings is the only way back.
+            !granted -> permissionError = MICROPHONE_DENIED
+            !vm.graph.voiceApiKey.hasKey() -> { permissionError = null; vm.open("settings:voice") }
+            else -> { permissionError = null; voice.start({ PhoneVoiceInput() }) }
+        }
     }
     val ask = {
         if (!vm.graph.voiceApiKey.hasKey()) { vm.open("settings:voice"); false }
@@ -75,7 +78,7 @@ internal fun VoicePlayerHost(vm: AppViewModel, showLastAnswer: Boolean = true, c
     VoicePlayerInteraction(state.copy(error = permissionError ?: state.error), ask, voice::finishQuestion,
         content = { _, action -> content(true, state.active, action) }, showLastAnswer = showLastAnswer,
         onCancel = { voice.cancel(true); permissionError = null },
-        onOpenSettings = if (permissionError == MICROPHONE_DENIED) { { openAppSettings(context) } } else null)
+        onOpenSettings = { openAppSettings(context) })
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -149,8 +152,12 @@ internal fun VoiceSessionContent(state: VoiceState, running: Boolean, onDone: ()
         if (state.answer.isNotBlank()) VoiceAnswerTranscript(state.answer)
         state.error?.let {
             Text(it, color = MaterialTheme.colorScheme.error)
-            Button(onClick = onRetry, modifier = Modifier.fillMaxWidth()) { Text("Try again") }
-            onOpenSettings?.let { OutlinedButton(onClick = it, modifier = Modifier.fillMaxWidth()) { Text("Open app settings") } }
+            // Only a denied microphone is fixed in app settings; retrying alone cannot bring the prompt back.
+            val settings = onOpenSettings?.takeIf { _ -> it == MICROPHONE_DENIED }
+            if (settings != null) {
+                Button(onClick = settings, modifier = Modifier.fillMaxWidth()) { Text("Open app settings") }
+                OutlinedButton(onClick = onRetry, modifier = Modifier.fillMaxWidth()) { Text("Try again") }
+            } else Button(onClick = onRetry, modifier = Modifier.fillMaxWidth()) { Text("Try again") }
         }
         OutlinedButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
             Text(when { state.phase == "Answering" -> "Stop and resume"; state.active -> "Cancel and resume"; running || state.error != null -> "Return to podcast"; else -> "Close" })

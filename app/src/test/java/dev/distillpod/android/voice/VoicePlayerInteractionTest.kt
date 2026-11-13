@@ -4,6 +4,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.test.*
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.junit4.createComposeRule
+import dev.distillpod.android.features.MICROPHONE_DENIED
 import dev.distillpod.android.features.VoicePlayerInteraction
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -44,14 +45,14 @@ class VoicePlayerInteractionTest {
     }
     @Test fun `denied microphone offers app settings while other failures do not`() {
         var state by mutableStateOf(VoiceState("Preparing"))
-        var openSettings by mutableStateOf<(() -> Unit)?>(null)
         var settings = 0
-        compose.setContent { VoicePlayerInteraction(state, { true }, {}, {}, onOpenSettings = openSettings) }
+        compose.setContent { VoicePlayerInteraction(state, { true }, {}, {}, onOpenSettings = { settings++ }) }
         compose.onNodeWithText("Ask about this").performClick()
         compose.runOnIdle { state = VoiceState(error = "Fixture connection failed") }
         compose.onNodeWithText("Try again").assertExists()
         compose.onNodeWithText("Open app settings").assertDoesNotExist()
-        compose.runOnIdle { state = VoiceState(error = "Microphone access is off"); openSettings = { settings++ } }
+        compose.runOnIdle { state = VoiceState(error = MICROPHONE_DENIED) }
+        compose.onNodeWithText(MICROPHONE_DENIED).assertExists()
         compose.onNodeWithText("Try again").assertExists()
         compose.onNodeWithText("Open app settings").performScrollTo().performSemanticsAction(SemanticsActions.OnClick) { it() }
         compose.runOnIdle { assertEquals(1, settings) }
