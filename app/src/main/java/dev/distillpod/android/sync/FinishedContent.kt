@@ -82,15 +82,34 @@ class FinishedContent(private val db:AppDatabase,private val isolatedDemo:Boolea
         }
     }
     suspend fun snapshot(episodeId:String):ContentArtifact?=db.withTransaction {
-        val dao=db.library();val ep=dao.episode(episodeId)?:return@withTransaction null
-        val identity=PortableLibrarySync(db,isolatedDemo).identity(ep)?:return@withTransaction null
-        val transcript=dao.transcript(episodeId)?.takeIf {it.state=="ready" && it.fingerprint==ep.mediaFingerprint}?:return@withTransaction null
-        val segments=dao.segments(ep.id,transcript.revision)
-        require(segments.size<=100000)
+        document(episodeId,summarizeSegments=false)?.let {ContentArtifacts.encode(it.toString().toByteArray(Charsets.UTF_8))}
+    }
+    /**
+     * A cheap change key for [snapshot], null exactly when no snapshot exists. It covers the same document
+     * except the segment list, which is summarized by revision and row aggregates: a ready revision's rows
+     * are immutable (see [restore]), so new text arrives as a new revision or as added/replaced rows.
+     */
+    suspend fun sourceKey(episodeId:String):String?=db.withTransaction {
+        document(episodeId,summarizeSegments=true)?.let {
+            java.security.MessageDigest.getInstance("SHA-256").digest("$SOURCE_KEY_VERSION\n$it".toByteArray(Charsets.UTF_8)).joinToString("") {b->"%02x".format(b)}
+        }
+    }
+    private suspend fun document(episodeId:String,summarizeSegments:Boolean):JSONObject? {
+        val dao=db.library();val ep=dao.episode(episodeId)?:return null
+        val identity=PortableLibrarySync(db,isolatedDemo).identity(ep)?:return null
+        val transcript=dao.transcript(episodeId)?.takeIf {it.state=="ready" && it.fingerprint==ep.mediaFingerprint}?:return null
+        val segments:Any=if(summarizeSegments) {
+            db.sync().segmentSummary(ep.id,transcript.revision).let {s->JSONObject().put("rows",s.rowCount).put("startMs",s.startMs).put("endMs",s.endMs)
+                .put("ordinals",s.ordinals).put("textLength",s.textLength).put("rowIds",s.rowIds)}
+        } else {
+            val rows=dao.segments(ep.id,transcript.revision)
+            require(rows.size<=100000)
+            JSONArray(rows.map {s->JSONObject().put("startMs",s.startMs).put("endMs",s.endMs).put("ordinal",s.ordinal).put("text",s.text)})
+        }
         val result=JSONObject().put("format","distillpod-finished-content").put("schema",1)
             .put("identity",JSONObject(identity)).put("transcript",JSONObject().put("revision",transcript.revision).put("fingerprint",transcript.fingerprint)
                 .put("model",transcript.model).put("language",transcript.language).put("source",transcript.source).put("durationMs",transcript.durationMs))
-            .put("segments",JSONArray(segments.map {s->JSONObject().put("startMs",s.startMs).put("endMs",s.endMs).put("ordinal",s.ordinal).put("text",s.text)}))
+            .put("segments",segments)
             .put("coverage",JSONArray(dao.coverage(ep.id,transcript.revision).map {c->JSONObject().put("startMs",c.startMs).put("endMs",c.endMs)}))
         val analysis=dao.analysis(ep.id)?.takeIf {it.state=="succeeded" && it.revision==transcript.revision}
         result.put("analysis",analysis?.let {a->JSONObject().put("revision",a.revision).put("summary",a.summary).put("chaptersJson",a.chaptersJson).put("adsJson",a.adsJson)
@@ -102,6 +121,10 @@ class FinishedContent(private val db:AppDatabase,private val isolatedDemo:Boolea
         val moments=dao.distillations().filter {it.episodeId==ep.id}.map {it.id}.toSet()
         result.put("research",JSONArray(dao.researches().filter {it.distillationId in moments && it.state=="succeeded"}.map {r->JSONObject().put("id",r.id)
             .put("distillationId",r.distillationId).put("report",r.report).put("sourcesJson",r.sourcesJson).put("mode",r.mode).put("createdAt",r.createdAt)}))
-        ContentArtifacts.encode(result.toString().toByteArray(Charsets.UTF_8))
+        return result
+    }
+    private companion object {
+        /** Change it with the segment serialization or summary above, so earlier keys stop matching. */
+        const val SOURCE_KEY_VERSION="finished-content-source-1"
     }
 }
