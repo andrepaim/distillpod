@@ -42,4 +42,18 @@ class VoicePlayerInteractionTest {
         compose.onNodeWithText("Fixture connection failed").assertDoesNotExist()
         compose.onNodeWithText("Ask about this").assertIsDisplayed()
     }
+    @Test fun `denied microphone offers app settings while other failures do not`() {
+        var state by mutableStateOf(VoiceState("Preparing"))
+        var openSettings by mutableStateOf<(() -> Unit)?>(null)
+        var settings = 0
+        compose.setContent { VoicePlayerInteraction(state, { true }, {}, {}, onOpenSettings = openSettings) }
+        compose.onNodeWithText("Ask about this").performClick()
+        compose.runOnIdle { state = VoiceState(error = "Fixture connection failed") }
+        compose.onNodeWithText("Try again").assertExists()
+        compose.onNodeWithText("Open app settings").assertDoesNotExist()
+        compose.runOnIdle { state = VoiceState(error = "Microphone access is off"); openSettings = { settings++ } }
+        compose.onNodeWithText("Try again").assertExists()
+        compose.onNodeWithText("Open app settings").performScrollTo().performSemanticsAction(SemanticsActions.OnClick) { it() }
+        compose.runOnIdle { assertEquals(1, settings) }
+    }
 }
