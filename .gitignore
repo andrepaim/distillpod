@@ -51,3 +51,6 @@ distillpod-20??-??-??*.json
 
 # Bundled public-domain UI feedback asset.
 !app/src/main/res/raw/distill_scribble.wav
+
+# ChatGPT integration build output
+integrations/chatgpt/dist/

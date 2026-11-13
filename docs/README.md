@@ -51,6 +51,7 @@ branch names, commands, versions and unchecked plan items are not a second set
 of current installation instructions.
 
 - [Original Android plan](android-implementation-plan.md), [Firebase sync/telemetry plan](android/firebase-sync-telemetry-plan.md), [Android Auto plan](android/android-auto-plan.md).
+- [ChatGPT plugin plan](chatgpt-plugin-plan.md): proposed CLI and skills-only integration for Work, Codex and dots, using the existing Firestore scope.
 - [YouTube sources and videocasts](android/videocasts.md): feature-branch behavior, limitations and validation.
 - [Listening UI proposal](android/ui-improvement-proposal.md), [search proposal](android/search-ui-proposal.md), [full design review](android/full-design-review.md).
 - [Social-sharing plan index](android/social-sharing-plan.md), [accepted two-format design](android/social-sharing-redesign.md), [superseded first design](android/social-sharing-design.md).
