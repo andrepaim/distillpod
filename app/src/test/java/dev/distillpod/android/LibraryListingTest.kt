@@ -8,7 +8,10 @@ import dev.distillpod.android.features.libraryListings
 import dev.distillpod.android.playback.PlaybackState
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.plus
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -62,9 +65,10 @@ class LibraryListingTest {
     @OptIn(ExperimentalCoroutinesApi::class)
     @Test fun `live position ticks do not recompute the listing`() = runTest {
         val player = MutableStateFlow(PlaybackState("half", positionMs = 0, playing = true))
-        val emitted = mutableListOf<LibraryListing>()
+        val emitted = mutableListOf<LibraryListing?>()
         val job = launch(UnconfinedTestDispatcher(testScheduler)) {
-            libraryListings(MutableStateFlow(podcasts), MutableStateFlow(episodes), MutableStateFlow("all"), player, null).toList(emitted)
+            libraryListings(MutableStateFlow(podcasts), MutableStateFlow(episodes), MutableStateFlow("all"), player,
+                MutableStateFlow("library")).toList(emitted)
         }
         repeat(20) { player.value = player.value.copy(positionMs = it * 500L) }
         advanceUntilIdle()
@@ -72,7 +76,28 @@ class LibraryListingTest {
         player.value = player.value.copy(episodeId = "new")
         advanceUntilIdle()
         assertEquals(2, emitted.size)
-        assertEquals("new", emitted.last().resume?.id)
+        assertEquals("new", emitted.last()?.resume?.id)
         job.cancel()
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test fun `listing follows the top route and filter before control returns`() = runTest {
+        val route = MutableStateFlow("library")
+        val filter = MutableStateFlow("all")
+        // The ViewModel shares this eagerly on Main.immediate; an unconfined collector has the same
+        // ordering: a navigation or filter change is visible as soon as the setter returns, so the
+        // page renders rows for the state it was opened with, without extra dispatches.
+        val state = libraryListings(MutableStateFlow(podcasts), MutableStateFlow(episodes), filter,
+            MutableStateFlow(PlaybackState()), route).stateIn(backgroundScope + UnconfinedTestDispatcher(testScheduler), SharingStarted.Eagerly, null)
+        assertNull(state.value?.podcastId)
+        assertEquals(7, state.value?.episodeCount)
+        route.value = "podcast:p2"
+        assertEquals("p2", state.value?.podcastId)
+        assertEquals(listOf("offline", "played", "stranger"), state.value?.visible?.map { it.id })
+        filter.value = "downloads"
+        assertEquals("downloads", state.value?.filter)
+        assertEquals(listOf("offline"), state.value?.visible?.map { it.id })
+        route.value = "settings"
+        assertNull("other screens do not filter the library", state.value)
     }
 }

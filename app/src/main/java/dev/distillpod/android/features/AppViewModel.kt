@@ -68,9 +68,14 @@ class AppViewModel(val graph: AppGraph, private val saved: SavedStateHandle) : V
     }
 
     val player = graph.playback.state
-    /** Library tab (null) or show page rows, filtered here instead of on every recomposition (#141). */
-    internal fun libraryRows(podcastId: String?): Flow<LibraryListing> = libraryListings(podcasts, episodes, filter, player, podcastId)
-    /** The same rows from the current values, so a page never starts from an older listing. */
+    /**
+     * Rows for the Library tab or show page on top of the back stack, filtered here instead of on
+     * every recomposition (#141). Shared eagerly on Main.immediate, so navigation and filter changes
+     * update it before the page composes; other screens hold null and filter nothing.
+     */
+    internal val library: StateFlow<LibraryListing?> = libraryListings(podcasts, episodes, filter, player, backStack.map { it.lastOrNull() })
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+    /** The same rows from current values, for a page composed before [library] reflects it. */
     internal fun currentLibraryListing(podcastId: String?): LibraryListing =
         libraryListing(podcasts.value, episodes.value, filter.value, podcastId, player.value.episodeId)
     private val directorySearch = PodcastSearch(viewModelScope, graph.podcasts::search, graph.settings::rememberSearch,

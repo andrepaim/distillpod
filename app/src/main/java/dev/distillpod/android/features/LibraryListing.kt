@@ -9,7 +9,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 
 /** Rows of the Library tab or one show page, for the filter they were selected with. */
-internal data class LibraryListing(val filter: String, val subscribed: List<PodcastEntity>, val selected: PodcastEntity?,
+internal data class LibraryListing(val podcastId: String?, val filter: String, val subscribed: List<PodcastEntity>, val selected: PodcastEntity?,
     val episodeCount: Int, val visible: List<EpisodeEntity>, val resume: EpisodeEntity?)
 
 /**
@@ -31,12 +31,24 @@ internal fun libraryListing(podcasts: List<PodcastEntity>, episodes: List<Episod
         filtered.sortedBy { it.sourceOrder ?: Int.MAX_VALUE } else filtered
     val resume = library.firstOrNull { it.id == currentEpisodeId && !it.completed }
         ?: library.filter { it.positionMs > 0 && !it.completed }.maxByOrNull { it.lastPlayedAt }
-    return LibraryListing(filter, subscribed, selected, library.size, visible, resume)
+    return LibraryListing(podcastId, filter, subscribed, selected, library.size, visible, resume)
 }
 
-/** Recomputed for library, filter or current-episode changes; live player position ticks do not (#141). */
+/** The Library tab (null show) or a show page when it is the top route; null for other screens. */
+internal data class LibraryRoute(val podcastId: String?)
+internal fun libraryRoute(route: String?): LibraryRoute? = when {
+    route == "library" -> LibraryRoute(null)
+    route?.startsWith("podcast:") == true -> LibraryRoute(route.substringAfter(':'))
+    else -> null
+}
+
+/**
+ * Rows of the library page on top of [route], recomputed for library, filter, route or
+ * current-episode changes; live player position ticks do not recompute them (#141).
+ */
 internal fun libraryListings(podcasts: Flow<List<PodcastEntity>>, episodes: Flow<List<EpisodeEntity>>, filter: Flow<String>,
-    player: Flow<PlaybackState>, podcastId: String?): Flow<LibraryListing> =
-    combine(podcasts, episodes, filter, player.map { it.episodeId }.distinctUntilChanged()) { p, e, f, current ->
-        libraryListing(p, e, f, podcastId, current)
+    player: Flow<PlaybackState>, route: Flow<String?>): Flow<LibraryListing?> =
+    combine(podcasts, episodes, filter, player.map { it.episodeId }.distinctUntilChanged(),
+        route.map(::libraryRoute).distinctUntilChanged()) { p, e, f, current, page ->
+        page?.let { libraryListing(p, e, f, it.podcastId, current) }
     }.distinctUntilChanged()
