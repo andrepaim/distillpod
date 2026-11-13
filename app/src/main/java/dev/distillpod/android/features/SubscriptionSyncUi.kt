@@ -74,7 +74,7 @@ import dev.distillpod.android.sync.SyncBindingEntity
             } else {
                 Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick={vm.action("sync-toggle"){if(binding?.enabled==true)account.pause() else account.resume()}}) {Text(if(binding?.enabled==true)"Pause sync" else "Resume sync")}
-                    TextButton(onClick={account.kick()},enabled=binding?.enabled==true){Text("Sync now")}
+                    TextButton(onClick={account.syncNow()},enabled=binding?.enabled==true){Text("Sync now")}
                 }
                 if(binding?.enabled==true && podcasts.any {p->p.subscribed && approvals.none {it.podcastId==p.id}}) {
                     TextButton(onClick={reviewing=true}){Text("Add existing subscriptions to sync")}
