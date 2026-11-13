@@ -27,12 +27,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.font.FontFamily
@@ -515,23 +518,48 @@ private val NOT_CURRENT = PlaybackState()
 
 @Composable private fun QueueEpisodeCard(ep: EpisodeEntity, podcast: PodcastEntity?, player: PlaybackState, number: Int?, canMoveUp: Boolean, canMoveDown: Boolean, onOpen: (String) -> Unit, onPlay: (String) -> Unit, onToggle: () -> Unit, onMove: (String, Int) -> Unit, onRemove: (String) -> Unit) {
     val current = player.episodeId == ep.id
-    Card(onClick = { onOpen(ep.id) }, colors = CardDefaults.cardColors(containerColor = if (current) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface)) {
-        Column(Modifier.padding(start = 14.dp, top = 14.dp, end = 8.dp, bottom = 4.dp)) {
+    // TalkBack offers the row's queue edits as custom actions; boundary moves are omitted, as
+    // the overflow menu disables them. Both resolve by episode identity in the playback layer.
+    val actions = buildList {
+        if (canMoveUp) add(CustomAccessibilityAction("Move up") { onMove(ep.id, -1); true })
+        if (canMoveDown) add(CustomAccessibilityAction("Move down") { onMove(ep.id, 1); true })
+        add(CustomAccessibilityAction("Remove from queue") { onRemove(ep.id); true })
+    }
+    // Enlarged text needs the row's width for the episode, so the controls move below it.
+    val stacked = LocalDensity.current.fontScale >= 1.5f
+    Card(onClick = { onOpen(ep.id) }, modifier = Modifier.testTag("queue-row-${ep.id}").semantics { customActions = actions },
+        colors = CardDefaults.cardColors(containerColor = if (current) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface)) {
+        @Composable fun controls() = Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = { if (current && player.playing) onToggle() else onPlay(ep.id) }) { Icon(if (current && player.playing) Icons.Default.Pause else Icons.Default.PlayArrow, "${if (current && player.playing) "Pause" else "Play"} ${ep.title}") }
+            QueueRowMenu(ep, canMoveUp, canMoveDown, onMove, onRemove)
+        }
+        Column(Modifier.padding(start = 12.dp, top = 10.dp, bottom = if (stacked) 2.dp else 10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 if (number != null) Text(number.toString().padStart(2, '0'), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Cover(ep.imageUrl ?: podcast?.imageUrl, Modifier.size(48.dp))
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(ep.title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                Column(Modifier.weight(1f).padding(end = if (stacked) 12.dp else 0.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(ep.title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     Text(podcast?.title ?: "Podcast", maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(queueTimeLabel(ep, player), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                IconButton(onClick = { if (current && player.playing) onToggle() else onPlay(ep.id) }) { Icon(if (current && player.playing) Icons.Default.Pause else Icons.Default.PlayArrow, "${if (current && player.playing) "Pause" else "Play"} ${ep.title}") }
+                if (!stacked) controls()
             }
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(queueTimeLabel(ep, player), Modifier.weight(1f), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                IconButton(onClick = { onMove(ep.id, -1) }, enabled = canMoveUp) { Icon(Icons.Default.ArrowUpward, "Move ${ep.title} up") }
-                IconButton(onClick = { onMove(ep.id, 1) }, enabled = canMoveDown) { Icon(Icons.Default.ArrowDownward, "Move ${ep.title} down") }
-                IconButton(onClick = { onRemove(ep.id) }) { Icon(Icons.Default.Close, "Remove ${ep.title} from queue") }
-            }
+            if (stacked) Box(Modifier.align(Alignment.End)) { controls() }
+        }
+    }
+}
+
+@Composable private fun QueueRowMenu(ep: EpisodeEntity, canMoveUp: Boolean, canMoveDown: Boolean, onMove: (String, Int) -> Unit, onRemove: (String) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        IconButton(onClick = { open = true }) { Icon(Icons.Default.MoreVert, "Queue actions for ${ep.title}") }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            DropdownMenuItem(text = { Text("Move up") }, leadingIcon = { Icon(Icons.Default.ArrowUpward, null) }, enabled = canMoveUp,
+                onClick = { open = false; onMove(ep.id, -1) })
+            DropdownMenuItem(text = { Text("Move down") }, leadingIcon = { Icon(Icons.Default.ArrowDownward, null) }, enabled = canMoveDown,
+                onClick = { open = false; onMove(ep.id, 1) })
+            DropdownMenuItem(text = { Text("Remove from queue") }, leadingIcon = { Icon(Icons.Default.Close, null) },
+                onClick = { open = false; onRemove(ep.id) })
         }
     }
 }
