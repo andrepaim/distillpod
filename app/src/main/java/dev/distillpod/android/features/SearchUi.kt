@@ -151,7 +151,7 @@ private val topics = listOf(SearchTopic("Technology", Icons.Default.Memory), Sea
                     items(topics.chunked(2)) { row ->
                         Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             row.forEach { topic ->
-                                Surface(onClick = { submit(topic.name) }, color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = .65f), shape = RoundedCornerShape(20.dp), modifier = Modifier.weight(1f).fillMaxHeight()) {
+                                Surface(onClick = { submit(topic.name) }, color = MaterialTheme.colorScheme.surfaceContainer, contentColor = MaterialTheme.colorScheme.onSurface, shape = MaterialTheme.shapes.medium, modifier = Modifier.weight(1f).fillMaxHeight()) {
                                     Column(Modifier.padding(16.dp).heightIn(min = 64.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                         Icon(topic.icon, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(26.dp))
                                         Text(topic.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)

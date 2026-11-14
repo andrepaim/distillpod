@@ -176,7 +176,8 @@ class AutomaticTranscriptionDeviceTest {
             toggle.assertIsOn().performClick()
             await { !graph.settings.flow.first().transcribeOnPlayback }
             toggle.assertIsOff()
-            compose.onNodeWithText("Turning this off leaves existing jobs running", substring = true).assertIsDisplayed()
+            // Once off, the switch itself says what happens to jobs already running (#203 keeps it out of the Learn more sheet).
+            compose.onNodeWithText("Existing transcript jobs keep running", substring = true).assertIsDisplayed()
         } finally { graph.settings.flag("transcribeOnPlayback", old) }
     }
 }

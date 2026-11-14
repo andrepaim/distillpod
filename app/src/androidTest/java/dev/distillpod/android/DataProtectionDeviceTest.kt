@@ -21,12 +21,20 @@ class DataProtectionDeviceTest {
         withContext(Dispatchers.Main) {
             ViewModelProvider(compose.activity, AppViewModel.factory(graph))[AppViewModel::class.java].open("settings:sync")
         }
-        compose.onNodeWithText("Connecting binds this library", substring = true).performScrollTo().assertIsDisplayed()
+        assertBindingDisclosure()
         compose.onNodeWithText("Open Backup & Restore").performScrollTo().performClick()
         compose.onNodeWithText("Manual only: backups do not run on a schedule.").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Open Library sync").performScrollTo().performClick()
-        compose.onNodeWithText("Connecting binds this library", substring = true).performScrollTo().assertIsDisplayed()
+        assertBindingDisclosure()
         compose.onNodeWithContentDescription("Back").performClick()
         compose.onNodeWithText("Manual only: backups do not run on a schedule.").performScrollTo().assertIsDisplayed()
+    }
+
+    /** The binding disclosure is kept verbatim in the sync page's Learn more sheet (#203). */
+    private fun assertBindingDisclosure() {
+        compose.onNodeWithContentDescription("Learn more about Sync and backup").performScrollTo().performClick()
+        compose.onNodeWithText("Connecting binds this library", substring = true).performScrollTo().assertIsDisplayed()
+        androidx.test.espresso.Espresso.pressBack()
+        compose.waitUntil(5000) { compose.onAllNodesWithText("Connecting binds this library", substring = true).fetchSemanticsNodes().isEmpty() }
     }
 }

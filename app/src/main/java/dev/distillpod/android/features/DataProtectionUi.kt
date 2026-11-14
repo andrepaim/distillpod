@@ -6,6 +6,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable internal fun DataProtectionInfo(
     configured: Boolean,
     contentConfigured: Boolean,
@@ -13,15 +14,21 @@ import androidx.compose.ui.unit.dp
     viewingBackup: Boolean,
     onOpenOther: () -> Unit,
     navigationEnabled: Boolean = true,
+    details: List<String> = emptyList(),
 ) {
-    Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("Sync and backup protect different things", style = MaterialTheme.typography.titleMedium)
-            Text(DataProtectionGuidance.sync(configured, contentConfigured, expandedScope), style = MaterialTheme.typography.bodySmall)
-            Text(DataProtectionGuidance.backup, style = MaterialTheme.typography.bodySmall)
-            Text(DataProtectionGuidance.excluded, style = MaterialTheme.typography.bodySmall)
-            TextButton(onClick = onOpenOther, enabled = navigationEnabled) {
-                Text(if (viewingBackup) "Open Library sync" else "Open Backup & Restore")
+    // One line on screen; the complete sync, backup and exclusion text stays verbatim in the sheet (#203).
+    val unavailable = DataProtectionGuidance.sync(configured, contentConfigured, expandedScope).takeIf { !configured }
+    val full = listOfNotNull(DataProtectionGuidance.sync(configured, contentConfigured, expandedScope).takeIf { configured },
+        DataProtectionGuidance.backup, DataProtectionGuidance.excluded) + details
+    Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("Sync and backup protect different things", style = MaterialTheme.typography.titleSmall)
+            Text(unavailable ?: DataProtectionGuidance.summary, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                LearnMoreLink("Sync and backup", full)
+                TextButton(onClick = onOpenOther, enabled = navigationEnabled, contentPadding = PaddingValues(horizontal = 0.dp, vertical = 4.dp)) {
+                    Text(if (viewingBackup) "Open Library sync" else "Open Backup & Restore")
+                }
             }
         }
     }
