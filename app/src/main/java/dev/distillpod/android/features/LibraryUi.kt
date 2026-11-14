@@ -71,7 +71,7 @@ private val ACTIVE_DOWNLOAD = listOf("queued", "downloading")
  * repeated show name.
  */
 @Composable internal fun EpisodeRow(ep: EpisodeEntity, podcast: PodcastEntity?, player: PlaybackState, transcriptReady: Boolean,
-    captureCount: Int, showPodcast: Boolean, deletionBlock: String?, actions: EpisodeActions, modifier: Modifier = Modifier) {
+    captureCount: Int, showPodcast: Boolean, deletionBlock: String?, actions: EpisodeActions, modifier: Modifier = Modifier, retryPreparation: ((String) -> Unit)? = null) {
     val current = player.episodeId == ep.id
     val playing = current && player.playing
     val position = listeningPosition(ep, player)
@@ -107,7 +107,7 @@ private val ACTIVE_DOWNLOAD = listOf("queued", "downloading")
             FilledTonalIconButton(onClick = { if (playing) actions.toggle() else actions.play(ep.id) }) {
                 Icon(if (playing) Icons.Default.Pause else Icons.Default.PlayArrow, "${if (playing) "Pause" else "Play"} ${ep.title}")
             }
-            EpisodeMenu(ep, deletionBlock, actions)
+            EpisodeMenu(ep, deletionBlock, actions, retryPreparation)
         }
         // Flush with the card's bottom edge, like the mini-player, rather than another padded row.
         if (inProgress) LinearProgressIndicator(progress = { (position.toFloat() / duration).coerceIn(0f, 1f) },
@@ -115,11 +115,13 @@ private val ACTIVE_DOWNLOAD = listOf("queued", "downloading")
     }
 }
 
-@Composable private fun EpisodeMenu(ep: EpisodeEntity, blocked: String?, actions: EpisodeActions) {
+@Composable private fun EpisodeMenu(ep: EpisodeEntity, blocked: String?, actions: EpisodeActions, retryPreparation: ((String) -> Unit)?) {
     var open by remember { mutableStateOf(false) }
     Box {
         IconButton(onClick = { open = true }) { Icon(Icons.Default.MoreVert, "More actions for ${ep.title}") }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            if (retryPreparation != null) DropdownMenuItem(text = { Text("Retry preparation") },
+                onClick = { retryPreparation(ep.id); open = false })
             DropdownMenuItem(text = { Text("Play next") }, leadingIcon = { Icon(Icons.AutoMirrored.Filled.PlaylistPlay, null) },
                 onClick = { actions.enqueue(ep.id, true); open = false })
             DropdownMenuItem(text = { Text("Add to queue") }, leadingIcon = { Icon(Icons.AutoMirrored.Filled.PlaylistAdd, null) },

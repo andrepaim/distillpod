@@ -1,6 +1,15 @@
 package dev.distillpod.android
 
 import android.os.Build
+import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.width
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.lifecycle.ViewModelProvider
@@ -9,6 +18,7 @@ import androidx.work.WorkManager
 import dev.distillpod.android.ai.*
 import dev.distillpod.android.data.*
 import dev.distillpod.android.features.AppViewModel
+import dev.distillpod.android.features.ProductApp
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
 import okhttp3.mockwebserver.*
@@ -73,7 +83,11 @@ People contribute to their community.
             graph.settings.flag("transcribeOnPlayback", false)
             dao.putPodcast(PodcastEntity(id, server.url("/feed").toString(), "Automatic validation show"))
             open("podcast:$id")
-            compose.onNode(isToggleable() and hasAnySibling(hasText("Automatically prepare new episodes"))).performScrollTo().performClick()
+            compose.onNodeWithText("Automatically prepare new episodes").assertDoesNotExist()
+            compose.onNodeWithContentDescription("Show preparation settings").performClick()
+            compose.onNodeWithText("Transcript text is sent to ChatGPT", substring = true).assertIsDisplayed()
+            compose.onNode(isToggleable() and hasText("Automatically prepare new episodes")).performScrollTo().performClick()
+            compose.onNodeWithText("Enable preparation").performClick()
             await { graph.db.automation().show(id)?.initialized == true }
             assertTrue(graph.db.automation().jobs().none { it.podcastId == id })
             fresh.set(true)
@@ -126,6 +140,64 @@ People contribute to their community.
             graph.settings.flag("charging", prefs.chargingOnly)
             graph.settings.flag("transcribeOnPlayback", prefs.transcribeOnPlayback)
             server.shutdown()
+        }
+    }
+
+    @Test fun compactHeaderSurfacesFailuresOutsideTheEpisodeFilterAndRetriesTheSelectedEpisode() = runBlocking {
+        guard(); graph.ready.await()
+        val dao = graph.db.library()
+        val automation = graph.db.automation()
+        val id = "compact-preparation-${UUID.randomUUID()}"
+        val first = "$id-first"
+        val second = "$id-second"
+        val ready = "$id-ready"
+        val longTitle = "A deliberately long synthetic title for an episode that still needs preparation"
+        val showDescription = "A synthetic show description that should be visible only when expanded."
+        try {
+            dao.putPodcast(PodcastEntity(id, "https://example.test/$id", "Compact preparation fixture", description = showDescription))
+            dao.putEpisode(EpisodeEntity(first, id, first, longTitle, "https://example.test/first", publishedAt = 3))
+            dao.putEpisode(EpisodeEntity(second, id, second, "Second retry fixture", "https://example.test/second", publishedAt = 2))
+            dao.putEpisode(EpisodeEntity(ready, id, ready, "Ready fixture", "https://example.test/ready", publishedAt = 1))
+            // Freeze the processor without changing its behavior or making real network calls.
+            automation.putShow(ShowAutomationEntity(id, 1, initialized = false))
+            automation.insertJob(EpisodeAutomationEntity(first, id, "blocked"))
+            automation.insertJob(EpisodeAutomationEntity(second, id, "blocked"))
+            automation.insertJob(EpisodeAutomationEntity(ready, id, "ready"))
+            open("podcast:$id")
+            compose.waitUntil(10000) { compose.onAllNodesWithText("2 episodes need attention").fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithText("2 episodes need attention").assertIsDisplayed()
+            compose.onNodeWithText("Retry preparation").assertDoesNotExist()
+            compose.onNodeWithText("Automatically prepare new episodes").assertDoesNotExist()
+            compose.onNodeWithText(showDescription).assertDoesNotExist()
+            compose.onNodeWithText("About this show").performClick()
+            compose.onNodeWithText(showDescription).assertIsDisplayed()
+            compose.onNodeWithText("Hide about this show").performClick()
+            compose.onNodeWithContentDescription("More actions for $longTitle").performScrollTo().performClick()
+            compose.onNodeWithText("Retry preparation").performClick()
+            await { automation.jobs().any { it.episodeId == first && it.stage == "retry" } }
+            compose.waitUntil(10000) { compose.onAllNodesWithText("1 episode needs attention").fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithText("Downloads").performScrollTo().performClick()
+            compose.onNodeWithText("Second retry fixture").assertDoesNotExist()
+            compose.runOnUiThread {
+                val vm = ViewModelProvider(compose.activity, AppViewModel.factory(graph))[AppViewModel::class.java]
+                compose.activity.setContent {
+                    CompositionLocalProvider(LocalDensity provides Density(graph.context.resources.displayMetrics.density, 2f)) {
+                        Box(Modifier.width(320.dp).fillMaxHeight()) { ProductApp(vm) }
+                    }
+                }
+            }
+            compose.onNodeWithContentDescription("Show preparation settings").assertHasClickAction().assertIsDisplayed()
+            compose.onNodeWithText("1 episode needs attention").performScrollTo().assertHasClickAction().performClick()
+            compose.onNodeWithText("Needs attention only").assertIsSelected()
+            compose.onNodeWithText("Ready fixture").assertDoesNotExist()
+            compose.onNodeWithContentDescription("Retry preparation for Second retry fixture")
+                .performScrollTo().assertHasClickAction().assertIsDisplayed().performClick()
+            await { automation.jobs().any { it.episodeId == second && it.stage == "retry" } }
+            compose.waitUntil(10000) { compose.onAllNodesWithText("No episodes need attention").fetchSemanticsNodes().isNotEmpty() }
+            assertEquals("ready", automation.jobs().single { it.episodeId == ready }.stage)
+        } finally {
+            graph.automation.setEnabled(id, false)
+            dao.deletePodcast(id)
         }
     }
 
