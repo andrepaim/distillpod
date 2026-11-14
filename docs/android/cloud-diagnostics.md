@@ -2,6 +2,9 @@
 
 Optional cloud diagnostics use Sentry. The configured S22 candidate has delivered a log and handled error to the owner project, with readable managed stack frames. Publication status is tracked separately in GitHub Releases.
 
+For reading existing reports, start with [Sentry access for agents](../sentry-agent-access.md):
+connection discovery, permissions, scoped queries, private exports and evidence limits.
+
 ## Setup and use
 
 Create a free Sentry Developer organization and Android project. Store its public client DSN in the repository Actions secret `SENTRY_DSN`. Release validation requires it; ordinary source builds remain unconfigured. For a configured local build, provide `SENTRY_DSN` in the build environment without printing it. The app accepts HTTPS ingestion on Sentry-hosted domains. No Sentry management/authentication token is embedded in the app.
