@@ -352,7 +352,6 @@ private val NOT_CURRENT = PlaybackState()
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable private fun EpisodePage(vm: AppViewModel, ep: EpisodeEntity?, podcasts: List<PodcastEntity>, player: PlaybackState) {
     if (ep == null) { Empty("Episode unavailable", "Refresh the podcast or choose another saved episode."); return }
     val podcast = podcasts.firstOrNull { it.id == ep.podcastId }
@@ -362,8 +361,7 @@ private val NOT_CURRENT = PlaybackState()
     val metadata = episodeMetadataText(ep, detailStates[ep.id])
     EpisodeDetail(ep, podcast, metadata, listeningPosition(ep, player), remember(vm) { vm.episodeActions(openPlayer = true) },
         vm::open, { vm.loadEpisodeDetails(ep.id) }, Modifier.verticalScroll(rememberScrollState())) {
-        TranscriptTools(vm, ep)
-        EpisodeUnderstandingTools(vm, ep)
+        EpisodeToolsGroup(vm, ep)
     }
 }
 

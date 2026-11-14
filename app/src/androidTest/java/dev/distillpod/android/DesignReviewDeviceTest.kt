@@ -153,11 +153,14 @@ class DesignReviewDeviceTest {
             dao.putSegments(listOf(SegmentEntity(id,"review",0,60000,"Attention is a practice we can build every day."),SegmentEntity(id,"review",60000,120000,"Curiosity gives us another way to listen.",1)))
             dao.putDistillation(DistillationEntity(id,id,0,60000,"Attention is a practice.",quote="Make room for curiosity.",insight="A small daily practice makes a difference.",state="succeeded"))
             open("transcript:$id")
-            compose.onNodeWithText("Attention is a practice we can build every day.").assertIsDisplayed()
+            // Close segments read as one paragraph (#203), so passages are matched by substring.
+            compose.onNodeWithText("Attention is a practice we can build every day.", substring = true).assertIsDisplayed()
             shot("transcript")
+            compose.onNodeWithContentDescription("Search transcript").performClick()
             compose.onNodeWithText("Search transcript").performTextInput("curiosity")
-            compose.onNodeWithText("Curiosity gives us another way to listen.").assertIsDisplayed()
-            compose.onNodeWithText("Attention is a practice we can build every day.").assertDoesNotExist()
+            // Search moves between matching paragraphs instead of filtering them out.
+            compose.onNodeWithText("1 of 1").assertIsDisplayed()
+            compose.onNodeWithText("Curiosity gives us another way to listen.", substring = true).assertIsDisplayed()
             compose.onNodeWithContentDescription("Clear transcript search").performClick()
             compose.onNodeWithText("Search transcript").performTextInput("zzzznoresult")
             compose.onNodeWithText("No matching passages").assertIsDisplayed()

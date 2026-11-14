@@ -1,6 +1,18 @@
 package dev.distillpod.android.features
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.style.TextAlign
+import dev.distillpod.android.ui.theme.DistillSpacing
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -204,46 +216,122 @@ private val ACTIVE_DOWNLOAD = listOf("queued", "downloading")
     }
 }
 
+/** "1 hr 5 min" or "42 min"; blank without a known duration. */
+internal fun episodeLengthLabel(durationMs: Long): String {
+    if (durationMs <= 0) return ""
+    val minutes = ((durationMs + 30_000) / 60_000).coerceAtLeast(1)
+    return if (minutes >= 60) "${minutes / 60} hr ${minutes % 60} min" else "$minutes min"
+}
+
 /**
- * Episode page: playback, queue and played actions directly under the title, then the source's
- * description (collapsed when long), then transcript and AI [tools] (#146).
+ * The episode hero's backdrop colour. Kept in one place so it can switch to the player's artwork tint
+ * (proposal 3.3) once that exists; until then it is the accent container.
  */
-@OptIn(ExperimentalLayoutApi::class)
+@Composable internal fun episodeHeroTint(@Suppress("UNUSED_PARAMETER") artworkUrl: String?): Color = MaterialTheme.colorScheme.primaryContainer
+
+/**
+ * Episode page (proposal 5.2): a tinted hero with artwork, show link, date and title; one filled Play or
+ * Resume button; an icon row for download, queue and played; the transcript and AI [tools] as a grouped
+ * list; then the source's description, collapsed when long.
+ */
 @Composable internal fun EpisodeDetail(ep: EpisodeEntity, podcast: PodcastEntity?, metadata: EpisodeMetadataText, resumeAt: Long,
     actions: EpisodeActions, onOpenShow: (String) -> Unit, onRetryDetails: () -> Unit, modifier: Modifier = Modifier,
     tools: @Composable () -> Unit) {
-    Column(Modifier.fillMaxSize().then(modifier).padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            PodcastCover(ep.imageUrl ?: podcast?.imageUrl, Modifier.size(96.dp))
-            Column(Modifier.weight(1f)) { EpisodeShowLink(podcast, onOpenShow); Text(metadata.date, style = MaterialTheme.typography.bodySmall) }
+    val artwork = ep.imageUrl ?: podcast?.imageUrl
+    Column(Modifier.fillMaxSize().then(modifier)) {
+        EpisodeHero(ep, podcast, artwork, metadata, onOpenShow)
+        Column(Modifier.fillMaxWidth().padding(horizontal = DistillSpacing.gutter), verticalArrangement = Arrangement.spacedBy(DistillSpacing.gutter)) {
+            Button(onClick = { actions.play(ep.id) }, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) {
+                Icon(Icons.Default.PlayArrow, null)
+                Spacer(Modifier.width(DistillSpacing.sm))
+                Text(if (resumeAt > 0 && !ep.completed) "Resume from ${timestamp(resumeAt)}" else "Play", style = MaterialTheme.typography.labelLarge)
+            }
+            Row(Modifier.fillMaxWidth().testTag("episode-actions"), verticalAlignment = Alignment.Top) {
+                EpisodeDownloadAction(ep, { actions.download(ep.id) }, { actions.pauseDownload(ep.id) })
+                EpisodeIconAction("Play next", Icons.AutoMirrored.Filled.PlaylistPlay, { actions.enqueue(ep.id, true) })
+                EpisodeIconAction("Add to queue", Icons.AutoMirrored.Filled.PlaylistAdd, { actions.enqueue(ep.id, false) })
+                EpisodeIconAction(if (ep.completed) "Mark unplayed" else "Mark played", if (ep.completed) Icons.Default.RemoveDone else Icons.Default.CheckCircleOutline,
+                    { actions.markPlayed(ep.id, !ep.completed) })
+            }
+            if (ep.downloadState in ACTIVE_DOWNLOAD) Text("${fileSize(ep.downloadedBytes)}${if (ep.totalBytes > 0) " of ${fileSize(ep.totalBytes)}" else ""} · Downloads follow your network settings.",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            ep.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+            Box(Modifier.padding(top = DistillSpacing.sm)) { tools() }
+            Column(Modifier.padding(top = DistillSpacing.sm), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("About", Modifier.semantics { heading() }, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                metadata.description?.let { EpisodeDescription(it) }
+                metadata.note?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium) }
+                if (metadata.retry) TextButton(onClick = onRetryDetails) { Text("Retry") }
+            }
+            Spacer(Modifier.height(DistillSpacing.section))
         }
-        Text(ep.title, style = MaterialTheme.typography.headlineSmall)
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Button(onClick = { actions.play(ep.id) }) {
-                    Icon(Icons.Default.PlayArrow, null)
-                    Text(if (resumeAt > 0 && !ep.completed) "Resume ${timestamp(resumeAt)}" else "Play episode")
+    }
+}
+
+@Composable private fun EpisodeHero(ep: EpisodeEntity, podcast: PodcastEntity?, artwork: String?, metadata: EpisodeMetadataText, onOpenShow: (String) -> Unit) {
+    val tint = episodeHeroTint(artwork)
+    Box(Modifier.fillMaxWidth().background(Brush.verticalGradient(0f to tint.copy(alpha = .85f), 1f to Color.Transparent))) {
+        Column(Modifier.fillMaxWidth().padding(start = DistillSpacing.gutter, end = DistillSpacing.gutter, top = DistillSpacing.section, bottom = DistillSpacing.gutter),
+            verticalArrangement = Arrangement.spacedBy(DistillSpacing.gutter)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(DistillSpacing.gutter), verticalAlignment = Alignment.CenterVertically) {
+                PodcastCover(artwork, Modifier.size(96.dp))
+                Column(Modifier.weight(1f)) {
+                    EpisodeHeroShowLink(podcast, onOpenShow)
+                    Text(listOf(metadata.date, episodeLengthLabel(ep.durationMs)).filter(String::isNotBlank).joinToString(" · "),
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                EpisodeDownloadButton(ep, { actions.download(ep.id) }, { actions.pauseDownload(ep.id) })
             }
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                AssistChip(onClick = { actions.enqueue(ep.id, true) }, label = { Text("Play next") },
-                    leadingIcon = { Icon(Icons.AutoMirrored.Filled.PlaylistPlay, null, Modifier.size(AssistChipDefaults.IconSize)) })
-                AssistChip(onClick = { actions.enqueue(ep.id, false) }, label = { Text("Add to queue") },
-                    leadingIcon = { Icon(Icons.AutoMirrored.Filled.PlaylistAdd, null, Modifier.size(AssistChipDefaults.IconSize)) })
-                AssistChip(onClick = { actions.markPlayed(ep.id, !ep.completed) }, label = { Text(if (ep.completed) "Mark unplayed" else "Mark played") },
-                    leadingIcon = { Icon(if (ep.completed) Icons.Default.RemoveDone else Icons.Default.Done, null, Modifier.size(AssistChipDefaults.IconSize)) })
+            Text(ep.title, style = MaterialTheme.typography.titleLarge)
+        }
+    }
+}
+
+/** The show as an accent link with a chevron; TalkBack reads "View show: <title>" like the player's link. */
+@Composable private fun EpisodeHeroShowLink(podcast: PodcastEntity?, onOpen: (String) -> Unit) {
+    if (podcast == null) {
+        Text("Show unavailable", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
+        return
+    }
+    Box(Modifier.heightIn(min = 48.dp).clip(MaterialTheme.shapes.extraSmall)
+        .clickable(role = Role.Button) { onOpen("podcast:${podcast.id}") }
+        .semantics { contentDescription = "View show: ${podcast.title}" }, contentAlignment = Alignment.CenterStart) {
+        Text("${podcast.title} ›", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge,
+            maxLines = 2, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+/** A peer action (proposal section 4): a 40 dp tonal circle and a short label, the whole column a 48 dp+ target. */
+@Composable private fun RowScope.EpisodeIconAction(label: String, icon: ImageVector, onClick: () -> Unit, enabled: Boolean = true,
+    description: String? = null, state: String? = null, ring: (@Composable () -> Unit)? = null) {
+    Column(Modifier.weight(1f).heightIn(min = 48.dp).clip(MaterialTheme.shapes.small)
+        .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+        .semantics { description?.let { contentDescription = it }; state?.let { stateDescription = it } }
+        .padding(vertical = DistillSpacing.xs), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) {
+            Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceContainerHigh, CircleShape))
+            ring?.invoke()
+            Icon(icon, null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurface)
+        }
+        Text(label, style = MaterialTheme.typography.labelSmall, textAlign = TextAlign.Center, maxLines = 2,
+            color = MaterialTheme.colorScheme.onSurface)
+    }
+}
+
+@Composable private fun RowScope.EpisodeDownloadAction(ep: EpisodeEntity, onDownload: () -> Unit, onPause: () -> Unit) {
+    when {
+        ep.downloadState in ACTIVE_DOWNLOAD -> {
+            val percent = if (ep.totalBytes > 0) (ep.downloadedBytes * 100 / ep.totalBytes).coerceIn(0, 100).toInt() else null
+            EpisodeIconAction(percent?.let { "$it%" } ?: "Queued", Icons.Default.Pause, onPause, description = "Pause download",
+                state = percent?.let { "$it% downloaded" } ?: "Download queued") {
+                val ring = Modifier.fillMaxSize()
+                if (percent == null) CircularProgressIndicator(ring, strokeWidth = 2.5.dp)
+                else CircularProgressIndicator(progress = { percent / 100f }, modifier = ring, strokeWidth = 2.5.dp,
+                    trackColor = Color.Transparent)
             }
         }
-        if (ep.downloadState in ACTIVE_DOWNLOAD) Text("${fileSize(ep.downloadedBytes)}${if (ep.totalBytes > 0) " of ${fileSize(ep.totalBytes)}" else ""} · Downloads follow your network settings.", style = MaterialTheme.typography.bodySmall)
-        ep.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text("Description", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-            metadata.description?.let { EpisodeDescription(it) }
-            metadata.note?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium) }
-            if (metadata.retry) TextButton(onClick = onRetryDetails) { Text("Retry") }
-        }
-        tools()
+        ep.localFile != null -> EpisodeIconAction("Offline", Icons.Default.DownloadDone, {}, enabled = false, description = "Downloaded", state = "Saved on this phone")
+        ep.downloadState in listOf("paused", "failed") -> EpisodeIconAction("Resume", Icons.Default.Download, onDownload, description = "Resume download")
+        else -> EpisodeIconAction("Download", Icons.Default.Download, onDownload)
     }
 }
 
@@ -256,6 +344,6 @@ private val ACTIVE_DOWNLOAD = listOf("queued", "downloading")
             onTextLayout = { if (!expanded) overflows = it.hasVisualOverflow })
     }
     if (expanded || overflows) TextButton(onClick = { expanded = !expanded }, contentPadding = ButtonDefaults.TextButtonContentPadding) {
-        Text(if (expanded) "Show less" else "Show more")
+        Text(if (expanded) "Less" else "More")
     }
 }

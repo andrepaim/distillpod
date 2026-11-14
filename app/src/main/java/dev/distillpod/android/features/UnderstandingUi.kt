@@ -9,6 +9,11 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.QuestionAnswer
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -28,6 +33,41 @@ private fun objects(json: String): List<JSONObject> = runCatching { val a = JSON
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(onClick = { vm.open("analysis:${ep.id}") }, enabled = ready) { Text("Summary & chapters") }
             OutlinedButton(onClick = { vm.open("chat:${ep.id}") }, enabled = ready) { Text("Ask episode") }
+        }
+    }
+}
+
+/**
+ * The episode page's insight entries as grouped-list rows (proposal 5.2). Both need a complete transcript;
+ * the info button explains what is sent to ChatGPT. [EpisodeUnderstandingTools] keeps the button layout
+ * for the player.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable internal fun ColumnScope.EpisodeUnderstandingListItems(vm: AppViewModel, ep: EpisodeEntity) {
+    val transcripts by vm.transcripts.collectAsStateWithLifecycle()
+    val analyses by vm.analyses.collectAsStateWithLifecycle()
+    val transcript = transcripts.firstOrNull { it.episodeId == ep.id && it.state == "ready" && it.fingerprint == ep.mediaFingerprint }
+    val ready = transcript != null
+    val analysis = analyses.firstOrNull { it.episodeId == ep.id }
+    var info by rememberSaveable(ep.id) { mutableStateOf(false) }
+    val summaryStatus = when {
+        !ready -> "Needs a complete transcript"
+        analysis?.state in listOf("queued", "running") -> "Generating · ${analysis!!.completedParts} of ${analysis.totalParts.takeIf { it > 0 }?.toString() ?: "…"} parts"
+        analysis?.state == "succeeded" && analysis.revision == transcript?.revision -> "Ready"
+        else -> "Uses ChatGPT"
+    }
+    EpisodeToolRow("Summary & chapters", summaryStatus, Icons.Default.AutoAwesome, { vm.open("analysis:${ep.id}") }, enabled = ready,
+        trailing = { IconButton(onClick = { info = true }) { Icon(Icons.Outlined.Info, "About Summary & chapters") } })
+    EpisodeToolDivider()
+    EpisodeToolRow("Ask this episode", if (ready) "Questions use transcript excerpts" else "Needs a complete transcript", Icons.Default.QuestionAnswer,
+        { vm.open("chat:${ep.id}") }, enabled = ready)
+    if (info) ModalBottomSheet(onDismissRequest = { info = false }) {
+        Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("Summary & chapters", style = MaterialTheme.typography.titleMedium)
+            Text("Analysis sends transcript parts to ChatGPT and uses your plan allowance. Completed parts are reused after an interruption.",
+                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Ask this episode sends your question and selected transcript excerpts to ChatGPT. Audio stays on your phone.",
+                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

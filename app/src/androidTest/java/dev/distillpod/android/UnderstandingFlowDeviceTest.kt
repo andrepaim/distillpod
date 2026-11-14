@@ -74,7 +74,7 @@ class UnderstandingFlowDeviceTest {
             graph.playback.pause()
             compose.activityRule.scenario.recreate()
             compose.onNodeWithContentDescription("Back").performClick()
-            compose.onNodeWithText("Ask episode").performScrollTo().performClick()
+            compose.onNodeWithText("Ask this episode").performScrollTo().performClick()
             compose.onNodeWithText("The speaker asks people to contribute to their community.").assertIsDisplayed()
             compose.onNodeWithText("Source · 0:05").performClick()
             await { graph.playback.state.value.episodeId == id && graph.playback.state.value.positionMs >= 4900 }
