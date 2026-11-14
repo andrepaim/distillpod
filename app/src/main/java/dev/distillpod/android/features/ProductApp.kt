@@ -203,8 +203,8 @@ private val NOT_CURRENT = PlaybackState()
         if (selected != null) item {
             Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
                 Cover(selected.imageUrl, Modifier.size(88.dp))
-                Column(Modifier.weight(1f)) { Text(selected.author, color = MaterialTheme.colorScheme.onSurfaceVariant); Text("${listing.episodeCount} episodes", style = MaterialTheme.typography.labelLarge)
-                    TextButton(onClick = { if (selected.subscribed) vm.unsubscribe(selected.id) else vm.subscribe(selected.feedUrl) }) { Text(if (selected.subscribed) "Unsubscribe" else "Subscribe") }
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) { Text(selected.author, color = MaterialTheme.colorScheme.onSurfaceVariant); Text("${listing.episodeCount} episodes", style = MaterialTheme.typography.labelLarge)
+                    ShowFollowButton(selected.title, selected.subscribed, { vm.subscribe(selected.feedUrl) }, { vm.unsubscribe(selected.id) })
                 }
                 if (selected.subscribed) IconButton(onClick = { vm.open("preparation:all:${selected.id}") }) {
                     Icon(Icons.Default.Settings, "Show preparation settings")
@@ -524,7 +524,7 @@ private val NOT_CURRENT = PlaybackState()
 @Composable private fun SettingsPage(vm: AppViewModel, prefs: Preferences, account: AccountState, models: List<ModelEntity>, episodes: List<EpisodeEntity>, section:String="overview") {
     val context = LocalContext.current
     val version = remember(context) { context.packageManager.getPackageInfo(context.packageName, 0).versionName.orEmpty() }
-    if(section=="overview") {SettingsOverview(account.connected,context.resources.getBoolean(dev.distillpod.android.R.bool.voice_enabled),vm::open);return}
+    if(section=="overview") {SettingsOverview(account.connected,context.resources.getBoolean(dev.distillpod.android.R.bool.voice_enabled),rememberSettingsStatus(vm,prefs,version),vm::open);return}
     if(section=="diagnostics") {DiagnosticsSettings(vm);return}
     LaunchedEffect(account.connected,section) { if (account.connected && section=="ai") vm.graph.account.refreshModels() }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -534,10 +534,10 @@ private val NOT_CURRENT = PlaybackState()
             PlaybackHeadphoneSettings(vm, prefs)
         }
         if(section=="ai") {
-        Text("ChatGPT", style = MaterialTheme.typography.titleLarge)
         Text(if (account.connected) "Connected" else "Not connected", color = if (account.connected) MaterialTheme.extras.success else MaterialTheme.colorScheme.onSurfaceVariant)
         Text(account.message, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text("AI actions send selected transcript text, questions or interests to OpenAI. Suggestions share followed-show titles only if you select that option. Audio transcription runs on your phone. Requests use your plan allowance.", style = MaterialTheme.typography.bodySmall)
+        ShortExplanation("AI actions send selected text to OpenAI and use your plan allowance.", "AI data use",
+            listOf("AI actions send selected transcript text, questions or interests to OpenAI. Suggestions share followed-show titles only if you select that option. Audio transcription runs on your phone. Requests use your plan allowance."))
         if (account.busy) { LinearProgressIndicator(Modifier.fillMaxWidth()); OutlinedButton(onClick = { vm.graph.account.cancel() }) { Text("Cancel sign-in") } }
         else {
             Button(onClick = { vm.graph.account.connect() }) { Text(if (account.connected) "Reconnect ChatGPT" else "Continue with ChatGPT") }
@@ -555,10 +555,15 @@ private val NOT_CURRENT = PlaybackState()
         }
         }
         if(section=="transcription") {
-        Text("Transcript preparation", style = MaterialTheme.typography.titleLarge)
-        SettingSwitch("Transcribe when playing", "Automatically prepare transcripts for episodes you play. Uses your download and processing settings. Turning this off leaves existing jobs running; use Pause transcript to stop one.", prefs.transcribeOnPlayback) { vm.flag("transcribeOnPlayback", it) }
-        SettingSwitch("Look for existing online transcripts", "Before Whisper, search PodcastTranscript.ai for public shows. Sends the episode title; never uploads audio or starts cloud transcription. Off for unapproved private feeds.", prefs.onlineTranscripts) { vm.flag("onlineTranscripts", it) }
+        SettingsGroupCard {
+        SettingSwitch("Transcribe when playing", if (prefs.transcribeOnPlayback) "Prepare transcripts for episodes you play." else "Existing transcript jobs keep running. Use Pause transcript to stop one.", prefs.transcribeOnPlayback,
+            learnMore = "Automatically prepare transcripts for episodes you play. Uses your download and processing settings. Turning this off leaves existing jobs running; use Pause transcript to stop one.") { vm.flag("transcribeOnPlayback", it) }
+        SettingsDivider()
+        SettingSwitch("Look for existing online transcripts", "Checks PodcastTranscript.ai first; sends only the episode title.", prefs.onlineTranscripts,
+            learnMore = "Before Whisper, search PodcastTranscript.ai for public shows. Sends the episode title; never uploads audio or starts cloud transcription. Off for unapproved private feeds.") { vm.flag("onlineTranscripts", it) }
+        SettingsDivider()
         SettingSwitch("Only transcribe while charging", "Pause new transcription chunks until power is connected.", prefs.chargingOnly) { vm.flag("charging", it) }
+        }
         TextButton(onClick = { vm.open("settings:storage") }) { Text("Download network policy") }
         Text("Tiny and Base support English and Portuguese. Model files stay on this phone.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         whisperModels.forEach { spec ->
@@ -579,11 +584,11 @@ private val NOT_CURRENT = PlaybackState()
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf("auto" to "Auto", "en" to "English", "pt" to "Português").forEach { (key, title) -> FilterChip(selected = prefs.language == key, onClick = { vm.text("language", key) }, label = { Text(title) }) } }
         }
         if(section=="storage") {
-        SettingSwitch("Wi-Fi / unmetered downloads only", "Applies to queued audio, model downloads and transcript preparation that needs internet. Transfers already in progress continue; retries use your new setting.", prefs.wifiOnly) { vm.flag("wifi", it) }
+        SettingsGroupCard { SettingSwitch("Wi-Fi / unmetered downloads only", "Applies to queued audio, model downloads and transcript preparation that needs internet. Transfers already in progress continue; retries use your new setting.", prefs.wifiOnly) { vm.flag("wifi", it) } }
         StorageSettings(vm, prefs, episodes, models)
         }
         if(section=="library") {
-        SettingSwitch("Refresh subscriptions", "Check your followed feeds periodically when Android permits.", prefs.refresh) { vm.flag("refresh", it) }
+        SettingsGroupCard { SettingSwitch("Refresh subscriptions", "Check your followed feeds periodically when Android permits.", prefs.refresh) { vm.flag("refresh", it) } }
         RefreshIntervalControl(vm, prefs)
             DataControls(vm)
         }
@@ -595,9 +600,14 @@ private val NOT_CURRENT = PlaybackState()
         }
     }
 }
-@Composable private fun SettingSwitch(title: String, detail: String, checked: Boolean, onChange: (Boolean) -> Unit) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        Column(Modifier.weight(1f)) { Text(title, style = MaterialTheme.typography.titleSmall); Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-        Switch(checked, onChange, modifier = Modifier.semantics { contentDescription = title })
-    }
+/** A settings ListItem with a trailing switch; [learnMore] keeps the full explanation behind a sheet. */
+@Composable private fun SettingSwitch(title: String, detail: String, checked: Boolean, learnMore: String? = null, onChange: (Boolean) -> Unit) {
+    ListItem(headlineContent = { Text(title, style = MaterialTheme.typography.titleSmall) },
+        supportingContent = { Column {
+            Text(detail, style = MaterialTheme.typography.bodySmall)
+            if (learnMore != null) LearnMoreLink(title, listOf(learnMore))
+        } },
+        trailingContent = { Switch(checked, onChange, modifier = Modifier.semantics { contentDescription = title }) },
+        colors = ListItemDefaults.colors(containerColor = androidx.compose.ui.graphics.Color.Transparent, supportingColor = MaterialTheme.colorScheme.onSurfaceVariant),
+        modifier = Modifier.fillMaxWidth())
 }

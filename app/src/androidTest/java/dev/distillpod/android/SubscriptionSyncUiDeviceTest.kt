@@ -61,14 +61,18 @@ class SubscriptionSyncUiDeviceTest {
         // explanation instead of advertising functionality this build cannot use.
         compose.onNodeWithText("Library sync is unavailable in this build. Use a backup file to transfer your library.")
             .performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Cloud sync is unavailable in this build.").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Connect Google & sync library").assertDoesNotExist()
+        // The full scope and binding disclosures are kept verbatim behind Learn more (#203).
+        compose.onNodeWithContentDescription("Learn more about Sync and backup").performScrollTo().performClick()
         compose.onNodeWithText("local transcription model selection, transcript language and AI model selection", substring = true)
             .performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Neither transfers audio downloads, model binaries or account secrets.", substring = true)
             .performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Connecting binds this library to its original Google account.", substring = true)
             .performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("Cloud sync is unavailable in this build.").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("Connect Google & sync library").assertDoesNotExist()
+        androidx.test.espresso.Espresso.pressBack()
+        compose.waitUntil(5000) { compose.onAllNodesWithText("Connecting binds this library", substring = true).fetchSemanticsNodes().isEmpty() }
         compose.onNodeWithContentDescription("Back").performClick()
         compose.onNodeWithText("ChatGPT").performScrollTo().assertIsDisplayed()
     }

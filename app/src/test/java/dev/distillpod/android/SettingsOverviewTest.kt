@@ -12,6 +12,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import dev.distillpod.android.features.SettingsOverview
+import dev.distillpod.android.features.SettingsStatus
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -26,10 +27,10 @@ class SettingsOverviewTest {
     @get:Rule val compose = createComposeRule()
     private val opened = mutableListOf<String>()
 
-    private fun show(voiceEnabled: Boolean = false, connected: Boolean = false, fontScale: Float = 1f) = compose.setContent {
+    private fun show(voiceEnabled: Boolean = false, connected: Boolean = false, fontScale: Float = 1f, status: SettingsStatus = SettingsStatus()) = compose.setContent {
         val density = LocalDensity.current
         CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale)) {
-            MaterialTheme { Box(Modifier.width(360.dp)) { SettingsOverview(connected, voiceEnabled) { opened += it } } }
+            MaterialTheme { Box(Modifier.width(360.dp)) { SettingsOverview(connected, voiceEnabled, status = status) { opened += it } } }
         }
     }
 
@@ -59,7 +60,23 @@ class SettingsOverviewTest {
     @Test fun `voice row follows the build flag and ChatGPT reflects the connection`() {
         show(voiceEnabled = false, connected = true)
         compose.onNodeWithText("Voice").assertDoesNotExist()
-        compose.onNodeWithText("Connected · account and AI model").performScrollTo().assertIsDisplayed()
+        compose.onNode(hasText("ChatGPT") and hasText("Account and AI model") and hasText("Connected") and hasClickAction())
+            .performScrollTo().assertIsDisplayed()
+    }
+
+    @Test fun `rows show their current values from existing state`() {
+        show(status = SettingsStatus(sync = "Synced 2 min ago", subscriptions = 12, transcripts = "Base · auto", wifiOnly = true, version = "0.25.0"))
+        for ((title, value) in listOf("Library sync" to "Synced 2 min ago", "Library" to "12 shows",
+            "Transcript preparation" to "Base · auto", "Downloads & storage" to "Wi-Fi only", "About DistillPod" to "0.25.0"))
+            compose.onNode(hasText(title) and hasText(value) and hasClickAction()).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Connected").assertDoesNotExist()
+        compose.onNode(hasText("ChatGPT") and hasText("Connect for insights and questions")).performScrollTo().assertIsDisplayed()
+    }
+
+    @Test fun `downloads on any network and a single show read naturally`() {
+        show(status = SettingsStatus(subscriptions = 1, wifiOnly = false))
+        compose.onNode(hasText("Library") and hasText("1 show")).performScrollTo().assertIsDisplayed()
+        compose.onNode(hasText("Downloads & storage") and hasText("Any network")).performScrollTo().assertIsDisplayed()
     }
 
     @Test fun `rows stay reachable at two hundred percent font size`() {

@@ -42,7 +42,6 @@ private fun objects(json: String): List<JSONObject> = runCatching { val a = JSON
  * the info button explains what is sent to ChatGPT. [EpisodeUnderstandingTools] keeps the button layout
  * for the player.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable internal fun ColumnScope.EpisodeUnderstandingListItems(vm: AppViewModel, ep: EpisodeEntity) {
     val transcripts by vm.transcripts.collectAsStateWithLifecycle()
     val analyses by vm.analyses.collectAsStateWithLifecycle()
@@ -61,15 +60,8 @@ private fun objects(json: String): List<JSONObject> = runCatching { val a = JSON
     EpisodeToolDivider()
     EpisodeToolRow("Ask this episode", if (ready) "Questions use transcript excerpts" else "Needs a complete transcript", Icons.Default.QuestionAnswer,
         { vm.open("chat:${ep.id}") }, enabled = ready)
-    if (info) ModalBottomSheet(onDismissRequest = { info = false }) {
-        Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("Summary & chapters", style = MaterialTheme.typography.titleMedium)
-            Text("Analysis sends transcript parts to ChatGPT and uses your plan allowance. Completed parts are reused after an interruption.",
-                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text("Ask this episode sends your question and selected transcript excerpts to ChatGPT. Audio stays on your phone.",
-                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-    }
+    if (info) LearnMoreSheet("Summary & chapters", listOf(ANALYSIS_DISCLOSURE,
+        "Ask this episode sends your question and selected transcript excerpts to ChatGPT. Audio stays on your phone.")) { info = false }
 }
 
 @Composable fun AnalysisPage(vm: AppViewModel, ep: EpisodeEntity?) {
@@ -84,14 +76,17 @@ private fun objects(json: String): List<JSONObject> = runCatching { val a = JSON
     val valid = current && row?.revision == transcript?.revision && row?.state == "succeeded"
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Text(ep.title, style = MaterialTheme.typography.titleLarge)
-        Text("Analysis sends transcript parts to ChatGPT and uses your plan allowance. Completed parts are reused after an interruption.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        InsightsPrivacyLine()
         if (!current) TranscriptTools(vm, ep)
         if (!account.connected) OutlinedButton(onClick = { vm.open("settings:ai") }) { Text("Connect ChatGPT") }
         if (row?.state in listOf("queued", "running")) {
             LinearProgressIndicator(Modifier.fillMaxWidth())
             Text("${row!!.completedParts} of ${row.totalParts.takeIf { it > 0 }?.toString() ?: "…"} parts saved")
             OutlinedButton(onClick = { vm.pauseAnalysis(ep.id) }) { Text("Pause analysis") }
-        } else if (!valid) Button(onClick = { vm.analyze(ep.id) }, enabled = current && account.connected && "analysis:${ep.id}" !in busy) { Text(if (row?.revision == transcript?.revision) "Resume analysis" else "Generate episode insights") }
+        } else if (!valid) {
+            InsightsPreview(ep.durationMs)
+            Button(onClick = { vm.analyze(ep.id) }, enabled = current && account.connected && "analysis:${ep.id}" !in busy, modifier = Modifier.fillMaxWidth()) { Text(if (row?.revision == transcript?.revision) "Resume analysis" else "Generate insights") }
+        }
         row?.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         if (valid && row != null) {
             Text("Summary", style = MaterialTheme.typography.titleMedium)
