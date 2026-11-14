@@ -63,7 +63,8 @@ class LibrarySearchDeviceTest {
             compose.onNodeWithText("10:10 · 1 match", substring = true).performClick()
             compose.waitUntil(10000) { compose.onAllNodesWithTag("transcript-focus").fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithTag("transcript-focus").assertIsDisplayed()
-            compose.onNodeWithText("Then a $word wind crossed the valley.").assertIsDisplayed()
+            // Segments read as paragraphs (#203); the focused paragraph contains the matching segment.
+            compose.onNodeWithText("Then a $word wind crossed the valley.", substring = true).assertIsDisplayed()
             screenshot("passage")
             withContext(Dispatchers.Main) { vm.back() }
             results.performScrollToKey(moment)

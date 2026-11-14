@@ -56,8 +56,8 @@ class NotificationPromptDeviceTest {
             ViewModelProvider(context, AppViewModel.factory(graph))[AppViewModel::class.java].also { it.open("episode:$id") }
         }
         try {
-            permission.await("episode-page") { shown(" Download") }
-            compose.onNodeWithText(" Download").performScrollTo().performClick()
+            permission.await("episode-page") { shown("Download") }
+            compose.onNodeWithText("Download").performScrollTo().performClick()
             permission.await("explanation-shown") { shown(explanation) }
             // Queued before, and regardless of, any answer.
             assertNotEquals("none", dao.episode(id)?.downloadState)

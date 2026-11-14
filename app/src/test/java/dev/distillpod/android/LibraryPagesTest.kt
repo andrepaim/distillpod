@@ -11,6 +11,7 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.height
+import androidx.compose.ui.unit.width
 import dev.distillpod.android.data.EpisodeEntity
 import dev.distillpod.android.data.PodcastEntity
 import dev.distillpod.android.data.ShowSummary
@@ -153,34 +154,72 @@ class LibraryPagesTest {
         assertEquals(listOf("retry:p1"), calls)
     }
 
-    @Test fun `episode page puts queue and played actions near the top and the description before tools`() {
+    @Test fun `episode page has one filled button, an icon action row, then tools and a collapsed description`() {
         val description = (1..40).joinToString(" ") { "Synthetic show note sentence $it." }
         val ep = episode("e4", "Episode page title").copy(description = description)
         val metadata = episodeMetadataText(ep, null)
         compose.setContent {
             DistillTheme { Box(Modifier.size(384.dp, 2000.dp)) {
-                EpisodeDetail(ep, show, metadata, resumeAt = 0, actions = actions, onOpenShow = {}, onRetryDetails = {},
+                EpisodeDetail(ep, show, metadata, resumeAt = 0, actions = actions, onOpenShow = { calls += "show:$it" }, onRetryDetails = {},
                     modifier = Modifier.verticalScroll(rememberScrollState())) {
                     Text("Transcript tools fixture", Modifier.testTag("episode-tools"))
                 }
             } }
         }
-        val play = compose.onNodeWithText("Play episode").dp()
+        // Hero: show link, date and duration, then the title.
+        compose.onNodeWithText("${episodeDate(ep.publishedAt)} · 1 hr 0 min").assertIsDisplayed()
+        compose.onNodeWithContentDescription("View show: The Synthetic Listening Room").assertHasClickAction()
+        val title = compose.onNodeWithText("Episode page title").dp()
+        val play = compose.onNodeWithText("Play").dp()
         val queue = compose.onNodeWithText("Add to queue").dp()
         val played = compose.onNodeWithText("Mark played").dp()
-        val heading = compose.onNodeWithText("Description").dp()
+        val next = compose.onNodeWithText("Play next").dp()
+        val download = compose.onNodeWithText("Download").dp()
         val tools = compose.onNodeWithTag("episode-tools").dp()
-        assertTrue(play.top < queue.top && queue.bottom <= heading.top && played.bottom <= heading.top)
-        assertTrue("description precedes transcript and AI tools", heading.bottom <= tools.top)
-        // Long show notes are collapsed so the tools stay reachable.
-        compose.onNodeWithText("Show more").assertIsDisplayed().performClick()
-        compose.onNodeWithText("Show less").performScrollTo().assertIsDisplayed()
+        val heading = compose.onNodeWithText("About").dp()
+        assertTrue(title.bottom <= play.top && play.bottom <= queue.top)
+        // Secondary actions share one row of icon buttons with short labels and 48 dp targets.
+        val tops = listOf(download, next, queue, played).map { it.top.value }
+        assertTrue("actions share a row: $tops", tops.max() - tops.min() < 2f)
+        listOf(download, next, queue, played).forEach { assertTrue("${it.height} target", it.height >= 48.dp && it.width >= 48.dp) }
+        // At most one filled button: the stacked outlined, text and chip buttons are gone.
+        assertTrue(compose.onAllNodesWithText("Play episode").fetchSemanticsNodes().isEmpty())
+        assertTrue("tools follow the actions", queue.bottom <= tools.top && tools.bottom <= heading.top)
+        // Long show notes are collapsed.
+        compose.onNodeWithText("More").assertIsDisplayed().performClick()
+        compose.onNodeWithText("Less").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Mark played").performScrollTo().performClick()
         compose.onNodeWithText("Play next").performScrollTo().performClick()
         compose.onNodeWithText("Add to queue").performScrollTo().performClick()
-        compose.onNodeWithText("Download", substring = true).performScrollTo().performClick()
-        compose.onNodeWithText("Play episode").performScrollTo().performClick()
-        assertEquals(listOf("played:e4:true", "next:e4", "queue:e4", "download:e4", "play:e4"), calls)
+        compose.onNodeWithText("Download").performScrollTo().performClick()
+        compose.onNodeWithText("Play").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("View show: The Synthetic Listening Room").performScrollTo().performClick()
+        assertEquals(listOf("played:e4:true", "next:e4", "queue:e4", "download:e4", "play:e4", "show:podcast:p1"), calls)
+    }
+
+    @Test fun `episode page resumes from the saved position and shows download progress with pause`() {
+        val ep = episode("e6", "Resumable").copy(downloadState = "downloading", downloadedBytes = 42, totalBytes = 100, completed = true)
+        compose.setContent {
+            DistillTheme { Box(Modifier.size(384.dp, 1200.dp)) {
+                EpisodeDetail(ep, show, episodeMetadataText(ep, null), resumeAt = 750_000, actions = actions, onOpenShow = {}, onRetryDetails = {}) {}
+            } }
+        }
+        // A finished episode plays from the start; an unfinished one resumes.
+        compose.onNodeWithText("Play").assertIsDisplayed()
+        compose.onNodeWithText("Mark unplayed").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Pause download").assertIsDisplayed().performClick()
+        compose.onNodeWithText("42%").assertIsDisplayed()
+        assertEquals(listOf("pause:e6"), calls)
+    }
+
+    @Test fun `an unfinished episode offers resume from its position`() {
+        val ep = episode("e7", "Unfinished")
+        compose.setContent {
+            DistillTheme { EpisodeDetail(ep, null, episodeMetadataText(ep, null), resumeAt = 750_000, actions = actions, onOpenShow = {}, onRetryDetails = {}) {} }
+        }
+        compose.onNodeWithText("Resume from 12:30").assertIsDisplayed().performClick()
+        compose.onNodeWithText("Show unavailable").assertIsDisplayed()
+        assertEquals(listOf("play:e7"), calls)
     }
 
     @Test fun `show cards use the same date format as episode rows`() {
