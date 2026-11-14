@@ -102,6 +102,22 @@ class AppSettings(context: Context, private val store: androidx.datastore.core.D
         require(hours in 1..168) { "Choose an interval from 1 to 168 hours" }
         store.edit { it[intPreferencesKey("refreshHours")] = hours }
     }
+    /** Device-local, like show pins: not part of backup or sync. See docs/android/app-updates.md. */
+    val updates = store.data.map { p -> UpdateState(p[booleanPreferencesKey("updateChecks")] ?: true,
+        AvailableUpdate.parse(p[stringPreferencesKey("updateAvailable")]), p[longPreferencesKey("updateCheckedAt")] ?: 0) }
+    suspend fun updateChecked(update: AvailableUpdate?, at: Long) { store.edit { p ->
+        if (update == null) p.remove(stringPreferencesKey("updateAvailable")) else p[stringPreferencesKey("updateAvailable")] = update.json()
+        p[longPreferencesKey("updateCheckedAt")] = at
+    } }
+    /** True when no version this new was announced before; records it. */
+    suspend fun claimUpdateNotice(versionCode: Long): Boolean {
+        var claimed = false
+        store.edit { p ->
+            val key = longPreferencesKey("updateNotified")
+            if ((p[key] ?: 0) < versionCode) { p[key] = versionCode; claimed = true }
+        }
+        return claimed
+    }
     suspend fun storage(bytes: Long) { require(bytes >= 250_000_000); store.edit { it[longPreferencesKey("storageLimit")] = bytes } }
     fun value(key: String) = store.data.map { it[stringPreferencesKey(key)] ?: "" }
     val recentSearches = value("podcastSearches").map(::searchHistory)

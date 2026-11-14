@@ -183,7 +183,22 @@ class AppViewModel(val graph: AppGraph, private val saved: SavedStateHandle) : V
     fun deleteModel(id: String) = action("model:$id") { graph.media.deleteModel(id) }
     fun flag(key: String, value: Boolean) = action("settings") {
         graph.settings.flag(key, value)
-        if (key == "wifi") graph.jobs.configureNetworkPolicy() else graph.jobs.configureRefresh()
+        when (key) {
+            "wifi" -> graph.jobs.configureNetworkPolicy()
+            "updateChecks" -> dev.distillpod.android.work.UpdateJobs.configure(graph.context, value)
+            else -> graph.jobs.configureRefresh()
+        }
+    }
+    /** Device-local update state; a stored release the installed build has caught up with is not offered. */
+    val updates = graph.settings.updates.map { state -> state.copy(available = state.available?.takeIf { it.versionCode > graph.installedVersionCode }) }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, UpdateState())
+    fun checkForUpdates() = action("update-check") {
+        val update = try { graph.updateChecker.check() } catch (_: java.io.IOException) {
+            messages.send("Couldn't reach GitHub to check for updates. Try again later."); return@action
+        }
+        if (update == null) messages.send("You have the latest version.")
+        // Seen here, so the daily check does not announce the same version again.
+        else graph.updateChecker.announce(update)
     }
     fun text(key: String, value: String) = action("settings") { graph.settings.text(key, value) }
     fun createPost(momentId: String) = action("create-post:$momentId") {

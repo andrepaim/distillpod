@@ -858,6 +858,11 @@ internal class QueueUndo(val snackbar: SnackbarHostState, val enqueue: (String, 
         if(section=="notifications") { NotificationControls() }
         if(section=="about") {
         Text("DistillPod · $version", style = MaterialTheme.typography.labelLarge)
+        val updates by vm.updates.collectAsState()
+        val busy by vm.busy.collectAsState()
+        AppUpdatesSection(updates, "update-check" in busy, System.currentTimeMillis(), { vm.flag("updateChecks", it) }, vm::checkForUpdates) { url ->
+            if (dev.distillpod.android.data.ReleaseFeed.isProjectRelease(url)) runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url))) }
+        }
         LicenseAndSources(version)
         TextButton(onClick = { context.startActivity(Intent(context, DiagnosticsActivity::class.java)) }) { Text("Developer checks") }
         }

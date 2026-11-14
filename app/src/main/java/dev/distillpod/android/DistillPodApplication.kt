@@ -37,6 +37,9 @@ class AppGraph internal constructor(val context: Context, val scope: CoroutineSc
         onValidated = { diagnostics.event("videocast.download_validated", reason = "succeeded") })
     val account = AccountRepository(context, scope)
     val jobs = AppJobs(context)
+    /** The installed build's version code; a private phone build can be ahead of the newest release. */
+    val installedVersionCode: Long get() = context.packageManager.getPackageInfo(context.packageName, 0).longVersionCode
+    val updateChecker by lazy { UpdateChecker(ReleaseFeed(http)::newest, settings, installedVersionCode) }
     val posts by lazy { PostRepository(db) }
     val socialResults by lazy { SocialResultRepository(db) { id, attempt -> dev.distillpod.android.work.SocialPostJobs.enqueue(context, id, attempt) } }
     val postAssets by lazy { dev.distillpod.android.sharing.PostAssets(java.io.File(context.filesDir, "post-images")) }
@@ -120,7 +123,8 @@ class AppGraph internal constructor(val context: Context, val scope: CoroutineSc
                     if (!pending) dev.distillpod.android.work.SocialPostJobs.enqueue(context,row.id,post.attempt)
                 }
             }
-            jobs.configureNetworkPolicy(); transcription.recover(); ready.complete(Unit)
+            jobs.configureNetworkPolicy(); dev.distillpod.android.work.UpdateJobs.configure(context, settings.updates.first().enabled)
+            transcription.recover(); ready.complete(Unit)
             automation.observe()
             captures.resumeSaved()
         }
