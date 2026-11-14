@@ -135,7 +135,7 @@ class DocumentationMediaDeviceTest {
                 compose.onNodeWithText("Continue listening").assertIsDisplayed()
                 screenshot("library")
                 route("player")
-                compose.onNodeWithText("Distill last 60 seconds").assertIsDisplayed()
+                compose.onNodeWithContentDescription("Distill last 60 seconds").assertIsDisplayed()
                 screenshot("player")
                 root("saved"); screenshot("saved")
                 route("capture:documentation-example")
@@ -161,7 +161,7 @@ class DocumentationMediaDeviceTest {
                 await { withContext(Dispatchers.Main) { controller.isPlaying } }
                 pause(3000)
                 if (mode == "headphones") device.executeShellCommand("input keyevent 88")
-                else compose.onNodeWithText("Distill last 60 seconds").performScrollTo().performClick()
+                else compose.onNodeWithContentDescription("Distill last 60 seconds").performScrollTo().performClick()
                 var captured: DistillationEntity? = null
                 await {
                     captured = dao.distillations().firstOrNull { it.id != "documentation-example" }

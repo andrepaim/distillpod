@@ -8,7 +8,7 @@ action. These are personal-alpha behaviors, not guarantees about every device.
 ## A saved moment has no takeaway
 
 Saving the source and generating its takeaway are separate steps. A headphone
-gesture or **Distill last 60 seconds** can save successfully while the transcript,
+gesture or the player's **Distill** button can save successfully while the transcript,
 source review, ChatGPT connection or allowance still needs attention. Open the
 moment in **Saved** and follow its displayed action. A confirmation sound means
 the moment was saved; it does not mean generation finished.

@@ -88,6 +88,9 @@ People contribute to their community.
             assertNull(dao.analysis(episode))
             graph.playback.play(episode, 0); graph.playback.pause()
             open("player")
+            // Ad skipping lives in the player's peek sheet, with the episode insights it depends on.
+            compose.openPlayerSheet("Insights")
+            compose.onNodeWithText("Summary & chapters").assertExists()
             compose.onNodeWithText("Skip marked ads").assertDoesNotExist()
             val fake = object : AiGateway {
                 override suspend fun complete(instructions: String, input: String, onDelta: (String) -> Unit) = AiText(
@@ -109,6 +112,7 @@ People contribute to their community.
             graph.playback.pause()
             compose.activityRule.scenario.recreate()
             open("player")
+            compose.openPlayerSheet("Insights")
             compose.onNode(isToggleable() and hasAnySibling(hasText("Skip marked ads"))).performScrollTo().assertIsOn().performClick()
             await { graph.db.automation().ad(episode)?.enabled == false }
             graph.playbackEvents.lastSkipped.value = null

@@ -5,6 +5,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -25,6 +26,7 @@ import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
@@ -104,10 +106,14 @@ fun fileSize(bytes: Long): String = if (bytes >= 1_000_000_000) "%.1f GB".format
         NotificationPromptHost(vm.notificationPrompt, snackbar) { vm.open("settings:notifications") }
         Scaffold(containerColor = MaterialTheme.colorScheme.background, snackbarHost = { SnackbarHost(snackbar) }, topBar = {
             if (!videoFullscreen) TopAppBar(title = { Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold) },
-                navigationIcon = { if (stack.size > 1) IconButton(onClick = vm::back) { Icon(Icons.Default.ArrowBack, "Back") } },
+                navigationIcon = { if (stack.size > 1) IconButton(onClick = vm::back) { Icon(if (route == "player") Icons.Default.KeyboardArrowDown else Icons.Default.ArrowBack, "Back") } },
                 actions = {
                     if (route == "library" || route.startsWith("podcast:")) IconButton(onClick = { vm.refresh(if (route.startsWith("podcast:")) route.substringAfter(':') else null) }, enabled = "refresh" !in busy) { Icon(Icons.Default.Refresh, "Refresh feeds") }
-                    if (route == "player") IconButton(onClick = { vm.root("queue") }) { Icon(Icons.Default.QueueMusic, "Open queue") }
+                    if (route == "player") {
+                        val playing = episodes.firstOrNull { it.id == player.episodeId }
+                        if (playing != null) PlayerOverflowMenu(vm, playing, podcasts.firstOrNull { it.id == playing.podcastId })
+                        else IconButton(onClick = { vm.root("queue") }) { Icon(Icons.Default.QueueMusic, "Open queue") }
+                    }
                     else if (!route.startsWith("settings")) IconButton(onClick = { vm.open("settings") }) { Icon(Icons.Default.Settings, "Settings") }
                 }, colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background))
         }, bottomBar = {
@@ -138,7 +144,7 @@ fun fileSize(bytes: Long): String = if (bytes >= 1_000_000_000) "%.1f GB".format
                     route == "shows" -> ShowsPage(vm)
                     route == "settings" || route.startsWith("settings:") -> SettingsPage(vm, preferences, account, models, episodes, route.substringAfter(':', "overview"))
                     route == "backup" -> BackupPage(vm) { vm.open("settings:sync") }
-                    route == "player" -> PlayerPage(vm, episodes.firstOrNull { it.id == player.episodeId }, podcasts, player, fullscreenExitRequest) { videoFullscreen = it }
+                    route == "player" -> PlayerPage(vm, episodes.firstOrNull { it.id == player.episodeId }, podcasts, fullscreenExitRequest) { videoFullscreen = it }
                     route.startsWith("episode:") -> EpisodePage(vm, episodes.firstOrNull { it.id == route.substringAfter(':') }, podcasts, player)
                     route.startsWith("capture:") -> CapturePage(vm, captures.firstOrNull { it.id == route.substringAfter(':') }, episodes, podcasts)
                     route.startsWith("transcript:") -> transcriptTarget(route).let { target -> TranscriptPage(vm, episodes.firstOrNull { it.id == target.episodeId }, target.atMs) }
@@ -243,95 +249,112 @@ private val NOT_CURRENT = PlaybackState()
 }
 
 @Composable private fun MiniPlayer(player: PlaybackState, artwork: String?, onOpen: () -> Unit, onToggle: () -> Unit, onQueue: () -> Unit) {
-    Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)) {
+    val accent = MaterialTheme.colorScheme.primary
+    Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)) {
         Column {
+            // A 2 dp accent progress line flush with the top edge; drawn, so it needs no layout pass.
+            if (player.durationMs > 0) Canvas(Modifier.fillMaxWidth().height(2.dp)) {
+                drawRect(accent, size = size.copy(width = size.width * (player.positionMs.toFloat() / player.durationMs).coerceIn(0f, 1f)))
+            }
             Row(Modifier.padding(end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Row(Modifier.weight(1f).clickable(onClickLabel = "Open player", onClick = onOpen).semantics { contentDescription = "Open now playing" }.padding(10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Cover(artwork, Modifier.size(44.dp))
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(player.title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                    PodcastCover(artwork, Modifier.size(40.dp), MaterialTheme.shapes.small)
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(player.title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall)
                         Text(timeRemaining(player.durationMs, player.positionMs), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
                 IconButton(onClick = onToggle) { Icon(if (player.playing) Icons.Default.Pause else Icons.Default.PlayArrow, if (player.playing) "Pause" else "Resume", Modifier.size(28.dp)) }
-                IconButton(onClick = onQueue) { BadgedBox(badge = { if (player.queue.size > 1) Badge(containerColor = MaterialTheme.colorScheme.primaryContainer, contentColor = MaterialTheme.colorScheme.primary) { Text(player.queue.size.coerceAtMost(99).toString()) } }) { Icon(Icons.Default.QueueMusic, "Open queue") } }
+                IconButton(onClick = onQueue) { BadgedBox(badge = { if (player.queue.size > 1) Badge(containerColor = MaterialTheme.colorScheme.primaryContainer, contentColor = MaterialTheme.colorScheme.onPrimaryContainer) { Text(player.queue.size.coerceAtMost(99).toString()) } }) { Icon(Icons.Default.QueueMusic, "Open queue") } }
             }
-            if (player.durationMs > 0) LinearProgressIndicator(progress = { (player.positionMs.toFloat() / player.durationMs).coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth().height(3.dp))
         }
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
-@Composable private fun PlayerPage(vm: AppViewModel, ep: EpisodeEntity?, podcasts: List<PodcastEntity>, player: PlaybackState, fullscreenExitRequest: Int, onFullscreen: (Boolean) -> Unit) {
+/**
+ * Now playing (proposal 5.1): artwork over its tint, title and show, scrubber, transport, the action dock
+ * and a handle for the peek sheet. It fits one phone screen at default text size and scrolls at large text.
+ * The live player state is read through derived slices; only [PlayerScrubber] reads the position (#141).
+ */
+@Composable private fun PlayerPage(vm: AppViewModel, ep: EpisodeEntity?, podcasts: List<PodcastEntity>, fullscreenExitRequest: Int, onFullscreen: (Boolean) -> Unit) {
     if (ep == null) { Empty("Pick an episode", "Choose something from your library to start listening.", "Open library", { vm.root("library") }); return }
     val podcast = podcasts.firstOrNull { it.id == ep.podcastId }
-    var dragging by remember(ep.id) { mutableStateOf<Float?>(null) }
-    val displayedPosition = dragging?.toLong() ?: player.positionMs
+    val live = vm.player.collectAsStateWithLifecycle()
+    val playing by remember { derivedStateOf { live.value.playing } }
+    val speed by remember { derivedStateOf { live.value.speed } }
+    val durationMs by remember { derivedStateOf { live.value.durationMs } }
+    val error by remember { derivedStateOf { live.value.error } }
+    val canDistill by remember { derivedStateOf { canCaptureMoment(live.value) } }
+    val position = remember(live) { { live.value.positionMs } }
     var fullscreen by remember(ep.id) { mutableStateOf(false) }
+    var sheet by rememberSaveable(ep.id) { mutableStateOf<PlayerSheetTab?>(null) }
     val busy by vm.busy.collectAsStateWithLifecycle()
-    VoicePlayerHost(vm, showLastAnswer = !fullscreen) { voiceEnabled, voiceActive, ask ->
-        Column(Modifier.fillMaxSize().then(if (fullscreen) Modifier else Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 8.dp)), verticalArrangement = Arrangement.spacedBy(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            if (ep.mimeType?.startsWith("video/") == true) {
-                VideocastPlayer(vm.graph.playback, ep.id, title = ep.title, fullscreenExitRequest = fullscreenExitRequest,
-                    onFullscreen = { fullscreen = it; onFullscreen(it) },
-                    onCapture = vm::captureMomentInPlayer, captureBusy = "distill" in busy,
-                    onVoice = ask, onToggle = vm::toggle, onSeek = vm::seek, voiceEnabled = voiceEnabled, voiceActive = voiceActive) { Cover(ep.imageUrl ?: podcast?.imageUrl, Modifier.size(196.dp)) }
-            } else Cover(ep.imageUrl ?: podcast?.imageUrl, Modifier.size(196.dp))
-            if (!fullscreen) {
-                Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                    Text(ep.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold, maxLines = 3, overflow = TextOverflow.Ellipsis)
-                    EpisodeShowLink(podcast, vm::open)
-                }
-                if (voiceEnabled) Button(onClick = ask, enabled = !voiceActive, modifier = Modifier.fillMaxWidth()) {
-                    Icon(Icons.Default.Mic, null); Spacer(Modifier.width(8.dp)); Text("Ask about this")
-                }
-                PlayerAdControls(vm, ep)
-                val skipped by vm.graph.playbackEvents.lastSkipped.collectAsStateWithLifecycle()
-                if (skipped?.episodeId == ep.id) TextButton(onClick = vm::undoAdSkip) { Text("Ad skipped · Undo and replay") }
-                player.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-                Column(Modifier.fillMaxWidth()) {
-                    Slider(value = dragging ?: player.positionMs.toFloat().coerceIn(0f, player.durationMs.coerceAtLeast(1).toFloat()), onValueChange = { dragging = it },
-                        onValueChangeFinished = { dragging?.let { vm.seek(it.toLong()) }; dragging = null }, valueRange = 0f..player.durationMs.coerceAtLeast(1).toFloat(), enabled = player.durationMs > 0,
-                        modifier = Modifier.semantics { contentDescription = "Episode playback position"; stateDescription = "${timestamp(displayedPosition)} of ${timestamp(player.durationMs)}" })
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text(timestamp(displayedPosition), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(timeRemaining(player.durationMs, displayedPosition), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    val captures by vm.captures.collectAsStateWithLifecycle()
+    val moments = remember(captures, ep.id) { momentMarks(captures, ep.id) }
+    val chapters = rememberChapterStarts(vm, ep)
+    val transcripts by vm.transcripts.collectAsStateWithLifecycle()
+    val readable = transcripts.firstOrNull { it.episodeId == ep.id }?.processedMs?.let { it > 0 } == true
+    val skipped by vm.graph.playbackEvents.lastSkipped.collectAsStateWithLifecycle()
+    val sleepTimer by vm.sleepTimer.collectAsStateWithLifecycle()
+    val artwork = ep.imageUrl ?: podcast?.imageUrl
+    val tint = rememberArtworkTint(artwork)
+    val scroll = rememberScrollState()
+    Column(Modifier.fillMaxSize()) {
+        val page = this
+        VoicePlayerHost(vm, showLastAnswer = !fullscreen) { voiceEnabled, voiceActive, ask ->
+            BoxWithConstraints(with(page) { Modifier.weight(1f) }.fillMaxWidth().then(if (fullscreen) Modifier else Modifier.artworkBackdrop(tint))) {
+                // About 60% of the width, smaller when a short screen needs the room for the controls.
+                val art = minOf(maxWidth * .6f, maxHeight - 412.dp).coerceAtLeast(120.dp)
+                Column(Modifier.fillMaxSize().then(if (fullscreen) Modifier else Modifier.verticalScroll(scroll).heightIn(min = maxHeight).padding(horizontal = 20.dp)),
+                    horizontalAlignment = Alignment.CenterHorizontally) {
+                    Box(if (fullscreen) Modifier.fillMaxSize() else Modifier.fillMaxWidth().padding(top = 12.dp), contentAlignment = Alignment.Center) {
+                        if (ep.mimeType?.startsWith("video/") == true) {
+                            VideocastPlayer(vm.graph.playback, ep.id, title = ep.title, fullscreenExitRequest = fullscreenExitRequest,
+                                onFullscreen = { fullscreen = it; onFullscreen(it) },
+                                onCapture = vm::captureMomentInPlayer, captureBusy = "distill" in busy,
+                                onVoice = ask, onToggle = vm::toggle, onSeek = vm::seek, voiceEnabled = voiceEnabled, voiceActive = voiceActive) { PlayerArtwork(artwork, art) }
+                        } else PlayerArtwork(artwork, art)
                     }
-                }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = { vm.skip(-10000) }, modifier = Modifier.size(64.dp)) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) { Icon(Icons.Default.Replay, "Back 10 seconds", Modifier.size(28.dp)); Text("10 s", style = MaterialTheme.typography.labelSmall) }
-                    }
-                    FilledIconButton(onClick = vm::toggle, shape = androidx.compose.foundation.shape.CircleShape, modifier = Modifier.size(76.dp)) { Icon(if (player.playing) Icons.Default.Pause else Icons.Default.PlayArrow, if (player.playing) "Pause" else "Play", Modifier.size(40.dp)) }
-                    IconButton(onClick = { vm.skip(30000) }, modifier = Modifier.size(64.dp)) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) { Icon(Icons.Default.Forward30, "Forward 30 seconds", Modifier.size(28.dp)); Text("30 s", style = MaterialTheme.typography.labelSmall) }
-                    }
-                }
-                PlayerEffects(vm, player.speed, podcast)
-                val sleepTimer by vm.sleepTimer.collectAsStateWithLifecycle()
-                SleepTimerControl(sleepTimer, onStart = vm::startSleepTimer, onEndOfEpisode = vm::sleepAtEndOfEpisode,
-                    onExtend = vm::extendSleepTimer, onCancel = vm::cancelSleepTimer)
-                Button(onClick = vm::captureMoment, enabled = canCaptureMoment(player), modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp), shape = RoundedCornerShape(16.dp)) {
-                    Icon(Icons.Default.AutoAwesome, null, Modifier.size(20.dp)); Spacer(Modifier.width(10.dp)); Text("Distill last 60 seconds")
-                }
-                Text("Save the moment now. Generate its insight when the source is ready.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                HorizontalDivider(Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.outline.copy(alpha = .35f))
-                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), modifier = Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                        Text("Go deeper", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                        TranscriptTools(vm, ep)
-                        EpisodeUnderstandingTools(vm, ep)
-                        DownloadAction(vm, ep)
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedButton(onClick = { vm.open("episode:${ep.id}") }) { Text("Episode details") }
-                            OutlinedButton(onClick = { vm.root("queue") }) { Text("Queue") }
+                    if (!fullscreen) {
+                        Spacer(Modifier.height(12.dp)); Spacer(Modifier.weight(1f))
+                        Column(Modifier.fillMaxWidth()) {
+                            Text(ep.title, style = MaterialTheme.typography.titleLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            PlayerShowLink(podcast, vm::open)
                         }
+                        if (skipped?.episodeId == ep.id) TextButton(onClick = vm::undoAdSkip, modifier = Modifier.align(Alignment.Start)) { Text("Ad skipped · Undo and replay") }
+                        error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.fillMaxWidth()) }
+                        PlayerScrubber(position, durationMs, vm::seek, Modifier.padding(top = 4.dp), moments, chapters)
+                        PlayerTransport(playing, vm::toggle, vm::skip, modifier = Modifier.padding(vertical = 8.dp),
+                            speed = { PlayerSpeedControl(vm, speed, podcast) },
+                            sleep = { SleepTimerControl(sleepTimer, onStart = vm::startSleepTimer, onEndOfEpisode = vm::sleepAtEndOfEpisode,
+                                onExtend = vm::extendSleepTimer, onCancel = vm::cancelSleepTimer) })
+                        PlayerActionDock(canDistill, vm::captureMoment, voiceEnabled, voiceActive, ask,
+                            onTranscript = { if (readable) vm.open(transcriptRoute(ep.id, position())) else sheet = PlayerSheetTab.TRANSCRIPT })
+                        Spacer(Modifier.height(12.dp)); Spacer(Modifier.weight(.4f))
+                        PlayerSheetHandle({ sheet = PlayerSheetTab.UP_NEXT }, Modifier.padding(bottom = 8.dp))
                     }
                 }
-                Spacer(Modifier.height(12.dp))
             }
         }
     }
+    sheet?.let { PlayerPeekSheet(vm, ep, it) { sheet = null } }
+}
+
+@Composable private fun PlayerArtwork(url: String?, size: androidx.compose.ui.unit.Dp) {
+    PodcastCover(url, Modifier.size(size).shadow(16.dp, MaterialTheme.shapes.large), MaterialTheme.shapes.large)
+}
+
+/** Chapter starts from the current, valid episode analysis; empty without one. */
+@Composable private fun rememberChapterStarts(vm: AppViewModel, ep: EpisodeEntity): List<Long> {
+    val analyses by vm.analyses.collectAsStateWithLifecycle()
+    val transcripts by vm.transcripts.collectAsStateWithLifecycle()
+    val analysis = analyses.firstOrNull { it.episodeId == ep.id }
+    val transcript = transcripts.firstOrNull { it.episodeId == ep.id }
+    // The same validity rule as the insights page: a succeeded analysis of the current transcript of this audio.
+    val valid = transcript?.state == "ready" && transcript.fingerprint == ep.mediaFingerprint &&
+        analysis?.state == "succeeded" && analysis.revision == transcript.revision
+    val json = analysis?.chaptersJson.takeIf { valid }
+    return remember(json) { json?.let(::chapterStarts) ?: emptyList() }
 }
 
 @Composable internal fun EpisodeShowLink(podcast: PodcastEntity?, onOpen: (String) -> Unit) {

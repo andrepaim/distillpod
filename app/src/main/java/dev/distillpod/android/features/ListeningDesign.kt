@@ -10,6 +10,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -44,8 +45,8 @@ internal fun queueTimeLabel(ep: EpisodeEntity, player: PlaybackState): String {
     return if (ep.completed && (player.episodeId != ep.id || atEnd)) "Played" else timeRemaining(duration, position)
 }
 
-@Composable internal fun PodcastCover(url: String?, modifier: Modifier = Modifier) {
-    Surface(modifier.clip(RoundedCornerShape(14.dp)), color = MaterialTheme.colorScheme.surfaceVariant) {
+@Composable internal fun PodcastCover(url: String?, modifier: Modifier = Modifier, shape: Shape = RoundedCornerShape(14.dp)) {
+    Surface(modifier.clip(shape), color = MaterialTheme.colorScheme.surfaceVariant) {
         Box(contentAlignment = Alignment.Center) {
             // Remains visible while artwork loads or when its URL fails.
             Icon(Icons.Default.GraphicEq, null, tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .6f), modifier = Modifier.fillMaxSize(.45f))
