@@ -8,8 +8,8 @@ import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.database.Cursor
 import android.net.Uri
-import android.os.Build
 import androidx.car.app.connection.CarConnection
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 
@@ -43,11 +43,7 @@ private class ProjectionCarConnection(private val context: Context) : LiveData<I
 
     override fun onActive() {
         val filter = IntentFilter(CarConnection.ACTION_CAR_CONNECTION_UPDATED)
-        if (Build.VERSION.SDK_INT >= 33) {
-            context.registerReceiver(receiver, filter, Context.RECEIVER_EXPORTED)
-        } else {
-            context.registerReceiver(receiver, filter)
-        }
+        ContextCompat.registerReceiver(context, receiver, filter, ContextCompat.RECEIVER_EXPORTED)
         activation = Any()
         refresh()
     }
