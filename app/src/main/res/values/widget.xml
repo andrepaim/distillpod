@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- The app's own dark palette (DistillTheme), readable on light and dark wallpapers. -->
-    <color name="widget_surface">#F2151A24</color>
-    <color name="widget_on_surface">#FFF1F2F6</color>
-    <color name="widget_on_surface_variant">#FFB0BACB</color>
-    <color name="widget_accent">#FFB7B9FF</color>
-    <color name="widget_accent_container">#FF292D48</color>
+    <!-- Ember dark palette, matching the Ember Drop launcher icon; readable on light and dark wallpapers. -->
+    <color name="widget_surface">#F222201D</color>
+    <color name="widget_on_surface">#FFF2EEE8</color>
+    <color name="widget_on_surface_variant">#FFABA397</color>
+    <color name="widget_accent">#FFFFB547</color>
+    <color name="widget_accent_container">#FF2C2925</color>
     <string name="widget_label">Now playing</string>
     <string name="widget_description">What is playing, play or pause, and Distill last 60 seconds</string>
     <string name="widget_idle_title">Nothing playing</string>

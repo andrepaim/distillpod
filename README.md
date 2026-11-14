@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="branding/icon.svg" width="112" height="112" alt="DistillPod Listening Drop icon">
+  <img src="branding/icon.svg" width="112" height="112" alt="DistillPod Ember Drop icon">
   <h1>DistillPod</h1>
   <p><strong>Turn podcasts into ideas you can keep and use.</strong></p>
   <p>Ask questions as you listen, save meaningful moments, and revisit insights with their original context.</p>
