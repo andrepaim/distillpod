@@ -2,7 +2,7 @@
 
 DistillPod is installed from [GitHub Releases](https://github.com/andrepaim/distillpod/releases), so nothing told users when a newer APK was published. The app now checks once a day and offers the download link. It does not download or install anything itself: the browser downloads the APK and Android's installer updates the app as before.
 
-Status: implemented on `feat/update-check`, November 14, 2026. This is step 1. Step 2, an in-app download verified against `SHA256SUMS` and the signing certificate and handed to Android's installer, is not planned yet.
+Status: implemented November 14, 2026 (step 1). Step 2, an in-app download verified against `SHA256SUMS` and the signing certificate and handed to Android's installer, is not planned yet.
 
 ## Behaviour
 
