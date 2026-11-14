@@ -1,6 +1,6 @@
 # Getting started
 
-Install the APK attached to a [GitHub release](https://github.com/andrepaim/distillpod/releases). Android 10 or later is required. A newer compatible release installs over the current app; keep the application installed to retain its private data.
+Install the APK attached to a [GitHub release](https://github.com/andrepaim/distillpod/releases). Android 10 or later is required. A newer compatible release installs over the current app; keep the application installed to retain its private data. DistillPod checks for a newer release once a day and notifies you; **Settings → About DistillPod** shows it with a **Download APK** link, a **Check now** button and the switch to turn checks off. See [the update check](android/app-updates.md).
 
 This guide follows `main`, which can be ahead of the downloadable APK. Check the release notes and [implementation status](android/implementation-status.md) for feature availability in your build.
 

@@ -112,7 +112,8 @@ artifact. Android updates require the same application ID and signing identity,
 and a compatible version code. A privately installed build may be ahead of the
 latest public release. Do not uninstall or clear app storage as an update fix;
 preserve the existing library and check the installed/source versions first.
-[Signing and release details](releases.md).
+**Settings → About DistillPod** offers only releases newer than the installed
+build and links to their signed APK. [Signing and release details](releases.md).
 
 ## Report a reproducible problem
 

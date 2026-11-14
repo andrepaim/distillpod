@@ -27,6 +27,7 @@ class MainActivity : ComponentActivity() {
             { applicationContext.appGraph.transcription.resumeQueued() })
         if (intent.getBooleanExtra("openPlayer", false)) model.open("player")
         mediaSearch(intent)
+        openAbout(intent)
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.RESUMED) {
                 applicationContext.appGraph.account.browser.collect { url ->
@@ -58,7 +59,9 @@ class MainActivity : ComponentActivity() {
         applicationContext.appGraph.syncAccount.kick()
     }
     override fun onPause() { applicationContext.appGraph.account.foreground(false); super.onPause() }
-    override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); mediaSearch(intent); if (intent.getBooleanExtra("openPlayer", false)) model.open("player") }
+    override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); mediaSearch(intent); if (intent.getBooleanExtra("openPlayer", false)) model.open("player"); openAbout(intent) }
+    /** The update notification opens Settings › About; a boolean extra cannot name any other route. */
+    private fun openAbout(intent: Intent) { if (intent.getBooleanExtra(dev.distillpod.android.work.UpdateNotice.OPEN_ABOUT, false)) model.open("settings:about") }
     private fun mediaSearch(request:Intent) {
         if(request.action!="android.media.action.MEDIA_PLAY_FROM_SEARCH")return
         lifecycleScope.launch {

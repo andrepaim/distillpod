@@ -53,7 +53,7 @@ class SettingsOverviewTest {
             "Privacy & diagnostics" to "settings:diagnostics", "About DistillPod" to "settings:about")
         for ((title, _) in rows) compose.onNode(hasText(title) and hasClickAction()).performScrollTo().performClick()
         assertEquals(rows.map { it.second }, opened)
-        compose.onNode(hasText("About DistillPod") and hasText("Version, licenses and source code") and hasClickAction())
+        compose.onNode(hasText("About DistillPod") and hasText("Version, updates, licenses and source code") and hasClickAction())
             .performScrollTo().assertIsDisplayed().assertHeightIsAtLeast(48.dp)
     }
 
