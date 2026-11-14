@@ -146,16 +146,19 @@ class SearchDesignDeviceTest {
             compose.onNodeWithText("Open podcast").performClick()
             assertEquals(created, opened)
             compose.onNodeWithContentDescription("Search your library and podcasts").performTextReplacement("nothing")
-            compose.onNodeWithContentDescription("Submit search").performClick()
+            // The keyboard's search key submits; there is no separate submit button (#203).
+            compose.onNodeWithContentDescription("Search your library and podcasts").performImeAction()
             compose.waitUntil(10000) { compose.onAllNodesWithText("No podcasts found").fetchSemanticsNodes().isNotEmpty() }
             screenshot("empty")
             compose.onNodeWithContentDescription("Search your library and podcasts").performTextReplacement("offline")
-            compose.onNodeWithContentDescription("Submit search").performClick()
+            // The keyboard's search key submits; there is no separate submit button (#203).
+            compose.onNodeWithContentDescription("Search your library and podcasts").performImeAction()
             compose.waitUntil(10000) { compose.onAllNodesWithText("Search unavailable").fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithText("Try again").performClick()
             compose.waitUntil(10000) { search.state.value.results.size == 2 }
             withContext(Dispatchers.Main) { font.value = 1.6f }
-            compose.onNodeWithContentDescription("Submit search").assertIsDisplayed()
+            compose.onNodeWithContentDescription("Search your library and podcasts").assertIsDisplayed()
+            compose.onAllNodesWithContentDescription("Submit search").assertCountEquals(0)
             compose.onNodeWithContentDescription("Preview Signal and Story").performScrollTo().performClick()
             compose.onNodeWithContentDescription("Open previewed podcast").performScrollTo().assertIsDisplayed()
             screenshot("large-preview")

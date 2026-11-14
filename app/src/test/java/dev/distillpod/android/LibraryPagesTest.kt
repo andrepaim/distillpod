@@ -68,7 +68,9 @@ class LibraryPagesTest {
         assertTrue("play and more share a row", abs((centre(play) - centre(more)).value) < 4f)
         compose.onNodeWithText("The Synthetic Listening Room").assertIsDisplayed()
         // Status joins the date line instead of a separate row of labels.
-        compose.onNodeWithText("${episodeDate(ep.publishedAt)} · 50 min left · Transcript · 2 saved").assertIsDisplayed()
+        // The saved-moment count is an accent "✦ N", read out in words.
+        compose.onNodeWithText("${episodeDate(ep.publishedAt)} · 50 min left · Transcript · ✦ 2", useUnmergedTree = true).assertIsDisplayed()
+            .assertContentDescriptionEquals("${episodeDate(ep.publishedAt)}, 50 min left, Transcript, 2 saved moments")
 
         compose.onNodeWithContentDescription("More actions for $longTitle").performClick()
         listOf("Play next", "Add to queue", "Download", "Mark played").forEach { compose.onNodeWithText(it).assertIsDisplayed() }
@@ -76,6 +78,19 @@ class LibraryPagesTest {
         compose.onNodeWithContentDescription("Play $longTitle").performClick()
         compose.onNodeWithTag("episode-row").performClick()
         assertEquals(listOf("download:e1", "play:e1", "open:e1"), calls)
+    }
+
+    @Test fun `rows are flat with a small play button that keeps its touch target`() {
+        val ep = episode("e8", "Flat row")
+        compose.setContent {
+            DistillTheme { Box(Modifier.size(344.dp, 400.dp)) {
+                EpisodeRow(ep, show, PlaybackState(), transcriptReady = false, captureCount = 0, showPodcast = true, deletionBlock = null, actions = actions)
+            } }
+        }
+        val play = compose.onNodeWithContentDescription("Play Flat row").dp()
+        assertTrue("play target is ${play.width}", play.width >= 48.dp && play.height >= 48.dp)
+        // The row is one clickable surface, not a card containing one.
+        compose.onNodeWithTag("episode-row").assertHasClickAction()
     }
 
     @Test fun `a typical row with a two-line title is under 100 dp`() {

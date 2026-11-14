@@ -37,14 +37,13 @@ class SavedMomentsLayoutTest {
         episodeTitle = "A deliberately long synthetic episode title about attention, curiosity and practice $n",
         showTitle = "The Synthetic Listening Room", artworkUrl = null, startMs = 40_000L * n, endMs = 40_000L * n + 21_000)
 
-    private fun content(items: List<SavedMomentItem>, tab: SavedTab = SavedTab.Moments, onTab: (SavedTab) -> Unit = {},
-        query: String = "", onQuery: (String) -> Unit = {}, onOpen: (String) -> Unit = {}) {
+    private fun content(items: List<SavedMomentItem>, query: String = "", onQuery: (String) -> Unit = {}, onOpen: (String) -> Unit = {}) {
         compose.setContent {
             DistillTheme {
                 // A 1080x2316 phone at its default 450 dpi is about 384x823 dp. Subtract the status bar,
                 // app bar, mini-player, navigation bar and gesture area to get the Saved page's viewport.
                 Box(Modifier.size(384.dp, 520.dp)) {
-                    SavedContent(tab, onTab, items, items.size, query, onQuery, onOpen, {}) { Text("Posts fixture") }
+                    SavedContent(items, items.size, query, onQuery, onOpen = onOpen, onBrowse = {})
                 }
             }
         }
@@ -71,16 +70,46 @@ class SavedMomentsLayoutTest {
         compose.onNodeWithText("Needs retry", useUnmergedTree = true).assertExists()
     }
 
-    @Test fun `posts are a segment of the Saved page rather than a floating button`() {
-        var tab by mutableStateOf(SavedTab.Moments)
-        compose.setContent { DistillTheme { SavedContent(tab, { tab = it }, listOf(item(1)), 1, "", {}, {}, {}) { Text("Posts fixture") } } }
+    @Test fun `posts are not on the Saved page, which shows moments directly`() {
+        content(listOf(item(1)))
         compose.onNodeWithText("Your posts").assertDoesNotExist()
-        compose.onNodeWithText("Moments").assertIsSelected()
-        compose.onNodeWithText("Posts").assertIsNotSelected().performClick()
-        assertEquals(SavedTab.Posts, tab)
-        compose.onNodeWithText("Posts").assertIsSelected()
-        compose.onNodeWithText("Posts fixture").assertIsDisplayed()
-        compose.onNodeWithText("Search saved moments").assertDoesNotExist()
+        compose.onNodeWithText("Posts").assertDoesNotExist()
+        compose.onNodeWithText("Search saved moments").assertIsDisplayed()
+    }
+
+    @Test fun `a card is the quote over one source line`() {
+        content(listOf(item(1)))
+        compose.onNodeWithText("Moment 1", substring = true, useUnmergedTree = true).assertIsDisplayed()
+        // Artwork, episode and time share one line; the show name is left to the filter chips.
+        val episode = compose.onNodeWithText(item(1).episodeTitle!!, useUnmergedTree = true).getBoundsInRoot()
+        val time = compose.onNodeWithText(" · 0:40", useUnmergedTree = true).assertIsDisplayed().getBoundsInRoot()
+        // The time stays visible beside a long, truncated episode title.
+        assertEquals(episode.top.value, time.top.value, 1f)
+        assertTrue(time.left >= episode.right)
+        compose.onNodeWithText("The Synthetic Listening Room", useUnmergedTree = true).assertDoesNotExist()
+        compose.onNodeWithText("We get better at listening", substring = true, useUnmergedTree = true).assertDoesNotExist()
+    }
+
+    @Test fun `show chips filter moments and can be combined`() {
+        val items = listOf(item(1), item(2).copy(showTitle = "Second Synthetic Show"), item(3).copy(showTitle = "Second Synthetic Show"),
+            item(4).copy(showTitle = "Third Synthetic Show"))
+        assertEquals(listOf("Second Synthetic Show", "The Synthetic Listening Room", "Third Synthetic Show"), savedShows(items))
+        var selected by mutableStateOf(emptySet<String>())
+        compose.setContent { DistillTheme { Box(Modifier.size(384.dp, 2000.dp)) {
+            SavedContent(items.filtered("", selected), items.size, "", {}, savedShows(items), selected,
+                { show -> selected = if (show in selected) selected - show else selected + show }, onOpen = {}, onBrowse = {})
+        } } }
+        compose.onNodeWithText("4 moments").assertIsDisplayed()
+        compose.onNode(hasText("Second Synthetic Show") and hasClickAction()).assertIsNotSelected().performClick()
+        compose.onAllNodesWithTag("saved-moment-card").assertCountEquals(2)
+        compose.onNodeWithText("2 of 4 moments").assertIsDisplayed()
+        compose.onNode(hasText("Third Synthetic Show") and hasClickAction()).performClick()
+        compose.onAllNodesWithTag("saved-moment-card").assertCountEquals(3)
+        compose.onNode(hasText("Second Synthetic Show") and hasClickAction()).assertIsSelected().performClick()
+        compose.onNode(hasText("Third Synthetic Show") and hasClickAction()).performClick()
+        compose.onAllNodesWithTag("saved-moment-card").assertCountEquals(4)
+        // One show needs no filter.
+        assertEquals(listOf("The Synthetic Listening Room"), savedShows(items.take(1)))
     }
 
     @Test fun `search field scrolls away with the list`() {
@@ -113,5 +142,7 @@ class SavedMomentsLayoutTest {
         assertEquals("Finding the idea", momentStatus("running"))
         assertEquals("Waiting for transcript", momentStatus("waiting_transcript"))
         assertEquals("No insight yet", momentStatus("saved"))
+        // An unknown state would read "Saved", which a saved moment needs no badge to say.
+        assertNull(momentStatus("something-new"))
     }
 }

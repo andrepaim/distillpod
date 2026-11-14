@@ -10,12 +10,15 @@ import kotlinx.coroutines.flow.map
 
 /** Rows of the Library tab or one show page, for the filter they were selected with. */
 internal data class LibraryListing(val podcastId: String?, val filter: String, val subscribed: List<PodcastEntity>, val selected: PodcastEntity?,
-    val episodeCount: Int, val visible: List<EpisodeEntity>, val resume: EpisodeEntity?, val feedProblems: List<PodcastEntity> = emptyList())
+    val episodeCount: Int, val visible: List<EpisodeEntity>, val resume: EpisodeEntity?, val feedProblems: List<PodcastEntity> = emptyList(),
+    val continueListening: List<EpisodeEntity> = listOfNotNull(resume))
 
 /**
  * The Library tab lists followed shows plus episodes kept offline or already played; a show page
  * lists that show. The episode loaded in the player resumes first, otherwise the most recently played
- * unfinished one. [LibraryListing.feedProblems] are followed shows (or the open show) whose refresh failed.
+ * unfinished one. [LibraryListing.continueListening] follows it with the other unfinished episodes, most
+ * recently played first, up to [CONTINUE_LISTENING_LIMIT]. [LibraryListing.feedProblems] are followed shows
+ * (or the open show) whose refresh failed.
  */
 internal fun libraryListing(podcasts: List<PodcastEntity>, episodes: List<EpisodeEntity>, filter: String,
     podcastId: String?, currentEpisodeId: String?): LibraryListing {
@@ -31,12 +34,17 @@ internal fun libraryListing(podcasts: List<PodcastEntity>, episodes: List<Episod
     val visible = if (selected?.feedUrl?.let { dev.distillpod.core.YouTubeUrl.source(it) } != null)
         filtered.sortedBy { it.sourceOrder ?: Int.MAX_VALUE } else filtered
     // Continue listening always matches the mini-player while an episode is loaded, even a finished one (#146).
-    val resume = currentEpisodeId?.let { id -> episodes.firstOrNull { it.id == id } }
-        ?: library.filter { it.positionMs > 0 && !it.completed }.maxByOrNull { it.lastPlayedAt }
+    // Only the few unfinished episodes are sorted; the stable sort keeps maxBy's first-of-equals choice.
+    val unfinished = library.filter { it.positionMs > 0 && !it.completed }.sortedByDescending { it.lastPlayedAt }
+    val resume = currentEpisodeId?.let { id -> episodes.firstOrNull { it.id == id } } ?: unfinished.firstOrNull()
+    val continueListening = (listOfNotNull(resume) + unfinished.filter { it.id != resume?.id }).take(CONTINUE_LISTENING_LIMIT)
     // Unfollowed shows are never refreshed, so an old error of theirs would never clear (#146).
     val problems = podcasts.filter { it.error != null && if (podcastId != null) it.id == podcastId else it.subscribed }
-    return LibraryListing(podcastId, filter, subscribed, selected, library.size, visible, resume, problems)
+    return LibraryListing(podcastId, filter, subscribed, selected, library.size, visible, resume, problems, continueListening)
 }
+
+/** The Library's continue-listening carousel holds at most this many episodes (proposal 5.4). */
+internal const val CONTINUE_LISTENING_LIMIT = 5
 
 /** The Library tab (null show) or a show page when it is the top route; null for other screens. */
 internal data class LibraryRoute(val podcastId: String?)

@@ -167,7 +167,8 @@ class DesignReviewDeviceTest {
             open("saved")
             compose.onNodeWithText("Search saved moments").performTextInput("curiosity")
             compose.onNodeWithText("Search saved moments").performImeAction()
-            compose.onNodeWithText("“Make room for curiosity.”").assertIsDisplayed()
+            // The match is in the quote; the compact card shows the insight over one source line (#203).
+            compose.onNode(hasTestTag("saved-moment-card") and hasText("A small daily practice makes a difference.")).assertIsDisplayed()
             shot("saved-search")
         } finally {dao.deletePodcast(id)}
     }

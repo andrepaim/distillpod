@@ -59,7 +59,7 @@ class QueueLabelsTest {
         compose.onAllNodesWithText("1 min left").assertCountEquals(0)
     }
 
-    @Test fun `queue opens on the current item after a long history and says nothing is up next`() {
+    @Test fun `queue opens on now playing even after a long history and says nothing is up next`() {
         val ids = listOf("a", "b", "c", "d", "e", "f")
         val episodes = ids.map { episode(it, positionMs = if (it == "f") 0 else 30 * MIN, completed = it != "f") }
         compose.setContent { QueueContent(episodes, emptyList(),
@@ -74,22 +74,22 @@ class QueueLabelsTest {
     }
 
     @Config(qualifiers = "w411dp-h2400dp")
-    @Test fun `queue sections follow the actual playlist order`() {
-        val ids = listOf("a", "b", "c", "d")
+    @Test fun `now playing leads, then up next with its count and time, then history in playlist order`() {
+        val ids = listOf("a", "b", "c", "d", "e")
         compose.setContent { QueueContent(ids.map { episode(it) }, emptyList(),
-            PlaybackState(episodeId = "b", durationMs = 30 * MIN, queue = ids),
+            PlaybackState(episodeId = "c", durationMs = 30 * MIN, queue = ids),
             {}, {}, {}, {}, { _, _ -> }, {}) }
-        val order = listOf("History", "Episode a", "Now playing", "Episode b", "Up next", "Episode c", "Episode d")
+        val order = listOf("Now playing", "Episode c", "Up next · 2 · 1 hr 0 min", "Episode d", "Episode e", "History", "Episode a", "Episode b")
             .map { compose.onNodeWithText(it).assertIsDisplayed().fetchSemanticsNode().boundsInRoot.top }
         assertEquals(order.sorted(), order)
         compose.onAllNodesWithText("Nothing up next").assertCountEquals(0)
     }
 
-    @Test fun `without a history section the queue starts at its controls`() {
+    @Test fun `without a history section the queue starts at its clear action`() {
         compose.setContent { QueueContent(listOf(episode("a"), episode("b")), emptyList(),
             PlaybackState(episodeId = "a", durationMs = 30 * MIN, queue = listOf("a", "b")),
             {}, {}, {}, {}, { _, _ -> }, {}) }
-        compose.onNodeWithText("Clear queue").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Clear queue").assertIsDisplayed()
         compose.onAllNodesWithText("History").assertCountEquals(0)
     }
 }

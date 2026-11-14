@@ -45,8 +45,9 @@ class SavedMomentsDeviceTest {
             dao.putDistillation(DistillationEntity("$id-retry", id, 300_000, 360_000, state = "failed", error = "Synthetic failure.", createdAt = now - 10))
             withContext(Dispatchers.Main) { vm.root("saved") }
             compose.waitUntil(10000) { compose.onAllNodesWithTag("saved-moment-card").fetchSemanticsNodes().size >= 2 }
+            // Posts moved to the top bar's overflow menu; the page is the moments themselves.
             compose.onNodeWithText("Your posts").assertDoesNotExist()
-            compose.onNodeWithText("Moments").assertIsSelected()
+            compose.onNodeWithText("Search saved moments").assertIsDisplayed()
             // Finished moments carry no status chip; the navigation bar's own "Saved" label is not part of a card.
             compose.onAllNodes(hasTestTag("saved-moment-card") and hasText("Saved")).assertCountEquals(0)
             // The issue's reference phone (1080x2316 at its default 450 dpi) is about 823 dp tall.
@@ -77,8 +78,9 @@ class SavedMomentsDeviceTest {
             compose.onNodeWithText("Synthetic source passage 0.").performScrollTo().assertIsDisplayed()
 
             withContext(Dispatchers.Main) { vm.root("saved") }
-            compose.onNodeWithText("Posts").performClick()
-            compose.onNodeWithText("Posts").assertIsSelected()
+            compose.onNodeWithContentDescription("More options").performClick()
+            compose.onNodeWithText("Your posts").performClick()
+            compose.waitUntil(5000) { vm.backStack.value.last() == "posts" }
             compose.onNodeWithText("Search saved moments").assertDoesNotExist()
         } finally {
             withContext(Dispatchers.Main) { vm.root("library") }

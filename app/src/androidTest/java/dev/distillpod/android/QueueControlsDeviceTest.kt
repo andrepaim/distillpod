@@ -74,8 +74,8 @@ class QueueControlsDeviceTest {
         }
         fun openClearDialog() {
             // Lazy headers may be disposed when a moved item anchors the scroll position.
-            compose.onNodeWithTag("queue-list").performScrollToNode(hasText("Clear queue"))
-            compose.onNodeWithText("Clear queue").performClick()
+            compose.onNodeWithTag("queue-list").performScrollToNode(hasContentDescription("Clear queue"))
+            compose.onNodeWithContentDescription("Clear queue").performClick()
             compose.onNodeWithText("Clear queue and stop playback?").assertIsDisplayed()
         }
         var primaryFailure:Throwable?=null
@@ -94,7 +94,7 @@ class QueueControlsDeviceTest {
                 ViewModelProvider(compose.activity,AppViewModel.factory(graph))[AppViewModel::class.java].also { it.open("queue") }
             }
             phase("queue controls visible") {
-                compose.waitUntil(15000) { compose.onAllNodesWithText("Clear queue").fetchSemanticsNodes().isNotEmpty() }
+                compose.waitUntil(15000) { compose.onAllNodesWithContentDescription("Clear queue").fetchSemanticsNodes().isNotEmpty() }
             }
             // Compact rows: boundary moves are absent from TalkBack actions and disabled in the menu.
             compose.assertQueueRowActions(ids[0],listOf("Move down","Remove from queue"))

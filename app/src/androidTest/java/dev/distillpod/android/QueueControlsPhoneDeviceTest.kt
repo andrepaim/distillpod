@@ -51,8 +51,8 @@ class QueueControlsPhoneDeviceTest {
             while (dao.queue().map { it.episodeId } != expected) delay(50)
         }
         fun clearDialog() {
-            compose.onNodeWithTag("queue-list").performScrollToNode(hasText("Clear queue"))
-            compose.onNodeWithText("Clear queue").performClick()
+            compose.onNodeWithTag("queue-list").performScrollToNode(hasContentDescription("Clear queue"))
+            compose.onNodeWithContentDescription("Clear queue").performClick()
             compose.onNodeWithText("Clear queue and stop playback?").assertIsDisplayed()
         }
         val player = graph.playback.sessionPlayer()
@@ -77,7 +77,7 @@ class QueueControlsPhoneDeviceTest {
             withContext(Dispatchers.Main) {
                 ViewModelProvider(compose.activity, AppViewModel.factory(graph))[AppViewModel::class.java].open("queue")
             }
-            compose.waitUntil(15000) { compose.onAllNodesWithText("Clear queue").fetchSemanticsNodes().isNotEmpty() }
+            compose.waitUntil(15000) { compose.onAllNodesWithContentDescription("Clear queue").fetchSemanticsNodes().isNotEmpty() }
             // Compact rows: boundary moves are absent from TalkBack actions and disabled in the menu.
             compose.assertQueueRowActions(ids[0],listOf("Move down", "Remove from queue"))
             compose.selectQueueMenuAction("Phone queue item 0", "Move down", disabled = listOf("Move up"))

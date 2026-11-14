@@ -52,6 +52,17 @@ class LibraryListingTest {
         assertEquals("new", libraryListing(podcasts, episodes, "all", null, "new").resume?.id)
     }
 
+    @Test fun `continue listening lists the resume episode first, then other unfinished ones by last played`() {
+        assertEquals(listOf("played", "half"), libraryListing(podcasts, episodes, "all", null, null).continueListening.map { it.id })
+        // The loaded episode leads, even a finished one, and is not repeated.
+        assertEquals(listOf("done", "played", "half"), libraryListing(podcasts, episodes, "all", null, "done").continueListening.map { it.id })
+        assertEquals(listOf("half", "played"), libraryListing(podcasts, episodes, "all", null, "half").continueListening.map { it.id })
+        // At most five, most recently played first.
+        val many = (1..8).map { EpisodeEntity("m$it", "p1", "m$it", "M$it", "https://example.test/m$it", positionMs = 1_000, lastPlayedAt = 100L + it) }
+        assertEquals(listOf("m8", "m7", "m6", "m5", "m4"), libraryListing(podcasts, many, "all", null, null).continueListening.map { it.id })
+        assertTrue(libraryListing(podcasts, episodes.filter { it.positionMs == 0L }, "all", null, null).continueListening.isEmpty())
+    }
+
     @Test fun `continue listening shows the episode loaded in the player, even when it is finished (#146)`() {
         // The mini-player shows the loaded episode; the card must never show a different one.
         assertEquals("done", libraryListing(podcasts, episodes, "all", null, "done").resume?.id)
