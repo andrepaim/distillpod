@@ -126,6 +126,7 @@ Each PR implements the matching section of the proposal (5.1–5.6). Additional 
   - Saved and Your shows shift by 1 px below their search fields.
   - The speed slider's inner track corners are slightly squarer.
   - Not covered by the comparison: a filled icon button's disabled container is 10% instead of 12%.
+  - At large text on a 320×640 screen, the bottom bar labels stay on one line ("Library" instead of "Librar / y"). The bar is shorter, so lists settle at a different scroll position. `ListeningDesignDeviceTest` now scrolls to the show-page Retry action before asserting it.
 - **Not adopted: M3 Expressive.** Material 3 1.4.0, the latest stable, keeps button groups, wavy progress, loading indicators and the expressive motion scheme internal. They become public in Material 3 1.5.0, which is still a release candidate (1.5.0-rc01) and requires compileSdk 37 and Android Gradle Plugin 9.1. Adoption is tracked separately, after 1.5.0 is stable and the toolchain migration lands.
 
 ## Tracking
