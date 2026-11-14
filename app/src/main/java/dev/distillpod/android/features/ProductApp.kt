@@ -219,7 +219,8 @@ private val NOT_CURRENT = PlaybackState()
     }
 }
 
-private val LIBRARY_FILTERS = listOf("all" to "Latest", "progress" to "In progress", "downloads" to "Downloaded")
+/** Filter id, label, and the shorter label used when large text would truncate three segments. */
+private val LIBRARY_FILTERS = listOf(Triple("all", "Latest", "Latest"), Triple("progress", "In progress", "Started"), Triple("downloads", "Downloaded", "Offline"))
 
 /**
  * The Library tab, or a show page for [podcastId] (proposal 5.4): continue listening, the show rail, feed
@@ -325,7 +326,8 @@ private val LIBRARY_FILTERS = listOf("all" to "Latest", "progress" to "In progre
         }
         // Other rows get a constant idle state so position ticks recompose only the current row.
         itemsIndexed(visible, key = { _, ep -> ep.id }) { index, ep ->
-            if (index > 0) EpisodeRowDivider()
+            // An in-progress row ends in its progress line, which already separates it from this one.
+            if (index > 0) visible[index - 1].let { prev -> if (!episodeInProgress(prev, if (player.episodeId == prev.id) player else NOT_CURRENT)) EpisodeRowDivider() }
             EpisodeRow(ep, podcasts.firstOrNull { it.id == ep.podcastId }, if (player.episodeId == ep.id) player else NOT_CURRENT,
                 transcripts.firstOrNull { it.episodeId == ep.id }?.state == "ready", captures.count { it.episodeId == ep.id }, podcastId == null,
                 deletionBlocks[ep.id]?.feedback, actions, retryPreparation = if (ep.id in attentionIds) vm::retryAutomation else null)
@@ -340,9 +342,12 @@ private val LIBRARY_FILTERS = listOf("all" to "Latest", "progress" to "In progre
     Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background).padding(horizontal = DistillSpacing.gutter, vertical = DistillSpacing.sm),
         verticalArrangement = Arrangement.spacedBy(6.dp)) {
         SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().testTag("library-filters")) {
-            LIBRARY_FILTERS.forEachIndexed { index, (id, label) ->
+            val large = LocalDensity.current.fontScale >= 1.3f
+            LIBRARY_FILTERS.forEachIndexed { index, (id, label, short) ->
+                // TalkBack always hears the full name.
                 SegmentedButton(selected = filter == id, onClick = { onFilter(id) }, shape = SegmentedButtonDefaults.itemShape(index, LIBRARY_FILTERS.size),
-                    icon = {}, label = { Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis) })
+                    icon = {}, modifier = Modifier.semantics { contentDescription = label },
+                    label = { Text(if (large) short else label, maxLines = 1, overflow = TextOverflow.Ellipsis) })
             }
         }
         Text("$count available", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -566,7 +571,7 @@ internal class QueueUndo(val snackbar: SnackbarHostState, val enqueue: (String, 
                 dragHandle = if (reorderable) ({ QueueDragHandle(drag, id, { latestNext }, ::drop) }) else null)
         }
     }
-    LazyColumn(Modifier.testTag("queue-list"), state = list, contentPadding = PaddingValues(top = 8.dp, bottom = 20.dp)) {
+    LazyColumn(Modifier.testTag("queue-list"), state = list, contentPadding = PaddingValues(bottom = 20.dp)) {
         val clear = @Composable { TextButton(onClick = { confirmClear = true }, modifier = Modifier.semantics { contentDescription = "Clear queue" }) { Text("Clear") } }
         if (currentIndex >= 0) {
             item(key = "queue-now") { QueueHeading("Now playing", clear) }
@@ -585,7 +590,8 @@ internal class QueueUndo(val snackbar: SnackbarHostState, val enqueue: (String, 
         else itemsIndexed(upNext, key = { _, id -> id }) { offset, id ->
             val dragged = drag.dragging == id
             Column(Modifier.zIndex(if (dragged) 1f else 0f).then(if (dragged) Modifier.graphicsLayer { translationY = drag.displacement(id) } else Modifier.animateItem())) {
-                if (offset > 0) EpisodeRowDivider()
+                // Lines up with the text after the drag handle and artwork.
+                if (offset > 0) EpisodeRowDivider(inset = 48.dp + 10.dp + 48.dp + 10.dp)
                 row(nextStart + offset, id, reorderable = true)
             }
         }

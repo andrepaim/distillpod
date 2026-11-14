@@ -3,6 +3,7 @@ package dev.distillpod.android.features
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.layout
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -49,6 +50,13 @@ import dev.distillpod.android.ui.theme.extras
 }
 
 private val SEARCH_FORMATS = listOf("All", "Audio", "Video")
+
+/** Extends content [by] into the horizontal padding on each side. */
+private fun Modifier.bleed(by: androidx.compose.ui.unit.Dp) = layout { measurable, constraints ->
+    val extra = (by * 2).roundToPx()
+    val placeable = measurable.measure(constraints.copy(minWidth = constraints.minWidth + extra, maxWidth = constraints.maxWidth + extra))
+    layout(constraints.maxWidth, placeable.height) { placeable.place(-by.roundToPx(), 0) }
+}
 
 private data class SearchTopic(val name: String, val icon: ImageVector)
 private val topics = listOf(SearchTopic("Technology", Icons.Default.Memory), SearchTopic("Science", Icons.Default.Science),
@@ -143,14 +151,16 @@ private val topics = listOf(SearchTopic("Technology", Icons.Default.Memory), Sea
                 else -> {
                     if (recent.isNotEmpty()) {
                         item { SectionHeading("Recent searches", action = "Clear", onAction = onClearRecent) }
-                        items(recent, key = { "recent:$it" }) { term ->
+                        // One group: the list's 14 dp item gap would otherwise split the rows apart. The rows bleed into the
+                        // page gutter so their icons line up with the headings.
+                        item(key = "recent-searches") { Column(Modifier.bleed(16.dp)) { recent.forEach { term ->
                             ListItem(headlineContent = { Text(term, maxLines = 2, overflow = TextOverflow.Ellipsis) },
                                 leadingContent = { Icon(Icons.Default.History, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
                                 trailingContent = { Icon(Icons.Default.NorthWest, null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant) },
                                 colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.background),
                                 modifier = Modifier.clip(MaterialTheme.shapes.small).clickable(onClickLabel = "Search again") { submit(term) }
                                     .semantics { contentDescription = "Search again for $term" })
-                        }
+                        } } }
                     }
                     item { SectionHeading("Explore topics", "Start with something you're curious about") }
                     items(topics.chunked(2)) { row ->

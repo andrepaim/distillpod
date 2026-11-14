@@ -33,6 +33,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import dev.distillpod.android.data.EpisodeEntity
 import dev.distillpod.android.data.PodcastEntity
@@ -88,7 +89,7 @@ private val ACTIVE_DOWNLOAD = listOf("queued", "downloading")
     val playing = current && player.playing
     val position = listeningPosition(ep, player)
     val duration = listeningDuration(ep, player)
-    val inProgress = position > 0 && duration > 0 && !ep.completed
+    val inProgress = episodeInProgress(ep, player)
     val highlight = MaterialTheme.colorScheme.primary
     val plain = listOf(episodeDate(ep.publishedAt),
         if (position > 0 && !ep.completed) timeRemaining(duration, position) else duration.takeIf { it > 0 }?.let(::timestamp) ?: "")
@@ -130,14 +131,19 @@ private val ACTIVE_DOWNLOAD = listOf("queued", "downloading")
             EpisodeMenu(ep, deletionBlock, actions, retryPreparation)
         }
         // Flush with the row's bottom edge, like the mini-player, rather than another padded row.
+        // It also separates this row from the next, which then draws no divider.
         if (inProgress) LinearProgressIndicator(progress = { (position.toFloat() / duration).coerceIn(0f, 1f) },
-            modifier = Modifier.fillMaxWidth().height(3.dp))
+            modifier = Modifier.fillMaxWidth().height(2.dp), trackColor = MaterialTheme.colorScheme.outlineVariant, gapSize = 0.dp, drawStopIndicator = {})
     }
 }
 
-/** The divider between flat episode rows, inset to line up with the text after the artwork. */
-@Composable internal fun EpisodeRowDivider() = HorizontalDivider(Modifier.padding(start = DistillSpacing.gutter + 56.dp + DistillSpacing.item),
-    color = MaterialTheme.colorScheme.outlineVariant)
+/** Whether a row shows its listening progress line. */
+internal fun episodeInProgress(ep: EpisodeEntity, player: PlaybackState): Boolean =
+    listeningPosition(ep, player) > 0 && listeningDuration(ep, player) > 0 && !ep.completed
+
+/** The divider between flat episode rows, inset by default to line up with the text after the artwork. */
+@Composable internal fun EpisodeRowDivider(inset: Dp = DistillSpacing.gutter + 56.dp + DistillSpacing.item) =
+    HorizontalDivider(Modifier.padding(start = inset), color = MaterialTheme.colorScheme.outlineVariant)
 
 @Composable private fun EpisodeMenu(ep: EpisodeEntity, blocked: String?, actions: EpisodeActions, retryPreparation: ((String) -> Unit)?) {
     var open by remember { mutableStateOf(false) }

@@ -81,7 +81,11 @@ class SavedMomentsLayoutTest {
         content(listOf(item(1)))
         compose.onNodeWithText("Moment 1", substring = true, useUnmergedTree = true).assertIsDisplayed()
         // Artwork, episode and time share one line; the show name is left to the filter chips.
-        compose.onNodeWithText("${item(1).episodeTitle} · 0:40", useUnmergedTree = true).assertExists()
+        val episode = compose.onNodeWithText(item(1).episodeTitle!!, useUnmergedTree = true).getBoundsInRoot()
+        val time = compose.onNodeWithText(" · 0:40", useUnmergedTree = true).assertIsDisplayed().getBoundsInRoot()
+        // The time stays visible beside a long, truncated episode title.
+        assertEquals(episode.top.value, time.top.value, 1f)
+        assertTrue(time.left >= episode.right)
         compose.onNodeWithText("The Synthetic Listening Room", useUnmergedTree = true).assertDoesNotExist()
         compose.onNodeWithText("We get better at listening", substring = true, useUnmergedTree = true).assertDoesNotExist()
     }

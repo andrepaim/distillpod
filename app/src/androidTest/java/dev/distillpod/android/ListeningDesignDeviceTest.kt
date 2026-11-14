@@ -161,9 +161,10 @@ class ListeningDesignDeviceTest {
             assertEquals(65000L, withContext(Dispatchers.Main) { c.currentPosition })
             screenshot("queue")
             compose.onNodeWithText("Saved", useUnmergedTree = true).performClick()
-            compose.onNodeWithTag("saved-list").performScrollToNode(hasText("Useful ideas deserve a second listen.", substring = true))
+            // A Saved card shows the insight over one source line (#203); the quote is on the moment page.
+            compose.onNodeWithTag("saved-list").performScrollToNode(hasText("Keep the original source with the saved idea.", substring = true))
             screenshot("saved")
-            compose.onNodeWithText("Useful ideas deserve a second listen.", substring = true).performClick()
+            compose.onNodeWithText("Keep the original source with the saved idea.", substring = true).performClick()
             compose.onNodeWithText("Replay 0:05").performScrollTo().assertIsDisplayed()
             screenshot("moment")
             withContext(Dispatchers.Main) {

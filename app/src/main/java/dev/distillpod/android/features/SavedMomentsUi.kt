@@ -139,8 +139,12 @@ private fun countLabel(count: Int) = "$count ${if (count == 1) "moment" else "mo
                 style = DistillType.quoteCompact)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 PodcastCover(item.artworkUrl, Modifier.size(24.dp), MaterialTheme.shapes.extraSmall)
-                Text("${item.episodeTitle ?: "Episode"} · ${timestamp(item.startMs)}", Modifier.weight(1f), maxLines = 1,
-                    overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                // The time never truncates; a long episode title does.
+                Row(Modifier.weight(1f)) {
+                    Text(item.episodeTitle ?: "Episode", Modifier.weight(1f, fill = false), maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(" · ${timestamp(item.startMs)}", maxLines = 1, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
                 status?.let { StatusLabel(it) }
             }
         }
