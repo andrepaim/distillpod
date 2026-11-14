@@ -110,6 +110,24 @@ Each PR implements the matching section of the proposal (5.1–5.6). Additional 
   - TalkBack custom actions are unchanged.
 - **Settings (3a):** trailing values read existing preference flows. Nothing is computed on the main thread.
 
+## 4. Compose BOM upgrade, outcome
+
+- **Upgrade:** `compose-bom` 2025.02.00 → **2026.06.01** (Compose 1.7.8 → 1.11.4, Material 3 1.3.1 → 1.4.0).
+  - Kotlin 2.1.10, Android Gradle Plugin 8.9.1 and compileSdk 35 are unchanged.
+  - BOM 2026.08.00 and later (Compose 1.12) require Android Gradle Plugin 9.1 and compileSdk 37. That is a separate toolchain migration, and those BOMs still ship Material 3 1.4.0.
+- **Pinned defaults:** Material 3 1.4 changed component defaults that the Ember review had approved. `ui/theme/DistillComponents.kt` restores them with same-named `Button`, `OutlinedButton`, `TextButton` and `FilterChip` wrappers, plus the navigation item colours:
+  - Outlined buttons: amber label and `outline` border, instead of a grey label and `outlineVariant` border.
+  - Unselected filter chips: `outline` border.
+  - Disabled button labels: `onSurface` at 38%.
+  - Selected navigation label: `onSurface`, not `secondary`.
+  - `EmberComponentDefaultsTest` fails when a UI file calls one of these components without importing the Ember wrapper.
+- **Visual check:** `VisualBaselineDeviceTest` compared 22 screens and sheets before and after the upgrade on the same emulator.
+  - 19 are pixel-identical.
+  - Saved and Your shows shift by 1 px below their search fields.
+  - The speed slider's inner track corners are slightly squarer.
+  - Not covered by the comparison: a filled icon button's disabled container is 10% instead of 12%.
+- **Not adopted: M3 Expressive.** Material 3 1.4.0, the latest stable, keeps button groups, wavy progress, loading indicators and the expressive motion scheme internal. They become public in Material 3 1.5.0, which is still a release candidate (1.5.0-rc01) and requires compileSdk 37 and Android Gradle Plugin 9.1. Adoption is tracked separately, after 1.5.0 is stable and the toolchain migration lands.
+
 ## Tracking
 
 - One GitHub issue tracks the programme, with a checklist of the PRs above.

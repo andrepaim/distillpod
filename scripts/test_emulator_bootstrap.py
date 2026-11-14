@@ -74,6 +74,8 @@ elif cmd[:3]==['shell','am','instrument']:
         self.assertIn("LiveMomentQualityDeviceTest", " ".join(command))
         excluded = command[command.index("notClass") + 1].split(",")
         self.assertIn("dev.distillpod.android.DocumentationMediaDeviceTest", excluded)
+        # Opt-in screenshot capture for dependency upgrades; skipped runs would fail the result check.
+        self.assertIn("dev.distillpod.android.VisualBaselineDeviceTest", excluded)
         self.assertIn("dev.distillpod.android.HeadphoneVoiceDeviceTest", excluded)
         self.assertIn("dev.distillpod.android.YouTubeAcceptanceDeviceTest", excluded)
         self.assertIn("dev.distillpod.android.OwnerVideocastDeviceTest", excluded)
