@@ -61,4 +61,7 @@ internal fun insightScope(durationMs: Long): String? {
 /** The analysis privacy and cost note as one muted line; the original sentences are in the sheet. */
 @Composable internal fun InsightsPrivacyLine() = ShortExplanation(
     "Sends transcript parts to ChatGPT · uses your plan allowance.", "Episode insights and ChatGPT",
-    listOf("Analysis sends transcript parts to ChatGPT and uses your plan allowance. Completed parts are reused after an interruption."))
+    listOf(ANALYSIS_DISCLOSURE))
+
+/** The analysis privacy and cost disclosure, shared by the episode page's info sheet and the insights page. */
+internal const val ANALYSIS_DISCLOSURE = "Analysis sends transcript parts to ChatGPT and uses your plan allowance. Completed parts are reused after an interruption."

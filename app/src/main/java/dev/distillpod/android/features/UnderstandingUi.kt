@@ -42,7 +42,6 @@ private fun objects(json: String): List<JSONObject> = runCatching { val a = JSON
  * the info button explains what is sent to ChatGPT. [EpisodeUnderstandingTools] keeps the button layout
  * for the player.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable internal fun ColumnScope.EpisodeUnderstandingListItems(vm: AppViewModel, ep: EpisodeEntity) {
     val transcripts by vm.transcripts.collectAsStateWithLifecycle()
     val analyses by vm.analyses.collectAsStateWithLifecycle()
@@ -61,15 +60,8 @@ private fun objects(json: String): List<JSONObject> = runCatching { val a = JSON
     EpisodeToolDivider()
     EpisodeToolRow("Ask this episode", if (ready) "Questions use transcript excerpts" else "Needs a complete transcript", Icons.Default.QuestionAnswer,
         { vm.open("chat:${ep.id}") }, enabled = ready)
-    if (info) ModalBottomSheet(onDismissRequest = { info = false }) {
-        Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("Summary & chapters", style = MaterialTheme.typography.titleMedium)
-            Text("Analysis sends transcript parts to ChatGPT and uses your plan allowance. Completed parts are reused after an interruption.",
-                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text("Ask this episode sends your question and selected transcript excerpts to ChatGPT. Audio stays on your phone.",
-                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-    }
+    if (info) LearnMoreSheet("Summary & chapters", listOf(ANALYSIS_DISCLOSURE,
+        "Ask this episode sends your question and selected transcript excerpts to ChatGPT. Audio stays on your phone.")) { info = false }
 }
 
 @Composable fun AnalysisPage(vm: AppViewModel, ep: EpisodeEntity?) {
