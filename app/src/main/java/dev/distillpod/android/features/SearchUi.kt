@@ -33,6 +33,7 @@ import coil.compose.AsyncImage
 import dev.distillpod.android.data.PodcastCandidate
 import dev.distillpod.android.data.PodcastEntity
 import dev.distillpod.core.YouTubeUrl
+import dev.distillpod.android.ui.theme.extras
 
 @Composable internal fun SearchPage(vm: AppViewModel, podcasts: List<PodcastEntity>) {
     val query by vm.query.collectAsStateWithLifecycle()
@@ -243,12 +244,12 @@ private val topics = listOf(SearchTopic("Technology", Icons.Default.Memory), Sea
                     Text(candidate.title, maxLines = if (featured) 3 else 2, overflow = TextOverflow.Ellipsis, style = if (featured) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                     if (candidate.author.isNotBlank()) Text(candidate.author, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     if (!featured && candidate.category.isNotBlank()) Text(candidate.category, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
-                    if (followed != null) Text("Following", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
+                    if (followed != null) Text("Following", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.extras.success)
                 }
                 if (!featured) IconButton(onClick = { if (followed != null) onOpen(followed.id) else onFollow() }, enabled = !adding,
                     modifier = Modifier.semantics { contentDescription = if (followed != null) "Open ${candidate.title}" else "Follow ${candidate.title}" }) {
                     if (thisAdding) CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
-                    else Icon(if (followed != null) Icons.Default.CheckCircle else Icons.Default.AddCircleOutline, null, tint = if (followed != null) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary)
+                    else Icon(if (followed != null) Icons.Default.CheckCircle else Icons.Default.AddCircleOutline, null, tint = if (followed != null) MaterialTheme.extras.success else MaterialTheme.colorScheme.primary)
                 }
             }
             if (featured) FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {

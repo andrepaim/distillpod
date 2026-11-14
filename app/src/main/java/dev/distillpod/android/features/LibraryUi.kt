@@ -77,7 +77,7 @@ private val ACTIVE_DOWNLOAD = listOf("queued", "downloading")
     val position = listeningPosition(ep, player)
     val duration = listeningDuration(ep, player)
     val inProgress = position > 0 && duration > 0 && !ep.completed
-    val highlight = MaterialTheme.colorScheme.secondary
+    val highlight = MaterialTheme.colorScheme.primary
     val details = buildAnnotatedString {
         val plain = listOf(episodeDate(ep.publishedAt),
             if (position > 0 && !ep.completed) timeRemaining(duration, position) else duration.takeIf { it > 0 }?.let(::timestamp) ?: "")
@@ -99,7 +99,7 @@ private val ACTIVE_DOWNLOAD = listOf("queued", "downloading")
             PodcastCover(ep.imageUrl ?: podcast?.imageUrl, Modifier.size(56.dp))
             Column(Modifier.weight(1f).padding(start = 12.dp, end = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 if (showPodcast) Text(podcast?.title ?: "Podcast", maxLines = 1, overflow = TextOverflow.Ellipsis,
-                    style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.secondary)
+                    style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(ep.title, maxLines = 3, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                 if (details.isNotEmpty()) Text(details, maxLines = 2, overflow = TextOverflow.Ellipsis,
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

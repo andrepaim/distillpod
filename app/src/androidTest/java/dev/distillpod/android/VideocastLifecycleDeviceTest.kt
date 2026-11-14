@@ -29,6 +29,7 @@ import org.junit.runner.RunWith
 import java.io.File
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicInteger
+import dev.distillpod.android.ui.theme.DistillTheme
 
 /** Stopping the real Compose host must restore audio before its frame clock resumes. */
 @RunWith(AndroidJUnit4::class)

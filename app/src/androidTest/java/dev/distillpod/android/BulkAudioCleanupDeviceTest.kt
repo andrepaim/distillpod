@@ -33,6 +33,7 @@ import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import dev.distillpod.android.ui.theme.DistillTheme
 
 /** Private Room/files and the real UI/registry; physical runs require the offline validation app. */
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)

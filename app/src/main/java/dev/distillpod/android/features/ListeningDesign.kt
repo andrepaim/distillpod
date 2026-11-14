@@ -10,7 +10,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -49,7 +48,7 @@ internal fun queueTimeLabel(ep: EpisodeEntity, player: PlaybackState): String {
     Surface(modifier.clip(RoundedCornerShape(14.dp)), color = MaterialTheme.colorScheme.surfaceVariant) {
         Box(contentAlignment = Alignment.Center) {
             // Remains visible while artwork loads or when its URL fails.
-            Icon(Icons.Default.GraphicEq, null, tint = MaterialTheme.colorScheme.primary.copy(alpha = .7f), modifier = Modifier.fillMaxSize(.45f))
+            Icon(Icons.Default.GraphicEq, null, tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .6f), modifier = Modifier.fillMaxSize(.45f))
             if (!url.isNullOrBlank()) AsyncImage(model = url, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
         }
     }
@@ -58,7 +57,7 @@ internal fun queueTimeLabel(ep: EpisodeEntity, player: PlaybackState): String {
 @Composable internal fun SectionHeading(title: String, detail: String? = null, action: String? = null, onAction: () -> Unit = {}) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+            Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
             if (detail != null) Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if (action != null) TextButton(onClick = onAction) { Text(action) }
@@ -66,10 +65,10 @@ internal fun queueTimeLabel(ep: EpisodeEntity, player: PlaybackState): String {
 }
 
 @Composable internal fun StatusLabel(text: String, highlighted: Boolean = false) {
-    Surface(color = if (highlighted) MaterialTheme.colorScheme.secondary.copy(alpha = .10f) else MaterialTheme.colorScheme.surfaceVariant,
+    Surface(color = if (highlighted) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
         shape = RoundedCornerShape(6.dp)) {
         Text(text, Modifier.padding(horizontal = 7.dp, vertical = 4.dp), style = MaterialTheme.typography.labelSmall,
-            color = if (highlighted) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurfaceVariant)
+            color = if (highlighted) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -78,14 +77,14 @@ internal fun queueTimeLabel(ep: EpisodeEntity, player: PlaybackState): String {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         SectionHeading("Continue listening")
         Card(onClick = onOpen, shape = RoundedCornerShape(24.dp), modifier = Modifier.testTag("resume-card"),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF20243A)),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = .16f))) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     PodcastCover(ep.imageUrl ?: podcast?.imageUrl, Modifier.size(56.dp))
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                         Text(podcast?.title ?: "Podcast", maxLines = 1, overflow = TextOverflow.Ellipsis,
-                            style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.secondary)
+                            style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text(ep.title, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     }
                     FilledIconButton(onClick = onToggle, modifier = Modifier.size(48.dp)) {
