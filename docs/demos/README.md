@@ -23,7 +23,7 @@ or generation speed. See [headphone setup and limits](../android/headphone-disti
 
 [Watch the distillation video](distillation.mp4).
 
-1. Listen in the full player and tap **Distill last 60 seconds**.
+1. Listen in the full player and tap **Distill**, which saves the last 60 seconds.
 2. The source moment is saved immediately. When ChatGPT is disconnected, it stays available while waiting for the connection.
 3. The walkthrough then supplies an example finished takeaway and quote to show the result screen.
 4. Tap **Replay** and return to the original audio position.

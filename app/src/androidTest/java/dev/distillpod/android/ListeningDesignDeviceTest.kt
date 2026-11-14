@@ -101,8 +101,9 @@ class ListeningDesignDeviceTest {
             await { c.currentPosition in 34900..35100 }
             compose.onNodeWithContentDescription("Forward 30 seconds").performClick()
             await { c.currentPosition in 64900..65100 }
-            compose.onNodeWithText("1.25×").performClick()
+            compose.choosePlayerSpeed("1.25×")
             await { c.playbackParameters.speed == 1.25f }
+            compose.waitUntil(5000) { compose.onAllNodesWithContentDescription("Speed and effects, 1.25×").fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithContentDescription("Episode playback position").assertIsDisplayed()
             assertTrue("The full player gives its controls the bottom navigation space", compose.onAllNodesWithText("Library").fetchSemanticsNodes().isEmpty())
             // Show navigation is pure navigation: preserve the player and its queue.
@@ -149,7 +150,9 @@ class ListeningDesignDeviceTest {
                 withContext(Dispatchers.Main) { c.pause(); c.seekTo(beforeShow); vm.back() }
             } finally { dao.deletePodcast(otherShow) }
             screenshot("player")
-            compose.onNodeWithContentDescription("Open queue").performClick()
+            // The queue moved into the player's overflow menu; Up next is also in the peek sheet.
+            compose.onNodeWithContentDescription("More player actions").performClick()
+            compose.onNodeWithText("Open queue").performClick()
             compose.onNodeWithText("Playback order").assertIsDisplayed()
             // The helper scrolls first: a small emulator may not have composed the last row yet.
             compose.selectQueueMenuAction(titles[2], "Move up", disabled = listOf("Move down"))
@@ -171,10 +174,16 @@ class ListeningDesignDeviceTest {
             }
             compose.onNodeWithContentDescription("View show: Design validation show").performScrollTo().assertIsDisplayed()
             compose.onNodeWithContentDescription("Back 10 seconds").performScrollTo().assertIsDisplayed()
-            compose.onNodeWithText("Distill last 60 seconds").performScrollTo().assertIsDisplayed()
+            compose.onNodeWithContentDescription("Distill last 60 seconds").performScrollTo().assertIsDisplayed()
+            compose.onNodeWithContentDescription("Open transcript at current position").performScrollTo().assertIsDisplayed()
+            compose.onNodeWithContentDescription("Sleep timer").performScrollTo().assertIsDisplayed()
+            screenshot("large-text")
+            // Go deeper moved into the peek sheet, which stays reachable at large text.
+            compose.openPlayerSheet("Insights")
             compose.onNodeWithText("Summary & chapters").performScrollTo().assertIsDisplayed()
             compose.onNodeWithText("Ask episode").performScrollTo().assertIsDisplayed()
-            screenshot("large-text")
+            screenshot("large-text-sheet")
+            compose.dismissPlayerSheet()
             withContext(Dispatchers.Main) { c.seekTo(1, 0); vm.root("library"); vm.open("podcast:$id"); vm.filter("progress") }
             await { c.currentMediaItem?.mediaId == ids[2] }
             delay(1500)

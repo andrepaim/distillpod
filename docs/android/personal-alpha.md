@@ -13,7 +13,7 @@ Search now provides publisher thumbnails, preview sheets, Follow/Open actions, t
 1. Open **Search**, find a show or add its RSS URL, then follow it.
 2. Play an episode or download it for offline listening. Queue, seek, speed and progress work without ChatGPT.
 3. Open the episode and select **Prepare transcript**. Tiny is selected for speed; verified Tiny and Base multilingual files are already installed. Choose the language in Settings, or leave Auto. Completed chunks survive pause/resume.
-4. While listening, select **Distill last 60 seconds**. The source window is saved before AI work. Saved moments support replay, copy/share, retry and transcript explanations.
+4. While listening, tap **Distill** in the player to save the last 60 seconds. The source window is saved before AI work. Saved moments support replay, copy/share, retry and transcript explanations.
 5. **Summary & chapters** and **Ask episode** use the prepared transcript. Chapter and chat source buttons replay the original audio timeline. Suggested ads require review plus the skip switch; Undo or a deliberate seek replays them normally.
 6. **Search → Explore by interest** requests real-feed suggestions. Sending followed-show titles is optional; suggestions do not run automatically.
 7. Use **Settings → Backup & Restore** for library metadata/text. Restore merges existing records safely. OPML transfers subscriptions. Backups exclude account credentials, audio files and models.

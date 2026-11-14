@@ -2,8 +2,9 @@
 
 ## Scope and acceptance
 
-Both the expanded player and selected episode details expose a labeled **View show**
-button alongside the show title. The button opens the existing show screen by
+The expanded player shows the muted show name under the episode title, and selected
+episode details expose a **View show** button alongside the show title. Both are
+labelled "View show: <show>" for TalkBack. Each opens the existing show screen by
 pushing its route onto the current back stack. It does not call playback, queue,
 seek, subscription, or refresh actions. Back returns to the entry point.
 
