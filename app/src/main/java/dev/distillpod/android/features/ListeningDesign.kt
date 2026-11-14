@@ -73,29 +73,34 @@ internal fun queueTimeLabel(ep: EpisodeEntity, player: PlaybackState): String {
     }
 }
 
+/**
+ * One continue-listening card. The first card keeps the "resume-card" tag and the "Resume listening" /
+ * "Pause listening" labels; later carousel cards name their episode so TalkBack can tell them apart.
+ */
 @Composable internal fun ResumeListeningCard(ep: EpisodeEntity, podcast: PodcastEntity?, positionMs: Long, durationMs: Long,
-    playing: Boolean, onOpen: () -> Unit, onToggle: () -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        SectionHeading("Continue listening")
-        Card(onClick = onOpen, shape = RoundedCornerShape(24.dp), modifier = Modifier.testTag("resume-card"),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = .16f))) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    PodcastCover(ep.imageUrl ?: podcast?.imageUrl, Modifier.size(56.dp))
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                        Text(podcast?.title ?: "Podcast", maxLines = 1, overflow = TextOverflow.Ellipsis,
-                            style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(ep.title, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    }
-                    FilledIconButton(onClick = onToggle, modifier = Modifier.size(48.dp)) {
-                        Icon(if (playing) Icons.Default.Pause else Icons.Default.PlayArrow, if (playing) "Pause listening" else "Resume listening", Modifier.size(28.dp))
-                    }
+    playing: Boolean, onOpen: () -> Unit, onToggle: () -> Unit, modifier: Modifier = Modifier, primary: Boolean = true) {
+    Card(onClick = onOpen, shape = MaterialTheme.shapes.large, modifier = modifier.then(if (primary) Modifier.testTag("resume-card") else Modifier),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = .16f))) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                PodcastCover(ep.imageUrl ?: podcast?.imageUrl, Modifier.size(56.dp), MaterialTheme.shapes.small)
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    Text(podcast?.title ?: "Podcast", maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(ep.title, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 }
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(timeRemaining(durationMs, positionMs), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    if (durationMs > 0) LinearProgressIndicator(progress = { (positionMs.toFloat() / durationMs).coerceIn(0f, 1f) }, modifier = Modifier.weight(1f).height(4.dp))
+                val label = when {
+                    primary -> if (playing) "Pause listening" else "Resume listening"
+                    else -> "${if (playing) "Pause" else "Resume"} ${ep.title}"
                 }
+                FilledIconButton(onClick = onToggle, modifier = Modifier.size(48.dp)) {
+                    Icon(if (playing) Icons.Default.Pause else Icons.Default.PlayArrow, label, Modifier.size(28.dp))
+                }
+            }
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(timeRemaining(durationMs, positionMs), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (durationMs > 0) LinearProgressIndicator(progress = { (positionMs.toFloat() / durationMs).coerceIn(0f, 1f) }, modifier = Modifier.weight(1f).height(4.dp))
             }
         }
     }

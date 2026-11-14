@@ -62,56 +62,65 @@ internal fun captureState(state: String) = when (state) {
     "review_source" -> "Review source"; "no_speech" -> "No speech in this window"; "saved" -> "No insight yet"; "imported" -> "Imported"; else -> "Saved"
 }
 
-/** A finished (or imported) moment needs no badge; every other state is worth a glance. */
-internal fun momentStatus(state: String): String? = if (state in finishedStates) null else captureState(state)
+/** A finished (or imported) moment needs no badge, nor does the generic "Saved"; every other state is worth a glance. */
+internal fun momentStatus(state: String): String? = if (state in finishedStates) null else captureState(state).takeIf { it != "Saved" }
 private val finishedStates = setOf("succeeded", "imported")
 
-internal enum class SavedTab(val label: String) { Moments("Moments"), Posts("Posts") }
+/** Shows with saved moments, the most saved first, for the Saved page's show filter. */
+internal fun savedShows(items: List<SavedMomentItem>): List<String> =
+    items.mapNotNull { it.showTitle }.groupingBy { it }.eachCount().entries.sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key }).map { it.key }
+
+/** Moments matching [query] and, when any are selected, one of [shows]. */
+internal fun List<SavedMomentItem>.filtered(query: String, shows: Set<String>): List<SavedMomentItem> =
+    filter { it.matches(query) && (shows.isEmpty() || it.showTitle in shows) }
 
 @Composable internal fun SavedPage(vm: AppViewModel, captures: List<DistillationEntity>, episodes: List<EpisodeEntity>, podcasts: List<PodcastEntity>) {
-    var tab by rememberSaveable { mutableStateOf(SavedTab.Moments) }
     var query by rememberSaveable { mutableStateOf("") }
+    var shows by rememberSaveable { mutableStateOf(ArrayList<String>()) }
     val items = remember(captures, episodes, podcasts) { savedMomentItems(captures, episodes, podcasts) }
-    val matching = remember(items, query) { items.filter { it.matches(query) } }
-    SavedContent(tab, { tab = it }, matching, items.size, query, { query = it }, { vm.open("capture:$it") }, { vm.root("library") }) {
-        PostDraftsPage(vm, showHeading = false)
-    }
+    val showOptions = remember(items) { savedShows(items) }
+    val matching = remember(items, query, shows) { items.filtered(query, shows.toSet()) }
+    SavedContent(matching, items.size, query, { query = it }, showOptions, shows.toSet(),
+        { show -> shows = ArrayList(if (show in shows) shows - show else shows + show) },
+        { query = ""; shows = ArrayList() }, { vm.open("capture:$it") }, { vm.root("library") })
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+/**
+ * Saved moments (proposal 5.5): a search field and show filter chips that scroll away with the list, then
+ * compact quote cards. Posts moved to the top bar's overflow menu ("Your posts").
+ */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable internal fun SavedContent(
-    tab: SavedTab, onTab: (SavedTab) -> Unit, moments: List<SavedMomentItem>, total: Int, query: String, onQuery: (String) -> Unit,
-    onOpen: (String) -> Unit, onBrowse: () -> Unit, posts: @Composable () -> Unit,
+    moments: List<SavedMomentItem>, total: Int, query: String, onQuery: (String) -> Unit,
+    shows: List<String> = emptyList(), selectedShows: Set<String> = emptySet(), onShow: (String) -> Unit = {}, onClearFilters: () -> Unit = { onQuery("") },
+    onOpen: (String) -> Unit, onBrowse: () -> Unit,
 ) {
-    Column(Modifier.fillMaxSize()) {
-        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp)) {
-            SavedTab.entries.forEachIndexed { index, option ->
-                SegmentedButton(selected = tab == option, onClick = { onTab(option) },
-                    shape = SegmentedButtonDefaults.itemShape(index, SavedTab.entries.size)) { Text(option.label) }
-            }
-        }
-        if (tab == SavedTab.Posts) posts() else SavedMomentsList(moments, total, query, onQuery, onOpen, onBrowse)
-    }
-}
-
-@Composable private fun SavedMomentsList(moments: List<SavedMomentItem>, total: Int, query: String, onQuery: (String) -> Unit,
-    onOpen: (String) -> Unit, onBrowse: () -> Unit) {
+    val filtering = query.isNotBlank() || selectedShows.isNotEmpty()
     // The search field is a list item, so it scrolls away and leaves the screen to the moments.
-    LazyColumn(Modifier.fillMaxSize().testTag("saved-list"), contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 20.dp),
+    LazyColumn(Modifier.fillMaxSize().testTag("saved-list"), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 20.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)) {
         if (total == 0) {
             item(key = "saved-empty") { EmptySaved(onBrowse) }
             return@LazyColumn
         }
         item(key = "saved-search") { LocalSearch(query, onQuery, "Search saved moments", "Clear saved search") }
+        // FilterChip: several shows can be selected at once (proposal 4). Wrapped rather than scrolled sideways.
+        if (shows.size > 1) item(key = "saved-shows") {
+            FlowRow(Modifier.fillMaxWidth().testTag("saved-show-filters"), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                shows.forEach { show ->
+                    FilterChip(selected = show in selectedShows, onClick = { onShow(show) },
+                        label = { Text(show, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 220.dp)) })
+                }
+            }
+        }
         item(key = "saved-count") {
-            Text(if (query.isBlank()) countLabel(total) else "${moments.size} of ${countLabel(total)}",
+            Text(if (!filtering) countLabel(total) else "${moments.size} of ${countLabel(total)}",
                 style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if (moments.isEmpty()) item(key = "saved-no-match") {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text("No matching moments", style = MaterialTheme.typography.titleMedium)
-                TextButton(onClick = { onQuery("") }) { Text("Clear search") }
+                TextButton(onClick = onClearFilters) { Text(if (selectedShows.isEmpty()) "Clear search" else "Clear filters") }
             }
         }
         items(moments, key = { it.id }) { SavedMomentCard(it, onOpen) }
@@ -120,23 +129,18 @@ internal enum class SavedTab(val label: String) { Moments("Moments"), Posts("Pos
 
 private fun countLabel(count: Int) = "$count ${if (count == 1) "moment" else "moments"}"
 
+/** The quote at reading size, three lines at most, over one source line: artwork · episode · time. */
 @Composable private fun SavedMomentCard(item: SavedMomentItem, onOpen: (String) -> Unit) {
     val status = momentStatus(item.state)
-    Card(onClick = { onOpen(item.id) }, modifier = Modifier.fillMaxWidth().testTag("saved-moment-card"), shape = RoundedCornerShape(18.dp),
+    Card(onClick = { onOpen(item.id) }, modifier = Modifier.fillMaxWidth().testTag("saved-moment-card"), shape = MaterialTheme.shapes.medium,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-        Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(item.insight ?: item.quote?.let { "“$it”" } ?: "Moment at ${timestamp(item.startMs)}", maxLines = 3, overflow = TextOverflow.Ellipsis,
                 style = DistillType.quoteCompact)
-            if (item.insight != null) item.quote?.let {
-                Text("“$it”", maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                PodcastCover(item.artworkUrl, Modifier.size(32.dp))
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(item.episodeTitle ?: "Episode", maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelMedium)
-                    Text(listOfNotNull(item.showTitle, "${timestamp(item.startMs)}–${timestamp(item.endMs)}").joinToString(" · "), maxLines = 1,
-                        overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                PodcastCover(item.artworkUrl, Modifier.size(24.dp), MaterialTheme.shapes.extraSmall)
+                Text("${item.episodeTitle ?: "Episode"} · ${timestamp(item.startMs)}", Modifier.weight(1f), maxLines = 1,
+                    overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 status?.let { StatusLabel(it) }
             }
         }

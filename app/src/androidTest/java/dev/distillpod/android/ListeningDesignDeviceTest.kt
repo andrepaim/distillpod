@@ -153,7 +153,7 @@ class ListeningDesignDeviceTest {
             // The queue moved into the player's overflow menu; Up next is also in the peek sheet.
             compose.onNodeWithContentDescription("More player actions").performClick()
             compose.onNodeWithText("Open queue").performClick()
-            compose.onNodeWithText("Playback order").assertIsDisplayed()
+            compose.onNodeWithText("Now playing").assertIsDisplayed()
             // The helper scrolls first: a small emulator may not have composed the last row yet.
             compose.selectQueueMenuAction(titles[2], "Move up", disabled = listOf("Move down"))
             await { (0 until c.mediaItemCount).map { c.getMediaItemAt(it).mediaId } == listOf(ids[0], ids[2], ids[1]) }
@@ -161,7 +161,7 @@ class ListeningDesignDeviceTest {
             assertEquals(65000L, withContext(Dispatchers.Main) { c.currentPosition })
             screenshot("queue")
             compose.onNodeWithText("Saved", useUnmergedTree = true).performClick()
-            compose.onNode(hasScrollAction()).performScrollToNode(hasText("Useful ideas deserve a second listen.", substring = true))
+            compose.onNodeWithTag("saved-list").performScrollToNode(hasText("Useful ideas deserve a second listen.", substring = true))
             screenshot("saved")
             compose.onNodeWithText("Useful ideas deserve a second listen.", substring = true).performClick()
             compose.onNodeWithText("Replay 0:05").performScrollTo().assertIsDisplayed()

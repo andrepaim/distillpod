@@ -80,7 +80,7 @@ private val ACTIVE_DOWNLOAD = listOf("queued", "downloading")
 /**
  * One compact Library or show-page row: artwork, text, play and a menu with every secondary action, so
  * nothing needs a second, mostly empty row (#146). Status joins the date line; a show page omits the
- * repeated show name.
+ * repeated show name. Rows are flat (proposal 5.4); the list draws the dividers between them.
  */
 @Composable internal fun EpisodeRow(ep: EpisodeEntity, podcast: PodcastEntity?, player: PlaybackState, transcriptReady: Boolean,
     captureCount: Int, showPodcast: Boolean, deletionBlock: String?, actions: EpisodeActions, modifier: Modifier = Modifier, retryPreparation: ((String) -> Unit)? = null) {
@@ -90,42 +90,54 @@ private val ACTIVE_DOWNLOAD = listOf("queued", "downloading")
     val duration = listeningDuration(ep, player)
     val inProgress = position > 0 && duration > 0 && !ep.completed
     val highlight = MaterialTheme.colorScheme.primary
+    val plain = listOf(episodeDate(ep.publishedAt),
+        if (position > 0 && !ep.completed) timeRemaining(duration, position) else duration.takeIf { it > 0 }?.let(::timestamp) ?: "")
+        .filter(String::isNotBlank)
+    // (shown, spoken, highlighted): the saved-moment count is an accent "✦ N" that TalkBack reads in words.
+    val status = buildList {
+        if (ep.completed) add(Triple("Played", "Played", false))
+        if (ep.localFile != null) add(Triple("Offline", "Offline", true))
+        if (transcriptReady) add(Triple("Transcript", "Transcript", false))
+        if (captureCount > 0) add(Triple("✦ $captureCount", if (captureCount == 1) "1 saved moment" else "$captureCount saved moments", true))
+        if (ep.downloadState in ACTIVE_DOWNLOAD) (if (ep.totalBytes > 0) "${(ep.downloadedBytes * 100 / ep.totalBytes).coerceIn(0, 100)}%" else "Queued").let { add(Triple(it, it, false)) }
+    }
+    val parts = plain.map { Triple(it, it, false) } + status
     val details = buildAnnotatedString {
-        val plain = listOf(episodeDate(ep.publishedAt),
-            if (position > 0 && !ep.completed) timeRemaining(duration, position) else duration.takeIf { it > 0 }?.let(::timestamp) ?: "")
-        val status = buildList {
-            if (ep.completed) add("Played" to false)
-            if (ep.localFile != null) add("Offline" to true)
-            if (transcriptReady) add("Transcript" to false)
-            if (captureCount > 0) add("$captureCount saved" to true)
-            if (ep.downloadState in ACTIVE_DOWNLOAD) add((if (ep.totalBytes > 0) "${(ep.downloadedBytes * 100 / ep.totalBytes).coerceIn(0, 100)}%" else "Queued") to false)
-        }
-        (plain.filter(String::isNotBlank).map { it to false } + status).forEachIndexed { index, (text, highlighted) ->
+        parts.forEachIndexed { index, (text, _, highlighted) ->
             if (index > 0) append(" · ")
             if (highlighted) withStyle(SpanStyle(color = highlight)) { append(text) } else append(text)
         }
     }
-    Card(onClick = { actions.open(ep.id) }, shape = RoundedCornerShape(18.dp), modifier = modifier.fillMaxWidth().testTag("episode-row"),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-        Row(Modifier.padding(start = 12.dp, top = 10.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-            PodcastCover(ep.imageUrl ?: podcast?.imageUrl, Modifier.size(56.dp))
-            Column(Modifier.weight(1f).padding(start = 12.dp, end = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+    val spoken = parts.joinToString(", ") { it.second }
+    Column(modifier.fillMaxWidth().testTag("episode-row").clickable { actions.open(ep.id) }) {
+        Row(Modifier.padding(start = DistillSpacing.gutter, end = DistillSpacing.xs, top = 10.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            PodcastCover(ep.imageUrl ?: podcast?.imageUrl, Modifier.size(56.dp), MaterialTheme.shapes.small)
+            Column(Modifier.weight(1f).padding(start = DistillSpacing.item, end = DistillSpacing.xs), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 if (showPodcast) Text(podcast?.title ?: "Podcast", maxLines = 1, overflow = TextOverflow.Ellipsis,
                     style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(ep.title, maxLines = 3, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                if (details.isNotEmpty()) Text(details, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                if (details.isNotEmpty()) Text(details, Modifier.semantics { contentDescription = spoken }, maxLines = 2, overflow = TextOverflow.Ellipsis,
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            FilledTonalIconButton(onClick = { if (playing) actions.toggle() else actions.play(ep.id) }) {
-                Icon(if (playing) Icons.Default.Pause else Icons.Default.PlayArrow, "${if (playing) "Pause" else "Play"} ${ep.title}")
+            // A 36 dp circle on s3 inside a 48 dp touch target.
+            Box(Modifier.size(48.dp).clip(CircleShape).clickable(role = Role.Button) { if (playing) actions.toggle() else actions.play(ep.id) },
+                contentAlignment = Alignment.Center) {
+                Box(Modifier.size(36.dp).background(MaterialTheme.colorScheme.surfaceContainerHigh, CircleShape), contentAlignment = Alignment.Center) {
+                    Icon(if (playing) Icons.Default.Pause else Icons.Default.PlayArrow, "${if (playing) "Pause" else "Play"} ${ep.title}",
+                        Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurface)
+                }
             }
             EpisodeMenu(ep, deletionBlock, actions, retryPreparation)
         }
-        // Flush with the card's bottom edge, like the mini-player, rather than another padded row.
+        // Flush with the row's bottom edge, like the mini-player, rather than another padded row.
         if (inProgress) LinearProgressIndicator(progress = { (position.toFloat() / duration).coerceIn(0f, 1f) },
             modifier = Modifier.fillMaxWidth().height(3.dp))
     }
 }
+
+/** The divider between flat episode rows, inset to line up with the text after the artwork. */
+@Composable internal fun EpisodeRowDivider() = HorizontalDivider(Modifier.padding(start = DistillSpacing.gutter + 56.dp + DistillSpacing.item),
+    color = MaterialTheme.colorScheme.outlineVariant)
 
 @Composable private fun EpisodeMenu(ep: EpisodeEntity, blocked: String?, actions: EpisodeActions, retryPreparation: ((String) -> Unit)?) {
     var open by remember { mutableStateOf(false) }

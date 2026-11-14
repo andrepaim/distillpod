@@ -180,7 +180,7 @@ People contribute to their community.
             compose.onNodeWithText("Retry preparation").performClick()
             await { automation.jobs().any { it.episodeId == first && it.stage == "retry" } }
             compose.waitUntil(10000) { compose.onAllNodesWithText("1 episode needs attention").fetchSemanticsNodes().isNotEmpty() }
-            compose.onNodeWithText("Downloads").performScrollTo().performClick()
+            compose.onNodeWithText("Downloaded").performScrollTo().performClick()
             compose.onNodeWithText("Second retry fixture").assertDoesNotExist()
             compose.runOnUiThread {
                 val vm = ViewModelProvider(compose.activity, AppViewModel.factory(graph))[AppViewModel::class.java]

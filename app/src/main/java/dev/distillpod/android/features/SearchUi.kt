@@ -1,6 +1,8 @@
 package dev.distillpod.android.features
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -46,6 +48,8 @@ import dev.distillpod.android.ui.theme.extras
         { vm.open("podcast:$it") }, { vm.open("recommendations") }, vm::retrySearch, library, vm::open)
 }
 
+private val SEARCH_FORMATS = listOf("All", "Audio", "Video")
+
 private data class SearchTopic(val name: String, val icon: ImageVector)
 private val topics = listOf(SearchTopic("Technology", Icons.Default.Memory), SearchTopic("Science", Icons.Default.Science),
     SearchTopic("History", Icons.Default.HistoryEdu), SearchTopic("Business", Icons.Default.TrendingUp),
@@ -87,23 +91,25 @@ private val topics = listOf(SearchTopic("Technology", Icons.Default.Memory), Sea
     fun follow(candidate: PodcastCandidate) { preview = null; onFollow(candidate.feedUrl) }
 
     Column(Modifier.fillMaxSize().imePadding()) {
-        Column(Modifier.padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 8.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(query, onQuery, placeholder = { Text("Search your library or find shows", maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                    leadingIcon = { Icon(Icons.Default.Search, null) }, trailingIcon = {
-                        if (query.isNotEmpty()) IconButton(onClick = { onQuery("") }) { Icon(Icons.Default.Close, "Clear search") }
-                    }, singleLine = true, shape = RoundedCornerShape(18.dp),
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search), keyboardActions = KeyboardActions(onSearch = { submit(query) }),
-                    modifier = Modifier.weight(1f).semantics { contentDescription = "Search your library and podcasts" })
-                FilledIconButton(onClick = { submit(query) }, enabled = query.trim().length >= 2 && !adding, modifier = Modifier.size(48.dp)) {
-                    Icon(if (isFeedAddress(query)) Icons.Default.RssFeed else Icons.Default.ArrowForward, if (isFeedAddress(query)) "Preview RSS feed" else "Submit search")
-                }
+        Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            // An M3 search bar field (proposal 5.5): the keyboard's search key submits, so there is no separate submit button.
+            Surface(shape = SearchBarDefaults.inputFieldShape, color = MaterialTheme.colorScheme.surfaceContainerHigh, modifier = Modifier.fillMaxWidth()) {
+                SearchBarDefaults.InputField(query = query, onQueryChange = onQuery, onSearch = { submit(it) }, expanded = false, onExpandedChange = {},
+                    placeholder = { Text("Search your library or find shows", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    leadingIcon = { Icon(Icons.Default.Search, null) },
+                    trailingIcon = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (isFeedAddress(query)) IconButton(onClick = { submit(query) }) { Icon(Icons.Default.RssFeed, "Preview RSS feed", tint = MaterialTheme.colorScheme.primary) }
+                            if (query.isNotEmpty()) IconButton(onClick = { onQuery("") }) { Icon(Icons.Default.Close, "Clear search") }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Search your library and podcasts" })
             }
-            Text("Find your episodes, transcripts and saved moments, or a new show.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf("All", "Audio", "Video").forEach { option ->
-                FilterChip(selected = format == option, onClick = { format = option }, label = { Text(option) })
+            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().testTag("search-format")) {
+                SEARCH_FORMATS.forEachIndexed { index, option ->
+                    SegmentedButton(selected = format == option, onClick = { format = option }, shape = SegmentedButtonDefaults.itemShape(index, SEARCH_FORMATS.size),
+                        icon = {}, label = { Text(option, maxLines = 1) })
+                }
             }
         }
         LazyColumn(state = list, modifier = Modifier.weight(1f).testTag("Podcast search results"), contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 6.dp, bottom = 20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -138,13 +144,12 @@ private val topics = listOf(SearchTopic("Technology", Icons.Default.Memory), Sea
                     if (recent.isNotEmpty()) {
                         item { SectionHeading("Recent searches", action = "Clear", onAction = onClearRecent) }
                         items(recent, key = { "recent:$it" }) { term ->
-                            Surface(onClick = { submit(term) }, color = MaterialTheme.colorScheme.background, shape = RoundedCornerShape(12.dp)) {
-                                Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Default.History, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    Text(term, Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                    Icon(Icons.Default.NorthWest, "Search again for $term", Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
-                                }
-                            }
+                            ListItem(headlineContent = { Text(term, maxLines = 2, overflow = TextOverflow.Ellipsis) },
+                                leadingContent = { Icon(Icons.Default.History, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
+                                trailingContent = { Icon(Icons.Default.NorthWest, null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant) },
+                                colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.background),
+                                modifier = Modifier.clip(MaterialTheme.shapes.small).clickable(onClickLabel = "Search again") { submit(term) }
+                                    .semantics { contentDescription = "Search again for $term" })
                         }
                     }
                     item { SectionHeading("Explore topics", "Start with something you're curious about") }
