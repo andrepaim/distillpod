@@ -2,7 +2,7 @@
 
 November 3, 2026. Originally a standalone design proposal on a local web server. The owner selected the recommended lavender Listening Drop, which is now the default launcher icon in **0.4.1-alpha**, installed on the S22 Ultra. This directory retains the design exploration and editable source assets.
 
-> **Superseded, November 14, 2026:** the owner approved **Ember Drop** (concept A), which replaces the lavender default. It keeps this silhouette and the transparent even-odd play opening, recoloured with an amber gradient (`#FFD58A` → `#FFB547` → `#E8830B`), a soft specular highlight and a warm radial background (`#2A1E10` → `#0F0E0D`). The installed resources live in `app/src/main/res/drawable/ic_launcher_*.xml`, with `branding/icon.svg` and `branding/icon-512.png` as the masters; the monochrome layer is unchanged. The lavender assets in this directory are kept as historical exploration and were not regenerated.
+> **Superseded, November 14, 2026:** the owner approved **Ember Drop** (concept A), which replaces the lavender default. It keeps this silhouette and the transparent even-odd play opening, recoloured with an amber gradient (`#FFD58A` → `#FFB547` → `#E8830B`), a soft specular highlight and a neutral ink background (`#1F1D1A` → `#0F0E0D`; the first, warmer `#2A1E10` centre read as brown and was neutralised the same day). The installed resources live in `app/src/main/res/drawable/ic_launcher_*.xml`, with `branding/icon.svg` and `branding/icon-512.png` as the masters; the monochrome layer is unchanged. The lavender assets in this directory are kept as historical exploration and were not regenerated.
 
 ## Design decision
 

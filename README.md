@@ -1,12 +1,12 @@
 <div align="center">
-  <img src="branding/icon.svg" width="112" height="112" alt="DistillPod Ember Drop icon">
+  <img src="branding/mark.svg" width="96" height="106" alt="DistillPod Ember Drop">
   <h1>DistillPod</h1>
   <p><strong>Turn podcasts into ideas you can keep and use.</strong></p>
   <p>Ask questions as you listen, save meaningful moments, and revisit insights with their original context.</p>
   <p>
     <a href="https://github.com/andrepaim/distillpod/actions/workflows/ci.yml"><img src="https://github.com/andrepaim/distillpod/actions/workflows/ci.yml/badge.svg?branch=main" alt="Android CI"></a>
-    <img src="https://img.shields.io/badge/Android-10%2B-91DCC8" alt="Android 10 or later">
-    <img src="https://img.shields.io/badge/status-personal%20alpha-B7B9FF" alt="Personal alpha">
+    <img src="https://img.shields.io/badge/Android-10%2B-2C2925" alt="Android 10 or later">
+    <img src="https://img.shields.io/badge/status-personal%20alpha-B45309" alt="Personal alpha">
   </p>
   <p><a href="https://github.com/andrepaim/distillpod/releases"><strong>Download the APK</strong></a> · <a href="docs/getting-started.md">Getting started</a> · <a href="docs/development.md">Build from source</a></p>
 </div>
