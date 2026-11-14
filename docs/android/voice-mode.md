@@ -16,7 +16,7 @@ Open **Settings → Voice → Add API key**, paste a key from the API organizati
 
 The key is encrypted using the existing AES-GCM `TokenVault`, with its own app-private preference namespace and Android Keystore alias. It does not enter the APK, source files, portable settings, library backups or sync. App-level Android backup is disabled. Reinstalling or clearing app data requires entering it again. Encryption does not protect an API key from a compromised device while the app uses it; this owner-provided credential flow is intended for the personal alpha.
 
-Choose **Ask about this**, review the disclosure and grant microphone access. The phone connects directly to OpenAI's Realtime WebSocket endpoint with the saved key as bearer authentication. API usage draws on the associated project's available credits/balance. Saving validates key syntax locally and does not make a paid request; provider entitlement is checked only when asking. No live access or billing claim is established by local fixture tests.
+Choose **Ask** in the player (TalkBack: "Ask about this"), review the disclosure and grant microphone access. The phone connects directly to OpenAI's Realtime WebSocket endpoint with the saved key as bearer authentication. API usage draws on the associated project's available credits/balance. Saving validates key syntax locally and does not make a paid request; provider entitlement is checked only when asking. No live access or billing claim is established by local fixture tests.
 
 Voice-enabled builds provide the optional **Next track → Ask about the podcast** setting under **Settings → Playback & headphones**, alongside Previous-track capture. Voice settings contains the key, answer preferences, a link to headphone controls and Android Auto setup help. Prepare headphone voice with the app open before locking the phone; its notification reports readiness. See the [headphone voice shortcut guide](headphone-voice.md) for Next/Previous behavior, microphone routing and validation limits.
 
@@ -61,7 +61,7 @@ The owner's first S22 phone trial captured a question, played an answer and resu
 
 ### Phone voice interface
 
-The player offers **Ask about this** and, after an interaction, **View last answer**. API key management and the optional three-second rewind are in **Settings → Voice**. A first Ask without a key opens those settings. Key encryption and namespaces are unchanged, so an existing phone key is retained.
+The player offers **Ask** and, after an interaction, **View last answer**. API key management and the optional three-second rewind are in **Settings → Voice**. A first Ask without a key opens those settings. Key encryption and namespaces are unchanged, so an existing phone key is retained.
 
 Asking opens a modal sheet over the paused player. Preparing shows a progress indicator and a reminder to wait for the tone. Listening shows a timer and a waveform computed from the actual PCM microphone RMS; silence produces a quiet baseline. **Done** finishes the question explicitly; automatic end-of-speech still works. The connection closes microphone input before switching to Answering. Manual completion disables VAD and processes its ordered acknowledgement before committing, avoiding duplicate commits when VAD already completed the same utterance.
 
