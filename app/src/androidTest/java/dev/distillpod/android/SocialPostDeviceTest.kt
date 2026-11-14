@@ -57,7 +57,8 @@ class SocialPostDeviceTest {
             compose.onNodeWithText("What should change?").assertExists()
             compose.onNodeWithText("Cancel").performClick()
             compose.waitUntil(5000) {compose.onAllNodesWithText("What should change?").fetchSemanticsNodes().isEmpty()}
-            compose.onNodeWithContentDescription("Signal look").performClick()
+            // The swatches sit under the 4:5 preview, below the fold at large text; a click on an unscrolled node lands on the action bar.
+            compose.onNodeWithContentDescription("Signal look").performScrollTo().assertIsDisplayed().performClick()
             compose.waitUntil(10000) {runBlocking {graph.socialResults.get(postId)!!.artifact!!.cardContent()!!.look}==CardContent.LOOK_SIGNAL}
             compose.waitForIdle()
             androidx.test.uiautomator.UiDevice.getInstance(androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()).takeScreenshot(java.io.File(graph.context.getExternalFilesDir(null),"social-result-preview.png"))
