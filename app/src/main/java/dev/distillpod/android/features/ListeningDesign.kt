@@ -20,6 +20,7 @@ import coil.compose.AsyncImage
 import dev.distillpod.android.data.EpisodeEntity
 import dev.distillpod.android.data.PodcastEntity
 import dev.distillpod.android.playback.PlaybackState
+import dev.distillpod.android.ui.theme.TextButton
 
 internal fun timeRemaining(durationMs: Long, positionMs: Long): String {
     if (durationMs <= 0) return "Duration unavailable"

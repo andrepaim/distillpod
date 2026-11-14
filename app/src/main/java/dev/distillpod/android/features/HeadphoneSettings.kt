@@ -30,6 +30,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.distillpod.android.R
 import dev.distillpod.android.data.Preferences
 import dev.distillpod.android.voice.HeadphoneVoiceService
+import dev.distillpod.android.ui.theme.OutlinedButton
+import dev.distillpod.android.ui.theme.TextButton
 
 @Composable
 internal fun PlaybackHeadphoneSettings(vm: AppViewModel, prefs: Preferences) {

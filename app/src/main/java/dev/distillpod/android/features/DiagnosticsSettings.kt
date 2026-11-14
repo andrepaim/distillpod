@@ -12,6 +12,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import dev.distillpod.android.ui.theme.OutlinedButton
 
 @Composable internal fun DiagnosticsSettings(vm:AppViewModel) {
     val diagnostics=vm.graph.diagnostics

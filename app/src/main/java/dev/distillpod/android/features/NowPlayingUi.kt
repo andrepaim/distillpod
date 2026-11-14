@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.distillpod.android.data.EpisodeEntity
 import dev.distillpod.android.data.PodcastEntity
+import dev.distillpod.android.ui.theme.Button
 
 /** Tabs of the player's peek sheet, in display order. */
 internal enum class PlayerSheetTab(val label: String) { UP_NEXT("Up next"), TRANSCRIPT("Transcript"), INSIGHTS("Insights") }

@@ -8,6 +8,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import dev.distillpod.android.ui.theme.OutlinedButton
+import dev.distillpod.android.ui.theme.TextButton
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable fun DataControls(vm: AppViewModel) {

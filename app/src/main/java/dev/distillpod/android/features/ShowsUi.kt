@@ -21,6 +21,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.distillpod.android.data.*
+import dev.distillpod.android.ui.theme.TextButton
+import dev.distillpod.android.ui.theme.FilterChip
 
 @Composable internal fun ShowsPage(vm: AppViewModel) {
     val library by vm.shows.collectAsState()
