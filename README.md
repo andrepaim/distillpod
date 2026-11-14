@@ -41,7 +41,7 @@ Saved moments retain their original audio position and source context. Revisit t
 
 Choose **Explain this idea** for an explanation, a practical reflection, and questions to investigate further. These explanations stay focused on the saved transcript.
 
-Turn a saved moment into a **Quote & discussion** post or a researched **Infographic**. DistillPod prepares the draft, accepts revisions in natural language, and shares text or an image through Android's sharing tools. Infographics can add web research and sources; saved-idea explanations use the transcript only. [Social sharing →](docs/android/social-sharing-redesign.md)
+Turn a saved moment into a social post: a share card image and a short caption. Swipe the card between **Quote**, **Big idea** and **Takeaways**, and pick a look drawn from the podcast's artwork or one of two fixed palettes. DistillPod writes the words from the saved moment through your ChatGPT connection, draws the card on your phone, accepts changes in natural language, and shares the image through Android's sharing tools while copying the caption for you to paste. Posts and saved-idea explanations use the saved transcript only; neither searches the web. [Social sharing →](docs/android/social-share-cards.md)
 
 ## The listening tools behind it
 
@@ -83,7 +83,7 @@ DistillPod prefers suitable publisher transcripts, can optionally look for an ex
 
 Your library, listening progress, queue, transcripts, saved moments and generated results are stored on your phone. Optional Firebase sync shares supported library records from approved public feeds. Full transcripts, analyses, episode chat, explanations and social posts stay local and can be transferred through Backup & Restore. Backups exclude account credentials, downloaded audio and model binaries.
 
-Requested AI features send relevant text, questions or interests to OpenAI. Voice also streams your spoken question and selected transcript context using your API key. Infographics can send a public-topic research query for web search. Local Whisper preparation does not upload episode audio for cloud transcription. Podcast search, feeds, artwork and downloads contact their respective providers.
+Requested AI features send relevant text, questions or interests to OpenAI. Voice also streams your spoken question and selected transcript context using your API key. Social posts send the saved excerpt with the show and episode titles; they make no web search. Local Whisper preparation does not upload episode audio for cloud transcription. Podcast search, feeds, artwork and downloads contact their respective providers.
 
 ChatGPT credentials and the voice API key are encrypted on the phone. Account credentials are excluded from library backups and sync. There is no required DistillPod server. Library sync is optional. Cloud diagnostics are also optional and default off: enable them in Settings → Diagnostics to share sanitized technical events and error reports with Sentry. Reports exclude podcast content and credentials; no session replay is collected. [Privacy and data handling →](docs/privacy.md)
 

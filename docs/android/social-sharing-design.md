@@ -1,5 +1,7 @@
 # Design: saved moment to social post
 
+> Superseded on November 14, 2026 by [social share cards](social-share-cards.md). This document is kept as history.
+
 > Superseded after owner testing by the [two-format redesign](social-sharing-redesign.md). This document records the first implementation and its technical validation, not the accepted product direction.
 
 Status: V1 implemented on `feat/social-sharing`; automated and emulator validation recorded below. Updated November 5, 2026. Working feature name: **Create post**. Product name: **DistillPod**.

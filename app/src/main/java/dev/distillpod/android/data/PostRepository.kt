@@ -2,6 +2,7 @@ package dev.distillpod.android.data
 
 import androidx.room.*
 import androidx.room.withTransaction
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 
 /** Local authored content survives deletion of its original moment. */
 @Entity(tableName = "post_drafts", foreignKeys = [ForeignKey(entity = DistillationEntity::class,
@@ -19,6 +20,8 @@ data class PostContent(
     val body: String = "", val quote: String = "", val layout: String = "Idea",
     val theme: String = "Ink", val square: Boolean = false, val branding: Boolean = true,
     val imageDescription: String = "",
+    /** Episode artwork, else show artwork, for the card cover. Empty when unknown or not plain HTTP(S). */
+    val artworkUrl: String = "",
 ) {
     fun json(): String = org.json.JSONObject().apply {
         put("version", 1)
@@ -28,6 +31,7 @@ data class PostContent(
         put("perspective", perspective); put("headline", headline); put("takeaway", takeaway)
         put("body", body); put("quote", quote); put("layout", layout); put("theme", theme)
         put("square", square); put("branding", branding); put("imageDescription", imageDescription)
+        put("artworkUrl", artworkUrl)
     }.toString()
 
     fun validated(): PostContent = apply {
@@ -38,6 +42,7 @@ data class PostContent(
         require(startMs >= 0 && endMs >= startMs && sourceFingerprint.length <= 2000) { "Invalid source metadata" }
         require(dev.distillpod.core.sourceQuoteMatches(quote, excerpt)) { "Quote must match the original excerpt. Use edited text as a takeaway instead." }
         require(sourceUrl.isBlank() || dev.distillpod.core.postSourceUrl(sourceUrl) != null) { "Use a public HTTP(S) link without credentials or query parameters" }
+        require(artworkUrl.isEmpty() || postArtworkUrl(artworkUrl) == artworkUrl) { "Invalid artwork link" }
     }
 
     fun attribution(): String = listOf(show, episode, "${dev.distillpod.core.postTimestamp(startMs)}–${dev.distillpod.core.postTimestamp(endMs)}").filter { it.isNotBlank() }.joinToString(" · ")
@@ -53,11 +58,20 @@ data class PostContent(
             val content = PostContent(j.getString("show"), j.getString("episode"), j.getString("excerpt"), j.getLong("startMs"), j.getLong("endMs"),
                 j.getString("sourceFingerprint"), j.getString("sourceUrl"), j.getString("destination"), j.getString("language"),
                 j.getString("perspective"), j.getString("headline"), j.getString("takeaway"), j.getString("body"), j.getString("quote"),
-                j.getString("layout"), j.getString("theme"), j.getBoolean("square"), j.getBoolean("branding"), j.getString("imageDescription"))
+                j.getString("layout"), j.getString("theme"), j.getBoolean("square"), j.getBoolean("branding"), j.getString("imageDescription"),
+                j.optString("artworkUrl"))
             return if (validate) content.validated() else content
         }
     }
 }
+
+/**
+ * Artwork links often carry CDN query parameters, so unlike the public source link they are kept; only
+ * HTTP(S) without credentials and of bounded length is accepted. Anything else means no cover.
+ */
+fun postArtworkUrl(raw: String?): String = raw?.trim()?.takeIf { it.length in 1..ARTWORK_URL_MAX }?.toHttpUrlOrNull()
+    ?.takeIf { it.username.isEmpty() && it.password.isEmpty() }?.toString()?.takeIf { it.length <= ARTWORK_URL_MAX }.orEmpty()
+private const val ARTWORK_URL_MAX = 2048
 
 class PostRepository(private val db: AppDatabase) {
     private val dao = db.library()
@@ -70,19 +84,9 @@ class PostRepository(private val db: AppDatabase) {
         val content = PostContent(show.title.take(2000), episode.title.take(2000), moment.excerpt.take(24000), moment.sourceStartMs, moment.sourceEndMs, moment.fingerprint,
             sourceUrl = if (publicSource) (dev.distillpod.core.postSourceUrl(episode.webpageUrl) ?: dev.distillpod.core.postSourceUrl(show.websiteUrl)).orEmpty() else "",
             destination = destination, headline = "", takeaway = moment.insight.orEmpty().take(2500), quote = quote,
-            layout = if (quote.isNotBlank()) "Quote" else "Idea")
+            layout = if (quote.isNotBlank()) "Quote" else "Idea",
+            artworkUrl = postArtworkUrl(episode.imageUrl).ifEmpty { postArtworkUrl(show.imageUrl) })
         PostDraftEntity(java.util.UUID.randomUUID().toString(), momentId, content.validated().json(), 0, System.currentTimeMillis()).also { dao.putPost(it) }
-    }
-    suspend fun save(id: String, expectedRevision: Int, content: PostContent): PostDraftEntity = db.withTransaction {
-        val current = dao.post(id) ?: error("Draft was deleted")
-        require(current.revision == expectedRevision) { "This draft changed. Reopen it before saving." }
-        val old = PostContent.parse(current.content)
-        require(content.copy(show = old.show, episode = old.episode, excerpt = old.excerpt, startMs = old.startMs, endMs = old.endMs, sourceFingerprint = old.sourceFingerprint) == content) { "Source snapshot cannot be edited" }
-        current.copy(content = content.validated().json(), revision = current.revision + 1, updatedAt = System.currentTimeMillis()).also { dao.putPost(it) }
-    }
-    suspend fun duplicate(id: String): PostDraftEntity = db.withTransaction {
-        val old = dao.post(id) ?: error("Draft was deleted")
-        old.copy(id = java.util.UUID.randomUUID().toString(), revision = 0, updatedAt = System.currentTimeMillis()).also { dao.putPost(it) }
     }
     suspend fun delete(id: String) = dao.deletePost(id)
 }

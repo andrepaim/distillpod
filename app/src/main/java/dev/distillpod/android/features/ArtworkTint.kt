@@ -55,6 +55,21 @@ internal fun artworkSwatch(palette: Palette): Int? {
     return (if (colourful) dominant else palette.vibrantSwatch ?: palette.mutedSwatch ?: dominant)?.rgb
 }
 
+/**
+ * The share card's colour for a cover: the swatch with the most colour overall, population times CIELAB
+ * chroma, ignoring near-black and near-white. A cover whose single largest swatch is a dull background still
+ * gives the hue most of the picture carries. Null for an empty palette.
+ */
+internal fun cardSwatch(palette: Palette): Int? {
+    val lab = DoubleArray(3)
+    fun weight(swatch: Palette.Swatch): Double {
+        ColorUtils.colorToLAB(swatch.rgb, lab)
+        return swatch.population * hypot(lab[1], lab[2])
+    }
+    val usable = palette.swatches.filter { it.hsl[2] in .08f..0.92f }
+    return (usable.maxByOrNull(::weight)?.takeIf { weight(it) > 0 } ?: palette.dominantSwatch)?.rgb
+}
+
 /** Tones per artwork URL for this process, so returning to the player does not decode the cover again. */
 internal object ArtworkTints {
     private val cache = LruCache<String, Int>(64)
