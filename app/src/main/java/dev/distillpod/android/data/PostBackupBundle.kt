@@ -8,24 +8,27 @@ import java.util.zip.*
 /** Optional binary wrapper; old JSON backups remain readable. Total expanded data is capped at 32 MB. */
 internal object PostBackupBundle {
     private const val LIMIT = 32 * 1024 * 1024
+    // Covers are small and shared by posts of one show; the byte limit is the real bound.
+    private const val MAX_IMAGES = 500
+    /** Earlier infographic images and the covers of current and previous cards. */
     fun references(tables: JSONObject): Set<String> {
         val posts = tables.optJSONArray("post_drafts") ?: return emptySet()
         return (0 until posts.length()).flatMap { i ->
             val result=SocialResult.parse(posts.getJSONObject(i).getString("content"))
-            listOfNotNull(result.artifact,result.previous).map { it.image }.filter(String::isNotBlank)
+            listOfNotNull(result.artifact,result.previous).flatMap { listOf(it.image, it.cardContent()?.cover.orEmpty()) }.filter(String::isNotBlank)
         }.toSet()
     }
     fun pack(json: ByteArray, hashes: Set<String>, assets: PostAssets?): ByteArray {
         if(hashes.isEmpty()) return json
-        require(hashes.size <= 100) { "This backup exceeds the infographic limit" }
-        require(assets != null) { "Infographic files are unavailable for backup" }
+        require(hashes.size <= MAX_IMAGES) { "This backup exceeds the post image limit" }
+        require(assets != null) { "Post images are unavailable for backup" }
         var total=json.size
         val output=ByteArrayOutputStream()
         ZipOutputStream(output).use { zip ->
             zip.putNextEntry(ZipEntry("library.json")); zip.write(json); zip.closeEntry()
             hashes.sorted().forEach { hash ->
                 val bytes=assets.read(hash); total+=bytes.size
-                require(total<=LIMIT) { "Library and infographics exceed the 32 MB backup limit" }
+                require(total<=LIMIT) { "Library and post images exceed the 32 MB backup limit" }
                 zip.putNextEntry(ZipEntry("images/$hash.png")); zip.write(bytes); zip.closeEntry()
             }
         }
@@ -37,7 +40,7 @@ internal object PostBackupBundle {
         ZipInputStream(bytes.inputStream()).use { zip ->
             while(true) {
                 val entry=zip.nextEntry ?: break
-                require(!entry.isDirectory && entries.size<101 && entry.name !in entries)
+                require(!entry.isDirectory && entries.size<=MAX_IMAGES && entry.name !in entries)
                 require(entry.name=="library.json" || entry.name.matches(Regex("images/[a-f0-9]{64}\\.png"))) { "Unexpected backup entry" }
                 val output=ByteArrayOutputStream(); val block=ByteArray(65536)
                 while(true) { val n=zip.read(block); if(n<0) break; total+=n; require(total<=LIMIT) { "Expanded backup exceeds 32 MB" }; output.write(block,0,n) }

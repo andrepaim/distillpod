@@ -18,7 +18,7 @@ release-note file alone does not mean an APK has been published.
 | Find an existing transcript before local Whisper | [Online transcripts](android/online-transcripts.md) |
 | Save or transfer a complete portable library | [Backup and restore](android/drive-backup.md) |
 | Sync supported data between installations | [Library sync and protocol compatibility](android/subscription-sync.md) |
-| Make a text post or infographic from a moment | [Create a social post](getting-started.md#create-a-social-post) |
+| Make a share card and caption from a moment | [Create a social post](getting-started.md#create-a-social-post), [share-card design](android/social-share-cards.md) |
 | Resolve common waiting, connection and update states | [Troubleshooting](troubleshooting.md) |
 | Understand what stays local or leaves the phone | [Privacy and data handling](privacy.md) |
 
@@ -53,7 +53,7 @@ of current installation instructions.
 - [Original Android plan](android-implementation-plan.md), [Firebase sync/telemetry plan](android/firebase-sync-telemetry-plan.md), [Android Auto plan](android/android-auto-plan.md).
 - [YouTube sources and videocasts](android/videocasts.md): feature-branch behavior, limitations and validation.
 - [Listening UI proposal](android/ui-improvement-proposal.md), [search proposal](android/search-ui-proposal.md), [full design review](android/full-design-review.md).
-- [Social-sharing plan index](android/social-sharing-plan.md), [accepted two-format design](android/social-sharing-redesign.md), [superseded first design](android/social-sharing-design.md).
+- [Social share cards](android/social-share-cards.md) (current) with [sample renders](android/evidence/share-cards/README.md); superseded: [two-format design](android/social-sharing-redesign.md), [first design](android/social-sharing-design.md), [plan index](android/social-sharing-plan.md).
 - [Confirmation-sound record](audio/distill-scribble.md), [icon design source](../design/icon-proposal/README.md), [third-party notices](../THIRD_PARTY_NOTICES.md).
 - [Retired web archive](legacy-web.md); its hosting instructions and features do not describe Android.
 

@@ -1,5 +1,7 @@
 # Social sharing redesign: two finished outputs
 
+> Superseded on November 14, 2026 by [social share cards](social-share-cards.md): one card image and caption per moment, without web research or model-drawn illustrations. This document is kept as history.
+
 Design dated November 5, 2026. Status reviewed November 6: the two-format workflow is implemented on `main` and included in published alpha APKs. The branch/device results below are historical checkpoints. This supersedes the product direction in [the original design](social-sharing-design.md). For current steps, see [Create a social post](../getting-started.md#create-a-social-post).
 
 ## Why the first approach failed

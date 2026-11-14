@@ -104,7 +104,7 @@ fun fileSize(bytes: Long): String = if (bytes >= 1_000_000_000) "%.1f GB".format
         route == "saved" -> "Saved"
         route.startsWith("capture:") -> "Saved moment"
         route == "posts" || route.startsWith("posts:") -> "Your posts"
-        route.startsWith("post:") -> "Create post"
+        route.startsWith("post:") -> "Post"
         route == "queue" -> "Listening queue"
         route == "settings" -> "Settings"
         route == "shows" -> "Your shows"
@@ -145,6 +145,8 @@ fun fileSize(bytes: Long): String = if (bytes >= 1_000_000_000) "%.1f GB".format
                         // Pull to refresh has no accessibility action, so the overflow keeps an explicit refresh.
                         route.startsWith("podcast:") -> TopBarOverflow(listOf(refresh, settings))
                         route == "saved" -> TopBarOverflow(listOf(OverflowAction("Your posts", Icons.AutoMirrored.Filled.Article) { vm.open("posts") }, settings))
+                        // A post has its own ⋮ beside its title; a second one in the top bar reads as a duplicate.
+                        route.startsWith("post:") -> Unit
                         !route.startsWith("settings") -> TopBarOverflow(listOf(settings))
                     }
                 }, colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background))

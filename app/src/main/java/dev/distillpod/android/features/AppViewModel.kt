@@ -174,10 +174,9 @@ class AppViewModel(val graph: AppGraph, private val saved: SavedStateHandle) : V
         if (key == "wifi") graph.jobs.configureNetworkPolicy() else graph.jobs.configureRefresh()
     }
     fun text(key: String, value: String) = action("settings") { graph.settings.text(key, value) }
-    fun createPost(momentId: String, format: String = "discussion") = action("create-post:$momentId") {
-        open("post:${graph.socialResults.create(momentId, format)}")
+    fun createPost(momentId: String) = action("create-post:$momentId") {
+        open("post:${graph.socialResults.create(momentId)}")
     }
-    fun duplicatePost(id: String) = action("post:$id") { open("post:${graph.posts.duplicate(id).id}") }
     fun deletePost(id: String) = action("post:$id") { graph.posts.delete(id) }
     fun deleteCapture(id: String) = action("capture:$id") { graph.portableSync.deleteMoment(id) }
     fun prepareTranscript(id: String, local: Boolean = false) = action("transcript:$id") { graph.diagnostics.usage("transcription");graph.transcription.prepare(id, local); notificationPrompt.workStarted(); messages.send("Transcript preparation queued") }

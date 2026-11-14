@@ -39,7 +39,6 @@ class AppGraph internal constructor(val context: Context, val scope: CoroutineSc
     val jobs = AppJobs(context)
     val posts by lazy { PostRepository(db) }
     val socialResults by lazy { SocialResultRepository(db) { id, attempt -> dev.distillpod.android.work.SocialPostJobs.enqueue(context, id, attempt) } }
-    val socialTools by lazy { dev.distillpod.android.ai.AccountSocialTools(account.session, settings) }
     val postAssets by lazy { dev.distillpod.android.sharing.PostAssets(java.io.File(context.filesDir, "post-images")) }
     // Restored progress, completions and moments of shared feeds upload like local edits.
     val backup by lazy { LibraryBackup(db, postAssets, portable = portableSync) }
@@ -114,7 +113,7 @@ class AppGraph internal constructor(val context: Context, val scope: CoroutineSc
             jobs.recoverDownloads()
             db.library().observePosts().first().forEach { row ->
                 val post = runCatching { SocialResult.parse(row.content) }.getOrNull()
-                if (post != null && post.stage in listOf("queued", "preparing", "researching", "illustrating")) {
+                if (post != null && post.stage in SocialResult.ACTIVE_STAGES) {
                     // KEEP avoids duplicating active work after an ordinary app restart.
                     val manager = androidx.work.WorkManager.getInstance(context)
                     val pending = manager.getWorkInfosForUniqueWork("social:${row.id}").get().any { !it.state.isFinished }

@@ -5,15 +5,21 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
 
-/** A completed revision is replaced atomically, never by partial streaming output. */
+/**
+ * A completed revision is replaced atomically, never by partial streaming output. For a card, [text] is
+ * the full caption as shared, [quote] the card quote, [title] the headline and [card] the [CardContent] JSON.
+ */
 data class SocialArtifact(val text: String = "", val quote: String = "", val image: String = "",
-    val title: String = "", val description: String = "", val sources: String = "[]", val brief: String = "") {
+    val title: String = "", val description: String = "", val sources: String = "[]", val brief: String = "",
+    val card: String = "") {
     fun json() = JSONObject().put("text", text).put("quote", quote).put("image", image).put("title", title)
-        .put("description", description).put("sources", JSONArray(sources)).put("brief", brief)
+        .put("description", description).put("sources", JSONArray(sources)).put("brief", brief).put("card", card)
+    /** The card this artifact draws, or null for text and image results of earlier formats. */
+    fun cardContent(): CardContent? = card.takeIf { it.isNotEmpty() }?.let { CardContent.parse(JSONObject(it)) }
     companion object {
         fun parse(j: JSONObject) = SocialArtifact(j.getString("text"), j.getString("quote"), j.getString("image"), j.getString("title"),
-            j.getString("description"), j.getJSONArray("sources").toString(), j.getString("brief")).also {
-            require(it.text.length <= 16000 && it.quote.length <= 1600 && it.title.length <= 300 && it.description.length <= 16000 && it.brief.length <= 40000)
+            j.getString("description"), j.getJSONArray("sources").toString(), j.getString("brief"), j.optString("card")).also {
+            require(it.text.length <= 16000 && it.quote.length <= 1600 && it.title.length <= 300 && it.description.length <= 16000 && it.brief.length <= 40000 && it.card.length <= 8000)
             require(it.image.isEmpty() || it.image.matches(Regex("[a-f0-9]{64}")))
             dev.distillpod.android.ai.EvidenceSource.list(it.sources)
         }
@@ -27,11 +33,18 @@ data class SocialResult(val source: PostContent, val format: String, val stage: 
         .put("stage", stage).put("attempt", attempt).put("artifact", artifact?.json() ?: JSONObject.NULL)
         .put("previous", previous?.json() ?: JSONObject.NULL).put("instruction", instruction).put("error", error)
         .put("research", research).put("researchSources", JSONArray(researchSources)).toString()
+    // Decided by content, not format: Undo can return a retried earlier result to its image or text.
     fun shareText(): String {
         val a = artifact ?: error("The post is still being prepared")
-        return if (format == "infographic") a.description else listOf(a.quote.takeIf { it.isNotBlank() }?.let { "“$it”" }.orEmpty(), a.text, "${source.show} · ${source.episode} · ${dev.distillpod.core.postTimestamp(source.startMs)}", source.sourceUrl).filter { it.isNotBlank() }.joinToString("\n\n")
+        return if (a.card.isNotEmpty()) a.text else if (a.image.isNotEmpty()) a.description
+        else listOf(a.quote.takeIf { it.isNotBlank() }?.let { "“$it”" }.orEmpty(), a.text, "${source.show} · ${source.episode} · ${dev.distillpod.core.postTimestamp(source.startMs)}", source.sourceUrl).filter { it.isNotBlank() }.joinToString("\n\n")
     }
     companion object {
+        const val CARD = "card"
+        val FORMATS = listOf(CARD, "discussion", "infographic", "legacy")
+        /** Stages during which a generation owns the result. Researching and illustrating survive only in earlier rows. */
+        val ACTIVE_STAGES = listOf("queued", "preparing", "researching", "illustrating")
+
         fun parse(raw: String): SocialResult {
             require(raw.length <= 200000)
             val j = JSONObject(raw)
@@ -43,8 +56,8 @@ data class SocialResult(val source: PostContent, val format: String, val stage: 
             return SocialResult(PostContent.parse(j.getJSONObject("source").toString()), j.getString("format"), j.getString("stage"), j.getString("attempt"),
                 j.optJSONObject("artifact")?.let(SocialArtifact::parse), j.optJSONObject("previous")?.let(SocialArtifact::parse), j.getString("instruction"),
                 j.getString("error"), j.getString("research"), j.getJSONArray("researchSources").toString()).also {
-                require(it.format in listOf("discussion", "infographic", "legacy"))
-                require(it.stage in listOf("queued", "preparing", "researching", "illustrating", "ready", "failed", "canceled"))
+                require(it.format in FORMATS)
+                require(it.stage in ACTIVE_STAGES + listOf("ready", "failed", "canceled"))
                 require(it.attempt.length <= 100)
                 require(it.instruction.length <= 2000 && it.error.length <= 400 && it.research.length <= 50000)
                 dev.distillpod.android.ai.EvidenceSource.list(it.researchSources)
@@ -52,6 +65,7 @@ data class SocialResult(val source: PostContent, val format: String, val stage: 
                 for (a in listOfNotNull(it.artifact, it.previous)) {
                     require(dev.distillpod.core.sourceQuoteMatches(a.quote, it.source.excerpt))
                     require(it.format != "infographic" || a.image.isNotBlank())
+                    a.cardContent()?.validated(it.source.excerpt)
                 }
             }
         }
@@ -60,23 +74,24 @@ data class SocialResult(val source: PostContent, val format: String, val stage: 
 
 class SocialResultRepository(private val db: AppDatabase, private val enqueue: (String, String) -> Unit) {
     private val dao = db.library()
-    suspend fun create(moment: String, format: String): String {
-        require(format in listOf("discussion", "infographic"))
+    /** New posts are always cards. */
+    suspend fun create(moment: String): String {
         val row = db.withTransaction {
             val original = PostRepository(db).create(moment)
-            original.copy(content = SocialResult(PostContent.parse(original.content), format).json()).also { dao.putPost(it) }
+            original.copy(content = SocialResult(PostContent.parse(original.content), SocialResult.CARD).json()).also { dao.putPost(it) }
         }
         enqueue(row.id, SocialResult.parse(row.content).attempt)
         return row.id
     }
     suspend fun get(id: String): SocialResult? = dao.post(id)?.let { SocialResult.parse(it.content) }
+    /** Regenerates as a card; retrying an earlier format also produces a card, its last result kept for Undo. */
     suspend fun change(id: String, instruction: String) {
         require(instruction.length <= 2000)
         db.withTransaction {
             val row = dao.post(id) ?: error("Result was deleted")
             val result = SocialResult.parse(row.content)
-            require(result.stage !in listOf("queued", "preparing", "researching", "illustrating")) { "Wait for the current version or cancel it first" }
-            dao.putPost(row.copy(content = result.copy(format = if (result.format == "legacy") "discussion" else result.format,
+            require(result.stage !in SocialResult.ACTIVE_STAGES) { "Wait for the current version or cancel it first" }
+            dao.putPost(row.copy(content = result.copy(format = SocialResult.CARD,
                 stage = "queued", attempt = UUID.randomUUID().toString(), instruction = instruction, error = "").json(), revision = row.revision + 1, updatedAt = System.currentTimeMillis()))
         }
         enqueue(id, get(id)!!.attempt)
@@ -97,16 +112,30 @@ class SocialResultRepository(private val db: AppDatabase, private val enqueue: (
     suspend fun undo(id: String) = db.withTransaction {
         val row = dao.post(id) ?: return@withTransaction
         val result = SocialResult.parse(row.content)
-        require(result.stage !in listOf("queued", "preparing", "researching", "illustrating"))
+        require(result.stage !in SocialResult.ACTIVE_STAGES)
         require(result.previous != null) { "No previous version" }
         dao.putPost(row.copy(content = result.copy(artifact = result.previous, previous = null, stage = "ready", attempt = UUID.randomUUID().toString(), error = "").json(), revision = row.revision + 1, updatedAt = System.currentTimeMillis()))
     }
+    /** Edits a card's full caption or an earlier text post. Earlier infographics keep their stored description. */
     suspend fun editText(id: String, text: String) = db.withTransaction {
         require(text.length in 1..16000)
         val row = dao.post(id) ?: error("Result was deleted")
         val result = SocialResult.parse(row.content)
-        require(result.stage !in listOf("queued", "preparing", "researching", "illustrating"))
-        require(result.format != "infographic" && result.artifact != null)
-        dao.putPost(row.copy(content = result.copy(artifact = result.artifact.copy(text = text), previous = result.artifact, stage = "ready", attempt = UUID.randomUUID().toString()).json(), revision = row.revision + 1, updatedAt = System.currentTimeMillis()))
+        require(result.stage !in SocialResult.ACTIVE_STAGES)
+        val artifact = result.artifact
+        require(artifact != null && (artifact.card.isNotEmpty() || artifact.image.isEmpty())) { "This post's text cannot be edited" }
+        dao.putPost(row.copy(content = result.copy(artifact = artifact.copy(text = text), previous = artifact, stage = "ready", attempt = UUID.randomUUID().toString()).json(), revision = row.revision + 1, updatedAt = System.currentTimeMillis()))
+    }
+    /** Switching style or look is an alternative view of the same card: it is written in place without an Undo step. */
+    suspend fun restyle(id: String, style: String, look: String) = db.withTransaction {
+        val row = dao.post(id) ?: error("Result was deleted")
+        val result = SocialResult.parse(row.content)
+        require(result.stage !in SocialResult.ACTIVE_STAGES) { "Wait for the current version or cancel it first" }
+        val artifact = result.artifact ?: throw IllegalArgumentException("Only cards have styles")
+        val card = artifact.cardContent() ?: throw IllegalArgumentException("Only cards have styles")
+        require(style in CardContent.STYLES && look in CardContent.LOOKS) { "Unknown card style or look." }
+        require(look != CardContent.LOOK_COVER || card.cover.isNotEmpty()) { "This show has no artwork for the Cover look" }
+        val restyled = card.copy(style = style, look = look).validated(result.source.excerpt)
+        dao.putPost(row.copy(content = result.copy(artifact = artifact.copy(card = restyled.json().toString())).json(), revision = row.revision + 1, updatedAt = System.currentTimeMillis()))
     }
 }

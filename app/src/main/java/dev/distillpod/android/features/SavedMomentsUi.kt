@@ -181,8 +181,6 @@ internal fun momentShareText(moment: DistillationEntity, episodeTitle: String?) 
     val context = LocalContext.current
     val ep = episodes.firstOrNull { it.id == capture.episodeId }
     val show = podcasts.firstOrNull { it.id == ep?.podcastId }
-    var createPost by rememberSaveable { mutableStateOf(false) }
-    if (createPost) CreatePostSheet(vm, capture.id) { createPost = false }
     val dao = vm.graph.db.library()
     val pending by remember(capture.attempt) { dao.observeMomentAttempt(capture.attempt) }.collectAsStateWithLifecycle(null)
     val versions by remember(capture.id) { dao.observeMomentVersions(capture.id) }.collectAsStateWithLifecycle(emptyList())
@@ -197,7 +195,7 @@ internal fun momentShareText(moment: DistillationEntity, episodeTitle: String?) 
         replay = { vm.play(capture.episodeId, capture.sourceStartMs); vm.open("player") },
         share = { context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, share), "Share saved moment")) },
         copy = { context.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("DistillPod", share)) },
-        createPost = { createPost = true },
+        createPost = { vm.createPost(capture.id) },
         openPosts = { vm.open("posts:${capture.id}") },
         explain = { if (latest == null) vm.explain(capture.id) else vm.open("research:${latest.id}") },
         improve = { vm.improveCapture(capture.id) },

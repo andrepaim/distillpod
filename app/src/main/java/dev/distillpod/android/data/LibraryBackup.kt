@@ -110,7 +110,7 @@ class LibraryBackup(private val db: AppDatabase, private val assets: dev.distill
         }
         db.withTransaction {
             val tables = validated(normalized.toString())
-            require(PostBackupBundle.references(tables) == images.keys) { "Backup infographic assets do not match the library" }
+            require(PostBackupBundle.references(tables) == images.keys) { "Backup post images do not match the library" }
             mapExistingIdentities(tables)
             val counts = backupTables.associateWith { tables.getJSONArray(it).length() }
             var conflicts = 0
@@ -144,9 +144,9 @@ class LibraryBackup(private val db: AppDatabase, private val assets: dev.distill
 
     private suspend fun insert(preview: BackupPreview, inserted: (String, JSONObject) -> Unit): Int {
         val tables = validated(preview.payload)
-        require(PostBackupBundle.references(tables) == preview.assets.keys) { "Backup infographic assets changed" }
+        require(PostBackupBundle.references(tables) == preview.assets.keys) { "Backup post images changed" }
         if (preview.assets.isNotEmpty()) {
-            require(assets != null) { "Infographic storage is unavailable" }
+            require(assets != null) { "Post image storage is unavailable" }
             preview.assets.forEach { (hash, bytes) -> require(assets.put(bytes) == hash) }
         }
         // Immutable files precede the transaction commit: a failed merge may leave harmless unreferenced
@@ -299,7 +299,7 @@ class LibraryBackup(private val db: AppDatabase, private val assets: dev.distill
         }
         if (table == "post_drafts") {
             val post = SocialResult.parse(row.getString("content"))
-            if (post.stage in listOf("queued", "preparing", "researching", "illustrating")) row.put("content",post.copy(stage="failed", attempt=java.util.UUID.randomUUID().toString(), error="Restored from backup. Retry when ready.").json())
+            if (post.stage in SocialResult.ACTIVE_STAGES) row.put("content",post.copy(stage="failed", attempt=java.util.UUID.randomUUID().toString(), error="Restored from backup. Retry when ready.").json())
         }
         if (table == "episodes") {
             row.put("localFile", JSONObject.NULL).put("downloadState", "none").put("downloadedBytes", 0)
