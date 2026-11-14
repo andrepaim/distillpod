@@ -357,6 +357,13 @@ empty emulator. Follow [media reproduction](demos/README.md#reproduce-the-captur
 `allowDocumentationCapture=true` when invoked directly; it must never target a
 personal installation.
 
+Before merging a dependency upgrade that can change component defaults (for example the
+Compose BOM), compare screenshots of the two builds. `VisualBaselineDeviceTest` seeds a
+synthetic library on an empty emulator and saves 22 screens and sheets to the app's external
+`files/visual-baseline` folder. Run it with `allowVisualBaseline=true` on the build before the
+upgrade and again on the upgraded build, pull both folders and review every changed image.
+It is excluded from ordinary acceptance and refuses physical hardware.
+
 Ordinary emulator acceptance uses synthetic data and public speech fixtures. Live account and long-running public-network checks require deliberate opt-in and should run only when authorized for that task:
 
 - `LiveCaptureDeviceTest`, `LiveUnderstandingDeviceTest` and `LiveExploreDeviceTest`: instrumentation argument `allowLiveAccount=true`; `refreshLiveAccount=true` also exercises real token renewal.

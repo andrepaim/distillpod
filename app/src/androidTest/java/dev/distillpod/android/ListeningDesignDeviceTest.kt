@@ -223,6 +223,9 @@ class ListeningDesignDeviceTest {
             dao.putPodcast(dao.podcast(id)!!.copy(error = "Couldn't reach the feed. Check your connection and try again."))
             compose.onNode(hasScrollAction()).performScrollToNode(hasText("This show couldn't refresh"))
             compose.onNodeWithText("Couldn't reach the feed. Check your connection and try again.").assertIsDisplayed()
+            // Compose 1.11 scrolls only as far as the target, so bring the Retry action itself into view
+            // on short screens instead of relying on it sitting below the heading.
+            compose.onNode(hasScrollAction()).performScrollToNode(hasContentDescription("Retry Design validation show"))
             compose.onNodeWithContentDescription("Retry Design validation show").assertIsDisplayed()
             screenshot("show-feed-error")
         } finally {

@@ -28,6 +28,7 @@ import dev.distillpod.core.SLEEP_TIMER_EXTENSION_MS
 import dev.distillpod.core.SLEEP_TIMER_MINUTES
 import dev.distillpod.core.SleepTimerStatus
 import kotlinx.coroutines.delay
+import dev.distillpod.android.ui.theme.OutlinedButton
 
 /** Remaining time as a clock, rounded up so it reaches 0:00 only when the timer expires. */
 internal fun sleepTimerClock(ms: Long): String {

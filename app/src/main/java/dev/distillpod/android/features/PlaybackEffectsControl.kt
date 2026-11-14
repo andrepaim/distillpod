@@ -28,6 +28,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.distillpod.android.data.PodcastEntity
 import dev.distillpod.core.PlaybackSpeeds
 import dev.distillpod.core.SpeedPreferences
+import dev.distillpod.android.ui.theme.FilterChip
 
 /** What the Now Playing speed and effects sheet shows (#183). */
 internal data class PlaybackEffectsState(val speed: Float = 1f, val showTitle: String? = null, val keepsShowSpeed: Boolean = false,

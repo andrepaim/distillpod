@@ -40,6 +40,8 @@ import java.util.Base64
 import java.util.UUID
 import java.util.concurrent.CancellationException
 import java.util.concurrent.atomic.AtomicBoolean
+import dev.distillpod.android.ui.theme.Button
+import dev.distillpod.android.ui.theme.OutlinedButton
 
 class DiagnosticsActivity : ComponentActivity() {
     private var status by mutableStateOf("Ready for validation")

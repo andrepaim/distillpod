@@ -63,6 +63,11 @@ import dev.distillpod.android.playback.PlaybackState
 import dev.distillpod.android.ui.theme.extras
 import dev.distillpod.android.ui.theme.DistillTheme
 import dev.distillpod.android.ui.theme.DistillSpacing
+import dev.distillpod.android.ui.theme.Button
+import dev.distillpod.android.ui.theme.OutlinedButton
+import dev.distillpod.android.ui.theme.TextButton
+import dev.distillpod.android.ui.theme.FilterChip
+import dev.distillpod.android.ui.theme.DistillComponentDefaults
 
 fun timestamp(ms: Long): String {
     val seconds = ms.coerceAtLeast(0) / 1000
@@ -152,7 +157,8 @@ fun fileSize(bytes: Long): String = if (bytes >= 1_000_000_000) "%.1f GB".format
                 if (route != "player") NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainerLow, tonalElevation = 0.dp) {
                     listOf(Triple("library", "Library", Icons.Default.LibraryMusic), Triple("search", "Search", Icons.Default.Search),
                         Triple("saved", "Saved", Icons.Default.Bookmark), Triple("queue", "Queue", Icons.Default.QueueMusic)).forEach { (key, label, icon) ->
-                        NavigationBarItem(selected = stack.first() == key, onClick = { vm.root(key) }, icon = { Icon(icon, label) }, label = { Text(label) })
+                        NavigationBarItem(selected = stack.first() == key, onClick = { vm.root(key) }, icon = { Icon(icon, label) }, label = { Text(label) },
+                            colors = DistillComponentDefaults.navigationBarItemColors())
                     }
                 }
             }

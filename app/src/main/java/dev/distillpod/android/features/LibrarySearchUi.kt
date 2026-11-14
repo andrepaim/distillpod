@@ -25,6 +25,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import dev.distillpod.android.ui.theme.TextButton
 
 /**
  * Library matches on the Search tab (#179), before any directory results. [expanded] holds the

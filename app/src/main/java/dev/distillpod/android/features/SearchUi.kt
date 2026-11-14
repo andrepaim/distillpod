@@ -37,6 +37,8 @@ import dev.distillpod.android.data.PodcastCandidate
 import dev.distillpod.android.data.PodcastEntity
 import dev.distillpod.core.YouTubeUrl
 import dev.distillpod.android.ui.theme.extras
+import dev.distillpod.android.ui.theme.Button
+import dev.distillpod.android.ui.theme.TextButton
 
 @Composable internal fun SearchPage(vm: AppViewModel, podcasts: List<PodcastEntity>) {
     val query by vm.query.collectAsStateWithLifecycle()

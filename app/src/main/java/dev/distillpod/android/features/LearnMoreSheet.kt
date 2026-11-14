@@ -12,6 +12,7 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import dev.distillpod.android.ui.theme.DistillSpacing
+import dev.distillpod.android.ui.theme.TextButton
 
 /**
  * Full disclosure text behind a short on-screen line (#203, proposal 2.6 "state over explanation").

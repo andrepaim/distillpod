@@ -12,6 +12,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
 import dev.distillpod.android.sync.SubscriptionSyncStore
 import dev.distillpod.android.sync.SyncBindingEntity
+import dev.distillpod.android.ui.theme.Button
+import dev.distillpod.android.ui.theme.OutlinedButton
+import dev.distillpod.android.ui.theme.TextButton
 
 @Composable internal fun SubscriptionSyncSettings(vm:AppViewModel, onOpenBackup: () -> Unit) {
     val account=vm.graph.syncAccount

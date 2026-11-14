@@ -13,6 +13,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.distillpod.android.data.PodcastEntity
+import dev.distillpod.android.ui.theme.TextButton
 
 @Composable internal fun PublicFeedReview(feeds:List<PodcastEntity>,preselected:Set<String>,newAccount:Boolean,
     onConfirm:(Set<String>)->Unit,onDismiss:()->Unit) {
