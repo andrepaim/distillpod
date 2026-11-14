@@ -515,7 +515,7 @@ private val NOT_CURRENT = PlaybackState()
         }
         if(section=="transcription") {
         SettingsGroupCard {
-        SettingSwitch("Transcribe when playing", "Prepare transcripts for episodes you play.", prefs.transcribeOnPlayback,
+        SettingSwitch("Transcribe when playing", if (prefs.transcribeOnPlayback) "Prepare transcripts for episodes you play." else "Existing transcript jobs keep running. Use Pause transcript to stop one.", prefs.transcribeOnPlayback,
             learnMore = "Automatically prepare transcripts for episodes you play. Uses your download and processing settings. Turning this off leaves existing jobs running; use Pause transcript to stop one.") { vm.flag("transcribeOnPlayback", it) }
         SettingsDivider()
         SettingSwitch("Look for existing online transcripts", "Checks PodcastTranscript.ai first; sends only the episode title.", prefs.onlineTranscripts,
