@@ -1,13 +1,35 @@
-DistillPod 0.26.0-alpha.1 introduces the Ember look and puts the controls you use most closer to the content.
+DistillPod 0.27.0-alpha.1 completes the Ember redesign for the screens you browse every day: Library, Queue, Search and Saved.
 
-- **New look.** The Ember Drop launcher icon, warm theme, and bundled Inter and Newsreader fonts update the app and widget. Dark reading remains available.
-- **Now Playing.** Play, seek, speed and sleep controls are together. The playback bar marks available chapters and saved moments; the action row puts Distill and Transcript within reach. Open the lower sheet for Up next, transcript preparation and insights. Speed, effects and the sleep timer now have dedicated sheets.
-- **Episode details and transcripts.** Episode tools are grouped by task. Transcript text is arranged into readable paragraphs while preserving the segment timing used for seeking, highlights and saved moments.
-- **Show pages.** Episode lists come before preparation details. One attention action opens failed preparations even when episode filters hide them. Retry is available on the affected episode or in preparation details. Unfollowing a show asks for confirmation.
-- **Settings and insights.** Settings show current values where available, while Learn more sheets retain the fuller explanations. The insights empty state explains the summary, chapters and ad markers it can generate.
+- **Library.**
+  - **Continue listening:** scrolls sideways through up to five in-progress episodes. With only one in progress, it keeps the single full-width card.
+  - **Filters:** Latest · In progress · Downloaded stays pinned at the top while you scroll through long libraries.
+  - **Episode rows:** lighter rows separated by thin dividers, with saved moments shown as ✦ N next to the date and time left.
+  - **Refresh:** pull down to refresh Library or a show page. Refresh is also in the ⋮ menu.
+- **Queue.**
+  - **Reorder:** use the drag handle on Up next rows.
+  - **Remove:** swipe a row left to remove it, then use **Undo** to put it back where it was.
+  - **Layout:** Now playing sits at the top, and the Up next heading shows how many episodes remain and how long they last.
+  - **Clear:** asks for confirmation in a sheet.
+  - **TalkBack:** Move up, Move down and Remove from queue are still available as actions.
+- **Search.** The tab is titled Search and the field submits from the keyboard, with no separate arrow button. All / Audio / Video is a segmented control, and recent searches are a plain list.
+- **Saved.**
+  - **Cards:** each card leads with the takeaway or quote over one source line (artwork, episode and time). The redundant "Saved" label is gone; pending and failed states still show.
+  - **Filters:** filter by show when your moments come from more than one show.
+  - **Your posts:** now in the ⋮ menu.
+- **Top bar.** The settings gear appears on Library. Other tabs reach Settings from the ⋮ menu.
 
-This personal alpha keeps the application ID and signing identity and raises the version code to **49**. The update does not change database or backup schemas, playback routing, or cloud sync protocols; voice remains enabled for distribution and unfinished cloud compaction remains disabled. No backend changes or new Android permissions are required. Install the signed APK over the existing app to retain local data; do not uninstall first.
+This personal alpha keeps the application ID and signing identity and raises the version code to **50**. The update changes presentation only. It does not change database or backup schemas, playback routing, cloud sync protocols, Android permissions or dependencies. Voice remains enabled for distribution and unfinished cloud compaction remains disabled. Install the signed APK over the existing app to retain local data; do not uninstall first.
 
-The show preparation flow passed real TalkBack navigation on an isolated Android emulator before integration; that result is scoped to the validated show flow, not a full accessibility audit of the new player or settings. The release workflow separately validates and signs the tagged candidate. No owner-phone install or live-account smoke test is claimed.
+**Known limits:**
+- **Pull to refresh:** has no accessibility action, so Refresh stays in the ⋮ menu.
+- **Dragging:** a queue row does not auto-scroll at the top or bottom edge of the list.
+- **Undo after a swipe:** re-adds the episode through the existing queue actions, so the usual "Added to queue" message appears briefly.
+- **The player's Up next sheet:** has no swipe-to-remove, because it has no Undo; use the row menu there.
 
-[View changes since 0.25.0-alpha.1](https://github.com/andrepaim/distillpod/compare/v0.25.0-alpha.1...v0.26.0-alpha.1).
+**Validation:**
+- **CI:** the change passed full CI on its pull request (default and voice builds, lint, unit tests, Firebase rules, native bridge checks and isolated API 35 acceptance), followed by green Android CI on `main`.
+- **Isolated emulator:** 22 device tests passed on an isolated emulator with synthetic data, covering search, saved moments, queue controls, library search, show organisation, the product flow and large-text layouts.
+- **Not done:** no full TalkBack review of the new Library, Queue, Search or Saved screens. No owner-phone install or live-account smoke test is claimed.
+- **Publication:** the release workflow separately validates and signs the tagged candidate.
+
+[View changes since 0.26.0-alpha.1](https://github.com/andrepaim/distillpod/compare/v0.26.0-alpha.1...v0.27.0-alpha.1).
