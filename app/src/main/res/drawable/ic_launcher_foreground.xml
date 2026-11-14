@@ -1,7 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Ember Drop: the Listening Drop silhouette and even-odd play opening, recoloured in ember. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp" android:height="108dp"
     android:viewportWidth="108" android:viewportHeight="108">
-    <path android:fillColor="#B7B9FF" android:fillType="evenOdd"
-        android:pathData="M64 25C64 36 78 43 78 57C78 70.255 67.255 81 54 81C40.745 81 30 70.255 30 57C30 42 48 30 64 25Z M48 47.8C48 46.4 49.5 45.6 50.7 46.3L65.5 55.3C66.8 56.1 66.8 57.9 65.5 58.7L50.7 67.7C49.5 68.4 48 67.6 48 66.2Z" />
+    <path android:fillType="evenOdd"
+        android:pathData="M64 25C64 36 78 43 78 57C78 70.255 67.255 81 54 81C40.745 81 30 70.255 30 57C30 42 48 30 64 25Z M48 47.8C48 46.4 49.5 45.6 50.7 46.3L65.5 55.3C66.8 56.1 66.8 57.9 65.5 58.7L50.7 67.7C49.5 68.4 48 67.6 48 66.2Z">
+        <aapt:attr name="android:fillColor">
+            <gradient android:type="linear"
+                android:startX="40" android:startY="25"
+                android:endX="70" android:endY="81">
+                <item android:offset="0" android:color="#FFFFD58A" />
+                <item android:offset="0.55" android:color="#FFFFB547" />
+                <item android:offset="1" android:color="#FFE8830B" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <!-- Specular highlight: ellipse rx 4, ry 7, rotated 28 degrees, centred (41.5, 50.5), clear of the play opening. -->
+    <path android:fillColor="#8CFFF3DC"
+        android:pathData="M44.79 44.32A4 7 28 1 1 38.21 56.68A4 7 28 1 1 44.79 44.32Z" />
 </vector>

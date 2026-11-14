@@ -6,9 +6,9 @@
     ]
   },
   "branding/icon-512.png": {
-    "reason": "Public DistillPod branding/design asset; archive contents reviewed in the November 2026 repository audit.",
+    "reason": "Public DistillPod branding asset: Ember Drop 512 px store icon rendered from branding/icon.svg (November 14, 2026).",
     "sha256": [
-      "f59ae80884bccb1393d48e6445dfd650c970f1aed7c042cd408d8460eca86a4d"
+      "f754a8dc840ec64bd606b5b90ee18826a6c21ed1c7c97bcf7352137c4b96a210"
     ]
   },
   "design/icon-proposal/assets/distillpod-chalk-1024.png": {
