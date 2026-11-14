@@ -34,6 +34,7 @@ none substitutes for the others.
 | [Development](development.md) | Pinned tools, builds, CI and isolated emulator checks |
 | [Release procedure](releases.md) | Review, validation, retained signing identity and publication |
 | [Repository security](security.md) | Secret scanning, personal-data guards and reviewed media |
+| [Sentry access for agents](sentry-agent-access.md) | Connected tools, read permissions, query recipes, private exports and evidence limits |
 | [Firebase harness](../firebase/README.md) | Demo-project rule/protocol tests and deployment boundaries |
 | [App Check rollout](android/app-check-rollout.md) | Planned client integration and staged enforcement; not enabled |
 | [Implementation status](android/implementation-status.md) | Delivered behavior, current distribution and evidence gaps |
