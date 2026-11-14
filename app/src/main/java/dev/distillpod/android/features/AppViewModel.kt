@@ -8,6 +8,7 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import dev.distillpod.android.AppGraph
 import dev.distillpod.android.data.*
+import dev.distillpod.android.video.streamNeedsResolving
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.*
@@ -134,6 +135,17 @@ class AppViewModel(val graph: AppGraph, private val saved: SavedStateHandle) : V
     val episodeDetails = graph.podcasts.episodeDetails
     /** Quiet background check; the episode page shows checking, unavailable and retry states. */
     fun loadEpisodeDetails(id: String) { viewModelScope.launch { graph.podcasts.loadEpisodeDetails(id) } }
+    /**
+     * Resolve a YouTube episode's stream while its page is open: extraction can take more than 15 seconds,
+     * and Play joins this in-flight request. It runs in the app scope and is never interrupted, because an
+     * interrupted extraction would also fail a playback load that joined it.
+     */
+    fun warmEpisodeStream(ep: EpisodeEntity) {
+        if (!streamNeedsResolving(ep.audioUrl, null)) return
+        graph.scope.launch(Dispatchers.IO) {
+            if (streamNeedsResolving(ep.audioUrl, ep.localFile)) runCatching { graph.youtube.streams(ep.audioUrl) }
+        }
+    }
     fun refresh(id: String? = null) = action("refresh") {
         if (id == null) graph.podcasts.refreshAll() else graph.podcasts.refresh(id)
         messages.send("Feed refresh finished")

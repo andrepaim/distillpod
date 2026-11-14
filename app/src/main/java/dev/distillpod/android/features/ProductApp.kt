@@ -499,6 +499,7 @@ private val LIBRARY_FILTERS = listOf(Triple("all", "Latest", "Latest"), Triple("
     val detailStates by vm.episodeDetails.collectAsStateWithLifecycle()
     val needsDetails = ep.needsSourceDetails()
     LaunchedEffect(ep.id, needsDetails) { if (needsDetails) vm.loadEpisodeDetails(ep.id) }
+    LaunchedEffect(ep.id) { vm.warmEpisodeStream(ep) }
     val metadata = episodeMetadataText(ep, detailStates[ep.id])
     EpisodeDetail(ep, podcast, metadata, listeningPosition(ep, player), remember(vm) { vm.episodeActions(openPlayer = true) },
         vm::open, { vm.loadEpisodeDetails(ep.id) }, Modifier.verticalScroll(rememberScrollState())) {

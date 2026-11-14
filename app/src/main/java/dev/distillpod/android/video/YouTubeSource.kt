@@ -256,3 +256,7 @@ internal fun selectStreams(data: JSONObject): YouTubeStreams {
         .maxByOrNull { it.optInt("height") }
     return YouTubeStreams(audio.getString("url"), video?.getString("url"))
 }
+
+/** Only a YouTube episode without a playable download resolves a stream before it plays (reads the file system). */
+internal fun streamNeedsResolving(audioUrl: String, localFile: String?): Boolean =
+    YouTubeUrl.videoId(audioUrl) != null && localFile?.let { java.io.File(it).isFile } != true
