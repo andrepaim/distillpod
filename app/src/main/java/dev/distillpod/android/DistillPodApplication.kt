@@ -51,7 +51,7 @@ class AppGraph internal constructor(val context: Context, val scope: CoroutineSc
     val headphoneVoice = dev.distillpod.android.voice.HeadphoneVoiceShortcut()
     val carConnection by lazy {
         kotlinx.coroutines.flow.MutableStateFlow<Int?>(null).also { state ->
-            androidx.car.app.connection.CarConnection(context).type.observeForever { state.value = it }
+            carConnectionState(context).observeForever { state.value = it }
         }
     }
     val voice: dev.distillpod.android.voice.VoiceCoordinator by lazy {
