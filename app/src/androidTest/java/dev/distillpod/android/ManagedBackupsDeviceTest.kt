@@ -23,6 +23,7 @@ import org.junit.Rule
 import org.junit.rules.ExternalResource
 import org.junit.Test
 import org.junit.runner.RunWith
+import dev.distillpod.android.ui.theme.DistillTheme
 
 @RunWith(AndroidJUnit4::class)
 class ManagedBackupsDeviceTest {

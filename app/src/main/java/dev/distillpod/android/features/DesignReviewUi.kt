@@ -52,12 +52,12 @@ import androidx.compose.ui.unit.dp
 }
 @Composable private fun SettingsGroupLabel(title:String) {
     Text(title,Modifier.fillMaxWidth().padding(top=10.dp,start=4.dp).semantics{heading()},
-        style=MaterialTheme.typography.titleSmall,fontWeight=FontWeight.SemiBold,color=MaterialTheme.colorScheme.primary)
+        style=MaterialTheme.typography.labelMedium,fontWeight=FontWeight.SemiBold,color=MaterialTheme.colorScheme.onSurfaceVariant)
 }
 @Composable private fun SettingsDestination(title:String,detail:String,icon:ImageVector,onClick:()->Unit) {
     Surface(onClick=onClick,shape=RoundedCornerShape(18.dp),color=MaterialTheme.colorScheme.surface,modifier=Modifier.fillMaxWidth()) {
         Row(Modifier.padding(16.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(14.dp)) {
-            Icon(icon,null,tint=MaterialTheme.colorScheme.primary)
+            Icon(icon,null,tint=MaterialTheme.colorScheme.onSurfaceVariant)
             Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(4.dp)) {
                 Text(title,style=MaterialTheme.typography.titleSmall,fontWeight=FontWeight.SemiBold)
                 Text(detail,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)

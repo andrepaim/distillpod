@@ -14,7 +14,6 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -24,6 +23,7 @@ import dev.distillpod.android.data.*
 import dev.distillpod.android.sharing.*
 import dev.distillpod.android.work.SocialPostJobs
 import kotlinx.coroutines.*
+import dev.distillpod.android.ui.theme.DistillType
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable fun CreatePostSheet(vm: AppViewModel, moment: String, dismiss: () -> Unit) {
@@ -132,7 +132,7 @@ private fun postStage(stage: String) = when(stage) {
                         modifier = Modifier.fillMaxWidth().aspectRatio(0.8f))
                 } else SelectionContainer {
                     Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
-                        if (artifact.quote.isNotBlank()) Text("“${artifact.quote}”", style = MaterialTheme.typography.headlineSmall.copy(fontFamily = FontFamily.Serif))
+                        if (artifact.quote.isNotBlank()) Text("“${artifact.quote}”", style = DistillType.quote)
                         Text(artifact.text, style = MaterialTheme.typography.bodyLarge)
                     }
                 }

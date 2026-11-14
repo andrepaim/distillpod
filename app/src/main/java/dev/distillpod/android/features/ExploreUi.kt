@@ -89,7 +89,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
         items(visible, key = { it.feedUrl }) { suggestion ->
             Card { Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(suggestion.title, style = MaterialTheme.typography.titleMedium)
-                Text(suggestion.author, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.secondary)
+                Text(suggestion.author, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(suggestion.reason, style = MaterialTheme.typography.bodySmall)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(onClick = { vm.subscribe(suggestion.feedUrl) }) { Text("Follow") }

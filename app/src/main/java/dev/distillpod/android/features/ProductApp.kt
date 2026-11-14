@@ -5,7 +5,6 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -26,7 +25,6 @@ import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
@@ -38,7 +36,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -49,18 +46,9 @@ import dev.distillpod.android.DiagnosticsActivity
 import dev.distillpod.android.ai.AccountState
 import dev.distillpod.android.data.*
 import dev.distillpod.android.playback.PlaybackState
+import dev.distillpod.android.ui.theme.extras
+import dev.distillpod.android.ui.theme.DistillTheme
 
-private val ink = Color(0xFF0C0F16)
-private val accent = Color(0xFFB7B9FF)
-private val mint = Color(0xFF91DCC8)
-private val colors = darkColorScheme(primary = accent, secondary = mint, tertiary = Color(0xFFFFD28B),
-    background = ink, onBackground = Color(0xFFF1F2F6), onPrimary = Color(0xFF17182E),
-    primaryContainer = Color(0xFF292D48), onPrimaryContainer = Color(0xFFE6E3FF),
-    surface = Color(0xFF151A24), onSurface = Color(0xFFF1F2F6), surfaceVariant = Color(0xFF232B39),
-    outline = Color(0xFF536074), onSurfaceVariant = Color(0xFFB0BACB))
-@Composable internal fun DistillTheme(content: @Composable () -> Unit) {
-    MaterialTheme(colorScheme = colors, shapes = Shapes(small = RoundedCornerShape(10.dp), medium = RoundedCornerShape(18.dp), large = RoundedCornerShape(24.dp)), content = content)
-}
 fun timestamp(ms: Long): String {
     val seconds = ms.coerceAtLeast(0) / 1000
     return if (seconds >= 3600) "%d:%02d:%02d".format(seconds / 3600, seconds / 60 % 60, seconds % 60) else "%d:%02d".format(seconds / 60, seconds % 60)
@@ -114,21 +102,21 @@ fun fileSize(bytes: Long): String = if (bytes >= 1_000_000_000) "%.1f GB".format
     DistillTheme {
         BackupDocumentLaunchers(vm)
         NotificationPromptHost(vm.notificationPrompt, snackbar) { vm.open("settings:notifications") }
-        Scaffold(containerColor = ink, snackbarHost = { SnackbarHost(snackbar) }, topBar = {
+        Scaffold(containerColor = MaterialTheme.colorScheme.background, snackbarHost = { SnackbarHost(snackbar) }, topBar = {
             if (!videoFullscreen) TopAppBar(title = { Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold) },
                 navigationIcon = { if (stack.size > 1) IconButton(onClick = vm::back) { Icon(Icons.Default.ArrowBack, "Back") } },
                 actions = {
                     if (route == "library" || route.startsWith("podcast:")) IconButton(onClick = { vm.refresh(if (route.startsWith("podcast:")) route.substringAfter(':') else null) }, enabled = "refresh" !in busy) { Icon(Icons.Default.Refresh, "Refresh feeds") }
                     if (route == "player") IconButton(onClick = { vm.root("queue") }) { Icon(Icons.Default.QueueMusic, "Open queue") }
                     else if (!route.startsWith("settings")) IconButton(onClick = { vm.open("settings") }) { Icon(Icons.Default.Settings, "Settings") }
-                }, colors = TopAppBarDefaults.topAppBarColors(containerColor = ink))
+                }, colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background))
         }, bottomBar = {
             Column {
                 if (player.episodeId != null && route != "player") {
                     val current = episodes.firstOrNull { it.id == player.episodeId }
                     MiniPlayer(player, current?.imageUrl ?: podcasts.firstOrNull { it.id == current?.podcastId }?.imageUrl, { vm.open("player") }, vm::toggle, { vm.root("queue") })
                 }
-                if (route != "player") NavigationBar(containerColor = ink, tonalElevation = 0.dp) {
+                if (route != "player") NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainerLow, tonalElevation = 0.dp) {
                     listOf(Triple("library", "Library", Icons.Default.LibraryMusic), Triple("search", "Search", Icons.Default.Search),
                         Triple("saved", "Saved", Icons.Default.Bookmark), Triple("queue", "Queue", Icons.Default.QueueMusic)).forEach { (key, label, icon) ->
                         NavigationBarItem(selected = stack.first() == key, onClick = { vm.root(key) }, icon = { Icon(icon, label) }, label = { Text(label) })
@@ -255,8 +243,7 @@ private val NOT_CURRENT = PlaybackState()
 }
 
 @Composable private fun MiniPlayer(player: PlaybackState, artwork: String?, onOpen: () -> Unit, onToggle: () -> Unit, onQueue: () -> Unit) {
-    Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(20.dp),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = .12f)), modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)) {
+    Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)) {
         Column {
             Row(Modifier.padding(end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Row(Modifier.weight(1f).clickable(onClickLabel = "Open player", onClick = onOpen).semantics { contentDescription = "Open now playing" }.padding(10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -509,7 +496,7 @@ private val NOT_CURRENT = PlaybackState()
         }
         if(section=="ai") {
         Text("ChatGPT", style = MaterialTheme.typography.titleLarge)
-        Text(if (account.connected) "Connected" else "Not connected", color = if (account.connected) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(if (account.connected) "Connected" else "Not connected", color = if (account.connected) MaterialTheme.extras.success else MaterialTheme.colorScheme.onSurfaceVariant)
         Text(account.message, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text("AI actions send selected transcript text, questions or interests to OpenAI. Suggestions share followed-show titles only if you select that option. Audio transcription runs on your phone. Requests use your plan allowance.", style = MaterialTheme.typography.bodySmall)
         if (account.busy) { LinearProgressIndicator(Modifier.fillMaxWidth()); OutlinedButton(onClick = { vm.graph.account.cancel() }) { Text("Cancel sign-in") } }
@@ -541,7 +528,7 @@ private val NOT_CURRENT = PlaybackState()
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) { RadioButton(selected = prefs.model == spec.id, onClick = { vm.text("model", spec.id) }); Column { Text(spec.title); Text(fileSize(spec.bytes), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) } }
                     when (status?.state) {
-                        "ready" -> Row(verticalAlignment = Alignment.CenterVertically) { Text("Ready", color = MaterialTheme.colorScheme.secondary, modifier = Modifier.weight(1f)); TextButton(onClick = { vm.deleteModel(spec.id) }) { Text("Delete model") } }
+                        "ready" -> Row(verticalAlignment = Alignment.CenterVertically) { Text("Ready", color = MaterialTheme.extras.success, modifier = Modifier.weight(1f)); TextButton(onClick = { vm.deleteModel(spec.id) }) { Text("Delete model") } }
                         "queued", "downloading" -> { LinearProgressIndicator(progress = { ((status.bytes).toFloat() / spec.bytes).coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth()); TextButton(onClick = { vm.pauseModel(spec.id) }) { Text("Pause download") } }
                         else -> OutlinedButton(onClick = { vm.downloadModel(spec.id) }) { Text(if (status?.state in listOf("failed", "paused")) "Resume model download" else "Download model") }
                     }
