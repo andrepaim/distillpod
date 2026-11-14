@@ -88,7 +88,7 @@ private val ACTIVE_DOWNLOAD = listOf("queued", "downloading")
 @Composable internal fun EpisodeRow(ep: EpisodeEntity, podcast: PodcastEntity?, player: PlaybackState, transcriptReady: Boolean,
     captureCount: Int, showPodcast: Boolean, deletionBlock: String?, actions: EpisodeActions, modifier: Modifier = Modifier, retryPreparation: ((String) -> Unit)? = null) {
     val current = player.episodeId == ep.id
-    val playing = current && player.playing
+    val playing = current && player.playRequested
     val position = listeningPosition(ep, player)
     val duration = listeningDuration(ep, player)
     val inProgress = episodeInProgress(ep, player)
