@@ -52,6 +52,8 @@ import dev.distillpod.android.ui.theme.extras
     val transcripts: String? = null,
     val wifiOnly: Boolean? = null,
     val version: String? = null,
+    /** Version name of a newer published release, when one was found. */
+    val update: String? = null,
 )
 
 private data class SettingsRow(val title: String, val detail: String, val icon: ImageVector, val route: String,
@@ -75,7 +77,8 @@ private data class SettingsRow(val title: String, val detail: String, val icon: 
     val access = listOf(
         SettingsRow("Notification access","Playback controls and background progress",Icons.Default.Notifications,"settings:notifications"),
         SettingsRow("Privacy & diagnostics","Share technical reports and report a problem",Icons.Default.BugReport,"settings:diagnostics"),
-        SettingsRow("About DistillPod","Version, licenses and source code",Icons.Default.Info,"settings:about",status.version?.takeIf { it.isNotBlank() }))
+        SettingsRow("About DistillPod","Version, updates, licenses and source code",Icons.Default.Info,"settings:about",
+            if (status.update != null) "Update available" else status.version?.takeIf { it.isNotBlank() }, positive = status.update != null))
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal=DistillSpacing.gutter,vertical=DistillSpacing.item),
         verticalArrangement=Arrangement.spacedBy(DistillSpacing.sm)) {
         SettingsGroup("Your library", library, open)
@@ -161,5 +164,6 @@ internal fun transcriptSettingSummary(model:String,automatic:Boolean):String {
     val podcasts by vm.podcasts.collectAsStateWithLifecycle()
     val subscribed=remember(podcasts){podcasts.count{it.subscribed}}
     val syncText=settingsSyncSummary(state.configured,binding,state.connected,state.uid,pending,System.currentTimeMillis())
-    return SettingsStatus(syncText,subscribed,transcriptSettingSummary(prefs.model,prefs.transcribeOnPlayback),prefs.wifiOnly,version)
+    val updates by vm.updates.collectAsStateWithLifecycle()
+    return SettingsStatus(syncText,subscribed,transcriptSettingSummary(prefs.model,prefs.transcribeOnPlayback),prefs.wifiOnly,version,updates.available?.versionName)
 }

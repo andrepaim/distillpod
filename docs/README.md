@@ -19,6 +19,7 @@ release-note file alone does not mean an APK has been published.
 | Save or transfer a complete portable library | [Backup and restore](android/drive-backup.md) |
 | Sync supported data between installations | [Library sync and protocol compatibility](android/subscription-sync.md) |
 | Make a share card and caption from a moment | [Create a social post](getting-started.md#create-a-social-post), [share-card design](android/social-share-cards.md) |
+| Know when a new release is out and download it | [Update check](android/app-updates.md) |
 | Resolve common waiting, connection and update states | [Troubleshooting](troubleshooting.md) |
 | Understand what stays local or leaves the phone | [Privacy and data handling](privacy.md) |
 
