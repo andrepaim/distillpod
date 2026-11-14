@@ -98,6 +98,7 @@ fun fileSize(bytes: Long): String = if (bytes >= 1_000_000_000) "%.1f GB".format
         route.startsWith("chat:") -> "Ask this episode"
         route.startsWith("research:") -> "Explore the idea"
         route == "recommendations" -> "Find new voices"
+        route.startsWith("preparation:") -> "Show preparation"
         route.startsWith("podcast:") -> podcasts.firstOrNull { it.id == route.substringAfter(':') }?.title ?: "Podcast"
         else -> "Episode"
     }
@@ -142,6 +143,12 @@ fun fileSize(bytes: Long): String = if (bytes >= 1_000_000_000) "%.1f GB".format
                     route.startsWith("post:") -> PostEditorPage(vm, route.substringAfter(':'))
                     route == "saved" -> SavedPage(vm, captures, episodes, podcasts)
                     route == "shows" -> ShowsPage(vm)
+                    route.startsWith("preparation:") -> {
+                        val parts = route.split(':', limit = 3)
+                        podcasts.firstOrNull { it.id == parts.getOrNull(2) && it.subscribed }?.let {
+                            ShowPreparationDetails(vm, it.id, parts[1] == "attention")
+                        }
+                    }
                     route == "settings" || route.startsWith("settings:") -> SettingsPage(vm, preferences, account, models, episodes, route.substringAfter(':', "overview"))
                     route == "backup" -> BackupPage(vm) { vm.open("settings:sync") }
                     route == "player" -> PlayerPage(vm, episodes.firstOrNull { it.id == player.episodeId }, podcasts, fullscreenExitRequest) { videoFullscreen = it }
@@ -184,6 +191,9 @@ private val NOT_CURRENT = PlaybackState()
     val selected = listing.selected
     val visible = listing.visible
     val resume = listing.resume
+    val preparationRows = if (selected?.subscribed == true) showPreparationRows(vm, selected.id) else emptyList()
+    val attentionIds = remember(preparationRows) { preparationRows.filter { it.retryable }.mapTo(mutableSetOf()) { it.episodeId } }
+    var aboutExpanded by rememberSaveable(podcastId) { mutableStateOf(false) }
     val showResume = podcastId == null && filter == "all" && resume != null
     val list = rememberLazyListState()
     // Room/player flows can insert the resume card above the initial show row.
@@ -196,9 +206,17 @@ private val NOT_CURRENT = PlaybackState()
                 Column(Modifier.weight(1f)) { Text(selected.author, color = MaterialTheme.colorScheme.onSurfaceVariant); Text("${listing.episodeCount} episodes", style = MaterialTheme.typography.labelLarge)
                     TextButton(onClick = { if (selected.subscribed) vm.unsubscribe(selected.id) else vm.subscribe(selected.feedUrl) }) { Text(if (selected.subscribed) "Unsubscribe" else "Subscribe") }
                 }
+                if (selected.subscribed) IconButton(onClick = { vm.open("preparation:all:${selected.id}") }) {
+                    Icon(Icons.Default.Settings, "Show preparation settings")
+                }
             }
-            if (selected.subscribed) ShowAutomationControls(vm, selected.id)
-            if (selected.description.isNotBlank()) Text(selected.description, maxLines = 5, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 12.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (attentionIds.isNotEmpty()) TextButton(onClick = { vm.open("preparation:attention:${selected.id}") }) {
+                Text(if (attentionIds.size == 1) "1 episode needs attention" else "${attentionIds.size} episodes need attention")
+            }
+            if (selected.description.isNotBlank()) {
+                TextButton(onClick = { aboutExpanded = !aboutExpanded }) { Text(if (aboutExpanded) "Hide about this show" else "About this show") }
+                if (aboutExpanded) Text(selected.description, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
         if (podcastId == null && filter == "all" && resume != null) item(key = "resume") {
             val current = player.episodeId == resume.id
@@ -244,7 +262,7 @@ private val NOT_CURRENT = PlaybackState()
         // Other rows get a constant idle state so position ticks recompose only the current row.
         items(visible, key = { it.id }) { ep -> EpisodeRow(ep, podcasts.firstOrNull { it.id == ep.podcastId }, if (player.episodeId == ep.id) player else NOT_CURRENT,
             transcripts.firstOrNull { it.episodeId == ep.id }?.state == "ready", captures.count { it.episodeId == ep.id }, podcastId == null,
-            deletionBlocks[ep.id]?.feedback, actions) }
+            deletionBlocks[ep.id]?.feedback, actions, retryPreparation = if (ep.id in attentionIds) vm::retryAutomation else null) }
     }
 }
 
