@@ -17,6 +17,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+import dev.distillpod.android.ui.theme.DistillTheme
 
 /** #179: the Search tab shows library matches from one field, before and alongside the directory. */
 @RunWith(RobolectricTestRunner::class)

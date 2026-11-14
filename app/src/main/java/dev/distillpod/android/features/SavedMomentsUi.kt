@@ -27,7 +27,6 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -35,6 +34,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.distillpod.android.data.*
 import org.json.JSONObject
+import dev.distillpod.android.ui.theme.DistillType
 
 internal data class SavedMomentItem(
     val id: String, val state: String, val excerpt: String, val insight: String?, val quote: String?,
@@ -126,7 +126,7 @@ private fun countLabel(count: Int) = "$count ${if (count == 1) "moment" else "mo
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
         Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(item.insight ?: item.quote?.let { "“$it”" } ?: "Moment at ${timestamp(item.startMs)}", maxLines = 3, overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.titleMedium.copy(fontFamily = FontFamily.Serif, lineHeight = 22.sp), fontWeight = FontWeight.Normal)
+                style = DistillType.quoteCompact)
             if (item.insight != null) item.quote?.let {
                 Text("“$it”", maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }

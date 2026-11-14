@@ -14,9 +14,10 @@ The original Android application (`app/`) shared core (`core/`) and their origin
 - **Nimbus JOSE + JWT**: upstream Connect2id distribution and license notices.
 - **Firebase Android Authentication, Firestore and Storage SDKs**: upstream Firebase Android SDK distributions and their bundled notices.
 - **Android Credential Manager and Google Identity / Play services authentication**: upstream AndroidX and Google SDK distributions and their respective licenses and notices.
+- **Inter and Newsreader**: interface and reading typefaces bundled in `app/src/main/res/font/` under the SIL Open Font License 1.1. They are static instances (Inter 400/500/600/700, Newsreader 400/500/400 italic) subset to Latin, cut from the variable fonts in https://github.com/google/fonts (`ofl/inter`, `ofl/newsreader`) on 14 Nov 2026. The licenses ship in the app as `assets/licenses/Inter-OFL.txt` and `assets/licenses/Newsreader-OFL.txt`.
 - **Manrope**: used by the optional design proposal only, bundled under the SIL Open Font License in `design/icon-proposal/assets/Manrope-OFL.txt`.
 
-The Listening Drop icon paths were authored for DistillPod. Podcast titles, artwork and recordings belong to their publishers and are loaded from their feeds/hosts; they are not application-owned brand assets. No personal podcast libraries, credentials, podcast audio or model binaries are part of the source distribution.
+The Listening Drop and Ember Drop icon paths were authored for DistillPod. Podcast titles, artwork and recordings belong to their publishers and are loaded from their feeds/hosts; they are not application-owned brand assets. No personal podcast libraries, credentials, podcast audio or model binaries are part of the source distribution.
 
 ## Distill confirmation sound
 

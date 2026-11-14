@@ -19,6 +19,7 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import dev.distillpod.android.ui.theme.extras
 
 @Composable internal fun BackupDocumentLaunchers(vm: AppViewModel) {
     BackupExportLauncher(vm.backupDocuments)
@@ -75,10 +76,10 @@ private fun backupSize(bytes: Long): String = if (bytes < 1_000_000) "%.1f KB".f
         }
         saved?.let { last ->
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Icon(Icons.Default.TaskAlt, null, tint = MaterialTheme.colorScheme.secondary)
+                Icon(Icons.Default.TaskAlt, null, tint = MaterialTheme.extras.success)
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text("Last saved file", style = MaterialTheme.typography.titleMedium)
-                    Text(backupDate(last.at), color = MaterialTheme.colorScheme.secondary)
+                    Text(backupDate(last.at), color = MaterialTheme.extras.success)
                     Text(last.name, style = MaterialTheme.typography.bodySmall)
                     Text("${backupSize(last.bytes)} · ${last.podcasts} shows · ${last.episodes} episodes · ${last.moments} moments", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text("File saved and checked. Cloud sync is managed by your file provider.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

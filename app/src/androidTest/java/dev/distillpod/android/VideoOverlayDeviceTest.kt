@@ -10,6 +10,7 @@ import dev.distillpod.android.playback.PlaybackState
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
+import dev.distillpod.android.ui.theme.DistillTheme
 
 /** Deterministic controls and action dispatch; no account, microphone or paid request. */
 class VideoOverlayDeviceTest {

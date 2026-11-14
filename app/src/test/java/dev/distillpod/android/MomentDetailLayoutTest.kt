@@ -22,6 +22,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+import dev.distillpod.android.ui.theme.DistillTheme
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], qualifiers = "w384dp-h823dp-xxhdpi")

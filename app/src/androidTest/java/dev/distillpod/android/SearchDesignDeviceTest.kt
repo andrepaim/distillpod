@@ -33,6 +33,7 @@ import java.io.File
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+import dev.distillpod.android.ui.theme.DistillTheme
 
 @RunWith(AndroidJUnit4::class)
 class SearchDesignDeviceTest {

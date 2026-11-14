@@ -27,6 +27,7 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import dev.distillpod.android.ui.theme.extras
 
 /** All file types stay visible: provider MIME classification must not hide an otherwise valid backup. */
 internal class BackupFilePicker(private val initial: () -> Uri?) : ActivityResultContract<Array<String>, Uri?>() {
@@ -99,7 +100,7 @@ private fun savedDate(at: Long) = DateTimeFormatter.ofPattern("d MMM yyyy · HH:
         }
         latestBackup?.let { latest ->
             Text("Latest available backup", style = MaterialTheme.typography.titleMedium)
-            Text(savedDate(latest.at), color = MaterialTheme.colorScheme.secondary)
+            Text(savedDate(latest.at), color = MaterialTheme.extras.success)
             Text("${latest.shows} shows · ${latest.episodes} episodes · ${latest.moments} moments", color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (latest.local) Text("Recovery copy on this phone", color = MaterialTheme.colorScheme.tertiary)
             TextButton(onClick = { managed { backups.refresh(choose = true) } }, enabled = !busy) { Text("View backup history (${state.history.size})") }
