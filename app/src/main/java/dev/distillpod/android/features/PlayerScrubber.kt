@@ -49,6 +49,7 @@ internal fun momentMarks(captures: List<DistillationEntity>, episodeId: String):
     modifier: Modifier = Modifier,
     moments: List<Long> = emptyList(),
     chapters: List<Long> = emptyList(),
+    loading: Boolean = false,
 ) {
     var dragging by remember { mutableStateOf<Float?>(null) }
     val max = durationMs.coerceAtLeast(1).toFloat()
@@ -97,7 +98,7 @@ internal fun momentMarks(captures: List<DistillationEntity>, episodeId: String):
         )
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Text(timestamp(displayed), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(timeRemaining(durationMs, displayed), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(if (loading && durationMs <= 0) "Loading…" else timeRemaining(durationMs, displayed), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

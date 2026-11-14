@@ -55,6 +55,20 @@ class PlayerActionDockTest {
         assertEquals(listOf("skip:-10000", "toggle", "skip:30000"), calls)
     }
 
+    @Test fun aLoadingStartShowsPauseInsideAProgressRing() {
+        val loading = mutableStateOf(true)
+        compose.setContent {
+            PlayerTransport(playing = loading.value, onToggle = { calls += "toggle" }, onSkip = {}, speed = {}, sleep = {}, loading = loading.value)
+        }
+        compose.onNodeWithTag("player-loading").assertExists()
+        compose.onNodeWithContentDescription("Pause").assert(SemanticsMatcher.expectValue(
+            androidx.compose.ui.semantics.SemanticsProperties.StateDescription, "Loading")).performClick()
+        compose.runOnIdle { loading.value = false }
+        compose.onNodeWithTag("player-loading").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Play").assertHasClickAction()
+        assertEquals(listOf("toggle"), calls)
+    }
+
     @Test fun theShowNameOpensTheShow() {
         var destination: String? = null
         compose.setContent { PlayerShowLink(PodcastEntity("selected-show", "https://example.test/feed", "Selected show")) { destination = it } }

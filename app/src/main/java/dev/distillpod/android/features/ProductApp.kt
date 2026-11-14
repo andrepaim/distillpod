@@ -288,7 +288,7 @@ private val LIBRARY_FILTERS = listOf(Triple("all", "Latest", "Latest"), Triple("
                     // Only the playing card reads live position ticks (#141).
                     val state = if (current) player else NOT_CURRENT
                     ResumeListeningCard(ep, podcasts.firstOrNull { it.id == ep.podcastId }, listeningPosition(ep, state), listeningDuration(ep, state),
-                        current && player.playing, { if (current) vm.open("player") else vm.open("episode:${ep.id}") },
+                        current && player.playRequested, { if (current) vm.open("player") else vm.open("episode:${ep.id}") },
                         // A finished episode restarts from the beginning; toggling an ended player would not.
                         { if (current && !ep.completed) vm.toggle() else vm.play(ep.id) }, modifier, primary)
                 }
@@ -378,7 +378,10 @@ private val LIBRARY_FILTERS = listOf(Triple("all", "Latest", "Latest"), Triple("
                         Text(timeRemaining(player.durationMs, player.positionMs), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
-                IconButton(onClick = onToggle) { Icon(if (player.playing) Icons.Default.Pause else Icons.Default.PlayArrow, if (player.playing) "Pause" else "Resume", Modifier.size(28.dp)) }
+                IconButton(onClick = onToggle) {
+                    if (player.loading) CircularProgressIndicator(Modifier.size(40.dp).testTag("mini-player-loading"), strokeWidth = 2.dp)
+                    Icon(if (player.playRequested) Icons.Default.Pause else Icons.Default.PlayArrow, if (player.playRequested) "Pause" else "Resume", Modifier.size(28.dp))
+                }
                 IconButton(onClick = onQueue) { BadgedBox(badge = { if (player.queue.size > 1) Badge(containerColor = MaterialTheme.colorScheme.primaryContainer, contentColor = MaterialTheme.colorScheme.onPrimaryContainer) { Text(player.queue.size.coerceAtMost(99).toString()) } }) { Icon(Icons.Default.QueueMusic, "Open queue") } }
             }
         }
@@ -394,7 +397,8 @@ private val LIBRARY_FILTERS = listOf(Triple("all", "Latest", "Latest"), Triple("
     if (ep == null) { Empty("Pick an episode", "Choose something from your library to start listening.", "Open library", { vm.root("library") }); return }
     val podcast = podcasts.firstOrNull { it.id == ep.podcastId }
     val live = vm.player.collectAsStateWithLifecycle()
-    val playing by remember { derivedStateOf { live.value.playing } }
+    val playing by remember { derivedStateOf { live.value.playRequested } }
+    val loading by remember { derivedStateOf { live.value.loading } }
     val speed by remember { derivedStateOf { live.value.speed } }
     val durationMs by remember { derivedStateOf { live.value.durationMs } }
     val error by remember { derivedStateOf { live.value.error } }
@@ -437,8 +441,8 @@ private val LIBRARY_FILTERS = listOf(Triple("all", "Latest", "Latest"), Triple("
                         }
                         if (skipped?.episodeId == ep.id) TextButton(onClick = vm::undoAdSkip, modifier = Modifier.align(Alignment.Start)) { Text("Ad skipped · Undo and replay") }
                         error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.fillMaxWidth()) }
-                        PlayerScrubber(position, durationMs, vm::seek, Modifier.padding(top = 4.dp), moments, chapters)
-                        PlayerTransport(playing, vm::toggle, vm::skip, modifier = Modifier.padding(vertical = 8.dp),
+                        PlayerScrubber(position, durationMs, vm::seek, Modifier.padding(top = 4.dp), moments, chapters, loading)
+                        PlayerTransport(playing, vm::toggle, vm::skip, modifier = Modifier.padding(vertical = 8.dp), loading = loading,
                             speed = { PlayerSpeedControl(vm, speed, podcast) },
                             sleep = { SleepTimerControl(sleepTimer, onStart = vm::startSleepTimer, onEndOfEpisode = vm::sleepAtEndOfEpisode,
                                 onExtend = vm::extendSleepTimer, onCancel = vm::cancelSleepTimer) })
@@ -495,6 +499,7 @@ private val LIBRARY_FILTERS = listOf(Triple("all", "Latest", "Latest"), Triple("
     val detailStates by vm.episodeDetails.collectAsStateWithLifecycle()
     val needsDetails = ep.needsSourceDetails()
     LaunchedEffect(ep.id, needsDetails) { if (needsDetails) vm.loadEpisodeDetails(ep.id) }
+    LaunchedEffect(ep.id) { vm.warmEpisodeStream(ep) }
     val metadata = episodeMetadataText(ep, detailStates[ep.id])
     EpisodeDetail(ep, podcast, metadata, listeningPosition(ep, player), remember(vm) { vm.episodeActions(openPlayer = true) },
         vm::open, { vm.loadEpisodeDetails(ep.id) }, Modifier.verticalScroll(rememberScrollState())) {
@@ -743,7 +748,7 @@ internal class QueueUndo(val snackbar: SnackbarHostState, val enqueue: (String, 
         color = if (current) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.background,
         contentColor = if (current) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface) {
         @Composable fun controls() = Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = { if (current && player.playing) onToggle() else onPlay(ep.id) }) { Icon(if (current && player.playing) Icons.Default.Pause else Icons.Default.PlayArrow, "${if (current && player.playing) "Pause" else "Play"} ${ep.title}") }
+            IconButton(onClick = { if (current && player.playRequested) onToggle() else onPlay(ep.id) }) { Icon(if (current && player.playRequested) Icons.Default.Pause else Icons.Default.PlayArrow, "${if (current && player.playRequested) "Pause" else "Play"} ${ep.title}") }
             QueueRowMenu(ep, canMoveUp, canMoveDown, onMove, onRemove)
         }
         val muted = if (current) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = .8f) else MaterialTheme.colorScheme.onSurfaceVariant

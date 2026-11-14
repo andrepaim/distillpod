@@ -20,6 +20,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -46,18 +47,25 @@ internal enum class PlayerSheetTab(val label: String) { UP_NEXT("Up next"), TRAN
     }
 }
 
-/** Speed pill, −10, Play/Pause, +30 and the sleep timer moon. */
+/**
+ * Speed pill, −10, Play/Pause, +30 and the sleep timer moon. [playing] is the play request, so a start
+ * that is still [loading] shows Pause inside a progress ring and a tap cancels it.
+ */
 @Composable internal fun PlayerTransport(playing: Boolean, onToggle: () -> Unit, onSkip: (Long) -> Unit,
-    speed: @Composable () -> Unit, sleep: @Composable () -> Unit, modifier: Modifier = Modifier) {
+    speed: @Composable () -> Unit, sleep: @Composable () -> Unit, modifier: Modifier = Modifier, loading: Boolean = false) {
     Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.widthIn(min = 64.dp), contentAlignment = Alignment.CenterStart) { speed() }
         IconButton(onClick = { onSkip(-10_000) }, modifier = Modifier.size(52.dp)) {
             Icon(Icons.Default.Replay10, "Back 10 seconds", Modifier.size(30.dp))
         }
-        FilledIconButton(onClick = onToggle, shape = CircleShape, modifier = Modifier.size(66.dp),
-            colors = IconButtonDefaults.filledIconButtonColors(containerColor = MaterialTheme.colorScheme.onSurface,
-                contentColor = MaterialTheme.colorScheme.surface)) {
-            Icon(if (playing) Icons.Default.Pause else Icons.Default.PlayArrow, if (playing) "Pause" else "Play", Modifier.size(36.dp))
+        Box(Modifier.size(74.dp), contentAlignment = Alignment.Center) {
+            if (loading) CircularProgressIndicator(Modifier.fillMaxSize().testTag("player-loading"), strokeWidth = 3.dp)
+            FilledIconButton(onClick = onToggle, shape = CircleShape, modifier = Modifier.size(66.dp)
+                .semantics { if (loading) stateDescription = "Loading" },
+                colors = IconButtonDefaults.filledIconButtonColors(containerColor = MaterialTheme.colorScheme.onSurface,
+                    contentColor = MaterialTheme.colorScheme.surface)) {
+                Icon(if (playing) Icons.Default.Pause else Icons.Default.PlayArrow, if (playing) "Pause" else "Play", Modifier.size(36.dp))
+            }
         }
         IconButton(onClick = { onSkip(30_000) }, modifier = Modifier.size(52.dp)) {
             Icon(Icons.Default.Forward30, "Forward 30 seconds", Modifier.size(30.dp))

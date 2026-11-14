@@ -18,7 +18,12 @@ import kotlinx.coroutines.flow.*
 
 data class PlaybackState(val episodeId: String? = null, val title: String = "", val positionMs: Long = 0,
     val durationMs: Long = 0, val playing: Boolean = false, val speed: Float = 1f,
-    val queue: List<String> = emptyList(), val error: String? = null)
+    val queue: List<String> = emptyList(), val error: String? = null,
+    /** Play was requested but the source is still loading, for example while a YouTube stream is resolved. */
+    val loading: Boolean = false) {
+    /** Controls show Pause, and a tap pauses, while playing and while a requested start is loading. */
+    val playRequested: Boolean get() = playing || loading
+}
 class PlaybackEvents {
     val lastSkipped = MutableStateFlow<SkippedMoment?>(null)
     val videoFailure = MutableStateFlow<Pair<String, String>?>(null)
@@ -39,6 +44,16 @@ internal fun swapCurrentSource(player: Player, desired: MediaItem, position: Lon
     player.prepare()
     player.playWhenReady = resume
 }
+
+/**
+ * Buffering with play intent. Without this the player looks idle: a YouTube stream can take more
+ * than 15 seconds to resolve, during which [Player.isPlaying] stays false.
+ */
+internal fun playbackLoading(playWhenReady: Boolean, playbackState: Int, suppressionReason: Int) =
+    playWhenReady && playbackState == Player.STATE_BUFFERING && suppressionReason == Player.PLAYBACK_SUPPRESSION_REASON_NONE
+
+internal fun playbackLoading(player: Player) =
+    playbackLoading(player.playWhenReady, player.playbackState, player.playbackSuppressionReason)
 
 /** Media3 can deliver an initial no-op AUTO_TRANSITION after connecting a controller. */
 internal fun voicePositionChanged(reason: Int, oldId: String?, newId: String?, oldMs: Long, newMs: Long) =
@@ -106,7 +121,8 @@ class PlaybackRepository(private val context: Context, private val db: AppDataba
                 fun refreshState() {
                     mutable.value = PlaybackState(controller.currentMediaItem?.mediaId, controller.mediaMetadata.title?.toString() ?: "",
                         controller.currentPosition.coerceAtLeast(0), controller.duration.coerceAtLeast(0), controller.isPlaying,
-                        controller.playbackParameters.speed, (0 until controller.mediaItemCount).map { controller.getMediaItemAt(it).mediaId }, mutable.value.error)
+                        controller.playbackParameters.speed, (0 until controller.mediaItemCount).map { controller.getMediaItemAt(it).mediaId }, mutable.value.error,
+                        playbackLoading(controller))
                 }
                 controller.addListener(object : Player.Listener {
                     override fun onEvents(player: Player, events: Player.Events) { refreshState() }
@@ -188,7 +204,8 @@ class PlaybackRepository(private val context: Context, private val db: AppDataba
             controller.prepare(); controller.play()
         }
     }
-    suspend fun toggle() { val c = controller(); withContext(Dispatchers.Main) { if (c.isPlaying) c.pause() else { c.prepare(); c.play() } } }
+    /** A tap while a requested start is loading cancels it, matching the Pause the controls show. */
+    suspend fun toggle() { val c = controller(); withContext(Dispatchers.Main) { if (c.isPlaying || playbackLoading(c)) c.pause() else { c.prepare(); c.play() } } }
     suspend fun pause() { val c = controller(); withContext(Dispatchers.Main) { c.pause() } }
     suspend fun seek(positionMs: Long) { val c = controller(); withContext(Dispatchers.Main) { c.seekTo(positionMs.coerceAtLeast(0)) } }
     suspend fun skip(delta: Long) { val c = controller(); withContext(Dispatchers.Main) { c.seekTo((c.currentPosition + delta).coerceAtLeast(0)) } }
