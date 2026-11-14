@@ -2,6 +2,7 @@ package dev.distillpod.android.features
 
 /** Presentation only: never changes account scope or treats a provider write as a cloud upload. */
 internal object DataProtectionGuidance {
+    const val summary = "Sync keeps subscriptions, progress and saved moments current across phones. A backup file is a separate copy you update yourself."
     const val preferences = "local transcription model selection, transcript language and AI model selection"
     const val excluded = "Neither transfers audio downloads, model binaries or account secrets. Set up sound, headphone shortcuts, automatic preparation, network/charging policy, storage and voice rewind again on each phone."
     const val backup = "File backup is a manually updated, independent copy of library text, transcripts, finished analyses, chats and research, saved moments, progress and queue. Its only preferences are " + preferences + ". It complements sync."

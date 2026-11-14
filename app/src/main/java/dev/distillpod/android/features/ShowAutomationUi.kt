@@ -2,13 +2,52 @@ package dev.distillpod.android.features
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.distillpod.android.data.*
 import org.json.JSONArray
+
+private const val AUTOMATION_TITLE = "Prepare new episodes automatically"
+private const val AUTOMATION_DETAIL = "Download new episodes, transcribe, and generate summaries, chapters and ad markers. Transcript text is sent to ChatGPT and uses your plan allowance. Applies to future episodes on this device."
+
+/**
+ * The show page's follow state (#203): a tonal "Following" button whose menu holds Unsubscribe,
+ * confirmed with the same dialog as the feed-problems card. Not following offers Follow directly.
+ */
+@Composable internal fun ShowFollowButton(title: String, subscribed: Boolean, onFollow: () -> Unit, onUnsubscribe: () -> Unit) {
+    var menu by remember { mutableStateOf(false) }
+    var confirm by rememberSaveable { mutableStateOf(false) }
+    if (confirm) UnsubscribeConfirmDialog(title, onConfirm = { confirm = false; onUnsubscribe() }, onDismiss = { confirm = false })
+    if (!subscribed) { FilledTonalButton(onClick = onFollow) { Icon(Icons.Default.Add, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Follow") }; return }
+    Box {
+        FilledTonalButton(onClick = { menu = true }) {
+            Icon(Icons.Default.Check, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Following")
+        }
+        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+            DropdownMenuItem(text = { Text("Unsubscribe") }, onClick = { menu = false; confirm = true })
+        }
+    }
+}
+
+/** Unfollowing syncs to the user's other devices, so it is always confirmed. */
+@Composable internal fun UnsubscribeConfirmDialog(title: String, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(onDismissRequest = onDismiss,
+        title = { Text("Unsubscribe from $title?") },
+        text = { Text("It stops refreshing on your devices. Downloaded episodes, listening progress and saved moments are kept.") },
+        confirmButton = { TextButton(onClick = onConfirm) { Text("Unsubscribe") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } })
+}
 
 @Composable internal fun ShowAutomationControls(vm: AppViewModel, id: String) {
     val shows by vm.automationShows.collectAsStateWithLifecycle()
@@ -19,12 +58,18 @@ import org.json.JSONArray
     val prefs by vm.graph.preferences.collectAsStateWithLifecycle()
     val account by vm.graph.account.state.collectAsStateWithLifecycle()
     val show = shows.firstOrNull { it.podcastId == id }
+    var about by rememberSaveable { mutableStateOf(false) }
+    if (about) LearnMoreSheet(AUTOMATION_TITLE, listOf(AUTOMATION_DETAIL)) { about = false }
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Automatically prepare new episodes", Modifier.weight(1f))
-            Switch(show != null, { vm.automateShow(id, it) })
+        SettingsGroupCard {
+            ListItem(headlineContent = { Text(AUTOMATION_TITLE, style = MaterialTheme.typography.titleSmall) },
+                supportingContent = { Text("Download, transcribe and add insights · uses ChatGPT", style = MaterialTheme.typography.bodySmall) },
+                trailingContent = { Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = { about = true }) { Icon(Icons.Outlined.Info, "About automatic preparation") }
+                    Switch(show != null, { vm.automateShow(id, it) }, Modifier.semantics { contentDescription = AUTOMATION_TITLE })
+                } },
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent, supportingColor = MaterialTheme.colorScheme.onSurfaceVariant))
         }
-        Text("Download new episodes, transcribe, and generate summaries, chapters and ad markers. Transcript text is sent to ChatGPT and uses your plan allowance. Applies to future episodes on this device.", style = MaterialTheme.typography.bodySmall)
         if (show != null) {
             Text(if (!show.initialized) "Waiting for the first successful feed refresh" else if (!prefs.refresh) "Scheduled checking is paused" else "Checks about every ${prefs.refreshHours} hours; Android may delay runs.", style = MaterialTheme.typography.bodySmall)
             TextButton(onClick = { vm.open("settings:storage") }) { Text("Background settings") }

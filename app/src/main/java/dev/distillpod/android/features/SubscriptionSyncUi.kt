@@ -51,10 +51,10 @@ import dev.distillpod.android.sync.SyncBindingEntity
         },{reviewing=false})
     }
     Column(verticalArrangement=Arrangement.spacedBy(10.dp)) {
-        Text("Library sync",style=MaterialTheme.typography.titleLarge)
-        DataProtectionInfo(state.configured, account.contentConfigured, fullScope != null, false, onOpenBackup)
-        Text("Your library works offline. On a new phone, connect the same Google account for supported synced records; restore your backup file for other library text.", style=MaterialTheme.typography.bodySmall)
-        Text(DataProtectionGuidance.binding, style=MaterialTheme.typography.bodySmall)
+        // The top bar already names the page; the long sync vs backup text lives behind Learn more (#203).
+        DataProtectionInfo(state.configured, account.contentConfigured, fullScope != null, false, onOpenBackup,
+            details=listOf("Your library works offline. On a new phone, connect the same Google account for supported synced records; restore your backup file for other library text.",
+                DataProtectionGuidance.binding))
         if(!state.configured) {
             Text("Cloud sync is unavailable in this build.",color=MaterialTheme.colorScheme.onSurfaceVariant)
         } else {

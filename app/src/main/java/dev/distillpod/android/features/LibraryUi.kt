@@ -174,11 +174,7 @@ private val ACTIVE_DOWNLOAD = listOf("queued", "downloading")
     var expanded by rememberSaveable { mutableStateOf(false) }
     var confirm by remember { mutableStateOf<PodcastEntity?>(null) }
     confirm?.let { show ->
-        AlertDialog(onDismissRequest = { confirm = null },
-            title = { Text("Unsubscribe from ${show.title}?") },
-            text = { Text("It stops refreshing on your devices. Downloaded episodes, listening progress and saved moments are kept.") },
-            confirmButton = { TextButton(onClick = { confirm = null; onUnsubscribe(show.id) }) { Text("Unsubscribe") } },
-            dismissButton = { TextButton(onClick = { confirm = null }) { Text("Cancel") } })
+        UnsubscribeConfirmDialog(show.title, onConfirm = { confirm = null; onUnsubscribe(show.id) }, onDismiss = { confirm = null })
     }
     val tint = MaterialTheme.colorScheme.tertiary
     Surface(color = tint.copy(alpha = .07f), shape = RoundedCornerShape(16.dp), border = BorderStroke(1.dp, tint.copy(alpha = .28f)),

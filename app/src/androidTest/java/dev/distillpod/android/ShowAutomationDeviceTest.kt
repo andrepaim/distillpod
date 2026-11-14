@@ -73,7 +73,7 @@ People contribute to their community.
             graph.settings.flag("transcribeOnPlayback", false)
             dao.putPodcast(PodcastEntity(id, server.url("/feed").toString(), "Automatic validation show"))
             open("podcast:$id")
-            compose.onNode(isToggleable() and hasAnySibling(hasText("Automatically prepare new episodes"))).performScrollTo().performClick()
+            compose.onNode(isToggleable() and hasContentDescription("Prepare new episodes automatically")).performScrollTo().performClick()
             await { graph.db.automation().show(id)?.initialized == true }
             assertTrue(graph.db.automation().jobs().none { it.podcastId == id })
             fresh.set(true)

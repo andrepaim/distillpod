@@ -84,14 +84,17 @@ private fun objects(json: String): List<JSONObject> = runCatching { val a = JSON
     val valid = current && row?.revision == transcript?.revision && row?.state == "succeeded"
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Text(ep.title, style = MaterialTheme.typography.titleLarge)
-        Text("Analysis sends transcript parts to ChatGPT and uses your plan allowance. Completed parts are reused after an interruption.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        InsightsPrivacyLine()
         if (!current) TranscriptTools(vm, ep)
         if (!account.connected) OutlinedButton(onClick = { vm.open("settings:ai") }) { Text("Connect ChatGPT") }
         if (row?.state in listOf("queued", "running")) {
             LinearProgressIndicator(Modifier.fillMaxWidth())
             Text("${row!!.completedParts} of ${row.totalParts.takeIf { it > 0 }?.toString() ?: "…"} parts saved")
             OutlinedButton(onClick = { vm.pauseAnalysis(ep.id) }) { Text("Pause analysis") }
-        } else if (!valid) Button(onClick = { vm.analyze(ep.id) }, enabled = current && account.connected && "analysis:${ep.id}" !in busy) { Text(if (row?.revision == transcript?.revision) "Resume analysis" else "Generate episode insights") }
+        } else if (!valid) {
+            InsightsPreview(ep.durationMs)
+            Button(onClick = { vm.analyze(ep.id) }, enabled = current && account.connected && "analysis:${ep.id}" !in busy, modifier = Modifier.fillMaxWidth()) { Text(if (row?.revision == transcript?.revision) "Resume analysis" else "Generate insights") }
+        }
         row?.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         if (valid && row != null) {
             Text("Summary", style = MaterialTheme.typography.titleMedium)
