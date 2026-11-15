@@ -212,7 +212,11 @@ class PodcastRepository(private val db: AppDatabase, private val http: OkHttpCli
                 podcast.lastModified?.let { header("If-Modified-Since", it) }
             }.build()
             http.newCall(request).execute().use { response ->
-                if (response.code == 304) { initializeAutomation(id); dao.putPodcast(podcast.copy(refreshedAt = System.currentTimeMillis(), error = null)); return@use }
+                if (response.code == 304) {
+                    // `podcast` predates the request; a concurrent unsubscribe or edit must survive (#226).
+                    db.withTransaction { initializeAutomation(id); dao.markPodcastRefreshed(id, System.currentTimeMillis()) }
+                    return@use
+                }
                 if (!response.isSuccessful) throw FeedHttpException(response.code)
                 val feed = response.body!!.byteStream().use { parseFeedStream(id, it, response.request.url.toString()) }
                 db.withTransaction {
@@ -226,7 +230,7 @@ class PodcastRepository(private val db: AppDatabase, private val http: OkHttpCli
             }
         } catch (error: Exception) {
             if (error is kotlinx.coroutines.CancellationException) throw error
-            dao.podcast(id)?.let { dao.putPodcast(it.copy(error = feedRefreshError(error))) }
+            dao.setPodcastError(id, feedRefreshError(error))
             throw error
         }
     }
