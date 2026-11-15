@@ -271,8 +271,8 @@ class TranscriptionRepository internal constructor(private val graph: AppGraph,
         fun missing(start: Long) = (covered[start]?.endMs ?: 0) < minOf(start + CHUNK_MS, row.durationMs) - 1
         val pending = dao.distillations().filter { it.episodeId == row.episodeId && it.state == "waiting_transcript" }
         for (saved in pending) {
-            val expanded = dao.momentAttempt(saved.attempt)?.let { JSONObject(it.contextJson).optBoolean("expanded") } ?: false
-            val context = MomentContexts.range(saved.endMs, row.durationMs, expanded)
+            val window = dao.momentAttempt(saved.attempt)?.let { MomentGeneration.window(it.contextJson) } ?: ContextWindow.STANDARD
+            val context = MomentContexts.range(saved.endMs, row.durationMs, window)
             val first = context.startMs / CHUNK_MS * CHUNK_MS
             val last = context.endMs.coerceAtMost(row.durationMs - 1).coerceAtLeast(0) / CHUNK_MS * CHUNK_MS
             var start = first

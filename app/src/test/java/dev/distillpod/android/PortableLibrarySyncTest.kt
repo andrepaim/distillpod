@@ -223,6 +223,22 @@ class PortableLibrarySyncTest {
             assertEquals(source,restored.sourceJson)
         } finally {other.close()}
     }
+    @Test fun `a passage beyond what older installations accept stays local without reverting it`()=fixture { db,sync,cloud ->
+        fun source(end:Long)=org.json.JSONObject().put("version",2).put("generationId","attempt1").put("originalExcerpt","Source words")
+            .put("selectedStartMs",2000).put("selectedEndMs",end).put("passageStart",0).put("passageEnd",0)
+            .put("reviewModel","review").put("generationMs",1).put("reviewMs",2).put("quoteOmitted",true).toString()
+        cloud.protocol=3
+        sync.putMoment(DistillationEntity("m","e",0,10000,"Source words",fingerprint="sha",state="waiting_transcript"))
+        // Older clients reject a passage ending more than 15 s after the tap and would stop syncing (#124).
+        val later=DistillationEntity("m","e",0,10000,"Source words",insight="A takeaway finished later",fingerprint="sha",state="succeeded",sourceJson=source(30000))
+        sync.putMoment(later)
+        assertTrue(SubscriptionSyncCoordinator(db,cloud).run())
+        assertFalse(cloud.rows.containsKey("moment_m"))
+        assertEquals(later,db.library().distillation("m"))
+        sync.putMoment(later.copy(sourceJson=source(25000)))
+        assertTrue(SubscriptionSyncCoordinator(db,cloud).run())
+        assertEquals(source(25000),cloud.rows.getValue("moment_m").payload["sourceJson"])
+    }
     @Test fun `own snapshot acknowledgement preserves in flight generation`()=fixture {db,sync,cloud ->
         val moment=DistillationEntity("m","e",0,10000,"Source words",state="reviewing",attempt="in-flight")
         sync.putMoment(moment);assertTrue(SubscriptionSyncCoordinator(db,cloud).run())

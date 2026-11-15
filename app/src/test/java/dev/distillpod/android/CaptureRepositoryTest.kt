@@ -77,7 +77,7 @@ class CaptureRepositoryTest {
             assertFalse(MomentGeneration.input(first.contextJson).contains(request))
             assertEquals(id,repo.save("ep",10000,true))
             assertEquals(request,JSONObject(db.library().momentAttempt(first.id)!!.contextJson).getJSONObject("_diagnostics").getString("capture_request_id"))
-            repo.improve(id,true)
+            repo.improve(id,dev.distillpod.core.ContextWindow.EARLIER)
             val retry=db.library().momentAttempt(db.library().distillation(id)!!.attempt)!!
             val next=JSONObject(retry.contextJson).getJSONObject("_diagnostics")
             assertNotEquals(first.id,retry.id)

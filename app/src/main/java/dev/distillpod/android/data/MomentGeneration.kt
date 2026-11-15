@@ -44,22 +44,36 @@ object MomentGeneration {
         needsContext is true only when more source could resolve a failed passage/takeaway/relevance check. Do not rewrite the result.
     """.trimIndent()
 
-    fun contextJson(context: MomentContext, revision: String, fingerprint: String, original: String, expanded: Boolean): String = JSONObject()
+    /** `expanded` stays for older readers of backed-up attempts, which treat any expansion as the earlier window. */
+    fun contextJson(context: MomentContext, revision: String, fingerprint: String, original: String, window: ContextWindow): String = JSONObject()
         .put("promptVersion", VERSION).put("captureStartMs", context.capture.startMs).put("captureEndMs", context.capture.endMs)
         .put("contextStartMs", context.range.startMs).put("contextEndMs", context.range.endMs)
-        .put("revision", revision).put("fingerprint", fingerprint).put("originalExcerpt", original).put("expanded", expanded)
+        .put("revision", revision).put("fingerprint", fingerprint).put("originalExcerpt", original)
+        .put("expanded", window != ContextWindow.STANDARD).put("window", window.key)
         .put("spans", JSONArray(context.spans.map { JSONObject().put("id",it.id).put("segment",it.segment)
             .put("startMs",it.startMs).put("endMs",it.endMs).put("text",it.text) })).toString()
 
     fun input(json: String): String = JSONObject(json).apply {
-        remove("_diagnostics");remove("originalExcerpt");remove("fingerprint");remove("revision");remove("expanded");remove("promptVersion")
+        remove("_diagnostics");remove("originalExcerpt");remove("fingerprint");remove("revision");remove("expanded");remove("window");remove("promptVersion")
     }.toString()
+
+    /** Whether two frozen contexts give the model the same source: same audio, transcript revision and spans. */
+    fun sameSource(a: String, b: String): Boolean {
+        val x = runCatching { JSONObject(a) }.getOrNull() ?: return false
+        val y = JSONObject(b)
+        if (!x.has("spans") || !y.has("spans")) return false
+        return listOf("revision", "fingerprint").all { x.optString(it) == y.optString(it) } &&
+            x.getJSONArray("spans").toString() == y.getJSONArray("spans").toString()
+    }
+
+    /** The context window an attempt reads; attempts from before #124 only record `expanded`. */
+    fun window(json: String): ContextWindow = JSONObject(json).let { ContextWindow.of(it.optString("window").ifBlank { null }, it.optBoolean("expanded")) }
 
     fun context(json: String): MomentContext {
         val j = JSONObject(json); val spans = j.getJSONArray("spans")
         require(j.getInt("promptVersion")==VERSION)
         val range=TimeRange(j.getLong("contextStartMs"),j.getLong("contextEndMs"))
-        require(range.endMs-range.startMs<=195_000)
+        require(range.endMs-range.startMs<=MomentContexts.MAX_WINDOW_MS)
         val result=MomentContext(TimeRange(j.getLong("captureStartMs"),j.getLong("captureEndMs")),range, (0 until spans.length()).map { i ->
                 val s = spans.getJSONObject(i)
                 require(s.getInt("id") == i && s.getInt("segment")>=0)
@@ -116,6 +130,20 @@ object MomentGeneration {
         return Review(complete && supported && relevant && kinds.none { it != "quote" } && !needs, quote && "quote" !in kinds, needs, complete, supported, relevant, quote, counts.toMap())
     }
 
+    /**
+     * The moment state for a rejected review (#124). A supported, relevant takeaway whose passage stops
+     * before the idea is complete needs the speech that follows, not a new transcript.
+     */
+    fun rejection(review: Review): String = when {
+        !review.passageComplete && review.takeawaySupported && review.relevant -> "incomplete_passage"
+        review.needsContext -> "needs_context"
+        else -> "unclear_source"
+    }
+    /** Installations before #124 accept passages ending at most this long after the tap. */
+    const val LEGACY_SYNC_FORWARD_MS = 15_000L
+    /** Whether older installations accept this source snapshot; a sync record they reject would stop their sync. */
+    fun syncCompatible(raw: String, captureEnd: Long): Boolean =
+        raw.isBlank() || JSONObject(raw).getLong("selectedEndMs") <= captureEnd + LEGACY_SYNC_FORWARD_MS
     fun source(attempt: MomentAttemptEntity, candidate: Candidate): String {
         val ctx=JSONObject(attempt.contextJson);val p=checkNotNull(candidate.passage)
         return JSONObject().put("version",VERSION).put("generationId",attempt.id).put("originalExcerpt",ctx.getString("originalExcerpt"))
@@ -129,7 +157,7 @@ object MomentGeneration {
         val j=JSONObject(raw);require(j.getInt("version")==VERSION && j.getString("generationId").matches(Regex("[A-Za-z0-9_-]{1,100}")))
         val start=j.getLong("selectedStartMs");val end=j.getLong("selectedEndMs")
         require(start>=0 && end>=start && end-start<=90_000 && start<captureEnd && end>captureStart)
-        require(start >= (captureEnd-180_000).coerceAtLeast(0) && end<=captureEnd+15_000)
+        require(start >= (captureEnd-MomentContexts.MAX_BACKWARD_MS).coerceAtLeast(0) && end<=captureEnd+MomentContexts.MAX_FORWARD_MS)
         require(j.getString("originalExcerpt").length<=24_000 && j.getString("reviewModel").length<=1000)
         require(j.getLong("generationMs")>=0 && j.getLong("reviewMs")>=0)
         require(j.getInt("passageStart")>=0 && j.getInt("passageEnd")>=j.getInt("passageStart"))

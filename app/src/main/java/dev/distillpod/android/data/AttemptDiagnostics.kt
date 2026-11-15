@@ -6,14 +6,15 @@ import java.util.UUID
 
 /** Local provenance only. Never pass this metadata to the AI provider or portable library. */
 internal object AttemptDiagnostics {
-    fun context(expanded:Boolean, request:String?=null, previous:MomentAttemptEntity?=null,
+    fun context(window:dev.distillpod.core.ContextWindow, request:String?=null, previous:MomentAttemptEntity?=null,
         trigger:String="initial",consentEpoch:String?=null):String {
-        if(consentEpoch==null)return JSONObject().put("expanded",expanded).toString()
+        val expanded=window!=dev.distillpod.core.ContextWindow.STANDARD
+        if(consentEpoch==null)return JSONObject().put("expanded",expanded).put("window",window.key).toString()
         val prior=previous?.let { JSONObject(forConsent(it.contextJson,consentEpoch)).optJSONObject("_diagnostics") }
         val metadata=JSONObject().put("version",1).put("consent_epoch",consentEpoch).put("retry_trigger",trigger)
             .put("capture_request_id",request ?: prior?.optString("capture_request_id")?.ifBlank { null })
             .put("previous_attempt_id",previous?.id)
-        return JSONObject().put("expanded",expanded).put("_diagnostics",metadata).toString()
+        return JSONObject().put("expanded",expanded).put("window",window.key).put("_diagnostics",metadata).toString()
     }
     fun forConsent(original:String,epoch:String?):String = JSONObject(original).apply {
         if(epoch==null || optJSONObject("_diagnostics")?.optString("consent_epoch")!=epoch)remove("_diagnostics")

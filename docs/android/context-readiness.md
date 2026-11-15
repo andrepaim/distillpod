@@ -20,9 +20,9 @@ The real-producer regression repeats 165 unchanged transcriptUpdated callbacks f
 
 - `context_schema_version=1`; identity uses #37 UUID-only correlation. No content-derived identifier, transcript text, audio, URL/title, prompt, candidate or exception message is accepted.
 - `transcript_source`: publisher, whisper, online, missing, other. Online remains excluded from context exactly as before.
-- `outcome`: queued, waiting_auth, transcript_required, no_speech, needs_context, review_source, superseded, episode_missing, cancelled, failed.
-- `context_reason`: ready, coverage_missing, source_mismatch, revision_mismatch, empty_speech, empty_context, oversized, invalid_bounds, episode_missing, superseded, cancelled, internal.
-- `expanded_context`, `backward_window_ms` (120000 or 180000), and `forward_window_ms` (15000) describe configured windows, before duration clamping. `duration_known` says whether episode or matching complete transcript supplies an end boundary.
+- `outcome`: queued, waiting_auth, transcript_required, no_speech, needs_context, review_source, unchanged_context, superseded, episode_missing, cancelled, failed.
+- `context_reason`: ready, coverage_missing, source_mismatch, revision_mismatch, empty_speech, empty_context, oversized, invalid_bounds, unchanged_context, episode_missing, superseded, cancelled, internal. `unchanged_context` (#124) means an explicit expansion produced exactly the source spans of the attempt it expanded, so no AI request was made.
+- `expanded_context`, `backward_window_ms` (120000 or 180000), and `forward_window_ms` (15000, or 75000 for the later window, #124) describe configured windows, before duration clamping. `duration_known` says whether episode or matching complete transcript supplies an end boundary.
 - `coverage_measured` gates `missing_duration_ms`, the requested interval length minus the union of available coverage intersections. `coverage_complete` is the existing source-matching coverage predicate. A mismatching source may have zero missing duration but still be incomplete for this preparation. Coverage is not transcript accuracy or semantic quality.
 - `segments_measured` gates input, usable and boundary counts. Unknown measurements have zero counts and false measurement flags.
 - `input_segment_count` is the overlapping DAO window input. `excluded_left_count` and `excluded_right_count` independently count segments crossing each edge. A segment crossing both counts in both categories; summing them is not a count of unique discarded segments.

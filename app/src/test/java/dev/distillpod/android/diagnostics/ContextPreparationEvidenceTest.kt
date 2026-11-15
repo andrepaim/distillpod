@@ -30,7 +30,13 @@ class ContextPreparationEvidenceTest {
         assertEquals(false,evidence.fields(0)["coverage_measured"])
         assertEquals(false,evidence.fields(0)["segments_measured"])
         assertEquals(false,evidence.fields(0)["frozen_context"])
-        evidence.expanded=true
+        evidence.window=dev.distillpod.core.ContextWindow.EARLIER
+        assertEquals(true,evidence.fields(0)["expanded_context"])
         assertEquals(180000L,evidence.fields(0)["backward_window_ms"])
+        assertEquals(15000L,evidence.fields(0)["forward_window_ms"])
+        evidence.window=dev.distillpod.core.ContextWindow.LATER
+        assertEquals(true,evidence.fields(0)["expanded_context"])
+        assertEquals(120000L,evidence.fields(0)["backward_window_ms"])
+        assertEquals(75000L,evidence.fields(0)["forward_window_ms"])
     }
 }
