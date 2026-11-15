@@ -224,6 +224,26 @@ class PlaybackRepository(private val context: Context, private val db: AppDataba
         val to = at + offset; if (to in 0 until c.mediaItemCount) c.moveMediaItem(at, to)
     } }
     suspend fun clear() { val c = controller(); withContext(Dispatchers.Main) { clearPlaybackQueue(c) } }
+    internal suspend fun removeShowFromQueue(podcastId: String) {
+        val episodes = db.library().episodesForPodcast(podcastId).mapTo(hashSetOf()) { it.id }
+        if (episodes.isEmpty()) return
+        val c = controller()
+        withContext(Dispatchers.Main) {
+            val current = c.currentMediaItem?.mediaId
+            // Remove every other matching item before current, so Media3 cannot advance to one of them.
+            for (index in (c.mediaItemCount - 1) downTo 0) {
+                val id = c.getMediaItemAt(index).mediaId
+                if (id in episodes && id != current) c.removeMediaItem(index)
+            }
+            if (current in episodes) {
+                for (index in (c.mediaItemCount - 1) downTo 0) {
+                    if (c.getMediaItemAt(index).mediaId in episodes) c.removeMediaItem(index)
+                }
+            }
+        }
+        // Drain departure snapshots before the repository resets the affected listening fields.
+        awaitQueueWritesProcessed()
+    }
     suspend fun synchronizeRestoredQueue() {
         val episodes = db.library().episodes().associateBy { it.id }
         val podcasts = db.library().podcasts().associateBy { it.id }

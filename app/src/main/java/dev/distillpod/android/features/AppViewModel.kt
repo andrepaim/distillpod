@@ -177,7 +177,12 @@ class AppViewModel(val graph: AppGraph, private val saved: SavedStateHandle) : V
     fun deleteDownload(id: String) = action("delete:$id") { graph.media.deleteDownload(id) }
     fun clearUnusedAudio() = action("storage") { messages.send("Cleared ${fileSize(graph.media.clearUnusedAudio())} of unused audio. Queued and active files were kept.") }
     fun markCompleted(id: String, complete: Boolean) = action("completed:$id") { graph.portableSync.markCompleted(id, complete) }
-    fun unsubscribe(id: String) = action("unsubscribe:$id") { graph.automation.setEnabled(id, false); graph.podcasts.unsubscribe(id); root("library") }
+    fun unsubscribe(id: String) = queueActions.submit {
+        graph.playback.removeShowFromQueue(id)
+        graph.automation.setEnabled(id, false)
+        graph.podcasts.unsubscribe(id)
+        root("library")
+    }
     fun downloadModel(id: String) = action("model:$id") { graph.jobs.model(id); notificationPrompt.workStarted() }
     fun pauseModel(id: String) = action("pause-model:$id") { graph.jobs.pauseModel(id) }
     fun deleteModel(id: String) = action("model:$id") { graph.media.deleteModel(id) }

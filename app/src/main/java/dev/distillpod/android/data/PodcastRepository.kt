@@ -289,7 +289,22 @@ class PodcastRepository(private val db: AppDatabase, private val http: OkHttpCli
     private suspend fun initializeAutomation(id: String) {
         db.automation().initialize(id)
     }
-    suspend fun unsubscribe(id: String) { dao.podcast(id)?.let { subscriptionSync.follow(it.copy(subscribed = false)); onSubscriptionChanged() } }
+    suspend fun unsubscribe(id: String) {
+        val changed = db.withTransaction {
+            val show = dao.podcast(id)?.takeIf { it.subscribed } ?: return@withTransaction false
+            val episodeIds = dao.episodesForPodcast(id).mapTo(hashSetOf()) { it.id }
+            val queue = dao.queue().map { it.episodeId }
+            val remaining = queue.filterNot { it in episodeIds }
+            if (remaining != queue) dev.distillpod.android.sync.CollectionSync(db).queue(remaining)
+            dao.resetShowListening(id)
+            dao.playerSession()?.takeIf { it.episodeId in episodeIds }?.let {
+                dao.putPlayerSession(it.copy(episodeId = null))
+            }
+            subscriptionSync.follow(show.copy(subscribed = false))
+            true
+        }
+        if (changed) onSubscriptionChanged()
+    }
     suspend fun exportOpml(): String = dev.distillpod.core.writeOpml(dao.podcasts().filter { it.subscribed }.map { dev.distillpod.core.OpmlFeed(it.title, it.feedUrl) })
     suspend fun importOpml(xml: String): Int {
         val feeds = dev.distillpod.core.parseOpml(xml)
