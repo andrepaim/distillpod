@@ -35,15 +35,13 @@ class AppViewModel(val graph: AppGraph, private val saved: SavedStateHandle) : V
     val captures = dao.observeDistillations().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     val localTranscripts = dao.observeTranscripts().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     val onlineTranscripts = dao.observeOnlineTranscripts().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
-    val transcripts = combine(localTranscripts, onlineTranscripts, episodes) { local, online, library ->
+    /** Transcripts kept readable while an explicit local replacement is prepared (#229). */
+    val previousTranscripts = dao.observePreviousTranscripts().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    val transcripts = combine(localTranscripts, previousTranscripts, onlineTranscripts, episodes) { local, previous, online, library ->
         val localById = local.associateBy { it.episodeId }
+        val previousById = previous.associateBy { it.episodeId }
         val onlineById = online.associateBy { it.episodeId }
-        library.mapNotNull { ep ->
-            val row = localById[ep.id]
-            val cached = onlineById[ep.id]?.takeIf { it.matches(ep) }
-            if (row?.state == "ready" && row.source != "online" && row.fingerprint == ep.mediaFingerprint) row
-            else cached?.transcript(ep) ?: row
-        }
+        library.mapNotNull { ep -> effectiveTranscript(ep, localById[ep.id], previousById[ep.id], onlineById[ep.id]) }
     }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     val audioDeletionBlocks = combine(episodes, localTranscripts, dao.observeQueue(), graph.media.active.changes) {
         library, local, queue, _ ->
@@ -207,6 +205,8 @@ class AppViewModel(val graph: AppGraph, private val saved: SavedStateHandle) : V
         else graph.updateChecker.announce(update)
     }
     fun text(key: String, value: String) = action("settings") { graph.settings.text(key, value) }
+    /** Waiting transcripts without saved chunks go on when the newly selected model is already downloaded (#225). */
+    fun selectModel(id: String) = action("settings") { graph.settings.text("model", id); graph.transcription.resumeSelectedModel() }
     fun createPost(momentId: String) = action("create-post:$momentId") {
         open("post:${graph.socialResults.create(momentId)}")
     }

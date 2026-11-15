@@ -12,7 +12,8 @@ data class TranscriptHit(val episodeId: String, val matches: Int, val startMs: L
  * Finds passages in the transcripts stored on this phone (#179); nothing leaves the device.
  *
  * Only segments of an existing transcript row's current revision are read, so superseded revisions
- * and transcripts that were deleted or suppressed (#60) never match. Every term must occur in the
+ * and transcripts that were deleted or suppressed (#60) never match. While an explicit local
+ * replacement is not ready, the transcript it replaces is searched instead (#229). Every term must occur in the
  * same passage. The segment table is scanned in rowid ranges: a newer query cancels a stale one
  * between ranges, and no schema change or derived index is needed. Ranges are not one snapshot: a
  * transcript rewritten during a scan can be missed or counted from its previous revision until the
@@ -25,8 +26,10 @@ class TranscriptSearch(private val db: AppDatabase, private val rowsPerRange: Lo
         val patterns = terms.map(::likePatterns)
         val where = patterns.joinToString(" AND ") { variants -> variants.joinToString(" OR ", "(", ")") { "s.text LIKE ? ESCAPE '\\'" } }
         val sql = "SELECT s.episodeId, COUNT(*), MIN(s.startMs), s.endMs, s.text FROM segments s " +
-            "CROSS JOIN transcripts t ON t.episodeId=s.episodeId AND t.revision=s.revision " +
-            "WHERE s.rowid BETWEEN ? AND ? AND $where GROUP BY s.episodeId"
+            "CROSS JOIN transcripts t ON t.episodeId=s.episodeId " +
+            "LEFT JOIN previous_transcripts p ON p.episodeId=s.episodeId " +
+            "WHERE s.revision=(CASE WHEN p.revision IS NOT NULL AND t.state<>'ready' THEN p.revision ELSE t.revision END) " +
+            "AND s.rowid BETWEEN ? AND ? AND $where GROUP BY s.episodeId"
         val bounds = db.query(SimpleSQLiteQuery("SELECT MIN(rowid), MAX(rowid) FROM segments")).use { cursor ->
             if (cursor.moveToFirst() && !cursor.isNull(0)) cursor.getLong(0)..cursor.getLong(1) else null
         } ?: return@withContext emptyList()
