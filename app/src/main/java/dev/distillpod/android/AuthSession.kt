@@ -41,7 +41,8 @@ class AuthSession(private val read: () -> String?, private val write: (String?) 
             val keys = http.newCall(keysRequest).execute().use { r -> check(r.isSuccessful); JWKSet.parse(r.body!!.string()) }
             val identity = verifyIdentity(response.getString("id_token"), keys, callback.clientId, attempt.nonce)
             if (attempt.clientId != null) {
-                val original = read()?.let(::JSONObject)
+                // A vault that can no longer be opened holds nothing to protect: replace it.
+                val original = runCatching { read()?.let(::JSONObject) }.getOrNull()
                 if (original != null && original.optString("client_id") == attempt.clientId) {
                     require(original.getString("subject") == identity.subject) { "Sign in with the previously connected ChatGPT account" }
                 }
@@ -59,7 +60,7 @@ class AuthSession(private val read: () -> String?, private val write: (String?) 
         }
     }
     @Synchronized fun accessToken(forceRefresh: Boolean = false): String {
-        val saved = JSONObject(read() ?: throw ReauthorizationRequired())
+        val saved = JSONObject(readSaved() ?: throw ReauthorizationRequired())
         if (forceRefresh || saved.getLong("expires_at") <= clock() + 30000) {
             val renewed = try {
                 token(FormBody.Builder().add("grant_type", "refresh_token").add("client_id", saved.getString("client_id"))
@@ -96,12 +97,12 @@ class AuthSession(private val read: () -> String?, private val write: (String?) 
     fun <T> withAccessToken(request: (String) -> T): T {
         val (token, identity) = synchronized(this) {
             val token = accessToken()
-            val current = JSONObject(read() ?: throw ReauthorizationRequired())
+            val current = JSONObject(readSaved() ?: throw ReauthorizationRequired())
             token to (current.optString("client_id") to current.optString("subject"))
         }
         return try { request(token) } catch (error: ReauthorizationRequired) {
             val refreshed = synchronized(this) {
-                val current = JSONObject(read() ?: throw ReauthorizationRequired())
+                val current = JSONObject(readSaved() ?: throw ReauthorizationRequired())
                 if ((current.optString("client_id") to current.optString("subject")) != identity)
                     throw IllegalStateException("The account connection changed. Try again.")
                 accessToken(forceRefresh = current.optString("access_token") == token)
@@ -109,6 +110,8 @@ class AuthSession(private val read: () -> String?, private val write: (String?) 
             request(refreshed)
         }
     }
+    /** An unreadable vault (e.g. an invalidated Keystore key) needs a new sign-in, like a missing one. */
+    private fun readSaved(): String? = try { read() } catch (error: Exception) { throw ReauthorizationRequired() }
     @Synchronized fun disconnect() { pending = null; write(null); onCredentialsChanged(false) }
     private class InvalidRefreshGrant : IllegalStateException()
     private fun token(body: FormBody): JSONObject = http.newCall(Request.Builder().url(authBase.resolve("api/accounts/oauth/token")!!).post(body).build()).execute().use { r ->
