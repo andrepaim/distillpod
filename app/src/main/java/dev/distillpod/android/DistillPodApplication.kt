@@ -123,7 +123,7 @@ class AppGraph internal constructor(val context: Context, val scope: CoroutineSc
                     if (!pending) dev.distillpod.android.work.SocialPostJobs.enqueue(context,row.id,post.attempt)
                 }
             }
-            jobs.configureNetworkPolicy(); dev.distillpod.android.work.UpdateJobs.configure(context, settings.updates.first().enabled)
+            jobs.configureNetworkPolicy(); jobs.configureRefresh(); dev.distillpod.android.work.UpdateJobs.configure(context, settings.updates.first().enabled)
             transcription.recover(); ready.complete(Unit)
             automation.observe()
             captures.resumeSaved()

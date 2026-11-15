@@ -50,18 +50,19 @@ class AppJobs(private val context: Context) {
             if (info.constraints.requiredNetworkType != network) manager.updateWork(request(kind, target, prefs, info)).get()
         }
         context.appGraph.transcription.configureNetworkPolicy()
-        configureRefresh()
     } }
     fun refresh(id:String = "") { manager.enqueueUniqueWork(if(id.isBlank())"refresh" else "refresh:$id", ExistingWorkPolicy.KEEP, request("refresh", id, Preferences(wifiOnly = false))) }
     /**
      * Runs on every process start and Settings change. An unchanged schedule is kept as is; updating it
      * each time would bump the request generation and rewrite WorkManager state for nothing.
+     * Feed checks are small and run on any network; the Wi-Fi / unmetered setting limits downloads only (#233).
+     * A schedule registered by an earlier version with an unmetered constraint is updated in place.
      */
     suspend fun configureRefresh() {
         val prefs = context.appGraph.settings.flow.first()
         if (!prefs.refresh) { manager.cancelUniqueWork("refresh-periodic"); return }
         val interval = TimeUnit.HOURS.toMillis(prefs.refreshHours.toLong())
-        val network = if (prefs.wifiOnly) NetworkType.UNMETERED else NetworkType.CONNECTED
+        val network = NetworkType.CONNECTED
         val current = withContext(Dispatchers.IO) { manager.getWorkInfosForUniqueWork("refresh-periodic").get() }.firstOrNull { !it.state.isFinished }
         val unchanged = current != null && current.periodicityInfo?.repeatIntervalMillis == interval &&
             current.constraints.requiredNetworkType == network
