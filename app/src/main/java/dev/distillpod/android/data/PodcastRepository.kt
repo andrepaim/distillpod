@@ -296,6 +296,7 @@ class PodcastRepository(private val db: AppDatabase, private val http: OkHttpCli
             val queue = dao.queue().map { it.episodeId }
             val remaining = queue.filterNot { it in episodeIds }
             if (remaining != queue) dev.distillpod.android.sync.CollectionSync(db).queue(remaining)
+            dev.distillpod.android.sync.PortableLibrarySync(db).recordShowListeningReset(id)
             dao.resetShowListening(id)
             dao.playerSession()?.takeIf { it.episodeId in episodeIds }?.let {
                 dao.putPlayerSession(it.copy(episodeId = null))

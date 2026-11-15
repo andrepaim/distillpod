@@ -44,6 +44,28 @@ class PortableLibrarySync(private val db:AppDatabase,private val isolatedDemo:Bo
         }
         if(queued)changed()
     }
+    /** Enqueue existing protocol-compatible resets with the same transaction as the local unfollow. */
+    internal suspend fun recordShowListeningReset(showId: String) {
+        sync.putView(SyncViewEntity(unsubscribedShowKey(showId)))
+        val binding = sync.binding() ?: return
+        for (ep in dao.episodesForPodcast(showId)) {
+            val progress = "progress_${ep.id}"
+            val completion = "completion_${ep.id}"
+            suspend fun known(key: String) = sync.remote(binding.uid,binding.generation,key) != null ||
+                sync.forKey(binding.uid,binding.generation,key).isNotEmpty()
+            val payload = identity(ep) ?: continue
+            val resetSession = UNSUBSCRIBE_SESSION_PREFIX + UUID.randomUUID()
+            if (ep.positionMs != 0L || ep.lastPlayedAt != 0L || known(progress)) {
+                enqueue(progress,payload + mapOf("positionMs" to "0","sessionId" to resetSession,
+                    "deviceId" to "unsubscribe","deviceSequence" to "0"))
+                sync.view(progress)?.let { sync.putView(it.copy(active=false)) }
+            }
+            if (ep.completed || known(completion)) {
+                enqueue(completion,payload + mapOf("completed" to "false","origin" to "explicit","sessionId" to resetSession))
+            }
+        }
+    }
+
     suspend fun putMoment(value:DistillationEntity) {
         db.withTransaction {dao.putDistillation(value);recordMoment(value)}
         changed()
@@ -154,10 +176,22 @@ class PortableLibrarySync(private val db:AppDatabase,private val isolatedDemo:Bo
     }
 }
 
+private const val UNSUBSCRIBE_SESSION_PREFIX = "unsubscribe_"
+private fun unsubscribedShowKey(showId: String) = "__unsubscribed_show_$showId"
+
+internal suspend fun AppDatabase.suppressUnsubscribedReplay(ep: EpisodeEntity): Boolean =
+    library().podcast(ep.podcastId)?.subscribed == false && sync().view(unsubscribedShowKey(ep.podcastId)) != null
+
 internal suspend fun projectPortable(db:AppDatabase,r:CloudSubscription,force:Boolean=false) {
     val dao=db.library();val p=r.payload;val oldView=db.sync().view(r.key) ?: SyncViewEntity(r.key)
     if(r.deleted) {dao.deleteDistillation(r.key.removePrefix("moment_"));db.sync().putView(oldView.copy(version=r.version));return}
     val ep=restoreEpisodeIdentity(db,p)
+    val listening = r.key.startsWith("progress_") || r.key.startsWith("completion_")
+    val reset = p["sessionId"]?.startsWith(UNSUBSCRIBE_SESSION_PREFIX) == true
+    if (listening && !reset && ep.lastPlayedAt == 0L && db.suppressUnsubscribedReplay(ep)) {
+        db.sync().putView(oldView.copy(version=r.version,active=false))
+        return
+    }
     when {
         r.key.startsWith("progress_")-> {
             if(oldView.active && !force) {
@@ -171,7 +205,8 @@ internal suspend fun projectPortable(db:AppDatabase,r:CloudSubscription,force:Bo
                 }
                 return
             }
-            dao.putEpisode(ep.copy(positionMs=p.getValue("positionMs").toLong()))
+            val position = p.getValue("positionMs").toLong()
+            dao.putEpisode(ep.copy(positionMs=position,lastPlayedAt=if (reset && position == 0L) 0L else ep.lastPlayedAt))
         }
         r.key.startsWith("completion_")->dao.markCompleted(ep.id,p.getValue("completed").toBooleanStrict())
         else-> {
