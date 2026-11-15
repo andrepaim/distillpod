@@ -30,6 +30,8 @@ import org.json.JSONObject
 
 private const val CHUNK_MS = 120_000L
 internal const val MAX_FOREGROUND_START_ATTEMPTS = 5
+/** Settled transcript states whose text a local replacement keeps readable (#229); never stale audio or running work. */
+private val KEPT_STATES = listOf("ready", "partial", "failed", "paused", "waiting_model")
 enum class TranscriptStage { ONLINE, PUBLISHER, DOWNLOADING, CHECKING_MODEL, DECODING, STARTING, TRANSCRIBING, SAVING, QUEUED }
 data class TranscriptProgress(val revision: String, val run: String, val stage: TranscriptStage,
     val workedMs: Long, val durationMs: Long, val chunkStartMs: Long = 0, val chunkEndMs: Long = 0)
@@ -82,8 +84,27 @@ class TranscriptionRepository internal constructor(private val graph: AppGraph,
         if (running[id]?.isActive == true) return@withLock
         val old = dao.transcript(id)
         if (old?.state == "paused") return@withLock
-        if (old != null && old.fingerprint == ep.mediaFingerprint && old.state != "stale") return@withLock
+        // A transcript waiting for a model goes on once a model it may use is ready (#225).
+        if (old?.state == "waiting_model" && old.fingerprint == ep.mediaFingerprint &&
+            !modelReady(continuing(old, graph.settings.flow.first()).model)) return@withLock
+        if (old != null && old.fingerprint == ep.mediaFingerprint && old.state !in listOf("stale", "waiting_model")) return@withLock
         prepareInternal(id, forceLocal = false, allowOnline = true)
+    }
+
+    private fun modelFile(id: String) = File(graph.media.modelsDirectory, "$id.bin")
+    private suspend fun modelReady(id: String) = dao.model(id)?.state == "ready" && modelFile(id).isFile
+    private suspend fun hasSavedChunks(row: TranscriptEntity) = row.processedMs > 0 || dao.coverage(row.episodeId, row.revision).isNotEmpty()
+
+    /**
+     * The settings a resumed local revision uses. Saved chunks keep the model and language the revision
+     * started with (#228). A revision with nothing saved adopts the current settings, but switches to
+     * another model only once that model is ready (#225).
+     */
+    private suspend fun continuing(row: TranscriptEntity, prefs: Preferences): TranscriptEntity {
+        if (row.source != "whisper" || row.model == prefs.model && row.language == prefs.language) return row
+        if (hasSavedChunks(row)) return row
+        if (row.model != prefs.model && !modelReady(prefs.model)) return row
+        return row.copy(model = prefs.model, language = prefs.language)
     }
 
     private suspend fun prepareInternal(id: String, forceLocal: Boolean, allowOnline: Boolean) {
@@ -94,8 +115,10 @@ class TranscriptionRepository internal constructor(private val graph: AppGraph,
         val onlineAllowed = allowOnline && !replacingOnline
         if (onlineAllowed && EpisodeTextResolver(graph.db).online(id) != null) return
         if (!allowOnline && old?.lookupOnline == true) dao.putTranscriptAt(old.copy(lookupOnline = false), TranscriptWriteSite.PREPARE_LOOKUP)
+        // A local revision continues with its own model and language: new settings apply to new
+        // transcripts, and replacing saved text takes an explicit Transcribe locally again (#228).
         if (!forceLocal && old != null && old.state != "stale" && old.fingerprint == ep.mediaFingerprint &&
-            (old.source == "publisher" && old.state != "partial" || old.model == prefs.model && old.language == prefs.language)) {
+            (old.source == "publisher" && old.state != "partial" || old.source == "whisper")) {
             if (old.state == "ready") return
             if (old.state in listOf("processing", "queued") && live.value[id]?.let { it.revision == old.revision && it.stage != TranscriptStage.QUEUED } == true) return
             // Exhaustion can publish paused before the old worker delivers its result.
@@ -105,7 +128,7 @@ class TranscriptionRepository internal constructor(private val graph: AppGraph,
                 manager.cancelAllWorkByTag(revisionTag(old)).result.get()
             }
             live.update { it - id }
-            val current = old.copy(state = "queued", error = null, lookupOnline = onlineAllowed && prefs.onlineTranscripts)
+            val current = continuing(old, prefs).copy(state = "queued", error = null, lookupOnline = onlineAllowed && prefs.onlineTranscripts)
             dao.putTranscriptAt(current, TranscriptWriteSite.PREPARE_EXISTING); dispatch(current); return
         }
         live.update { it - id }
@@ -114,14 +137,24 @@ class TranscriptionRepository internal constructor(private val graph: AppGraph,
         val publisher = !forceLocal && !ep.transcriptUrl.isNullOrBlank() && !(old?.source == "publisher" && old.state == "partial")
         val current = TranscriptEntity(id, UUID.randomUUID().toString(), ep.mediaFingerprint, if (publisher) "publisher" else prefs.model,
             prefs.language, if (publisher) "publisher" else "whisper", durationMs = ep.durationMs, lookupOnline = onlineAllowed && prefs.onlineTranscripts, replaceOnline = replacingOnline || !allowOnline)
-        graph.db.withTransaction { dao.deleteSegments(id); dao.deleteCoverage(id); dao.putTranscriptAt(current, TranscriptWriteSite.PREPARE_NEW) }
+        // An explicit local replacement keeps the current text readable until it is ready (#229):
+        // the first replaced transcript stays, an unfinished replacement in between does not.
+        val kept = graph.db.withTransaction {
+            val kept = if (!forceLocal) null else dao.previousTranscript(id)?.takeIf { it.matches(ep) }
+                ?: old?.takeIf { it.source != "online" && it.state in KEPT_STATES && it.processedMs > 0 && it.fingerprint == ep.mediaFingerprint }
+                    ?.let(PreviousTranscriptEntity::of)
+            if (kept == null) dao.deleteTranscriptText(id)
+            else { dao.deleteSegmentsExcept(id, kept.revision); dao.deleteCoverageExcept(id, kept.revision); dao.putPreviousTranscript(kept) }
+            dao.putTranscriptAt(current, TranscriptWriteSite.PREPARE_NEW)
+            kept
+        }
         for(moment in dao.distillations().filter {it.episodeId==id && it.state=="waiting_transcript"}) {
             dao.momentAttempt(moment.attempt)?.let { attempt ->
                 graph.diagnostics.event("transcription.dependency",moment.id,reason="transcript_required",related=current.revision,
                     correlation=graph.captures.correlation(attempt,current.revision))
             }
         }
-        dao.analysis(id)?.takeIf { it.revision == old?.revision && old.source != "online" }?.let { dao.putAnalysis(it.copy(state = "stale", error = "Transcript changed. Analyze the current source again.")) }
+        dao.analysis(id)?.takeIf { it.revision == old?.revision && old.source != "online" && it.revision != kept?.revision }?.let { dao.putAnalysis(it.copy(state = "stale", error = "Transcript changed. Analyze the current source again.")) }
         dispatch(current)
     }
     suspend fun pause(id: String) = controls.withLock {
@@ -134,7 +167,20 @@ class TranscriptionRepository internal constructor(private val graph: AppGraph,
         running[id]?.cancel()
         manager.cancelAllWorkByTag("transcript:$id")
     }
-    suspend fun resumeModel(id: String) { dao.transcripts().filter { it.model == id && it.state == "waiting_model" }.forEach { prepare(it.episodeId) } }
+    /**
+     * A newly ready model resumes the transcripts waiting for it, and those without saved chunks when it
+     * is the selected model (#225). Saved chunks keep waiting for their own model (#228).
+     */
+    suspend fun resumeModel(id: String) {
+        val selected = graph.settings.flow.first().model
+        dao.transcripts().filter { it.state == "waiting_model" &&
+            (it.model == id || id == selected && it.source == "whisper" && !hasSavedChunks(it)) }.forEach { prepare(it.episodeId) }
+    }
+    /** Selecting a model that is already downloaded resumes the transcripts that may switch to it. */
+    suspend fun resumeSelectedModel() {
+        val selected = graph.settings.flow.first().model
+        if (modelReady(selected)) resumeModel(selected)
+    }
     suspend fun recover() {
         if (!TranscriptionService.isRunning) pending().forEach { enqueue(it, nextStart(it) ?: 0) }
     }
@@ -304,7 +350,7 @@ class TranscriptionRepository internal constructor(private val graph: AppGraph,
                 row = current.copy(lookupOnline = false)
                 dao.putTranscriptAt(row, TranscriptWriteSite.ONLINE_LOOKUP)
             }
-            val modelPath = File(graph.media.modelsDirectory, "${row.model}.bin")
+            val modelPath = modelFile(row.model)
             if (dao.model(row.model)?.state != "ready" || !modelPath.isFile) {
                 // Cancellation alone cannot retract an already-dispatched database write.
                 // Serialize with pause/prepare and never restore the snapshot held by this pass.
@@ -329,10 +375,7 @@ class TranscriptionRepository internal constructor(private val graph: AppGraph,
                     report(TranscriptStage.CHECKING_MODEL)
                     val model = graph.media.verifiedModel(row.model)
                     val start = nextStart(row) ?: run {
-                        graph.db.withTransaction {
-                            dao.putTranscriptAt(row.copy(state = "ready"), TranscriptWriteSite.CHUNK_COMPLETE)
-                            dao.deselectOnline(id)
-                        }
+                        publishCompleted(id, revision, null, row)
                         graph.captures.transcriptUpdated(id); return@audio TranscriptOutcome.COMPLETED
                     }
                     val decodeStart = (start - 2000).coerceAtLeast(0)
@@ -383,12 +426,7 @@ class TranscriptionRepository internal constructor(private val graph: AppGraph,
                     if (current.revision == revision && current.state !in listOf("paused", "stale")) {
                         val next = nextStart(current)
                         require(next != start) { "This audio window could not be decoded completely. Completed chunks are saved." }
-                        if (next == null) {
-                            graph.db.withTransaction {
-                                dao.putTranscriptAt(current.copy(state = "ready", processedMs = duration), TranscriptWriteSite.TRANSCRIPT_COMPLETE)
-                                dao.deselectOnline(id)
-                            }
-                        }
+                        if (next == null) publishCompleted(id, revision, duration, current)
                         if(next!=null && execution.reschedule) enqueue(current, next)
                     }
                 } finally {
@@ -456,6 +494,23 @@ class TranscriptionRepository internal constructor(private val graph: AppGraph,
         return outcome
     }
 
+    /** A fully covered local revision becomes the episode's ready transcript. */
+    internal suspend fun publishCompleted(id: String, revision: String, processedMs: Long?, snapshot: TranscriptEntity? = null) = graph.db.withTransaction {
+        val row = snapshot ?: dao.transcript(id)?.takeIf { it.revision == revision } ?: return@withTransaction
+        dao.putTranscriptAt(row.copy(state = "ready", processedMs = processedMs ?: row.processedMs),
+            if (processedMs == null) TranscriptWriteSite.CHUNK_COMPLETE else TranscriptWriteSite.TRANSCRIPT_COMPLETE)
+        dao.deselectOnline(id)
+        retireReplaced(id, revision)
+    }
+
+    /** The ready replacement takes over: the text kept readable meanwhile, and analysis of it, retire (#229). */
+    private suspend fun retireReplaced(id: String, revision: String) {
+        val previous = dao.previousTranscript(id)?.takeIf { it.revision != revision } ?: return
+        dao.deleteSegmentsExcept(id, revision); dao.deleteCoverageExcept(id, revision); dao.deletePreviousTranscript(id)
+        dao.analysis(id)?.takeIf { it.revision == previous.revision }
+            ?.let { dao.putAnalysis(it.copy(state = "stale", error = "Transcript changed. Analyze the current source again.")) }
+    }
+
     private suspend fun published(ep: EpisodeEntity, row: TranscriptEntity): Boolean {
         val url = ep.transcriptUrl ?: return false
         val input = withContext(Dispatchers.IO) { graph.http.newCall(Request.Builder().url(publicHttpUrl(url)).build()).execute().use { response ->
@@ -476,6 +531,7 @@ class TranscriptionRepository internal constructor(private val graph: AppGraph,
             dao.putSegments(segments.mapIndexedNotNull { index, s -> if (s.range.startMs >= duration) null else SegmentEntity(ep.id, row.revision, s.range.startMs, s.range.endMs.coerceAtMost(duration), s.text, index) })
             dao.putCoverage(CoverageEntity(ep.id, row.revision, 0, minOf(end, duration)))
             dao.putTranscriptAt(current.copy(source = "publisher", model = "publisher", state = if (end >= duration) "ready" else "partial", durationMs = duration, processedMs = minOf(end, duration), error = null), TranscriptWriteSite.PUBLISHER_COMPLETE)
+            if (end >= duration) retireReplaced(ep.id, row.revision)
         }
         return true
     }
