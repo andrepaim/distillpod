@@ -66,7 +66,11 @@ class EmberSettingsTest {
         compose.onNodeWithText("Unsubscribe").performClick()
         assertEquals(emptyList<String>(), calls)
         compose.onNodeWithText("Unsubscribe from Synthetic Show?").assertIsDisplayed()
-        compose.onNodeWithText("It stops refreshing on your devices. Downloaded episodes, listening progress and saved moments are kept.").assertIsDisplayed()
+        compose.onNodeWithText("This removes the show's episodes from the queue and clears its listening history and progress. Downloads, transcripts, and saved moments are kept.").assertIsDisplayed()
+        compose.onNodeWithText("Cancel").performClick()
+        assertEquals(emptyList<String>(), calls)
+        compose.onNodeWithText("Following").performClick()
+        compose.onNodeWithText("Unsubscribe").performClick()
         compose.onNode(hasText("Unsubscribe") and hasAnyAncestor(isDialog())).performClick()
         assertEquals(listOf("unsubscribe"), calls)
     }

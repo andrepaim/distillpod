@@ -49,9 +49,12 @@ internal suspend fun projectCollection(db:AppDatabase,r:CloudSubscription,force:
             restoreEpisodeIdentity(db,r.payload)
         }
         else-> {
-            val ids=CollectionRecord.items(r.payload.getValue("items"))
-            check(ids.all {db.library().episode(it)!=null}) {"Queue episode metadata is missing; sync will retry."}
+            val remoteIds=CollectionRecord.items(r.payload.getValue("items"))
+            val episodes = remoteIds.associateWith { db.library().episode(it) }
+            check(episodes.values.none { it == null }) {"Queue episode metadata is missing; sync will retry."}
             val localIds=db.library().queue().map {it.episodeId}
+            // An explicit later local re-add is allowed; only implicit cloud resurrection is suppressed.
+            val ids=remoteIds.filter { id -> id in localIds || !db.suppressUnsubscribedReplay(episodes.getValue(id)!!) }
             val view=db.sync().view(r.key)
             if(!force && view?.active==true) {
                 val visiblePublic=localIds.filter {id->db.library().episode(id)?.let {PortableLibrarySync(db,isolatedDemo=true).queueIdentity(it)}!=null}

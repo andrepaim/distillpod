@@ -48,7 +48,7 @@ import dev.distillpod.android.ui.theme.FilterChip
 @Composable internal fun UnsubscribeConfirmDialog(title: String, onConfirm: () -> Unit, onDismiss: () -> Unit) {
     AlertDialog(onDismissRequest = onDismiss,
         title = { Text("Unsubscribe from $title?") },
-        text = { Text("It stops refreshing on your devices. Downloaded episodes, listening progress and saved moments are kept.") },
+        text = { Text("This removes the show's episodes from the queue and clears its listening history and progress. Downloads, transcripts, and saved moments are kept.") },
         confirmButton = { TextButton(onClick = onConfirm) { Text("Unsubscribe") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } })
 }

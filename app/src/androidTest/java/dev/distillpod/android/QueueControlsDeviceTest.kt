@@ -243,4 +243,85 @@ class QueueControlsDeviceTest {
 
 
 
+    @Test fun unsubscribeRemovesTheNextEpisodeAndPersistsOnlyTheOtherShow() = runBlocking<Unit> {
+        check(Build.HARDWARE.contains("ranchu") || Build.FINGERPRINT.contains("generic")) { "Use a disposable emulator" }
+        val context = compose.activity.applicationContext
+        val graph = context.appGraph
+        graph.ready.await()
+        val dao = graph.db.library()
+        val oldQueue = dao.queue()
+        val oldSession = dao.playerSession()
+        val oldPreparation = graph.settings.flow.first().transcribeOnPlayback
+        val tag = "unsubscribe-" + UUID.randomUUID()
+        val removed = "$tag-removed"
+        val kept = "$tag-kept"
+        val ids = listOf("$tag-current","$tag-next","$tag-other","$tag-far")
+        val file = File(context.cacheDir,"$tag.wav")
+        val pcm = dev.distillpod.core.readWhisperWave(
+            InstrumentationRegistry.getInstrumentation().context.assets.open("jfk.wav").use { it.readBytes() })
+        val samples = java.nio.ByteBuffer.allocate(pcm.size*2).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+        pcm.forEach { samples.putShort((it*32768).toInt().coerceIn(-32768,32767).toShort()) }
+        dev.distillpod.core.PcmWaveWriter(file,16000,1).use { writer ->
+            repeat(20) { writer.append(java.nio.ByteBuffer.wrap(samples.array())) }
+            writer.finish()
+        }
+        val duration = pcm.size.toLong()*20*1000/16000
+        suspend fun awaitQueue(expected: List<String>) {
+            withTimeout(15_000) {
+                graph.playback.state.first { it.queue == expected }
+                while (dao.queue().map { it.episodeId } != expected) delay(50)
+            }
+        }
+        try {
+            graph.settings.flag("transcribeOnPlayback",false)
+            withTimeout(10_000) { graph.preferences.first { !it.transcribeOnPlayback } }
+            graph.playback.pause()
+            graph.playback.clear()
+            awaitQueue(emptyList())
+            dao.putPodcast(PodcastEntity(removed,"https://example.test/$removed","Synthetic Removed"))
+            dao.putPodcast(PodcastEntity(kept,"https://example.test/$kept","Synthetic Kept"))
+            ids.forEachIndexed { index,id ->
+                dao.putEpisode(EpisodeEntity(id,if(index in 1..2) removed else kept,id,"Synthetic $index",
+                    "https://example.test/$id",localFile=file.absolutePath,downloadState="downloaded",
+                    durationMs=duration,positionMs=8000,completed=index==1,lastPlayedAt=1234))
+            }
+            graph.playback.play(ids[0],2000)
+            graph.playback.pause()
+            ids.drop(1).forEach { graph.playback.enqueue(it) }
+            awaitQueue(ids)
+            val vm = withContext(Dispatchers.Main) {
+                ViewModelProvider(compose.activity,AppViewModel.factory(graph))[AppViewModel::class.java]
+            }
+            withContext(Dispatchers.Main) { vm.unsubscribe(removed) }
+            withTimeout(15_000) { while (dao.podcast(removed)?.subscribed != false) delay(50) }
+            awaitQueue(listOf(ids[0],ids[3]))
+            assertEquals(ids[0],graph.playback.state.value.episodeId)
+            assertEquals(8000L,dao.episode(ids[3])!!.positionMs)
+            val engine = withContext(Dispatchers.Main) { fixtureServicePlayer(ids[0]) }
+            withContext(Dispatchers.Main) { engine.seekToNextMediaItem() }
+            withTimeout(10_000) { graph.playback.state.first { it.episodeId==ids[3] } }
+            for (id in ids.subList(1,3)) {
+                val episode = dao.episode(id)!!
+                assertEquals(0L,episode.positionMs)
+                assertEquals(0L,episode.lastPlayedAt)
+                assertFalse(episode.completed)
+                assertEquals(file.absolutePath,episode.localFile)
+            }
+            assertTrue(file.exists())
+        } finally {
+            graph.playback.pause()
+            graph.playback.clear()
+            awaitQueue(emptyList())
+            graph.db.withTransaction {
+                dao.deletePodcast(removed)
+                dao.deletePodcast(kept)
+                dao.clearQueue()
+                dao.insertQueue(oldQueue)
+                if (oldSession!=null) dao.putPlayerSession(oldSession)
+            }
+            graph.settings.flag("transcribeOnPlayback",oldPreparation)
+            file.delete()
+        }
+    }
+
 }

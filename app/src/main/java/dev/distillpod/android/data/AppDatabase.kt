@@ -152,6 +152,8 @@ interface LibraryDao {
     @Query("UPDATE episodes SET positionMs=:position, durationMs=CASE WHEN :duration>0 THEN :duration ELSE durationMs END, completed=CASE WHEN :complete THEN 1 ELSE completed END, lastPlayedAt=:at WHERE id=:id")
     suspend fun progress(id: String, position: Long, duration: Long, complete: Boolean, at: Long)
     @Query("UPDATE episodes SET completed=:complete WHERE id=:id") suspend fun markCompleted(id: String, complete: Boolean)
+    @Query("UPDATE episodes SET positionMs=0, completed=0, lastPlayedAt=0 WHERE podcastId=:id")
+    suspend fun resetShowListening(id: String)
     /** Fill source metadata that is still missing; never replace known values or touch listening state. */
     @Query("UPDATE episodes SET publishedAt=CASE WHEN publishedAt<=0 AND :publishedAt>0 THEN :publishedAt ELSE publishedAt END, description=CASE WHEN description='' THEN :description ELSE description END WHERE id=:id")
     suspend fun fillMissingEpisodeMetadata(id: String, publishedAt: Long, description: String)
