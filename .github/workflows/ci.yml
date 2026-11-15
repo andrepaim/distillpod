@@ -281,6 +281,7 @@ jobs:
             /tmp/distillpod-startup56-device.log
             /tmp/distillpod-ci-phase-timings.jsonl
             /tmp/distillpod-ci-failure-state.jsonl
+            /tmp/distillpod-logcat-*.txt
           retention-days: 14
 
   android:
