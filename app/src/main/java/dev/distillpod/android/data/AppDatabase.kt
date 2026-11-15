@@ -237,6 +237,8 @@ interface LibraryDao {
     @Query("SELECT * FROM messages ORDER BY createdAt,id") suspend fun messages(): List<MessageEntity>
     @Query("SELECT * FROM messages WHERE id=:id") suspend fun message(id: String): MessageEntity?
     @Upsert suspend fun putMessage(value: MessageEntity)
+    @Query("UPDATE messages SET fingerprint=:to WHERE episodeId=:id AND fingerprint=:from")
+    suspend fun retagMessages(id: String, from: String, to: String)
     @Query("UPDATE messages SET state='failed', error=:error WHERE id=:id AND role='assistant' AND state IN ('queued','running')")
     suspend fun pauseReply(id: String, error: String): Int
     @Query("SELECT * FROM research ORDER BY createdAt DESC") fun observeResearch(): Flow<List<ResearchEntity>>
