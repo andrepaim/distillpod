@@ -85,8 +85,14 @@ internal class PlaybackSnapshotWriter(private val db: AppDatabase,
                     if (!value.suppressQueue) {
                         val imported = importedQueue.value == known
                         if (imported) importedQueue.value = null
-                        val decision = queuePersistenceDecision(lastQueue, known, dao.queue().map { it.episodeId },
+                        val persisted = dao.queue().map { it.episodeId }
+                        val decision = queuePersistenceDecision(lastQueue, known, persisted,
                             imported, value.queueBoundary, value.queueRestored)
+                        // Queue boundaries are rare; progress ticks are not logged (#251).
+                        if (decision.write || value.queueBoundary || value.queueRestored) QueueLog.i {
+                            "persist ${if (decision.write) "write" else "keep"} player=${QueueLog.ids(known)} previous=${lastQueue?.let(QueueLog::ids)} " +
+                                "persisted=${QueueLog.ids(persisted)} imported=$imported boundary=${value.queueBoundary} restored=${value.queueRestored}"
+                        }
                         if (decision.write) persistQueue(known)
                         lastQueue = decision.baseline
                     }
