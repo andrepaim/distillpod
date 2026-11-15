@@ -27,38 +27,46 @@ data class UpdateState(val enabled: Boolean = true, val available: AvailableUpda
 
 /**
  * Reads the project's GitHub Releases, prereleases included, without an account. Only the release list and
- * the small build-info.json of one release are fetched; the APK itself is downloaded by the browser.
+ * the small build-info.json of a few releases are fetched; the APK itself is downloaded by the browser.
  * See docs/android/app-updates.md.
  */
 class ReleaseFeed(private val http: OkHttpClient, private val releasesUrl: String = RELEASES_URL,
     private val trusted: (String) -> Boolean = ::isProjectRelease) {
 
     /**
-     * The newest published release with an APK and a matching build record, or null when there is none.
+     * The published release with an APK, a matching build record and the highest `versionCode`, or null when
+     * there is none. GitHub lists releases newest created first, so a backport of an older line can precede the
+     * newest build; the build records of the first [MAX_CANDIDATES] eligible releases are compared.
      * Throws [IOException] when GitHub cannot be read, so a failed check never looks like "up to date".
      */
     suspend fun newest(): AvailableUpdate? = withContext(Dispatchers.IO) {
         val releases = try { JSONArray(get(releasesUrl, API_LIMIT)) } catch (e: org.json.JSONException) { throw IOException("Unreadable release list", e) }
-        for (index in 0 until releases.length()) {
-            val release = releases.optJSONObject(index) ?: continue
-            if (release.optBoolean("draft", true)) continue
-            val tag = release.optString("tag_name")
-            val version = TAG.matchEntire(tag)?.groupValues?.get(1) ?: continue
-            val assets = release.optJSONArray("assets") ?: continue
-            fun asset(name: String) = (0 until assets.length()).mapNotNull(assets::optJSONObject)
-                .firstOrNull { it.optString("name") == name }?.optString("browser_download_url")?.takeIf(trusted)
-            // A release whose assets are still uploading has no APK or build record yet.
-            val apk = asset("distillpod-$version.apk") ?: continue
-            val info = asset("build-info.json") ?: continue
-            val page = release.optString("html_url").takeIf(trusted) ?: continue
-            val record = runCatching { JSONObject(get(info, INFO_LIMIT)) }.getOrNull() ?: continue
+        (0 until releases.length()).asSequence()
+            .mapNotNull { index -> releases.optJSONObject(index)?.let(::candidate) }
+            .take(MAX_CANDIDATES)
+            .mapNotNull { it() }
+            .maxByOrNull { it.versionCode }
+    }
+
+    /** An eligible release, as a deferred read of its build record, or null when it cannot be offered. */
+    private fun candidate(release: JSONObject): (() -> AvailableUpdate?)? {
+        if (release.optBoolean("draft", true)) return null
+        val tag = release.optString("tag_name")
+        val version = TAG.matchEntire(tag)?.groupValues?.get(1) ?: return null
+        val assets = release.optJSONArray("assets") ?: return null
+        fun asset(name: String) = (0 until assets.length()).mapNotNull(assets::optJSONObject)
+            .firstOrNull { it.optString("name") == name }?.optString("browser_download_url")?.takeIf(trusted)
+        // A release whose assets are still uploading has no APK or build record yet.
+        val apk = asset("distillpod-$version.apk") ?: return null
+        val info = asset("build-info.json") ?: return null
+        val page = release.optString("html_url").takeIf(trusted) ?: return null
+        return read@{
+            val record = runCatching { JSONObject(get(info, INFO_LIMIT)) }.getOrNull() ?: return@read null
             if (record.optString("applicationId") != APPLICATION_ID || record.optString("tag") != tag ||
-                record.optString("versionName") != version) continue
+                record.optString("versionName") != version) return@read null
             val code = record.optLong("versionCode", 0)
-            if (code <= 0) continue
-            return@withContext AvailableUpdate(version, code, page, apk, summary(release.optString("body")))
+            if (code <= 0) null else AvailableUpdate(version, code, page, apk, summary(release.optString("body")))
         }
-        null
     }
 
     private fun get(url: String, limit: Long): String {
@@ -78,6 +86,8 @@ class ReleaseFeed(private val http: OkHttpClient, private val releasesUrl: Strin
         const val RELEASES_URL = "https://api.github.com/repos/andrepaim/distillpod/releases?per_page=10"
         const val API_LIMIT = 1_000_000L
         const val INFO_LIMIT = 16_000L
+        /** At most this many eligible releases have their build record read per check. */
+        const val MAX_CANDIDATES = 5
         const val SUMMARY_MAX = 280
         private val TAG = Regex("v(\\d+\\.\\d+\\.\\d+(?:-[0-9A-Za-z.]+)?)")
 
