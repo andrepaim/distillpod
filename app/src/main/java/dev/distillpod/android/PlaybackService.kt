@@ -14,6 +14,7 @@ import androidx.media3.session.MediaLibraryService.MediaLibrarySession
 import dev.distillpod.android.auto.AutoLibraryCallback
 import androidx.room.withTransaction
 import dev.distillpod.android.data.*
+import dev.distillpod.android.playback.QueueLog
 import dev.distillpod.android.playback.mediaItem
 import dev.distillpod.android.playback.swapCurrentSource
 import java.io.File
@@ -63,8 +64,12 @@ class PlaybackService : MediaLibraryService() {
     private var sleepTimer: dev.distillpod.android.playback.SleepTimerController? = null
     private var volumeBoost: dev.distillpod.android.playback.VolumeBoost? = null
     private var widget: dev.distillpod.android.widget.NowPlayingWidgetUpdater? = null
+    /** Distinguishes service instances in the queue log (#251). */
+    private val instance = Integer.toHexString(System.identityHashCode(this))
+    private fun mediaIds(player: Player) = (0 until player.mediaItemCount).map { player.getMediaItemAt(it).mediaId }
     override fun onCreate() {
         super.onCreate()
+        QueueLog.i { "service $instance created" }
         applicationContext.appGraph.diagnostics.event("playback.service_started")
         val graph = applicationContext.appGraph
         // Observe projection before any Next event, including hosts using the legacy media browser.
@@ -247,6 +252,7 @@ class PlaybackService : MediaLibraryService() {
                     val ids=(0 until player.mediaItemCount).map {player.getMediaItemAt(it).mediaId}
                     if(ids!=observedQueue) {
                         if(!restoring && !applyingCloudChoice)queueRevision++
+                        QueueLog.i { "service $instance playlist ${QueueLog.ids(observedQueue)} -> ${QueueLog.ids(ids)}; revision=$queueRevision restoring=$restoring applyingCloudChoice=$applyingCloudChoice" }
                         observedQueue=ids
                     }
                     snapshot(queueBoundary=true)
@@ -295,14 +301,22 @@ class PlaybackService : MediaLibraryService() {
                         playbackReady.await()
                         // Read the current persisted choice only after older local writes finish.
                         // A queued Room emission can otherwise resurrect an order already cleared.
+                        var persisted=emptyList<String>()
                         val restored=graph.db.withTransaction {
-                            val items=dao.queue().mapNotNull {entry->dao.episode(entry.episodeId)?.let {ep->mediaItem(ep,dao.podcast(ep.podcastId))}}
+                            val entries=dao.queue()
+                            persisted=entries.map {it.episodeId}
+                            val items=entries.mapNotNull {entry->dao.episode(entry.episodeId)?.let {ep->mediaItem(ep,dao.podcast(ep.podcastId))}}
                             items to (items.firstOrNull()?.let {dao.episode(it.mediaId)?.positionMs}?:0L)
                         }
                         val prepared = graph.media.preparePlaybackItems(restored.first)
                         withContext(Dispatchers.Main.immediate) {
-                            if(!restoring && pendingCloudChoice==null && queueRevision==message.revision &&
-                                player.mediaItemCount==0 && restored.first.isNotEmpty()) {
+                            val drop=listOfNotNull("restoring".takeIf {restoring}, "pending cloud choice".takeIf {pendingCloudChoice!=null},
+                                "revision ${message.revision}!=$queueRevision".takeIf {queueRevision!=message.revision},
+                                "player holds ${QueueLog.ids(mediaIds(player))}".takeIf {player.mediaItemCount!=0},
+                                "no restorable items".takeIf {restored.first.isEmpty()})
+                            QueueLog.i { "service $instance restore persisted=${QueueLog.ids(persisted)} items=${QueueLog.ids(restored.first.map {it.mediaId})} " +
+                                if(drop.isEmpty())"applied" else "dropped: ${drop.joinToString("; ")}" }
+                            if(drop.isEmpty()) {
                                 restoring=true
                                 try {player.setMediaItems(prepared,0,restored.second);player.prepare()}
                                 finally {restoring=false}
@@ -310,6 +324,7 @@ class PlaybackService : MediaLibraryService() {
                             }
                         }
                     } catch(error:Exception) {
+                        QueueLog.i { "service $instance restore failed: ${error.javaClass.name}" }
                         currentCoroutineContext().ensureActive()
                         graph.diagnostics.failure("playback",error)
                     }
@@ -370,6 +385,7 @@ class PlaybackService : MediaLibraryService() {
                                 }
                                 (0 until player.mediaItemCount).map {player.getMediaItemAt(it).mediaId}.filter {it in data.first} to later
                             }
+                            QueueLog.i { "service $instance cloud choice desired=${QueueLog.ids(data.third)} player=${QueueLog.ids(actual)} laterEdit=$laterEdit" }
                             // A local edit accepted after the cloud command supersedes that choice.
                             if(laterEdit)graph.collectionSync.queue(actual)
                             persistence.lastQueue=actual
@@ -409,6 +425,8 @@ class PlaybackService : MediaLibraryService() {
                     mediaItem(it.copy(localFile = null), restore.second[it.podcastId])
                 })
             }, apply = { (restore, prepared) ->
+                QueueLog.i { "service $instance startup restore persisted=${QueueLog.ids(restore.first.map { it.id })} " +
+                    if (player.mediaItemCount != 0) "skipped: player holds ${QueueLog.ids(mediaIds(player))}" else if (restore.first.isEmpty()) "nothing to restore" else "applied" }
                 if (player.mediaItemCount == 0 && restore.first.isNotEmpty()) {
                     val index = restore.first.indexOfFirst { it.id == restore.third?.episodeId }.coerceAtLeast(0)
                     player.setMediaItems(prepared, index, restore.first[index].positionMs)
@@ -419,12 +437,19 @@ class PlaybackService : MediaLibraryService() {
                 release = { restoring = false; playbackReady.complete(Unit) })
             snapshot(queueRestored=true)
             // A failed startup read is retried once through the queue writer, which re-reads Room.
-            if (!restored) writes.trySend(RestoreQueue(queueRevision))
+            if (!restored) {
+                QueueLog.i { "service $instance startup restore failed; retrying at revision $queueRevision" }
+                writes.trySend(RestoreQueue(queueRevision))
+            }
             while (isActive) { snapshot(player.playbackState == Player.STATE_ENDED); delay(1000) }
         }
         scope.launch {
             dao.observeQueue().collect {entries->
-                if(restoring || pendingCloudChoice!=null || player.mediaItemCount!=0 || entries.isEmpty())return@collect
+                val skip=listOfNotNull("restoring".takeIf {restoring}, "pending cloud choice".takeIf {pendingCloudChoice!=null},
+                    "player holds ${QueueLog.ids(mediaIds(player))}".takeIf {player.mediaItemCount!=0}, "empty".takeIf {entries.isEmpty()})
+                QueueLog.i { "service $instance observed persisted=${QueueLog.ids(entries.map {it.episodeId})} " +
+                    if(skip.isEmpty())"requesting restore at revision $queueRevision" else "no restore: ${skip.joinToString("; ")}" }
+                if(skip.isNotEmpty())return@collect
                 // Restore through the same owner as persistence and explicit cloud choices.
                 // The actor re-reads Room; it never applies this possibly stale emission directly.
                 writes.trySend(RestoreQueue(queueRevision))
@@ -515,6 +540,7 @@ class PlaybackService : MediaLibraryService() {
     }
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? = session
     override fun onDestroy() {
+        QueueLog.i { "service $instance destroyed; player holds ${session?.player?.let { QueueLog.ids(mediaIds(it)) }}" }
         applicationContext.appGraph.diagnostics.event("playback.service_stopped")
         applicationContext.appGraph.activeFiles.playback = null
         applicationContext.appGraph.activeFiles.queued = emptySet()
