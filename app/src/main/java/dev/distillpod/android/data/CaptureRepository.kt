@@ -267,7 +267,7 @@ class CaptureRepository(private val db: AppDatabase, private val ai: AiGateway, 
         return current
     }
 
-    suspend fun run(id: String) {
+    suspend fun run(id: String, stopReason: () -> Int? = { null }) {
         val (saved,acquiredAttempt,claimedEvidence)=db.withTransaction {
             val current=dao.distillation(id)?.takeIf {it.state=="queued"} ?: return@withTransaction null
             val acquired=dao.momentAttempt(current.attempt)?.let { attempt ->
@@ -380,6 +380,8 @@ class CaptureRepository(private val db: AppDatabase, private val ai: AiGateway, 
             onPortableChanged()
         } catch(error: Exception) {
             val alreadyTerminal=terminalRecorded
+            // Record why an interruption happened: WorkManager's stop reason is set before it cancels the worker.
+            if(error is CancellationException)summary.stopped(dev.distillpod.android.diagnostics.WorkStopReasons.category(runCatching {stopReason()}.getOrNull()))
             // Preserve observed failure even if the ownership-storage check itself fails.
             if(!terminalRecorded) {
                 if(error is ObsoleteMomentSource)summary.discarded() else summary.fail(when {
