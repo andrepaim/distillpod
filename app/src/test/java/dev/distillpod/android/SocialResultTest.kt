@@ -10,6 +10,7 @@ import dev.distillpod.android.SocialFixtures.cardArtifact
 import dev.distillpod.android.SocialFixtures.png
 import dev.distillpod.android.data.*
 import dev.distillpod.android.sharing.*
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.json.*
 import org.junit.Assert.*
@@ -188,7 +189,7 @@ class SocialResultTest {
         }
     }
 
-    @Test fun `backup roundtrips card covers and infographic images and refuses missing bytes`()=runBlocking {
+    @Test fun `backup roundtrips card covers and infographic images and refuses a bundle missing referenced bytes`()=runBlocking {
         val source=db(); val target=db()
         try {
             seed(source); val a=assets(); val b=assets()
@@ -217,9 +218,65 @@ class SocialResultTest {
             for (hash in listOf(image,cover,oldCover)) assertArrayEquals(a.read(hash),b.read(hash))
             try { LibraryBackup(source).export(); fail("missing asset store accepted") } catch(_:IllegalArgumentException) {}
             val entries=PostBackupBundle.unpack(bytes)
+            // A bundle whose library still names images it does not carry is refused, by this and earlier versions.
             try { backup.preview(entries.first.inputStream()); fail("missing images accepted") } catch(_:IllegalArgumentException) {}
-            File(a.file(cover).path).delete()
-            try { LibraryBackup(source,a).export(); fail("missing cover accepted") } catch(_:Exception) {}
+        } finally {source.close();target.close()}
+    }
+
+    @Test fun `unreadable post images are left out of the backup and their posts restore without them`()=runBlocking {
+        val source=db(); val target=db()
+        try {
+            seed(source); val a=assets(); val b=assets()
+            val image=a.put(png(1080,1350)); val cover=a.put(png(CardContent.COVER_PX,CardContent.COVER_PX))
+            val oldCover=a.put(SocialFixtures.bitmap(CardContent.COVER_PX,CardContent.COVER_PX,0xFF2266AA.toInt()).let { bitmap ->
+                java.io.ByteArrayOutputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG,100,it); it.toByteArray() } })
+            val repo=SocialResultRepository(source) { _,_ -> }
+            val infographicId=repo.create("m")
+            store(source,infographicId,repo.get(infographicId)!!.copy(format="infographic",stage="ready",
+                artifact=SocialArtifact(quote="Small steps",image=image,title="Idea",description="Description and sources")))
+            val cardId=repo.create("m")
+            ready(repo,cardId,cardArtifact(CARD.copy(cover=oldCover,tint=0xFF2266AA.toInt(),look=CardContent.LOOK_COVER)))
+            repo.change(cardId,"Shorter"); ready(repo,cardId,cardArtifact(CARD.copy(cover=cover,tint=0xFFC0392B.toInt(),look=CardContent.LOOK_COVER)))
+            val sourceBefore=source.library().observePosts().first().associate { it.id to it.content }
+            // The current card's cover file is gone and the infographic file no longer matches its hash.
+            assertTrue(a.file(cover).delete())
+            a.file(image).writeBytes(png(1080,1350).also { it[it.size/2]=(it[it.size/2]+1).toByte() })
+
+            val export=LibraryBackup(source,a).exportWithReport()
+            assertEquals(2,export.skippedImages)
+            assertEquals(listOf("Episode","Episode"),export.affectedPosts)
+            val warning=export.warning!!
+            assertTrue(warning,warning.contains("2 post images") && warning.contains("Episode"))
+            assertFalse(warning,warning.contains("file provider"))
+            // The library itself is never changed by a backup.
+            assertEquals(sourceBefore,source.library().observePosts().first().associate { it.id to it.content })
+
+            // Self-consistent: the library names only the images the bundle carries, so earlier versions restore it too.
+            val (json,images)=PostBackupBundle.unpack(export.bytes)
+            assertEquals(setOf(oldCover),images.keys)
+            assertFalse(String(json).contains(cover)); assertFalse(String(json).contains(image))
+            val backup=LibraryBackup(target,b); val preview=backup.preview(export.bytes.inputStream())
+            assertEquals(setOf(oldCover),preview.assets.keys)
+            backup.merge(preview)
+
+            val targetRepo=SocialResultRepository(target) { _,_ -> }
+            val card=targetRepo.get(cardId)!!
+            val current=card.artifact!!.cardContent()!!
+            assertEquals("",current.cover); assertEquals(0,current.tint); assertEquals(CardContent.LOOK_EMBER,current.look)
+            assertEquals(CARD.headline,current.headline)
+            assertEquals(oldCover,card.previous!!.cardContent()!!.cover)
+            assertEquals(CardContent.LOOK_COVER,card.previous!!.cardContent()!!.look)
+            assertArrayEquals(a.read(oldCover),b.read(oldCover))
+            // The earlier infographic keeps its words as a text post.
+            val infographic=targetRepo.get(infographicId)!!
+            assertEquals("",infographic.artifact!!.image)
+            assertEquals("Description and sources",infographic.artifact!!.text)
+            assertEquals("Idea",infographic.artifact!!.title)
+            assertEquals("Earlier text post",dev.distillpod.android.features.postKind(infographic))
+            assertTrue(infographic.shareText().contains("Description and sources"))
+
+            // Nothing unreadable: no report, and the export is the same as before.
+            assertNull(LibraryBackup(target,b).exportWithReport().warning)
         } finally {source.close();target.close()}
     }
 

@@ -33,7 +33,7 @@ class BackupDocuments(
             } }.getOrNull()
         }
     }
-    private data class Prepared(val file: File, val name: String, val preview: BackupPreview)
+    private data class Prepared(val file: File, val name: String, val preview: BackupPreview, val warning: String? = null)
     val state = MutableStateFlow(State())
     val destinations = Channel<String>(Channel.BUFFERED)
     val lastSaved = settings.value("lastBackup").map(Saved::parse).stateIn(scope, SharingStarted.Eagerly, null)
@@ -74,13 +74,14 @@ class BackupDocuments(
         }) {
             val prefs = PortablePreferences.from(settings.flow.first())
             val version = context.packageManager.getPackageInfo(context.packageName, 0).versionName.orEmpty()
-            val bytes = library.export(prefs, version)
+            val export = library.exportWithReport(prefs, version)
+            val bytes = export.bytes
             val preview = library.preview(bytes.inputStream())
             val extension = if (bytes.size > 1 && bytes[0] == 80.toByte() && bytes[1] == 75.toByte()) "distillpod" else "json"
             val name = "distillpod-${LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd-HHmmss"))}-${UUID.randomUUID().toString().take(8)}.$extension"
             withContext(Dispatchers.IO) {
                 val file = File.createTempFile("prepared-", ".json", directory)
-                prepared = Prepared(file, name, preview)
+                prepared = Prepared(file, name, preview, export.warning)
                 file.outputStream().use { it.write(bytes) }
             }
             State("Choose Google Drive or another destination in the file picker.", awaitingDestination = true)
@@ -113,7 +114,8 @@ class BackupDocuments(
                 try { settings.text("lastBackup", Saved(name, System.currentTimeMillis(), snapshot.file.length(), p.counts["podcasts"] ?: 0, p.episodes, p.moments).json()) }
                 catch (cancelled: CancellationException) { throw cancelled }
                 catch (_: Exception) { return@operation State("Saved and checked. Last saved file details could not be stored on this phone. Keep the new file; your provider manages cloud sync.", error = true) }
-                State("Saved and checked. Your file provider manages upload and cloud sync; check Google Drive before relying on another device.")
+                State("Saved and checked. Your file provider manages upload and cloud sync; check Google Drive before relying on another device." +
+                    snapshot.warning.orEmpty().let { if (it.isEmpty()) "" else " $it" }, error = snapshot.warning != null)
             } catch (error: Exception) {
                 // ACTION_CREATE_DOCUMENT returned a new document owned by this operation, never an existing backup.
                 if (!verified) withContext(NonCancellable + Dispatchers.IO) { runCatching { DocumentsContract.deleteDocument(context.contentResolver, uri) } }

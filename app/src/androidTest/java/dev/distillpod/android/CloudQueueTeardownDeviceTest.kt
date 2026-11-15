@@ -2,6 +2,7 @@ package dev.distillpod.android
 
 import android.content.Intent
 import android.os.Build
+import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaController
 import androidx.room.withTransaction
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -40,10 +41,18 @@ class CloudQueueTeardownDeviceTest {
             graph.playback.synchronizeRestoredQueue()
             controller=graph.playback.sessionPlayer() as MediaController
             graph.playback.awaitQueueWritesProcessed()
-            withTimeout(10000) {
-                while(withContext(Dispatchers.Main){controller!!.mediaItemCount}!=2)delay(25)
+            // The controller masks setMediaItems at once, while the service resolves it asynchronously and
+            // the barrier does not wait for that resolution. Wait on the service player itself (#251).
+            val player=withTimeout(10000) {
+                var found:ExoPlayer?=null
+                while(found==null) {
+                    found=withContext(Dispatchers.Main) {
+                        runCatching {fixtureServicePlayer(a)}.getOrNull()?.takeIf {it.mediaItemCount==2}
+                    }
+                    if(found==null)delay(25)
+                }
+                found
             }
-            val player=withContext(Dispatchers.Main){fixtureServicePlayer(a)}
             db.withTransaction {
                 graph.playback.move(b,-1)
                 withTimeout(10000){while(withContext(Dispatchers.Main){player.getMediaItemAt(0).mediaId}!=b)delay(25)}

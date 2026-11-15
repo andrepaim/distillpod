@@ -147,10 +147,12 @@ class PodcastRepository(private val db: AppDatabase, private val http: OkHttpCli
     suspend fun follow(candidate: PodcastCandidate): String = withContext(Dispatchers.IO) {
         if (YouTubeUrl.source(candidate.feedUrl) != null) return@withContext subscribe(candidate.feedUrl)
         val url=publicHttpUrl(candidate.feedUrl).toString()
-        val old=dao.podcastByUrl(url)
-        val value=old?.copy(subscribed=true) ?: PodcastEntity(episodeId("podcast",url),url,candidate.title,
-            author=candidate.author,imageUrl=candidate.imageUrl,originalFeedUrl=url)
-        subscriptionSync.follow(value,publicSource=true)
+        // Read a known show inside the write (#246) so a concurrent edit to its row survives the follow.
+        val value=db.withTransaction {
+            (dao.podcastByUrl(url)?.copy(subscribed=true) ?: PodcastEntity(episodeId("podcast",url),url,candidate.title,
+                author=candidate.author,imageUrl=candidate.imageUrl,originalFeedUrl=url))
+                .also { subscriptionSync.follow(it,publicSource=true) }
+        }
         onFeedNeeded(value.id)
         onSubscriptionChanged()
         value.id
@@ -159,9 +161,9 @@ class PodcastRepository(private val db: AppDatabase, private val http: OkHttpCli
     suspend fun subscribe(rawUrl: String): String = withContext(Dispatchers.IO) {
         val youtubeUrl = YouTubeUrl.source(rawUrl)
         val url = youtubeUrl ?: publicHttpUrl(rawUrl).toString()
-        val existing = dao.podcastByUrl(url)
+        // Read a known show inside the write (#246) so a concurrent edit to its row survives the follow.
+        val existing = db.withTransaction { dao.podcastByUrl(url)?.also { subscriptionSync.follow(it.copy(subscribed = true)) } }
         if (existing != null) {
-            subscriptionSync.follow(existing.copy(subscribed = true))
             onSubscriptionChanged()
             try { refresh(existing.id) } catch(cancelled:kotlinx.coroutines.CancellationException) { throw cancelled } catch(_:Exception) { /* Follow remains saved offline. */ }
             return@withContext existing.id

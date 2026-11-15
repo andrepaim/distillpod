@@ -124,7 +124,17 @@ class PodcastTranscriptClient(http: OkHttpClient,
 
 private class TranscriptRateLimit(val seconds: Long?) : IOException()
 
-/** Cached online text stays available while an explicit local replacement is prepared. */
+/**
+ * The transcript an episode's readers show: a ready local transcript, else the text an explicit local
+ * replacement keeps readable until it is ready (#229), else cached online text, else the local row.
+ */
+fun effectiveTranscript(ep: EpisodeEntity, local: TranscriptEntity?, previous: PreviousTranscriptEntity?, online: OnlineTranscriptEntity?): TranscriptEntity? {
+    if (local?.state == "ready" && local.source != "online" && local.fingerprint == ep.mediaFingerprint) return local
+    previous?.takeIf { it.matches(ep) }?.let { return it.transcript() }
+    return online?.takeIf { it.matches(ep) }?.transcript(ep) ?: local
+}
+
+/** Cached online text and a replaced local transcript stay available while an explicit local replacement is prepared. */
 class EpisodeTextResolver(private val db: AppDatabase) {
     suspend fun online(id: String): OnlineTranscriptEntity? {
         val ep = db.library().episode(id) ?: return null
@@ -133,7 +143,9 @@ class EpisodeTextResolver(private val db: AppDatabase) {
     suspend fun complete(id: String): TranscriptEntity? {
         val ep = db.library().episode(id) ?: return null
         val local = db.library().transcript(id)?.takeIf { it.state == "ready" && it.fingerprint == ep.mediaFingerprint }
-        return if (local != null && local.source != "online") local else online(id)?.transcript(ep) ?: local
+        if (local != null && local.source != "online") return local
+        db.library().previousTranscript(id)?.takeIf { it.state == "ready" && it.matches(ep) }?.let { return it.transcript() }
+        return online(id)?.transcript(ep) ?: local
     }
     suspend fun segments(id: String, revision: String): List<SegmentEntity> {
         val online = online(id)?.takeIf { it.revision == revision }
@@ -182,7 +194,7 @@ class OnlineTranscriptRepository(private val db: AppDatabase, private val settin
                 now(), found.createdAt, found.durationMs, found.language, found.segmentsJson, hash)
             val segments = online.segments()
             dao.putOnlineTranscript(online)
-            dao.deleteSegments(ep.id); dao.deleteCoverage(ep.id)
+            dao.deleteTranscriptText(ep.id)
             dao.putSegments(segments)
             dao.putCoverage(CoverageEntity(ep.id, online.revision, 0, online.durationMs))
             dao.putTranscriptAt(online.transcript(ep), TranscriptWriteSite.ONLINE_ADOPTION)
