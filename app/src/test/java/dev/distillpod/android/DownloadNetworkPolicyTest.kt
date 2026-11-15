@@ -121,9 +121,10 @@ class DownloadNetworkPolicyTest {
         }
     }
 
-    @Test fun `periodic refresh keeps its registration across restarts and updates only real policy changes`() = runBlocking {
-        fixture { graph, _ ->
-            graph.settings.flag("wifi", false)
+    @Test fun `periodic refresh runs on any network and keeps its registration across restarts`() = runBlocking {
+        fixture { graph, vm ->
+            // The Wi-Fi / unmetered setting (on by default) limits downloads only, never feed refresh (#233).
+            assertTrue(graph.settings.flow.first().wifiOnly)
             graph.settings.refreshHours(6)
             graph.settings.flag("refresh", true)
             graph.jobs.configureRefresh()
@@ -145,13 +146,13 @@ class DownloadNetworkPolicyTest {
             graph.jobs.configureRefresh()
             assertEquals(interval.generation, active("refresh-periodic").generation)
 
-            graph.settings.flag("wifi", true)
-            graph.jobs.configureNetworkPolicy()
+            // Toggling the download setting leaves the refresh schedule untouched.
+            toggle(vm, false)
+            toggle(vm, true)
             val wifi = active("refresh-periodic")
             assertEquals(first.id, wifi.id)
-            assertTrue(wifi.generation > interval.generation)
-            assertEquals(NetworkType.UNMETERED, wifi.constraints.requiredNetworkType)
-            assertEquals(TimeUnit.HOURS.toMillis(12), wifi.periodicityInfo!!.repeatIntervalMillis)
+            assertEquals(interval.generation, wifi.generation)
+            assertEquals(NetworkType.CONNECTED, wifi.constraints.requiredNetworkType)
 
             graph.settings.flag("refresh", false)
             graph.jobs.configureRefresh()
@@ -159,8 +160,30 @@ class DownloadNetworkPolicyTest {
             graph.settings.flag("refresh", true)
             graph.jobs.configureRefresh()
             val restored = active("refresh-periodic")
-            assertEquals(NetworkType.UNMETERED, restored.constraints.requiredNetworkType)
+            assertEquals(NetworkType.CONNECTED, restored.constraints.requiredNetworkType)
             assertEquals(TimeUnit.HOURS.toMillis(12), restored.periodicityInfo!!.repeatIntervalMillis)
+        }
+    }
+
+    @Test fun `an earlier install's unmetered refresh schedule moves to any network on the next start`() = runBlocking {
+        fixture { graph, _ ->
+            graph.settings.refreshHours(6)
+            graph.settings.flag("refresh", true)
+            // Registered by a version where the Wi-Fi setting also constrained refresh.
+            manager.enqueueUniquePeriodicWork("refresh-periodic", ExistingPeriodicWorkPolicy.KEEP,
+                PeriodicWorkRequestBuilder<LibraryWorker>(6, TimeUnit.HOURS).setInputData(workDataOf("kind" to "refresh"))
+                    .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.UNMETERED).build()).build()).result.get()
+            val legacy = active("refresh-periodic")
+            assertEquals(NetworkType.UNMETERED, legacy.constraints.requiredNetworkType)
+
+            graph.jobs.configureRefresh()
+            val updated = active("refresh-periodic")
+            assertEquals(legacy.id, updated.id)
+            assertTrue(updated.generation > legacy.generation)
+            assertEquals(NetworkType.CONNECTED, updated.constraints.requiredNetworkType)
+            assertEquals(TimeUnit.HOURS.toMillis(6), updated.periodicityInfo!!.repeatIntervalMillis)
+            graph.jobs.configureRefresh()
+            assertEquals(updated.generation, active("refresh-periodic").generation)
         }
     }
 

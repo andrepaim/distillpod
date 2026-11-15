@@ -34,8 +34,12 @@ Android to stop a worker according to the constraints of its current attempt.
 Foreground transcription sessions check the current policy before selecting
 their next chunk.
 
-Periodic subscription refresh is updated alongside the download policy. Manual
-refresh, AI requests, account operations, and cloud-sync policy are unchanged.
+Subscription refresh, periodic and manual, is not limited by this setting: feed
+checks are small, so they run on any connected network, including mobile data.
+An earlier version also gave the periodic refresh a Wi-Fi/unmetered constraint;
+the next app start updates that schedule in place to any network. Toggling the
+setting does not touch the refresh schedule. AI requests, account operations,
+and cloud-sync policy are also unaffected.
 The setting remains device-local; no schema, backup format, release metadata, or
 production configuration changes are needed.
 
