@@ -33,12 +33,12 @@ download you pause stays paused after the app restarts.
 
 | What you see | What to check |
 | --- | --- |
-| A model is needed | Download Tiny or Base in **Settings → Transcript preparation**. Model downloads are explicit. |
+| A model is needed | Download Tiny or Base in **Settings → Transcript preparation**. Model downloads are explicit. A transcript with nothing saved yet continues with the selected model once it is ready (or use **Prepare with <model>**). A transcript with saved chunks needs the model it started with: use **Download <model>**, or **Start over with <model>** to replace its saved text after confirming. |
 | Waiting for network or charging | Check the Wi-Fi/unmetered policy in **Downloads & storage** and **Only transcribe while charging** in **Transcript preparation**. |
-| Paused, failed or partial text | Use the transcript's resume/retry action. Pressing Play does not override an explicit pause or failure. |
+| Paused, failed or partial text | Use the transcript's resume/retry action. It continues with the transcript's original model and language and keeps saved chunks, even if Settings changed since. Pressing Play does not override an explicit pause or failure. |
 | No useful online match | Lookup is optional and public-source-only. Prepare locally when no suitable existing text is found. |
 | Online text is readable but a moment needs more preparation | Online lookup timing is not used for source-window capture or automatic ad skipping; publisher/local timing is required. |
-| Text looks inaccurate | Review the audio, choose an appropriate language/model, then use **Transcribe locally again** if needed. Changing a preference alone does not rewrite existing text. |
+| Text looks inaccurate | Review the audio, choose an appropriate language/model, then use **Transcribe locally again** if needed. Changing a preference alone does not rewrite existing text. The current text stays readable until the new transcript is ready. |
 
 Automatic preparation is controlled by **Transcribe when playing**, on by
 default. Turning it off stops new automatic requests; pause existing work in the

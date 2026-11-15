@@ -16,6 +16,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -42,6 +44,7 @@ import kotlinx.coroutines.launch
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.layout.ContentScale
@@ -58,6 +61,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import dev.distillpod.android.DiagnosticsActivity
 import dev.distillpod.android.ai.AccountState
+import dev.distillpod.android.ai.resolveAiModel
 import dev.distillpod.android.data.*
 import dev.distillpod.android.playback.PlaybackState
 import dev.distillpod.android.ui.theme.extras
@@ -807,12 +811,7 @@ internal class QueueUndo(val snackbar: SnackbarHostState, val enqueue: (String, 
             if (account.retry) OutlinedButton(onClick = { vm.graph.account.retry() }) { Text("Retry account connection") }
             if (account.connected) {
                 OutlinedButton(onClick = { vm.graph.account.disconnect() }) { Text("Disconnect account") }
-                if (account.models.isNotEmpty()) {
-                    Text("AI model", style = MaterialTheme.typography.titleSmall)
-                    account.models.forEach { model -> Row(Modifier.fillMaxWidth().clickable { vm.text("aiModel", model) }, verticalAlignment = Alignment.CenterVertically) {
-                        RadioButton(selected = prefs.selectedAiModel == model || prefs.selectedAiModel.isBlank() && model == account.models.first(), onClick = { vm.text("aiModel", model) }); Text(model, Modifier.weight(1f))
-                    } }
-                }
+                AiModelChoices(account.models, prefs.selectedAiModel) { vm.text("aiModel", it) }
                 TextButton(onClick = { vm.graph.account.refreshModels() }) { Text("Refresh model access") }
             }
         }
@@ -833,7 +832,7 @@ internal class QueueUndo(val snackbar: SnackbarHostState, val enqueue: (String, 
             val status = models.firstOrNull { it.id == spec.id }
             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) { RadioButton(selected = prefs.model == spec.id, onClick = { vm.text("model", spec.id) }); Column { Text(spec.title); Text(fileSize(spec.bytes), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) } }
+                    Row(verticalAlignment = Alignment.CenterVertically) { RadioButton(selected = prefs.model == spec.id, onClick = { vm.selectModel(spec.id) }); Column { Text(spec.title); Text(fileSize(spec.bytes), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) } }
                     when (status?.state) {
                         "ready" -> Row(verticalAlignment = Alignment.CenterVertically) { Text("Ready", color = MaterialTheme.extras.success, modifier = Modifier.weight(1f)); TextButton(onClick = { vm.deleteModel(spec.id) }) { Text("Delete model") } }
                         "queued", "downloading" -> { LinearProgressIndicator(progress = { ((status.bytes).toFloat() / spec.bytes).coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth()); TextButton(onClick = { vm.pauseModel(spec.id) }) { Text("Pause download") } }
@@ -878,4 +877,18 @@ internal class QueueUndo(val snackbar: SnackbarHostState, val enqueue: (String, 
         trailingContent = { Switch(checked, onChange, modifier = Modifier.semantics { contentDescription = title }) },
         colors = ListItemDefaults.colors(containerColor = androidx.compose.ui.graphics.Color.Transparent, supportingColor = MaterialTheme.colorScheme.onSurfaceVariant),
         modifier = Modifier.fillMaxWidth())
+}
+
+/** Shows the model AI requests actually use; a saved model the account no longer offers is named, not silently hidden. */
+@Composable
+internal fun AiModelChoices(models: List<String>, saved: String, onSelect: (String) -> Unit) {
+    val active = resolveAiModel(saved, models) ?: return
+    Column(Modifier.selectableGroup(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Text("AI model", style = MaterialTheme.typography.titleSmall)
+        if (saved.isNotBlank() && saved != active)
+            Text("Your saved model, $saved, isn't available for this account, so AI is using $active. Choose a model to change it.", color = MaterialTheme.extras.warning)
+        models.forEach { model -> Row(Modifier.fillMaxWidth().selectable(model == active, role = Role.RadioButton) { onSelect(model) }, verticalAlignment = Alignment.CenterVertically) {
+            RadioButton(selected = model == active, onClick = null); Text(model, Modifier.weight(1f))
+        } }
+    }
 }
