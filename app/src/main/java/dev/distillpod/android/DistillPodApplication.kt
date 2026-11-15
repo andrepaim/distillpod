@@ -101,35 +101,49 @@ class AppGraph internal constructor(val context: Context, val scope: CoroutineSc
             }
         }
         scope.launch(Dispatchers.IO) {
-        try {
-            if(diagnostics.enabled) {
-            val reliabilityStates=mutableMapOf<Pair<String,String>,String>()
-            db.library().transcripts().forEach {row->reliabilityStates["transcription" to row.revision]=when(row.state){
-                "ready"->"completed";"partial"->"partial";"waiting_model"->"waiting";"stale"->"cancelled";"failed"->"failed";"paused"->"paused";"queued","processing"->"queued";else->"unknown"}}
-            db.library().distillations().forEach {row->reliabilityStates["distillation" to row.id]=when(row.state){
-                "succeeded"->"completed";"failed","needs_context","unclear_source","no_speech"->"failed"
-                "queued"->"queued";"running","reviewing"->"interrupted";"waiting_auth","waiting_quota","waiting_transcript","review_source"->"waiting";else->"unknown"}}
-            diagnostics.reconcile(reliabilityStates)
-            }
-            portableSync.releaseSessions(); importFeasibility(); understanding.recoverInterrupted(); explanations.recoverInterrupted(); recommendations.recoverInterrupted()
-            db.library().distillations().filter { it.state == "queued" }.forEach { jobs.capture(it.id) }
-            jobs.recoverDownloads()
-            db.library().observePosts().first().forEach { row ->
-                val post = runCatching { SocialResult.parse(row.content) }.getOrNull()
-                if (post != null && post.stage in SocialResult.ACTIVE_STAGES) {
-                    // KEEP avoids duplicating active work after an ordinary app restart.
-                    val manager = androidx.work.WorkManager.getInstance(context)
-                    val pending = manager.getWorkInfosForUniqueWork("social:${row.id}").get().any { !it.state.isFinished }
-                    if (!pending) dev.distillpod.android.work.SocialPostJobs.enqueue(context,row.id,post.attempt)
-                }
-            }
-            jobs.configureNetworkPolicy(); dev.distillpod.android.work.UpdateJobs.configure(context, settings.updates.first().enabled)
-            transcription.recover(); ready.complete(Unit)
-            automation.observe()
-            captures.resumeSaved()
+            // Each recovery step is isolated: one failure is reported and the rest of startup still runs.
+            StartupRecovery.run(ready, prerequisite = { db.openHelper.writableDatabase },
+                recovery = listOf(
+                    StartupStep("journal") { if (diagnostics.enabled) reconcileJournal() },
+                    StartupStep("sync_sessions") { portableSync.releaseSessions() },
+                    StartupStep("legacy_import") { importFeasibility() },
+                    StartupStep("analyses") { understanding.recoverInterrupted() },
+                    StartupStep("explanations") { explanations.recoverInterrupted() },
+                    StartupStep("recommendations") { recommendations.recoverInterrupted() },
+                    StartupStep("captures") { db.library().distillations().filter { it.state == "queued" }.forEach { jobs.capture(it.id) } },
+                    StartupStep("downloads") { jobs.recoverDownloads() },
+                    StartupStep("posts") { resumePosts() },
+                    StartupStep("network_policy") { jobs.configureNetworkPolicy() },
+                    StartupStep("update_checks") { dev.distillpod.android.work.UpdateJobs.configure(context, settings.updates.first().enabled) },
+                    StartupStep("transcription") { transcription.recover() }),
+                afterReady = listOf(
+                    StartupStep("automation") { automation.observe() },
+                    StartupStep("saved_captures") { captures.resumeSaved() }),
+                failed = { step, error -> StartupRecovery.report(diagnostics, step, error) })
         }
-        catch (error: Exception) { ready.completeExceptionally(error) }
-    } }
+    }
+
+    private suspend fun reconcileJournal() {
+        val reliabilityStates=mutableMapOf<Pair<String,String>,String>()
+        db.library().transcripts().forEach {row->reliabilityStates["transcription" to row.revision]=when(row.state){
+            "ready"->"completed";"partial"->"partial";"waiting_model"->"waiting";"stale"->"cancelled";"failed"->"failed";"paused"->"paused";"queued","processing"->"queued";else->"unknown"}}
+        db.library().distillations().forEach {row->reliabilityStates["distillation" to row.id]=when(row.state){
+            "succeeded"->"completed";"failed","needs_context","unclear_source","no_speech"->"failed"
+            "queued"->"queued";"running","reviewing"->"interrupted";"waiting_auth","waiting_quota","waiting_transcript","review_source"->"waiting";else->"unknown"}}
+        diagnostics.reconcile(reliabilityStates)
+    }
+
+    private suspend fun resumePosts() {
+        db.library().observePosts().first().forEach { row ->
+            val post = runCatching { SocialResult.parse(row.content) }.getOrNull()
+            if (post != null && post.stage in SocialResult.ACTIVE_STAGES) {
+                // KEEP avoids duplicating active work after an ordinary app restart.
+                val manager = androidx.work.WorkManager.getInstance(context)
+                val pending = manager.getWorkInfosForUniqueWork("social:${row.id}").get().any { !it.state.isFinished }
+                if (!pending) dev.distillpod.android.work.SocialPostJobs.enqueue(context,row.id,post.attempt)
+            }
+        }
+    }
 
     private suspend fun importFeasibility() {
         val marker = context.getSharedPreferences("migration", Context.MODE_PRIVATE)
