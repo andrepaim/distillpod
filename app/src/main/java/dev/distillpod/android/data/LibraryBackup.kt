@@ -214,13 +214,36 @@ class LibraryBackup(private val db: AppDatabase, private val assets: dev.distill
             repeat(rows.length()) { i ->
                 val row = rows.getJSONObject(i)
                 if (row.has("episodeId") && !row.isNull("episodeId")) episodeIds[row.getString("episodeId")]?.let { row.put("episodeId", it) }
+                if (table in listOf("transcripts", "messages", "distillations")) dao.episode(row.getString("episodeId"))?.let { current ->
+                    if (row.getString("fingerprint") == downloadedSince(current)) row.put("fingerprint", current.mediaFingerprint)
+                }
                 if (table == "transcripts") {
                     val current = dao.episode(row.getString("episodeId"))
                     if (current != null && current.mediaFingerprint != row.getString("fingerprint")) row.put("state", "stale").put("error", "Restored transcript belongs to an older audio source. Prepare the current audio again.")
                 }
             }
         }
+        // A prepared or failed attempt checks its frozen context against the episode identity on retry.
+        val moments = tables.getJSONArray("distillations").let { rows -> (0 until rows.length()).map { rows.getJSONObject(it) } }
+            .associate { it.getString("id") to it.getString("episodeId") }
+        val attempts = tables.getJSONArray("moment_attempts")
+        repeat(attempts.length()) { i ->
+            val row = attempts.getJSONObject(i)
+            val current = moments[row.getString("momentId")]?.let { dao.episode(it) } ?: return@repeat
+            val context = JSONObject(row.getString("contextJson"))
+            if (context.optString("fingerprint") == downloadedSince(current)) row.put("contextJson", context.put("fingerprint", current.mediaFingerprint).toString())
+        }
     }
+
+    /**
+     * A backup made while an episode was only streamed carries its provisional enclosure identity. When
+     * the episode has since been downloaded here, the file's hash replaced that identity without implying
+     * different audio (#245), so restored work tied to it follows the episode to the hash (#249). Returns
+     * that provisional identity, or null while the episode still has it. Any other identity is kept, and
+     * a transcript tied to it is restored stale.
+     */
+    private fun downloadedSince(current: EpisodeEntity): String? =
+        dev.distillpod.core.episodeId("enclosure", current.audioUrl).takeIf { it != current.mediaFingerprint }
 
     private fun exists(table: String, keys: List<Column>, row: JSONObject): Boolean {
         check(keys.isNotEmpty())
