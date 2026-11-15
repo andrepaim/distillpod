@@ -86,13 +86,25 @@ class AppJobs(private val context: Context) {
      */
     internal suspend fun stopped(kind: String, id: String, workId: java.util.UUID, stopReason: Int?) = withContext(NonCancellable + Dispatchers.IO) {
         downloadControls.withLock {
-            val byApp = stopReason?.let { it == WorkInfo.STOP_REASON_CANCELLED_BY_APP }
-                ?: (manager.getWorkInfoById(workId).get()?.state == WorkInfo.State.CANCELLED)
-            if (byApp) transition(kind, id, "paused", null, PAUSABLE_TRANSFER_STATES)
-            else if (manager.getWorkInfosForUniqueWork("$kind:$id").get().any { !it.state.isFinished })
-                transition(kind, id, "queued", null, PAUSABLE_TRANSFER_STATES)
+            when (classifyStop("$kind:$id", workId, stopReason)) {
+                WorkStop.PAUSED -> transition(kind, id, "paused", null, PAUSABLE_TRANSFER_STATES)
+                WorkStop.RESCHEDULED -> transition(kind, id, "queued", null, PAUSABLE_TRANSFER_STATES)
+                WorkStop.ENDED -> {}
+            }
         }
         Unit
+    }
+    /** Same rules for a stopped AI request (#84): Pause cancels it, any other stop is rerun by WorkManager. */
+    internal suspend fun stopped(name: String, workId: java.util.UUID, stopReason: Int?): WorkStop =
+        withContext(NonCancellable + Dispatchers.IO) { classifyStop(name, workId, stopReason) }
+    private fun classifyStop(name: String, workId: java.util.UUID, stopReason: Int?): WorkStop {
+        val byApp = stopReason?.let { it == WorkInfo.STOP_REASON_CANCELLED_BY_APP }
+            ?: (manager.getWorkInfoById(workId).get()?.state == WorkInfo.State.CANCELLED)
+        return when {
+            byApp -> WorkStop.PAUSED
+            manager.getWorkInfosForUniqueWork(name).get().any { !it.state.isFinished } -> WorkStop.RESCHEDULED
+            else -> WorkStop.ENDED
+        }
     }
     /** Settle an active transfer that no longer has work; never rewrites a pause, resume or completion. */
     internal suspend fun settle(kind: String, id: String, state: String, error: String?) =
@@ -140,6 +152,9 @@ class AppJobs(private val context: Context) {
         } }
         .addTag("$kind:$id").build()
 }
+
+/** How a worker stop ends: Pause in the app or notification, a stop WorkManager reruns, or neither. */
+enum class WorkStop { PAUSED, RESCHEDULED, ENDED }
 
 private val ACTIVE_TRANSFER_STATES = listOf("queued", "downloading")
 /** The transfer records its own cancellation as paused before the worker classifies the stop. */
@@ -214,12 +229,33 @@ class UnderstandingWorker(context: Context, params: WorkerParameters) : Coroutin
         graph.ready.await()
         val target = inputData.getString("id") ?: return Result.failure()
         when (inputData.getString("kind")) {
-            "analysis" -> graph.understanding.runAnalysis(target)
+            "analysis" -> {
+                // A long analysis outlasts an ordinary job's time limit once the user leaves the app (#84).
+                // Appended duplicates and finished rows return at once without a notification.
+                if (graph.db.library().analysis(target)?.state == "queued") startForeground(graph, "Generating summary & chapters")
+                graph.understanding.runAnalysis(target) {
+                    if (!isStopped) WorkStop.ENDED
+                    else graph.jobs.stopped("analysis:$target", id, if (Build.VERSION.SDK_INT >= 31) stopReason else null)
+                }
+            }
             "reply" -> graph.understanding.runReply(target)
             "explain" -> graph.explanations.run(target)
             else -> return Result.failure()
         }
         return Result.success()
+    }
+
+    /**
+     * Without the foreground service the analysis still runs as an ordinary job, and a stop at its time
+     * limit resumes from the saved parts, so a refused or failed start never blocks the request.
+     */
+    private suspend fun startForeground(graph: AppGraph, title: String) {
+        try { setForeground(workForeground(applicationContext, id, title)) }
+        catch (error: Exception) {
+            if (error is CancellationException) throw error
+            currentCoroutineContext().ensureActive()
+            if (!error.isForegroundStartRejected()) graph.diagnostics.failure("worker", error)
+        }
     }
 }
 class RecommendationWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {

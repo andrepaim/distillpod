@@ -49,7 +49,7 @@ Audio and model downloads default to Wi-Fi/unmetered networks. In **Settings →
 
 ## Understand an episode
 
-Once the complete transcript is ready, open **Summary & chapters** to generate an overview and jump to chapter timestamps, or open episode chat to ask questions about what was said. Answers use transcript excerpts and source references; replay the relevant audio to check the context.
+Once the complete transcript is ready, open **Summary & chapters** to generate an overview and jump to chapter timestamps, or open episode chat to ask questions about what was said. Answers use transcript excerpts and source references; replay the relevant audio to check the context. Generation keeps going when you leave the screen or the app, and shows a **Generating summary & chapters** notification with **Pause**. Completed parts are saved: if Android interrupts the work, it continues from them on its own. After **Pause**, or if Android closed DistillPod during generation, use **Resume analysis**.
 
 ## Ask while listening
 
