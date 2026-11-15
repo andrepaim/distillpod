@@ -58,6 +58,25 @@ data class TranscriptEntity(
     @ColumnInfo(defaultValue = "0") val localCreatedAt: Long = 0,
 )
 
+/**
+ * The transcript an explicit local re-transcription replaces (#229). Its segments and coverage stay
+ * under their own revision, readable and searchable while the replacement is prepared, and are removed
+ * once the replacement is ready. Local working state only: never backed up or synced.
+ */
+@Entity(tableName = "previous_transcripts", foreignKeys = [ForeignKey(entity = EpisodeEntity::class, parentColumns = ["id"], childColumns = ["episodeId"], onDelete = ForeignKey.CASCADE)])
+data class PreviousTranscriptEntity(
+    @PrimaryKey val episodeId: String, val revision: String, val fingerprint: String, val model: String,
+    val language: String, val source: String, val state: String, val durationMs: Long, val processedMs: Long,
+) {
+    fun transcript() = TranscriptEntity(episodeId, revision, fingerprint, model, language, source, state, durationMs, processedMs)
+    /** Only text for the episode's current audio is readable. */
+    fun matches(ep: EpisodeEntity) = fingerprint == ep.mediaFingerprint
+    companion object {
+        fun of(row: TranscriptEntity) = PreviousTranscriptEntity(row.episodeId, row.revision, row.fingerprint, row.model,
+            row.language, row.source, row.state, row.durationMs, row.processedMs)
+    }
+}
+
 @Entity(tableName = "segments", primaryKeys = ["episodeId", "revision", "startMs", "ordinal"],
     foreignKeys = [ForeignKey(entity = EpisodeEntity::class, parentColumns = ["id"], childColumns = ["episodeId"], onDelete = ForeignKey.CASCADE)],
     indices = [Index(value = ["episodeId", "revision", "endMs"])])
@@ -205,6 +224,14 @@ interface LibraryDao {
     @Upsert suspend fun putCoverage(value: CoverageEntity)
     @Query("DELETE FROM segments WHERE episodeId=:id") suspend fun deleteSegments(id: String)
     @Query("DELETE FROM transcript_coverage WHERE episodeId=:id") suspend fun deleteCoverage(id: String)
+    @Query("DELETE FROM segments WHERE episodeId=:id AND revision<>:keep") suspend fun deleteSegmentsExcept(id: String, keep: String)
+    @Query("DELETE FROM transcript_coverage WHERE episodeId=:id AND revision<>:keep") suspend fun deleteCoverageExcept(id: String, keep: String)
+    @Query("SELECT * FROM previous_transcripts") fun observePreviousTranscripts(): Flow<List<PreviousTranscriptEntity>>
+    @Query("SELECT * FROM previous_transcripts WHERE episodeId=:id") suspend fun previousTranscript(id: String): PreviousTranscriptEntity?
+    @Upsert suspend fun putPreviousTranscript(value: PreviousTranscriptEntity)
+    @Query("DELETE FROM previous_transcripts WHERE episodeId=:id") suspend fun deletePreviousTranscript(id: String)
+    /** Removes every revision's text, including a transcript kept readable during a replacement. */
+    @Transaction suspend fun deleteTranscriptText(id: String) { deleteSegments(id); deleteCoverage(id); deletePreviousTranscript(id) }
     @Query("SELECT * FROM distillations ORDER BY createdAt DESC") fun observeDistillations(): Flow<List<DistillationEntity>>
     @Query("SELECT * FROM distillations ORDER BY createdAt DESC") suspend fun distillations(): List<DistillationEntity>
     @Query("SELECT * FROM distillations WHERE id=:id") suspend fun distillation(id: String): DistillationEntity?
@@ -237,6 +264,8 @@ interface LibraryDao {
     @Query("SELECT * FROM messages ORDER BY createdAt,id") suspend fun messages(): List<MessageEntity>
     @Query("SELECT * FROM messages WHERE id=:id") suspend fun message(id: String): MessageEntity?
     @Upsert suspend fun putMessage(value: MessageEntity)
+    @Query("UPDATE messages SET fingerprint=:to WHERE episodeId=:id AND fingerprint=:from")
+    suspend fun retagMessages(id: String, from: String, to: String)
     @Query("UPDATE messages SET state='failed', error=:error WHERE id=:id AND role='assistant' AND state IN ('queued','running')")
     suspend fun pauseReply(id: String, error: String): Int
     @Query("SELECT * FROM research ORDER BY createdAt DESC") fun observeResearch(): Flow<List<ResearchEntity>>
@@ -252,13 +281,19 @@ interface LibraryDao {
 }
 
 @Database(entities = [ShowAutomationEntity::class, EpisodeAutomationEntity::class, EpisodeAdPreferenceEntity::class, MomentAttemptEntity::class, MomentVersionEntity::class, OnlineTranscriptEntity::class, TranscriptLookupEntity::class, PostDraftEntity::class, PodcastEntity::class, EpisodeEntity::class, QueueEntryEntity::class, PlayerSessionEntity::class,
-    TranscriptEntity::class, SegmentEntity::class, CoverageEntity::class, DistillationEntity::class, ModelEntity::class,
-    AnalysisEntity::class, AnalysisPartEntity::class, MessageEntity::class, ResearchEntity::class, SuggestionEntity::class, SyncOutboxEntity::class, SyncBindingEntity::class, SyncRemoteEntity::class, SyncPublicFeedEntity::class, SyncViewEntity::class, SyncPreferenceEntity::class, SyncArtifactEntity::class], version = 12, exportSchema = true)
+    TranscriptEntity::class, PreviousTranscriptEntity::class, SegmentEntity::class, CoverageEntity::class, DistillationEntity::class, ModelEntity::class,
+    AnalysisEntity::class, AnalysisPartEntity::class, MessageEntity::class, ResearchEntity::class, SuggestionEntity::class, SyncOutboxEntity::class, SyncBindingEntity::class, SyncRemoteEntity::class, SyncPublicFeedEntity::class, SyncViewEntity::class, SyncPreferenceEntity::class, SyncArtifactEntity::class], version = 13, exportSchema = true)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun automation(): AutomationDao
     abstract fun library(): LibraryDao
     abstract fun sync(): SyncDao
     companion object {
+        /** Additive: a transcript kept readable while an explicit local replacement is prepared (#229). */
+        val MIGRATION_12_13 = object : androidx.room.migration.Migration(12, 13) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS `previous_transcripts` (`episodeId` TEXT NOT NULL, `revision` TEXT NOT NULL, `fingerprint` TEXT NOT NULL, `model` TEXT NOT NULL, `language` TEXT NOT NULL, `source` TEXT NOT NULL, `state` TEXT NOT NULL, `durationMs` INTEGER NOT NULL, `processedMs` INTEGER NOT NULL, PRIMARY KEY(`episodeId`), FOREIGN KEY(`episodeId`) REFERENCES `episodes`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )")
+            }
+        }
         val MIGRATION_11_12 = object : androidx.room.migration.Migration(11, 12) {
             override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE episodes ADD COLUMN localDownloadedAt INTEGER NOT NULL DEFAULT 0")
@@ -342,6 +377,6 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_moment_versions_momentId ON moment_versions(momentId)")
             }
         }
-        fun open(context: Context): AppDatabase = Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "library.db").addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12).build()
+        fun open(context: Context): AppDatabase = Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "library.db").addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13).build()
     }
 }
