@@ -71,6 +71,11 @@ Account eligibility, model access and allowance depend on the connected account.
 Follow the app's reconnect or retry action; playback and saved source moments
 remain available without a completed AI request.
 
+If Settings → ChatGPT says the saved connection can't be opened on this phone
+(for example after an Android security or lock-screen change), tap **Continue
+with ChatGPT**. A completed sign-in replaces the unreadable connection; you do
+not need to clear app data, and your library is kept.
+
 Google library-sync sign-in does not connect ChatGPT. Do not put account tokens
 or callback URLs in a public issue. [Account and data handling](privacy.md).
 
