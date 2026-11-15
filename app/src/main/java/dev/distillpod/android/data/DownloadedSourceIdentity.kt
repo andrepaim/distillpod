@@ -21,6 +21,9 @@ internal suspend fun adoptDownloadedFingerprint(db: AppDatabase, latest: Episode
     if (previous == episodeId("enclosure", latest.audioUrl)) {
         dao.retagMessages(latest.id, previous, sha256)
         retagMoments(db, latest.id, previous, sha256)
+        // The transcript an explicit local replacement keeps readable (#229) follows the episode too.
+        dao.previousTranscript(latest.id)?.takeIf { it.fingerprint == previous }
+            ?.let { dao.putPreviousTranscript(it.copy(fingerprint = sha256)) }
         if (transcript?.fingerprint == previous) {
             dao.putTranscriptAt(transcript.copy(fingerprint = sha256), TranscriptWriteSite.DOWNLOAD_FINGERPRINT)
             return

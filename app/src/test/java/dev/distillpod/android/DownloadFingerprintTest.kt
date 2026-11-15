@@ -51,6 +51,41 @@ class DownloadFingerprintTest {
         }
     }
 
+    @Test fun firstDownloadKeepsTheTranscriptAnExplicitLocalReplacementKeepsReadable() = runBlocking {
+        fixture { db, media, server ->
+            val dao = db.library()
+            val provisional = episodeId("enclosure", server.url("/audio").toString())
+            // "Transcribe locally again" (#229) keeps r1 readable while the replacement r2 is prepared.
+            dao.putPreviousTranscript(PreviousTranscriptEntity("e", "r1", provisional, "publisher", "en", "publisher", "ready", 60_000, 60_000))
+            dao.putTranscript(TranscriptEntity("e", "r2", provisional, "base", "en", source = "local", state = "queued", durationMs = 60_000))
+            server.enqueue(MockResponse().setBody("same audio"))
+
+            media.ensureDownloaded("e")
+
+            val episode = dao.episode("e")!!
+            val kept = dao.previousTranscript("e")!!
+            assertEquals(episode.mediaFingerprint, kept.fingerprint)
+            assertEquals("r1", kept.revision)
+            assertEquals("r1", EpisodeTextResolver(db).complete("e")!!.revision)
+            assertEquals("r1", effectiveTranscript(episode, dao.transcript("e"), kept, null)!!.revision)
+            assertEquals(episode.mediaFingerprint, dao.transcript("e")!!.fingerprint)
+        }
+    }
+
+    @Test fun firstDownloadLeavesAKeptTranscriptOfAnotherSourceUnreadable() = runBlocking {
+        fixture { db, media, server ->
+            val dao = db.library()
+            val other = episodeId("enclosure", "https://old.example.test/audio")
+            dao.putPreviousTranscript(PreviousTranscriptEntity("e", "r1", other, "publisher", "en", "publisher", "ready", 60_000, 60_000))
+            server.enqueue(MockResponse().setBody("audio"))
+
+            media.ensureDownloaded("e")
+
+            assertEquals(other, dao.previousTranscript("e")!!.fingerprint)
+            assertNull(EpisodeTextResolver(db).complete("e"))
+        }
+    }
+
     @Test fun laterDownloadWithDifferentBytesStillMarksTheSourceStale() = runBlocking {
         fixture { db, media, server ->
             val dao = db.library()

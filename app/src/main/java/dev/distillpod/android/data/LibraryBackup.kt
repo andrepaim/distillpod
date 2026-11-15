@@ -19,6 +19,23 @@ data class BackupPreview internal constructor(internal val payload: String, val 
     val moments get() = counts["distillations"] ?: 0
 }
 
+/**
+ * An exported library and the post images left out because they could not be read; [affectedPosts] holds the
+ * episode name of each post saved without its image.
+ */
+class LibraryExport(val bytes: ByteArray, val skippedImages: Int = 0, val affectedPosts: List<String> = emptyList()) {
+    /** What the backup screens tell the user, or null when nothing was left out. */
+    val warning: String? get() {
+        if (skippedImages == 0) return null
+        val names = affectedPosts.distinct()
+        val shown = names.take(3).joinToString(", ") { "“${it.take(60)}”" } + if (names.size > 3) " and ${names.size - 3} more" else ""
+        val images = if (skippedImages == 1) "1 post image could not be read and was left out."
+            else "$skippedImages post images could not be read and were left out."
+        val posts = if (affectedPosts.size == 1) "Post saved without it" else "Posts saved without them"
+        return "$images $posts: $shown."
+    }
+}
+
 /** A bounded, versioned data transfer. Only allowlisted library tables enter this format. */
 class LibraryBackup(private val db: AppDatabase, private val assets: dev.distillpod.android.sharing.PostAssets? = null,
     private val now: () -> Long = System::currentTimeMillis,
@@ -32,7 +49,13 @@ class LibraryBackup(private val db: AppDatabase, private val assets: dev.distill
     }
     private fun sha(text: String) = MessageDigest.getInstance("SHA-256").digest(text.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
 
-    suspend fun export(preferences: PortablePreferences? = null, appVersion: String = ""): ByteArray = db.withTransaction {
+    suspend fun export(preferences: PortablePreferences? = null, appVersion: String = ""): ByteArray = exportWithReport(preferences, appVersion).bytes
+
+    /**
+     * A post image that cannot be read never blocks the backup: it is left out, the exported post no longer
+     * references it, and the result reports it. The library itself is not changed.
+     */
+    suspend fun exportWithReport(preferences: PortablePreferences? = null, appVersion: String = ""): LibraryExport = db.withTransaction {
         val tables = JSONObject()
         var count = 0
         for (table in backupTables) {
@@ -54,13 +77,14 @@ class LibraryBackup(private val db: AppDatabase, private val assets: dev.distill
             }
             tables.put(table, rows)
         }
+        val images = PostBackupBundle.collect(tables, assets)
         val createdAt = System.currentTimeMillis()
         val payload = if (preferences == null) tables.toString() else JSONObject().put("library", tables)
             .put("preferences", PortablePreferences.parse(preferences.json()).json()).put("createdAt", createdAt).put("appVersion", appVersion.take(100)).toString()
         val bytes = JSONObject().put("format", "distillpod-library").put("version", if (preferences == null) 1 else 2).put("databaseSchema", 7)
             .put("createdAt", createdAt).put("payload", payload).put("sha256", sha(payload)).toString().toByteArray(Charsets.UTF_8)
         require(bytes.size <= BACKUP_LIMIT) { "This library exceeds the 32 MB backup limit" }
-        PostBackupBundle.pack(bytes, PostBackupBundle.references(tables), assets)
+        LibraryExport(PostBackupBundle.pack(bytes, images.bytes), images.skipped, images.affectedPosts)
     }
 
     suspend fun preview(input: InputStream): BackupPreview = withContext(Dispatchers.IO) {

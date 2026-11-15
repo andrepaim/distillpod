@@ -10,6 +10,7 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
 import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
+import java.security.KeyStore
 
 /** Synthetic vault and intercepted responses; never reads the owner's credentials or uses a network. */
 class AuthVaultDeviceTest {
@@ -46,6 +47,24 @@ class AuthVaultDeviceTest {
             rotateDuringRequest = false
             assertThrows(ReauthorizationRequired::class.java) { session.accessToken() }
             assertNull(vault.read()); assertFalse(connected)
+        } finally { vault.write(null) }
+    }
+    @Test fun lostKeystoreKeyLeavesAnUnreadableVaultThatReconnectReplaces() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val alias = "distillpod-test-auth234"
+        val vault = TokenVault(context, "auth234-fixture", alias)
+        try {
+            vault.write("synthetic-old")
+            // Simulates Android discarding the key (restore, OEM reset or security change); the sealed blob remains.
+            KeyStore.getInstance("AndroidKeyStore").apply { load(null) }.deleteEntry(alias)
+            assertThrows(Exception::class.java) { vault.read() }
+            var connected: Boolean? = null
+            val session = AuthSession(vault::read, vault::write, "https://fixture.invalid/".toHttpUrl(), OkHttpClient.Builder()
+                .addInterceptor { error("No network request expected") }.build(), onCredentialsChanged = { connected = it })
+            assertThrows(ReauthorizationRequired::class.java) { session.accessToken() }
+            assertNull(connected)
+            vault.write("synthetic-new")
+            assertEquals("synthetic-new", TokenVault(context, "auth234-fixture", alias).read())
         } finally { vault.write(null) }
     }
 }
