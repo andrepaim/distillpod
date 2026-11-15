@@ -47,7 +47,7 @@ Playback reuses completed transcripts and existing jobs. Explicitly paused, fail
 
 Automatic language detection, English and Português are available. A partial transcript is identified as partial rather than treated as complete. Online transcripts support reading and episode understanding; saved moments and automatic ad skipping still require publisher or local timing. **Transcribe locally again** bypasses online lookup. See [lookup design and limitations](android/online-transcripts.md).
 
-Audio and model downloads default to Wi-Fi/unmetered networks. In **Settings → Downloads & storage**, adjust the download policy if needed. If **Settings → Transcript preparation → Only transcribe while charging** is enabled, connect power to let new transcription chunks run.
+Audio and model downloads default to Wi-Fi/unmetered networks. In **Settings → Downloads & storage**, adjust the download policy if needed. Checking feeds for new episodes is not limited by this setting and also runs on mobile data. If **Settings → Transcript preparation → Only transcribe while charging** is enabled, connect power to let new transcription chunks run.
 
 ## Understand an episode
 
