@@ -267,11 +267,16 @@ class RecommendationWorker(context: Context, params: WorkerParameters) : Corouti
     }
 }
 
+/** Downloads, transcription and AI work share one channel. Its id keeps existing user settings; recreating it updates the name. */
+const val PROCESSING_CHANNEL = "processing"
+fun createProcessingChannel(context: Context) = context.getSystemService(NotificationManager::class.java)
+    .createNotificationChannel(NotificationChannel(PROCESSING_CHANNEL, "Background tasks", NotificationManager.IMPORTANCE_LOW))
+
 fun workForeground(context: Context, workId: java.util.UUID, title: String, media: Boolean = false): ForegroundInfo {
     val manager = context.getSystemService(NotificationManager::class.java)
-    manager.createNotificationChannel(NotificationChannel("processing", "Downloads and transcription", NotificationManager.IMPORTANCE_LOW))
+    createProcessingChannel(context)
     val intent = PendingIntent.getActivity(context, 0, Intent(context, MainActivity::class.java), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-    val notification = NotificationCompat.Builder(context, "processing").setSmallIcon(android.R.drawable.ic_popup_sync)
+    val notification = NotificationCompat.Builder(context, PROCESSING_CHANNEL).setSmallIcon(android.R.drawable.ic_popup_sync)
         .setContentTitle(title).setContentText("DistillPod · tap to view progress").setContentIntent(intent).setOngoing(true)
         .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Pause", WorkManager.getInstance(context).createCancelPendingIntent(workId)).build()
     val type = if (media && Build.VERSION.SDK_INT >= 35) ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROCESSING else ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC

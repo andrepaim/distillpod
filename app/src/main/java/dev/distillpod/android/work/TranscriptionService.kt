@@ -1,7 +1,6 @@
 package dev.distillpod.android.work
 
 import android.app.Notification
-import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
@@ -122,10 +121,10 @@ class TranscriptionService : Service() {
     }
 
     private fun notification(title: String, episode: String?): Notification {
-        getSystemService(NotificationManager::class.java).createNotificationChannel(NotificationChannel("processing", "Downloads and transcription", NotificationManager.IMPORTANCE_LOW))
+        createProcessingChannel(this)
         val open = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val pause = PendingIntent.getForegroundService(this, NOTIFICATION, Intent(this, TranscriptionService::class.java).setAction(PAUSE).putExtra("episode", episode), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-        return NotificationCompat.Builder(this, "processing").setSmallIcon(android.R.drawable.ic_popup_sync)
+        return NotificationCompat.Builder(this, PROCESSING_CHANNEL).setSmallIcon(android.R.drawable.ic_popup_sync)
             .setContentTitle(title).setContentText("Preparing transcript · continues with the screen locked")
             .setContentIntent(open).setOngoing(true).setOnlyAlertOnce(true)
             .addAction(android.R.drawable.ic_media_pause, "Pause", pause).build()

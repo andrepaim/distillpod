@@ -179,6 +179,9 @@ class AnalysisBackgroundTest {
 
     @Test fun `analysis runs as a data sync foreground service with a Pause action`() = runBlocking {
         fixture {
+            // An installation from before the rename keeps its channel id and settings, under the new name.
+            val notifications = context.getSystemService(android.app.NotificationManager::class.java)
+            notifications.createNotificationChannel(android.app.NotificationChannel("processing", "Downloads and transcription", android.app.NotificationManager.IMPORTANCE_LOW))
             graph.understanding.analyze("e")
             assertEquals(ListenableWorker.Result.success(), worker(unfinished().single().id).doWork())
             assertEquals("succeeded", dao.analysis("e")!!.state)
@@ -186,6 +189,8 @@ class AnalysisBackgroundTest {
             assertEquals(ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC, info.foregroundServiceType)
             val notification = info.notification
             assertEquals("processing", notification.channelId)
+            assertEquals("Background tasks", notifications.getNotificationChannel("processing").name.toString())
+            assertEquals(android.app.NotificationManager.IMPORTANCE_LOW, notifications.getNotificationChannel("processing").importance)
             assertEquals("Generating summary & chapters", notification.extras.getCharSequence(Notification.EXTRA_TITLE).toString())
             assertEquals(listOf("Pause"), notification.actions.map { it.title.toString() })
         }
