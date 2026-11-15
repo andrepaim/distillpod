@@ -114,6 +114,7 @@ class AppGraph internal constructor(val context: Context, val scope: CoroutineSc
                     StartupStep("downloads") { jobs.recoverDownloads() },
                     StartupStep("posts") { resumePosts() },
                     StartupStep("network_policy") { jobs.configureNetworkPolicy() },
+                    StartupStep("refresh") { jobs.configureRefresh() },
                     StartupStep("update_checks") { dev.distillpod.android.work.UpdateJobs.configure(context, settings.updates.first().enabled) },
                     StartupStep("transcription") { transcription.recover() }),
                 afterReady = listOf(
