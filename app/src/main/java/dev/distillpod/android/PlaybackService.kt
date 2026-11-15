@@ -108,7 +108,7 @@ class PlaybackService : MediaLibraryService() {
         libraryCallback=AutoLibraryCallback(packageName,graph.db,graph.ready,scope,playbackReady,
             saveMoment={id,position,file->
                 val ep=dao.episode(id)?:error("Episode is unavailable")
-                graph.captures.save(id,position,file!=null && file==ep.localFile)
+                graph.captures.save(id,position,dev.distillpod.android.data.capturedFromOwnSource(ep,file))
             },prepareMoment={id->graph.scope.launch(Dispatchers.IO){runCatching {graph.captures.prepareSaved(id)}.onFailure {graph.diagnostics.failure("capture",it,id)}};Unit},artwork=artwork::uri,allowArtwork=artwork::allow,
             voiceEnabled = { resources.getBoolean(R.bool.voice_enabled) },
             openCarVoice = { graph.carVoiceEntry.open() },
@@ -150,7 +150,7 @@ class PlaybackService : MediaLibraryService() {
             },
             saveMomentWithSource = {id,position,file,source ->
                 val ep=dao.episode(id)
-                graph.captures.save(id,position,file!=null && file==ep?.localFile,source=source)
+                graph.captures.save(id,position,ep!=null && dev.distillpod.android.data.capturedFromOwnSource(ep,file),source=source)
             },
             headphoneDistillEnabled = { headphoneDistill },
             headphoneVoiceEnabled = { graph.preferences.value.headphoneVoice },
