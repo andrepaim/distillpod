@@ -16,11 +16,11 @@ Status: implemented November 14, 2026 (step 1). Step 2, an in-app download verif
 ## How a release is chosen
 
 1. `GET https://api.github.com/repos/andrepaim/distillpod/releases?per_page=10`, unauthenticated, at most 1 MB. Prereleases count, because every DistillPod release is a prerelease; drafts never do.
-2. Releases are taken newest first. The first one that has a `v<version>` tag, a `distillpod-<version>.apk` asset and a `build-info.json` asset wins. A release still uploading its assets is skipped.
-3. Its `build-info.json` (at most 16 KB) must name `dev.distillpod.android`, the same tag and version. Its `versionCode` is compared with the installed app's. Version names are never compared: a private phone build can be ahead of the newest release, as code 51 was ahead of 0.27.0's code 50.
+2. Releases are taken in GitHub's order, newest created first. The first five that have a `v<version>` tag, a `distillpod-<version>.apk` asset and a `build-info.json` asset are candidates. A release still uploading its assets is skipped.
+3. Each candidate's `build-info.json` (at most 16 KB) must name `dev.distillpod.android`, the same tag and version. The valid candidate with the highest `versionCode` wins, so a backport of an older line published later does not hide a newer release. That `versionCode` is compared with the installed app's. Version names are never compared: a private phone build can be ahead of the newest release, as code 51 was ahead of 0.27.0's code 50.
 4. Only `https://github.com/andrepaim/distillpod/releases/...` links are stored or opened.
 
-A failed or oversized request is an error, never "up to date". The background job then waits for its next daily run instead of retrying sooner. GitHub allows 60 unauthenticated requests per hour per address; a check makes two.
+A failed or oversized request is an error, never "up to date". The background job then waits for its next daily run instead of retrying sooner. GitHub allows 60 unauthenticated requests per hour per address; a check makes at most six (the list and up to five build records).
 
 ## Builds and tests
 
