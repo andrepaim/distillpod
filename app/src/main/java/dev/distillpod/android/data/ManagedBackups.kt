@@ -183,7 +183,8 @@ class ManagedBackups(
         }
         val safeOriginal = original
         val previous = safeOriginal?.let { BackupArchive.read(it, File(folder, "previous")) }.orEmpty()
-        val bytes = library.export(PortablePreferences.from(settings.flow.first()), context.packageManager.getPackageInfo(context.packageName, 0).versionName.orEmpty())
+        val export = library.exportWithReport(PortablePreferences.from(settings.flow.first()), context.packageManager.getPackageInfo(context.packageName, 0).versionName.orEmpty())
+        val bytes = export.bytes
         val preview = library.preview(bytes.inputStream())
         val snapshot = File(folder, "current.json").apply { writeBytes(bytes) }
         val archive = File(folder, "next.zip")
@@ -209,7 +210,7 @@ class ManagedBackups(
             throw error
         }
         // A metadata failure must not delete or roll back a verified provider-file backup.
-        val warnings = mutableListOf<String>()
+        val warnings = listOfNotNull(export.warning).toMutableList()
         try { atomicCopy(recovery(selected), archive) } catch (_: IOException) { warnings += "The recovery copy could not be updated on this phone." }
         val connected = selected.copy(initialized = true)
         try { settings.text("managedBackup", connected.json()) } catch (error: Exception) { if (error is CancellationException) throw error; warnings += "Connection details could not be saved. Reconnect this file after restarting." }
