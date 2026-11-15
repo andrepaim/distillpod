@@ -119,6 +119,9 @@ interface LibraryDao {
     @Query("SELECT * FROM podcasts WHERE id=:id") suspend fun podcast(id: String): PodcastEntity?
     @Query("SELECT * FROM podcasts WHERE feedUrl=:url OR originalFeedUrl=:url LIMIT 1") suspend fun podcastByUrl(url: String): PodcastEntity?
     @Upsert suspend fun putPodcast(value: PodcastEntity)
+    /** Refresh bookkeeping only (#226): never rewrite the subscription or metadata from a row read before the request. */
+    @Query("UPDATE podcasts SET refreshedAt=:at, error=NULL WHERE id=:id") suspend fun markPodcastRefreshed(id: String, at: Long)
+    @Query("UPDATE podcasts SET error=:error WHERE id=:id") suspend fun setPodcastError(id: String, error: String)
     @Query("DELETE FROM podcasts WHERE id=:id") suspend fun deletePodcast(id: String)
     @Query("SELECT * FROM episodes ORDER BY publishedAt DESC, COALESCE(sourceOrder, 2147483647), title, id") fun observeEpisodes(): Flow<List<EpisodeEntity>>
     @Query("SELECT * FROM episodes ORDER BY publishedAt DESC, COALESCE(sourceOrder, 2147483647), title, id") suspend fun episodes(): List<EpisodeEntity>
