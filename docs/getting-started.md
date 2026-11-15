@@ -17,6 +17,8 @@ Start in **Settings → ChatGPT → Continue with ChatGPT**. The connection powe
 
 Complete browser sign-in and return to DistillPod for its final connection result. A provider email alone does not establish that the app finished connecting. A retry can use more allowance. Playback, local transcription and source-moment capture also work without the connection.
 
+Once connected, **Settings → ChatGPT** lists the models your account offers; the selected one is what AI requests use. Your choice syncs with your other devices and backups. If the saved model isn't offered here (it was retired, your plan changed, or it came from another device), AI keeps working with the first available model, and Settings names the unavailable model and the one in use. Pick a model to change it; DistillPod doesn't replace your saved choice on its own.
+
 ## Follow your shows
 
 Search also finds what is already yours: as you type, it lists matching followed shows, library episodes, transcript passages and saved moments, all searched on the phone. Tap a transcript passage to open the transcript at that point. To find a new show, tap **Search the podcast directory** or the keyboard's search key, preview the artwork and publisher, then Follow. Search uses Apple’s iTunes podcast directory, so a show might require its public RSS address instead. Add RSS feed accepts that address directly. Settings also imports OPML subscription lists.
