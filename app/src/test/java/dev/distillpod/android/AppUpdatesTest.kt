@@ -87,6 +87,26 @@ class AppUpdatesTest {
         assertEquals(53L, feed().newest()!!.versionCode)
     }
 
+    @Test fun `the highest version code wins when an older line is published later`() = runBlocking {
+        // A backport (code 54) created after the newer line's release (code 56) is listed first by GitHub.
+        releases(release("0.28.1-alpha.1"), release("0.29.0-alpha.1"), release("0.27.0-alpha.1"))
+        buildInfo("0.28.1-alpha.1", 54); buildInfo("0.29.0-alpha.1", 56); buildInfo("0.27.0-alpha.1", 50)
+        val update = feed().newest()!!
+        assertEquals(56L, update.versionCode)
+        assertEquals("0.29.0-alpha.1", update.versionName)
+        assertEquals(url("/download/v0.29.0-alpha.1/distillpod-0.29.0-alpha.1.apk"), update.apkUrl)
+    }
+
+    @Test fun `only the first few eligible releases have their build records read`() = runBlocking {
+        val versions = (1..8).map { "0.2$it.0-alpha.1" }
+        releases(*versions.map { release(it) }.toTypedArray())
+        versions.forEachIndexed { index, version -> buildInfo(version, 40L + index) }
+        // List order is newest created first; the bound keeps a check to a handful of small requests.
+        assertEquals(40L + ReleaseFeed.MAX_CANDIDATES - 1, feed().newest()!!.versionCode)
+        val infoRequests = (0 until server.requestCount).map { server.takeRequest().path!! }.count { it.endsWith("/build-info.json") }
+        assertEquals(ReleaseFeed.MAX_CANDIDATES, infoRequests)
+    }
+
     @Test fun `links outside the project's releases are never offered`() = runBlocking {
         releases(release("0.29.0-alpha.1")); buildInfo("0.29.0-alpha.1", 53)
         assertNull(feed(trusted = false).newest())
