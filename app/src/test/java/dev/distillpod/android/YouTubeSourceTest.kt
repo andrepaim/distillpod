@@ -265,7 +265,7 @@ class YouTubeSourceTest {
         }
     }
 
-    @Test fun `following a saved YouTube source offline keeps the subscription and progress`() = runBlocking {
+    @Test fun `refollowing a saved YouTube source offline does not restore cleared progress`() = runBlocking {
         val db = Room.inMemoryDatabaseBuilder(ApplicationProvider.getApplicationContext<Context>(), AppDatabase::class.java).build()
         try {
             val id = PodcastRepository(db, OkHttpClient(), youtube = source()).subscribe(playlist)
@@ -273,9 +273,10 @@ class YouTubeSourceTest {
             db.library().putEpisode(episode.copy(positionMs = 12_000))
             val repo = PodcastRepository(db, OkHttpClient(), youtube = YouTubeSource { _, _, _ -> throw IOException("offline") })
             repo.unsubscribe(id)
+            assertEquals(0L, db.library().episode(episode.id)!!.positionMs)
             assertEquals(id, repo.subscribe(playlist))
             assertTrue(db.library().podcast(id)!!.subscribed)
-            assertEquals(12_000L, db.library().episode(episode.id)!!.positionMs)
+            assertEquals(0L, db.library().episode(episode.id)!!.positionMs)
         } finally { db.close() }
     }
 

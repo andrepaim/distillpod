@@ -178,6 +178,7 @@ class AppViewModel(val graph: AppGraph, private val saved: SavedStateHandle) : V
     fun clearUnusedAudio() = action("storage") { messages.send("Cleared ${fileSize(graph.media.clearUnusedAudio())} of unused audio. Queued and active files were kept.") }
     fun markCompleted(id: String, complete: Boolean) = action("completed:$id") { graph.portableSync.markCompleted(id, complete) }
     fun unsubscribe(id: String) = queueActions.submit {
+        if (graph.db.library().podcast(id)?.subscribed != true) return@submit
         graph.playback.removeShowFromQueue(id)
         graph.automation.setEnabled(id, false)
         graph.podcasts.unsubscribe(id)
