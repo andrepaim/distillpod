@@ -249,6 +249,16 @@ the phase's original failed exit status. Runner termination may prevent collecti
 Host counters are cumulative and a single failure snapshot cannot establish OOM,
 crash causality, or a shared cause with an earlier packaging failure.
 
+The same explicitly enabled hosted emulator runs stream the emulator's `main`,
+`system` and `crash` logcat buffers to a host file for each phase (#251). The
+device ring buffer is too small to retain an early failure in a long phase. Only a
+failed phase keeps its stream, as `/tmp/distillpod-logcat-<phase>.txt` in the
+emulator results artifact, bounded to its newest 64 MiB. A successful phase
+discards it. Logcat is raw app and system output: the disposable emulator holds
+only synthetic fixtures, and phones and non-hosted runs never enable the capture.
+Do not add credentials or personal content to app logs. Capture failure never
+replaces the phase's exit status.
+
 ## Identical merged-tree validation
 
 A direct single-merge push to main may reuse a successful full PR run created
