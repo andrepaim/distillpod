@@ -252,13 +252,13 @@ class AppViewModel(val graph: AppGraph, private val saved: SavedStateHandle) : V
     fun analyze(id: String) = action("analysis:$id") { graph.understanding.analyze(id) }
     fun pauseAnalysis(id: String) = action("analysis:$id") {
         graph.jobs.cancelAnalysis(id)
-        dao.analysis(id)?.let { dao.putAnalysis(it.copy(state = "failed", error = "Analysis paused. Completed parts are saved.")) }
+        graph.understanding.pauseAnalysis(id)
     }
     fun approveAd(id: String, index: Int, approved: Boolean) = action("ad:$id:$index") { graph.understanding.approveAd(id, index, approved) }
     fun ask(id: String) = action("ask:$id") { graph.understanding.ask(id, chatDraft.value); saved["chatDraft"] = "" }
     fun retryReply(id: String) = action("reply:$id") { graph.understanding.retryReply(id) }
     fun pauseReply(id: String) = action("reply:$id") {
-        graph.jobs.cancelReply(id); dao.message(id)?.let { dao.putMessage(it.copy(state = "failed", error = "This reply is incomplete. Retry when ready.")) }
+        graph.jobs.cancelReply(id); graph.understanding.pauseReply(id)
     }
     fun undoAdSkip() = action("seek") {
         val skipped = graph.playbackEvents.lastSkipped.value ?: return@action
@@ -267,7 +267,7 @@ class AppViewModel(val graph: AppGraph, private val saved: SavedStateHandle) : V
     }
     fun explain(id: String) = action("explain:$id") { open("research:${graph.explanations.create(id)}") }
     fun pauseExplanation(id: String) = action("explain:$id") {
-        graph.jobs.cancelExplanation(id); dao.research(id)?.let { dao.putResearch(it.copy(state = "failed", error = "Explanation paused. Your source is saved.")) }
+        graph.jobs.cancelExplanation(id); graph.explanations.pause(id)
     }
     suspend fun explanationText(id: String): String {
         val report = dao.research(id) ?: error("Explanation is unavailable")

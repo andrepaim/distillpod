@@ -224,6 +224,9 @@ interface LibraryDao {
     @Query("SELECT * FROM analyses") suspend fun analyses(): List<AnalysisEntity>
     @Query("SELECT * FROM analyses WHERE episodeId=:id") suspend fun analysis(id: String): AnalysisEntity?
     @Upsert suspend fun putAnalysis(value: AnalysisEntity)
+    /** Conditional so a pause that lands as the work finishes cannot hide the completed result. */
+    @Query("UPDATE analyses SET state='failed', error=:error WHERE episodeId=:id AND state IN ('queued','running')")
+    suspend fun pauseAnalysis(id: String, error: String): Int
     @Query("SELECT * FROM analysis_parts WHERE episodeId=:id AND revision=:revision ORDER BY part") suspend fun analysisParts(id: String, revision: String): List<AnalysisPartEntity>
     @Upsert suspend fun putAnalysisPart(value: AnalysisPartEntity)
     @Query("DELETE FROM analysis_parts WHERE episodeId=:id") suspend fun deleteAnalysisParts(id: String)
@@ -231,10 +234,14 @@ interface LibraryDao {
     @Query("SELECT * FROM messages ORDER BY createdAt,id") suspend fun messages(): List<MessageEntity>
     @Query("SELECT * FROM messages WHERE id=:id") suspend fun message(id: String): MessageEntity?
     @Upsert suspend fun putMessage(value: MessageEntity)
+    @Query("UPDATE messages SET state='failed', error=:error WHERE id=:id AND role='assistant' AND state IN ('queued','running')")
+    suspend fun pauseReply(id: String, error: String): Int
     @Query("SELECT * FROM research ORDER BY createdAt DESC") fun observeResearch(): Flow<List<ResearchEntity>>
     @Query("SELECT * FROM research ORDER BY createdAt DESC") suspend fun researches(): List<ResearchEntity>
     @Query("SELECT * FROM research WHERE id=:id") suspend fun research(id: String): ResearchEntity?
     @Upsert suspend fun putResearch(value: ResearchEntity)
+    @Query("UPDATE research SET state='failed', error=:error WHERE id=:id AND state IN ('queued','running')")
+    suspend fun pauseResearch(id: String, error: String): Int
     @Query("SELECT * FROM suggestions ORDER BY createdAt DESC") fun observeSuggestions(): Flow<List<SuggestionEntity>>
     @Query("SELECT * FROM suggestions ORDER BY createdAt DESC") suspend fun suggestions(): List<SuggestionEntity>
     @Upsert suspend fun putSuggestions(values: List<SuggestionEntity>)

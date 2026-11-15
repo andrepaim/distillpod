@@ -198,6 +198,9 @@ class EpisodeUnderstanding(private val db: AppDatabase, private val ai: AiGatewa
             if (error is CancellationException) throw error
         }
     }
+    /** Pauses only work that is still queued or running; a result that finished first stays visible. */
+    suspend fun pauseAnalysis(id: String) { dao.pauseAnalysis(id, "Analysis paused. Completed parts are saved.") }
+    suspend fun pauseReply(id: String) { dao.pauseReply(id, "This reply is incomplete. Retry when ready.") }
     private suspend fun requireActive(row: AnalysisEntity) {
         require(dao.analysis(row.episodeId)?.let { it.state == "running" && it.revision == row.revision && it.attempt == row.attempt } == true) { "Analysis was paused" }
     }

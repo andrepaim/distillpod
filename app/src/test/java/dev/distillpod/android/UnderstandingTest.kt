@@ -123,4 +123,35 @@ class UnderstandingTest {
             assertEquals("[]", row.sourcesJson)
         } finally { db.close() }
     }
+    @Test fun `pausing after the work finished leaves the completed result intact`() = runBlocking {
+        val db = database()
+        try {
+            seed(db); val dao = db.library()
+            val ai = object : AiGateway { override suspend fun complete(instructions: String, input: String, onDelta: (String) -> Unit): AiText = error("No request expected") }
+            val understanding = EpisodeUnderstanding(db, ai, {}, {})
+            val explanations = MomentExplanation(db, ai) {}
+            dao.putDistillation(DistillationEntity("m", "e", 0, 10000, excerpt = "Consistent practice builds useful skills.", state = "ready"))
+            val analysis = AnalysisEntity("e", "r", state = "succeeded", summary = "Practice improves skills.", completedParts = 1, totalParts = 1)
+            val reply = MessageEntity("reply", "e", "assistant", "Practice builds useful skills.", state = "succeeded", revision = "r")
+            val explanation = ResearchEntity("x", "m", state = "succeeded", report = "Practice compounds over time.")
+            dao.putAnalysis(analysis); dao.putMessage(reply); dao.putResearch(explanation)
+            understanding.pauseAnalysis("e"); understanding.pauseReply("reply"); explanations.pause("x")
+            assertEquals(analysis, dao.analysis("e"))
+            assertEquals(reply, dao.message("reply"))
+            assertEquals(explanation, dao.research("x"))
+            for (state in listOf("queued", "running")) {
+                dao.putAnalysis(analysis.copy(state = state, summary = "")); dao.putMessage(reply.copy(state = state, text = "Practice")); dao.putResearch(explanation.copy(state = state, report = ""))
+                understanding.pauseAnalysis("e"); understanding.pauseReply("reply"); explanations.pause("x")
+                assertEquals("failed" to "Analysis paused. Completed parts are saved.", dao.analysis("e")!!.let { it.state to it.error })
+                assertEquals("failed" to "This reply is incomplete. Retry when ready.", dao.message("reply")!!.let { it.state to it.error })
+                assertEquals("Practice", dao.message("reply")!!.text)
+                assertEquals("failed" to "Explanation paused. Your source is saved.", dao.research("x")!!.let { it.state to it.error })
+            }
+            for (state in listOf("waiting_quota", "waiting_auth")) {
+                val waiting = analysis.copy(state = state, error = "Waiting"); dao.putAnalysis(waiting)
+                understanding.pauseAnalysis("e")
+                assertEquals(waiting, dao.analysis("e"))
+            }
+        } finally { db.close() }
+    }
 }
