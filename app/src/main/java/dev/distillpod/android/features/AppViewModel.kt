@@ -220,7 +220,7 @@ class AppViewModel(val graph: AppGraph, private val saved: SavedStateHandle) : V
         graph.diagnostics.event("capture.requested",source="phone")
         val (id, position, file) = graph.playback.captureSource()
         val ep = dao.episode(id) ?: error("Episode is unavailable")
-        val saved = graph.captures.capture(id, position, file != null && file == ep.localFile)
+        val saved = graph.captures.capture(id, position, dev.distillpod.android.data.capturedFromOwnSource(ep, file))
         graph.diagnostics.event("capture.accepted",saved,source="phone")
         messages.send("Moment saved at ${timestamp(position)}")
         if (openSaved) open("capture:$saved")

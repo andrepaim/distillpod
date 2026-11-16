@@ -568,5 +568,8 @@ class TranscriptWorker(context: android.content.Context, params: WorkerParameter
     }
 }
 class CaptureWorker(context: android.content.Context, params: WorkerParameters) : CoroutineWorker(context, params) {
-    override suspend fun doWork(): Result { applicationContext.appGraph.ready.await(); applicationContext.appGraph.captures.run(inputData.getString("capture") ?: return Result.failure()); return Result.success() }
+    override suspend fun doWork(): Result { applicationContext.appGraph.ready.await(); applicationContext.appGraph.captures.run(inputData.getString("capture") ?: return Result.failure()) {
+        // Android reports a worker's stop reason from API 31; earlier versions record it as unknown.
+        if (android.os.Build.VERSION.SDK_INT >= 31) stopReason else androidx.work.WorkInfo.STOP_REASON_UNKNOWN
+    }; return Result.success() }
 }

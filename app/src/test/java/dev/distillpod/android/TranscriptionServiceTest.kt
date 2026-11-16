@@ -53,6 +53,8 @@ class TranscriptionServiceTest {
         assertTrue(lock.isHeld)
         assertEquals(ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC, controller.get().foregroundServiceType)
         assertNotNull(shadowOf(controller.get()).lastForegroundNotification)
+        assertEquals("processing", shadowOf(controller.get()).lastForegroundNotification.channelId)
+        assertEquals("Background tasks", context.getSystemService(android.app.NotificationManager::class.java).getNotificationChannel("processing").name.toString())
         controller.destroy()
         assertFalse(lock.isHeld)
         assertFalse(TranscriptionService.isRunning)

@@ -14,6 +14,7 @@ internal class DistillationOutcome {
     private var review:MomentGeneration.Review?=null
     private var quoteOmitted:Boolean?=null
     private var finished=false
+    private var stopReason="none"
 
     fun examining(stage:String) {if(stage in outcomes)this.stage=stage}
     fun cached(stage:String, model:String) {
@@ -54,6 +55,8 @@ internal class DistillationOutcome {
         if(stage in outcomes)outcomes[stage]=outcome
     }
     fun discarded() {stop();outcome="stale_result_suppressed"}
+    /** Why the execution was interrupted, as a [WorkStopReasons] category (#124). */
+    fun stopped(category:String) {stopReason=category.takeIf {it in WorkStopReasons.VALUES} ?: "other"}
     /** Exactly one terminal envelope for this execution, including returns and exceptions. */
     fun finish():Boolean {if(finished)return false;finished=true;stop();return true}
     fun fields():Map<String,Any> = buildMap {
@@ -73,6 +76,7 @@ internal class DistillationOutcome {
         for(kind in listOf("incomplete","unsupported","irrelevant","quote"))
             put("issue_${kind}_count",review?.issueCounts?.get(kind)?.coerceIn(0,20) ?: if(review==null)-1 else 0)
         put("quote_omitted",quoteOmitted ?: "unknown")
+        put("stop_reason",stopReason)
     }
     companion object {
         private val FAILURES=setOf("invalid_response","interrupted","cancelled","auth_failure","quota","request_failed","internal_failure")
