@@ -302,7 +302,7 @@ class CaptureRepository(private val db: AppDatabase, private val ai: AiGateway, 
         return current
     }
 
-    suspend fun run(id: String, stopReason: () -> Int? = { null }) {
+    suspend fun run(id: String, stop: suspend () -> dev.distillpod.android.work.WorkStop = { dev.distillpod.android.work.WorkStop.ENDED }, stopReason: () -> Int? = { null }) {
         val (saved,acquiredAttempt,claimedEvidence)=db.withTransaction {
             val current=dao.distillation(id)?.takeIf {it.state=="queued"} ?: return@withTransaction null
             val acquired=dao.momentAttempt(current.attempt)?.let { attempt ->
@@ -416,12 +416,18 @@ class CaptureRepository(private val db: AppDatabase, private val ai: AiGateway, 
             onPortableChanged()
         } catch(error: Exception) {
             val alreadyTerminal=terminalRecorded
+            // A worker stop (a lost network constraint, as in a car's Wi-Fi to mobile handover) surfaces as cancellation
+            // or as the in-flight request failing; WorkManager reruns the work, so it is not the moment's end (#261).
+            val workStop=if(error is CancellationException || error is java.io.IOException)
+                withContext(NonCancellable) {runCatching {stop()}.getOrDefault(dev.distillpod.android.work.WorkStop.ENDED)}
+                else dev.distillpod.android.work.WorkStop.ENDED
+            val rescheduled=workStop==dev.distillpod.android.work.WorkStop.RESCHEDULED
             // Record why an interruption happened: WorkManager's stop reason is set before it cancels the worker.
-            if(error is CancellationException)summary.stopped(dev.distillpod.android.diagnostics.WorkStopReasons.category(runCatching {stopReason()}.getOrNull()))
+            if(error is CancellationException || rescheduled)summary.stopped(dev.distillpod.android.diagnostics.WorkStopReasons.category(runCatching {stopReason()}.getOrNull()))
             // Preserve observed failure even if the ownership-storage check itself fails.
             if(!terminalRecorded) {
                 if(error is ObsoleteMomentSource)summary.discarded() else summary.fail(when {
-                    error is CancellationException -> "interrupted"
+                    error is CancellationException || rescheduled -> "interrupted"
                     error is QuotaExceeded -> "quota"
                     error is ReauthorizationRequired -> "auth_failure"
                     parsingResponse -> "invalid_response"
@@ -433,13 +439,16 @@ class CaptureRepository(private val db: AppDatabase, private val ai: AiGateway, 
             val owned=withContext(NonCancellable) { db.withTransaction {
                 val current=dao.distillation(id)
                 if(current==null || current.attempt!=saved.attempt || current.state !in setOf("running","reviewing") || dao.momentAttempt(saved.attempt)?.run!=execution)return@withTransaction false
-                dao.putDistillation(current.copy(
+                // The rerun claims a queued moment and reuses the attempt's saved candidate and review.
+                if(rescheduled)dao.putDistillation(current.copy(state="queued",error=null))
+                else dao.putDistillation(current.copy(
                     state=when(error) {is QuotaExceeded -> "waiting_quota";is ReauthorizationRequired -> "waiting_auth";else -> "failed"},
                     error=if(error is CancellationException)"Generation was interrupted. Your source and any completed candidate are saved." else safeFailure(error)))
                 true
             } }
             if(!owned && !alreadyTerminal)summary.discarded()
-            if(owned) {
+            if(owned && rescheduled)diagnostics?.event("distillation.queued",saved.id,reason="queued",correlation=evidence)
+            else if(owned) {
                 diagnostics?.failure("distillation",error,saved.id,correlation=evidence)
                 if(error is QuotaExceeded || error is ReauthorizationRequired)diagnostics?.event("distillation.queued",saved.id,
                     reason=if(error is QuotaExceeded)"waiting_quota" else "waiting_auth",correlation=evidence)
