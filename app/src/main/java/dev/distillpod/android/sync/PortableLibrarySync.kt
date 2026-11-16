@@ -213,8 +213,12 @@ internal suspend fun projectPortable(db:AppDatabase,r:CloudSubscription,force:Bo
             val insight=p.getValue("insight").ifBlank {null};val quote=p.getValue("quote").ifBlank {null}
             val source=p["sourceJson"].orEmpty()
             MomentGeneration.validateSource(source,p.getValue("startMs").toLong(),p.getValue("endMs").toLong())
+            // A streamed and a downloaded copy of the same enclosure are the same source (#250); any other
+            // identity is kept as sent, so the moment stays in source review.
+            val sent=p.getValue("fingerprint")
+            val fingerprint=syncedSourceFingerprint(ep,sent,p.getValue("audioUrl"))?.also {if(it!=ep.mediaFingerprint)adoptSyncedFingerprint(db,ep,it)}?:sent
             val restored=DistillationEntity(p.getValue("momentId"),ep.id,p.getValue("startMs").toLong(),p.getValue("endMs").toLong(),p.getValue("excerpt"),quote,insight,
-                p.getValue("revision"),p.getValue("fingerprint"),state=if(insight!=null)"succeeded" else "saved",createdAt=p.getValue("createdAt").toLong(),model=p.getValue("model").ifBlank {null},sourceJson=source)
+                p.getValue("revision"),fingerprint,state=if(insight!=null)"succeeded" else "saved",createdAt=p.getValue("createdAt").toLong(),model=p.getValue("model").ifBlank {null},sourceJson=source)
             val local=dao.distillation(restored.id)
             // An acknowledgement of our own snapshot must not erase a queued/reviewing attempt.
             if(local==null || momentSnapshot(local)!=momentSnapshot(restored) || force) {
