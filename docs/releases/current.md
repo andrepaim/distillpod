@@ -1,27 +1,27 @@
-DistillPod 0.30.0-alpha.1 keeps transcripts usable while you replace them, improves distilling streamed episodes, and fixes library, backup and sync recovery.
+DistillPod 0.31.0-alpha.1 fixes distills made from the car ending as **Needs retry**.
 
-- **Safer transcript controls.** Resume keeps saved progress and its original model/language. Waiting transcripts without progress can use a ready selected model. **Transcribe locally again** asks first and keeps the previous matching transcript readable and searchable until the replacement is ready.
-- **Better distill recovery.** Captures from an episode’s own stream or YouTube video no longer require source review simply because playback is remote. An incomplete passage offers **Include what comes next** and **Include earlier context**. Expanding without finding new text makes no ChatGPT request.
-- **Keep work across downloads and sync.** The first audio download keeps matching transcripts, insights, chat and moments usable, including the previous transcript during replacement. Backup restore and sync now reconcile the streamed and downloaded identities of the same enclosure. Different audio still requires review or preparation.
-- **Summary & chapters in the background.** Generation posts a **Generating summary & chapters** notification with Pause. System-stopped work resumes from completed parts; a user pause stays paused. A process kill or a request-level network error still needs manual Resume. The shared notification channel is now called **Background tasks**, retaining its settings.
-- **Library fixes.** Confirmed unsubscribe removes that show’s queue entries and listening history while keeping downloads, transcripts and saved moments. Refresh and re-follow keep concurrent show edits. Feed refresh can run on mobile data even with Wi-Fi-only downloads enabled; audio, model and transcript-download restrictions are unchanged.
-- **ChatGPT recovery.** An unavailable saved AI model falls back to an available account model, with the actual selection explained in Settings. An unreadable saved connection can be replaced by signing in again.
-- **More resilient backups and startup.** Missing or damaged post images are omitted with a warning instead of blocking a backup; the phone’s posts are unchanged. A failed optional startup recovery step no longer blocks the rest of startup.
-- **Update checks** choose the highest version code among recent eligible releases, including when an older release line was published more recently.
+- **Car distills finish on their own.** Pressing Distill in Android Auto saves the moment immediately, as before. Its AI insight then needs network access for 10–20 seconds. In a car the connection drops often: Wi-Fi giving way to mobile data as you drive off, tunnels, or wireless Android Auto using the phone's Wi-Fi. Until now, a drop during that window ended the moment as **Needs retry**. Now the moment waits, and generation continues when the network returns, reusing any result already received. This also covers distills from headphones, the widget and the phone itself.
+- **Pause and real errors are unchanged.** Pausing generation still keeps the moment paused. Quota, sign-in and other genuine failures still show their usual messages.
 
-Install the signed APK over the existing app; do not uninstall first. This personal alpha retains application ID `dev.distillpod.android` and the existing signing identity, and raises the version code to **54**. The database upgrades additively from schema 12 to 13 to keep a transcript during replacement. Backup format and Firebase rules/protocol are unchanged; no backend deployment is needed. Downgrading the APK is not supported.
+Install the signed APK over the existing app; do not uninstall first. This personal alpha keeps application ID `dev.distillpod.android` and the existing signing identity, and raises the version code to **55**. Database schema, backup format and Firebase rules/protocol are unchanged from 0.30.0-alpha.1. Updating from 0.29.0-alpha.1 or earlier also brings everything in [0.30.0-alpha.1](https://github.com/andrepaim/distillpod/releases/tag/v0.30.0-alpha.1), including its additive database upgrade. Downgrading the APK is not supported.
 
 **Known limits:**
 
-- A forward-expanded moment whose passage ends more than 15 seconds after the tap stays on this phone and in its backups, protecting older clients’ sync. Other installations keep the previous synced version. An already-uploading older snapshot can still replace the displayed result; the extended result remains under Previous versions. Backups containing extended passages require this version or later to restore.
-- Matching streamed audio by its enclosure URL assumes the publisher has not changed the audio behind that URL. Dynamic ad insertion or differently tokenized URLs can still require source review; previously flagged moments are not automatically repaired.
-- Intermittent queue restoration/player disagreement remains under investigation in [#251](https://github.com/andrepaim/distillpod/issues/251). Added diagnostics and a test synchronization fix do not establish that the underlying issue is fixed.
-- Real-phone background execution, notification Pause and OEM power behavior for summary generation remain unverified. The implementation was merged with an owner-recorded waiver of its phone check. No new phone installation or live-account validation was performed for this release.
+- **Moments already marked Needs retry** are not repaired automatically. Tap Retry insight on each one.
+- **An AI request cut off by the drop** is sent again once the network returns, which uses a little more of your ChatGPT allowance. A result that had already arrived is reused.
+- **A request that fails while the job keeps running,** for example a server error, still ends as a failure. Retry it from the moment.
+- **Your own car hasn't been tested.** The car scenario was reproduced and verified with Android's Desktop Head Unit on a Galaxy S22. Confirming it in your car is still worthwhile.
+- **Still open from 0.30.0-alpha.1:** the limits listed in [its release notes](https://github.com/andrepaim/distillpod/releases/tag/v0.30.0-alpha.1), including [#251](https://github.com/andrepaim/distillpod/issues/251).
 
 **Validation:**
 
-- Included fixes have regression tests and successful hosted CI, including default/voice builds, lint, Firebase rules, native checks and isolated API 35 acceptance. Where main reused identical-tree PR proof, that is equivalence evidence rather than a fresh emulator run.
-- Galaxy S22 evidence on PR #240 (integrated revision `8ceaa58`) covers the additive schema upgrade with library counts, transcripts, models, queue, moments and posts preserved, plus confirmation/cancel/replacement and continued reading. This is feature-specific evidence, not an installation of this signed release.
-- The release candidate must pass exact-revision main CI before tagging. Publication separately reruns full validation, release lint/assembly and signing. Downloaded assets are checked after publication for checksums, source identity, package/version, non-debuggable state, retained certificate and alignment.
+- **Hosted CI:** the fix ([#262](https://github.com/andrepaim/distillpod/pull/262), issue [#261](https://github.com/andrepaim/distillpod/issues/261)) passed full CI, including default/voice builds, lint, Firebase rules, native checks and isolated API 35 acceptance. Android CI on `main` then passed after the merge.
+- **New tests:** cover a stop during generation, a request cut off by the stop, a stop after the candidate arrived, Pause staying paused, and a genuine error still failing.
+- **Galaxy S22 with Desktop Head Unit:** phone locked, side-by-side debug build. Distill was pressed in the car and Wi-Fi turned off for 8 seconds during generation:
+  - `main` before the fix ended as **Needs retry**;
+  - the fix resumed when the network returned and finished.
+  This is feature evidence from a debug build, not an installation of this signed release.
+- **Production evidence:** Sentry recorded the same failure on 0.23 and 0.28 car distills (`cancelled` 10–18 seconds after generation started).
+- **Publication:** the release workflow separately reruns full validation, release lint/assembly and signing. The downloaded assets are then checked for checksums, source identity, package/version, non-debuggable state, retained certificate and alignment.
 
-[View changes since 0.29.0-alpha.1](https://github.com/andrepaim/distillpod/compare/v0.29.0-alpha.1...v0.30.0-alpha.1).
+[View changes since 0.30.0-alpha.1](https://github.com/andrepaim/distillpod/compare/v0.30.0-alpha.1...v0.31.0-alpha.1).
