@@ -11,6 +11,10 @@
   <p><a href="https://github.com/andrepaim/distillpod/releases"><strong>Download the APK</strong></a> · <a href="docs/getting-started.md">Getting started</a> · <a href="docs/development.md">Build from source</a></p>
 </div>
 
+<!-- demo-video: the link is added before this pull request is merged -->
+
+A one-minute tour: save a moment with one tap, read its takeaway, ask the episode a question, and share the idea.
+
 DistillPod is an Android podcast player for people who listen to learn. Capture an idea while it is fresh, ask for clarification, and build a collection of takeaways connected to the episodes they came from. Return to the original audio whenever you want to check the context or hear it again.
 
 ## Highlights
