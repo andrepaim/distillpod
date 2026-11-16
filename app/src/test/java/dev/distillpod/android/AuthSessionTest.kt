@@ -46,4 +46,28 @@ class AuthSessionTest {
             assertNull(saved)
         }
     }
+    @Test fun `reconnecting replaces a credential vault that can no longer be decrypted`() {
+        val key = RSAKeyGenerator(2048).keyID("key").generate()
+        val jwt = SignedJWT(JWSHeader.Builder(JWSAlgorithm.RS256).keyID("key").build(), JWTClaimsSet.Builder()
+            .issuer("https://auth.openai.com").subject("account").audience("issued").claim("nonce", "nonce").expirationTime(Date(System.currentTimeMillis() + 60000)).build())
+        jwt.sign(RSASSASigner(key))
+        MockWebServer().use { server ->
+            server.enqueue(MockResponse().setBody(JSONObject().put("access_token", "access").put("refresh_token", "refresh").put("id_token", jwt.serialize())
+                .put("expires_in", 3600).put("scope", "chatgpt.tokens.use.direct").toString()))
+            server.enqueue(MockResponse().setBody(JWKSet(key.toPublicJWK()).toString()))
+            var saved: String? = "unreadable"
+            val auth = AuthSession({ saved?.takeUnless { it == "unreadable" } ?: if (saved == null) null else throw javax.crypto.AEADBadTagException("invalidated key") }, { saved = it }, server.url("/"))
+            val p = OAuthAttempt("state", "nonce", "verifier", "http://127.0.0.1:1455/auth/callback", clientId = "issued")
+            auth.exchange(p, "http://127.0.0.1:1455/auth/callback?state=state&code=code&client_id=issued")
+            assertEquals("account", JSONObject(saved!!).getString("subject"))
+            assertEquals("access", auth.accessToken())
+        }
+    }
+    @Test fun `an unreadable credential vault asks for reconnection instead of failing opaquely`() {
+        var changed: Boolean? = null
+        val auth = AuthSession({ throw javax.crypto.AEADBadTagException("invalidated key") }, { error("No write expected") }, onCredentialsChanged = { changed = it })
+        assertThrows(ReauthorizationRequired::class.java) { auth.accessToken() }
+        assertThrows(ReauthorizationRequired::class.java) { auth.withAccessToken { it } }
+        assertNull(changed)
+    }
 }
