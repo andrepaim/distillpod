@@ -347,6 +347,6 @@ class PlaybackRepository(private val context: Context, private val db: AppDataba
     }
     suspend fun capture(): Pair<String, Long> { val c = controller(); return withContext(Dispatchers.Main) { (c.currentMediaItem?.mediaId ?: error("Play an episode first")) to c.currentPosition.coerceAtLeast(0) } }
     suspend fun captureSource(): Triple<String, Long, String?> { val c = controller(); return withContext(Dispatchers.Main) {
-        Triple(c.currentMediaItem?.mediaId ?: error("Play an episode first"), c.currentPosition.coerceAtLeast(0), c.currentMediaItem?.localConfiguration?.uri?.takeIf { it.scheme == "file" }?.path)
+        Triple(c.currentMediaItem?.mediaId ?: error("Play an episode first"), c.currentPosition.coerceAtLeast(0), dev.distillpod.android.data.playingSource(c.currentMediaItem?.localConfiguration?.uri))
     } }
 }

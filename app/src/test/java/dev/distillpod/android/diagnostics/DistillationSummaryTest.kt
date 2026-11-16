@@ -138,6 +138,29 @@ class DistillationSummaryTest {
         try {repo.run(id);fail("must propagate cancellation")}catch(_:kotlinx.coroutines.CancellationException){}
         assertTrue(summaries(d).single().contains("interrupted"))
     }
+    @Test fun `interruption records the worker stop reason category`()=fixture({throw kotlinx.coroutines.CancellationException("PRIVATE")}) {repo,_,d,id->
+        try {repo.run(id) {androidx.work.WorkInfo.STOP_REASON_CONSTRAINT_CONNECTIVITY};fail("must propagate cancellation")}catch(_:kotlinx.coroutines.CancellationException){}
+        val attributes=fields(summaries(d).single())
+        assertEquals("interrupted",attributes["stage_outcome"]);assertEquals("connectivity",attributes["stop_reason"])
+    }
+    @Test fun `stop reason distinguishes cancellation outside a worker stop and finished attempts`() {
+        fixture({throw kotlinx.coroutines.CancellationException("PRIVATE")}) {repo,_,d,id->
+            try {repo.run(id) {androidx.work.WorkInfo.STOP_REASON_NOT_STOPPED};fail("must propagate cancellation")}catch(_:kotlinx.coroutines.CancellationException){}
+            assertEquals("not_stopped",fields(summaries(d).single())["stop_reason"])
+        }
+        fixture({if(it==1)ready else accepted}) {repo,_,d,id->
+            repo.run(id) {androidx.work.WorkInfo.STOP_REASON_NOT_STOPPED}
+            assertEquals("none",fields(summaries(d).single())["stop_reason"])
+        }
+    }
+    @Test fun `stop reason categories are finite`() {
+        assertEquals("not_worker",WorkStopReasons.category(null))
+        assertEquals("cancelled_by_app",WorkStopReasons.category(androidx.work.WorkInfo.STOP_REASON_CANCELLED_BY_APP))
+        assertEquals("quota",WorkStopReasons.category(androidx.work.WorkInfo.STOP_REASON_QUOTA))
+        assertEquals("foreground_service_timeout",WorkStopReasons.category(androidx.work.WorkInfo.STOP_REASON_FOREGROUND_SERVICE_TIMEOUT))
+        assertEquals("unknown",WorkStopReasons.category(androidx.work.WorkInfo.STOP_REASON_UNKNOWN))
+        assertEquals("other",WorkStopReasons.category(9999))
+    }
     @Test fun `contradictory review is observed without changing rejection`() {
         val review=org.json.JSONObject(accepted).put("issues",org.json.JSONArray().put(org.json.JSONObject().put("kind","unsupported").put("spanIds",org.json.JSONArray().put(0)).put("reason","PRIVATE-REASON"))).toString()
         fixture({if(it==1)ready else review}) {repo,db,d,id->

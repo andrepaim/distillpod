@@ -239,7 +239,7 @@ class AutoLibraryCallback(
         if(captureBusy)return com.google.common.util.concurrent.Futures.immediateFuture(SessionResult(SessionError.INFO_CANCELLED))
         val id=item.mediaId;val position=player.currentPosition.coerceAtLeast(0)
         if(position==0L)return com.google.common.util.concurrent.Futures.immediateFuture(SessionResult(SessionError.ERROR_INVALID_STATE))
-        val file=item.localConfiguration?.uri?.takeIf {it.scheme=="file"}?.path
+        val file=dev.distillpod.android.data.playingSource(item.localConfiguration?.uri)
         captureBusy=true;publishCarLayout(session,"Saving…",false)
         return request {
             try {

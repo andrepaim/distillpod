@@ -14,6 +14,10 @@ One request generates a candidate; a second reviews completeness, support, relev
 
 There are no automatic AI repair loops. Failed review requests retain the candidate for explicit retry. Generation/review call attempts, successful elapsed times, model names, prompt version and source revision are persisted locally. Provider token usage is not available through the current gateway. Failed HTTP attempts can still consume allowance; call counters measure attempted gateway requests, not provider billing.
 
+## Source verification
+
+A capture records the media identity it was taken from, so a tap is never matched to a transcript of different audio. The capture takes the episode's current `mediaFingerprint` when the player is on the episode's own media: the downloaded file, or a stream of the episode's current enclosure URL (#124). For YouTube episodes, the enclosure is the watch URL, also in video mode. Before a download that fingerprint is the provisional enclosure identity (#245); the first completed download retags such moments to the file hash. Preparation still requires the transcript fingerprint to equal the episode fingerprint. Another file, a stale or different URL, an unknown URI or a blank episode fingerprint stores `unverified:<episode>`, which stops at **Review source** before any AI request. The check trusts that the publisher serves the same audio at the same URL; dynamically inserted ads that move timing remain the same residual risk the provisional identity already accepts.
+
 ## Storage and lifecycle
 
 Room schema 9 adds `distillations.sourceJson`, `moment_attempts` and `moment_versions`. Capture `startMs`, `endMs` and creation time remain unchanged. Source metadata records the selected passage range, original excerpt, generation ID and review metadata. Attempt records contain the frozen numbered context and candidate/review outputs.
