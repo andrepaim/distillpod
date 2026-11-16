@@ -24,12 +24,34 @@ data class MomentContext(val capture: TimeRange, val range: TimeRange, val spans
     }
 }
 
+/**
+ * How much transcript around the tap a distill may read. Expansion reaches in one direction at a
+ * time (#124): EARLIER resolves a thought that began before the standard window, LATER finishes a
+ * thought that continues after the tap. Every window stays within [MomentContexts.MAX_WINDOW_MS].
+ */
+enum class ContextWindow(val key: String, val backwardMs: Long, val forwardMs: Long) {
+    STANDARD("standard", 120_000, 15_000),
+    EARLIER("earlier", 180_000, 15_000),
+    LATER("later", 120_000, 75_000);
+    companion object {
+        /** Attempts written before #124 only record whether context was (backward) expanded. */
+        fun of(key: String?, legacyExpanded: Boolean): ContextWindow =
+            values().firstOrNull { it.key == key } ?: if (legacyExpanded) EARLIER else STANDARD
+    }
+}
+
 object MomentContexts {
     const val MAX_TEXT = 24_000
-    fun range(captureEnd: Long, duration: Long, expanded: Boolean = false): TimeRange {
+    const val MAX_BACKWARD_MS = 180_000L
+    const val MAX_FORWARD_MS = 75_000L
+    /** The longest frozen context, as already enforced for stored attempts. */
+    const val MAX_WINDOW_MS = 195_000L
+    fun range(captureEnd: Long, duration: Long, expanded: Boolean = false): TimeRange =
+        range(captureEnd, duration, if (expanded) ContextWindow.EARLIER else ContextWindow.STANDARD)
+    fun range(captureEnd: Long, duration: Long, window: ContextWindow): TimeRange {
         require(captureEnd >= 0 && duration >= 0)
-        val end = if (duration > 0) minOf(captureEnd + 15_000, duration) else captureEnd + 15_000
-        return TimeRange((captureEnd - if (expanded) 180_000 else 120_000).coerceAtLeast(0).coerceAtMost(end), end)
+        val end = if (duration > 0) minOf(captureEnd + window.forwardMs, duration) else captureEnd + window.forwardMs
+        return TimeRange((captureEnd - window.backwardMs).coerceAtLeast(0).coerceAtMost(end), end)
     }
     fun build(capture: TimeRange, range: TimeRange, segments: List<SubtitleSegment>,
         measured: ((TimeRange, List<SubtitleSegment>, List<MomentSpan>) -> Unit)? = null): MomentContext {

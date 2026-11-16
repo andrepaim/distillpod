@@ -129,7 +129,7 @@ class AppGraph internal constructor(val context: Context, val scope: CoroutineSc
         db.library().transcripts().forEach {row->reliabilityStates["transcription" to row.revision]=when(row.state){
             "ready"->"completed";"partial"->"partial";"waiting_model"->"waiting";"stale"->"cancelled";"failed"->"failed";"paused"->"paused";"queued","processing"->"queued";else->"unknown"}}
         db.library().distillations().forEach {row->reliabilityStates["distillation" to row.id]=when(row.state){
-            "succeeded"->"completed";"failed","needs_context","unclear_source","no_speech"->"failed"
+            "succeeded"->"completed";"failed","needs_context","incomplete_passage","unclear_source","no_speech"->"failed"
             "queued"->"queued";"running","reviewing"->"interrupted";"waiting_auth","waiting_quota","waiting_transcript","review_source"->"waiting";else->"unknown"}}
         diagnostics.reconcile(reliabilityStates)
     }

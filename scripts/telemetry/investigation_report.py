@@ -75,7 +75,7 @@ EVENTS=set(('capture.started capture.completed capture.requested capture.accepte
 REASONS=set(('restricted throttled formats busy partial superseded reconciled process_interrupted '
  'buffering ended resume_succeeded resume_failed none created deduplicated transcript_required '
  'waiting waiting_auth waiting_quota waiting_transcript queued unknown no_speech needs_context '
- 'review_source unclear_source succeeded failed ready rejected disabled accepted duplicate cancelled '
+ 'review_source incomplete_passage unclear_source succeeded failed ready rejected disabled accepted duplicate cancelled '
  'repeat untrusted charging_required battery_low offline wifi_required scheduled online publisher '
  'downloading checking_model decoding starting transcribing saving playing paused phone car headphones '
  'resume_requested resume_cancelled dns timeout permission auth_expired quota network_or_storage '
@@ -96,8 +96,8 @@ ENUMS=dict(reason=REASONS,source={'background','phone','headphones','car'},
   'app_standby user system_processing app_launch_estimate_changed foreground_service_timeout other').split()),
  retry_trigger={'initial','explicit_retry','expanded_context','transcript_changed','review_resume','process_recovery','unknown'},
  transcript_source={'publisher','whisper','online','missing','other'},
- context_reason=set('ready coverage_missing source_mismatch revision_mismatch empty_speech empty_context oversized invalid_bounds episode_missing superseded cancelled internal'.split()),
- outcome=set('queued running waiting paused completed partial failed cancelled interrupted unknown waiting_auth transcript_required no_speech needs_context review_source superseded episode_missing'.split()))
+ context_reason=set('ready coverage_missing source_mismatch revision_mismatch empty_speech empty_context oversized invalid_bounds unchanged_context episode_missing superseded cancelled internal'.split()),
+ outcome=set('queued running waiting paused completed partial failed cancelled interrupted unknown waiting_auth transcript_required no_speech needs_context review_source unchanged_context superseded episode_missing'.split()))
 BOOLEAN_FIELDS=set(FLAGS+('test_traffic','correlation_complete','passage_complete','takeaway_supported',
  'relevant','quote_faithful','needs_context','contradictory_review','quote_omitted','expanded_context',
  'duration_known','coverage_measured','coverage_complete','segments_measured','frozen_context'))

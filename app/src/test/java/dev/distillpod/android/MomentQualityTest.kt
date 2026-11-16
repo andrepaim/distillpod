@@ -85,7 +85,7 @@ class MomentQualityTest {
         val result=dao.distillation(id)!!
         assertEquals("succeeded",result.state);assertEquals(200000L,result.sourceEndMs)
         assertEquals(135000L,result.startMs);assertEquals(195000L,result.endMs)
-        repo.improve(id,true)
+        repo.improve(id,ContextWindow.EARLIER)
         val expanded=dao.distillation(id)!!
         val context=MomentGeneration.context(dao.momentAttempt(expanded.attempt)!!.contextJson)
         assertEquals("queued",expanded.state);assertEquals(TimeRange(15000,200000),context.range)
@@ -116,11 +116,79 @@ class MomentQualityTest {
         reject=true;repo.improve(id);repo.run(id)
         assertEquals(original.insight,db.library().distillation(id)!!.insight)
         assertEquals(original.sourceJson,db.library().distillation(id)!!.sourceJson)
-        reject=false;repo.improve(id,true);repo.run(id)
+        reject=false;repo.improve(id);repo.run(id)
         val latest=db.library().distillation(id)!!;assertNotEquals(original.generationId,latest.generationId)
         val version=db.library().momentVersions(id).single();repo.restoreVersion(id,version.id)
         assertEquals(original.generationId,db.library().distillation(id)!!.generationId)
         assertEquals(2,db.library().momentVersions(id).size)
+    }
+    private val incomplete="""{"passageComplete":false,"takeawaySupported":true,"relevant":true,"quoteFaithful":true,"needsContext":false,"issues":[{"kind":"incomplete","spanIds":[0],"reason":"The idea continues after the passage."}]}"""
+    private fun continuingIdea(db:AppDatabase)=runBlocking {
+        db.library().deleteSegments("e")
+        db.library().putSegments(listOf(SegmentEntity("e","r",40000,60000,"The first reason lower costs matter is demand.",0),
+            SegmentEntity("e","r",70000,80000,"The second reason is that new buyers appear.",1)))
+    }
+    @Test fun `incomplete passage gets its own state and extends forward where the idea continues`()=fixture { db ->
+        continuingIdea(db)
+        val inputs=mutableListOf<String>();var reviews=0
+        val longer="""{"outcome":"ready","passageStart":0,"passageEnd":1,"takeaway":"Lower costs matter because demand grows and new buyers appear.","quoteStart":null,"quoteEnd":null}"""
+        val ai=gateway { prompt,input -> inputs+=input
+            if(prompt==MomentGeneration.generatePrompt){if(reviews==0)ready.replace("\"passageEnd\":1","\"passageEnd\":0") else longer} else {reviews++;if(reviews==1)incomplete else accepted} }
+        val enqueued=mutableListOf<String>()
+        val repo=CaptureRepository(db,ai,{true},{},{enqueued+=it})
+        val id=repo.capture("e",60000,true);repo.run(id)
+        val rejected=db.library().distillation(id)!!
+        assertEquals("incomplete_passage",rejected.state)
+        assertTrue(rejected.error!!.contains("before the idea is complete"))
+        assertFalse(inputs.first().contains("new buyers"))
+
+        repo.expand(id,ContextWindow.LATER)
+        val attempt=db.library().momentAttempt(db.library().distillation(id)!!.attempt)!!
+        assertEquals("later",JSONObject(attempt.contextJson).getString("window"))
+        assertEquals(TimeRange(0,135000),MomentGeneration.context(attempt.contextJson).range)
+        assertFalse(JSONObject(MomentGeneration.input(attempt.contextJson)).has("window"))
+        assertEquals("queued",db.library().distillation(id)!!.state)
+        repo.run(id)
+        val result=db.library().distillation(id)!!
+        assertEquals("succeeded",result.state);assertEquals(80000L,result.sourceEndMs);assertEquals(60000L,result.endMs)
+        assertTrue(inputs[2].contains("new buyers"));assertEquals(4,inputs.size);assertEquals(listOf(id,id),enqueued)
+    }
+    @Test fun `expansion that adds no new source makes no AI request and says so`()=fixture { db ->
+        var calls=0
+        val ai=gateway { prompt,_ -> calls++;if(prompt==MomentGeneration.generatePrompt)ready.replace("\"passageEnd\":1","\"passageEnd\":0") else incomplete }
+        val enqueued=mutableListOf<String>()
+        val repo=CaptureRepository(db,ai,{true},{},{enqueued+=it})
+        val id=repo.capture("e",60000,true);repo.run(id)
+        assertEquals("incomplete_passage",db.library().distillation(id)!!.state);assertEquals(2,calls)
+        // Near the start the earlier window starts at 0 too; later context holds no further speech.
+        for(window in listOf(ContextWindow.EARLIER,ContextWindow.LATER)) {
+            repo.expand(id,window)
+            val unchanged=db.library().distillation(id)!!
+            assertEquals("incomplete_passage",unchanged.state)
+            assertTrue(unchanged.error!!.contains("no new transcript"))
+        }
+        assertEquals(2,calls);assertEquals(listOf(id),enqueued)
+        // New speech after the tap makes the same expansion worthwhile.
+        db.library().putSegments(listOf(SegmentEntity("e","r",90000,100000,"And that is why demand grows.",1)))
+        repo.expand(id,ContextWindow.LATER)
+        assertEquals("queued",db.library().distillation(id)!!.state);assertEquals(listOf(id,id),enqueued)
+    }
+    @Test fun `review rejection states distinguish an incomplete passage`() {
+        val context=MomentContexts.build(TimeRange(0,10000),TimeRange(0,25000),listOf(SubtitleSegment(TimeRange(0,9000),"A useful sentence.")))
+        assertEquals("incomplete_passage",MomentGeneration.rejection(MomentGeneration.review(incomplete,context)))
+        assertEquals("incomplete_passage",MomentGeneration.rejection(MomentGeneration.review(incomplete.replace("\"needsContext\":false","\"needsContext\":true"),context)))
+        val unsupported="""{"passageComplete":false,"takeawaySupported":false,"relevant":true,"quoteFaithful":true,"needsContext":true,"issues":[{"kind":"incomplete","spanIds":[0],"reason":"r"},{"kind":"unsupported","spanIds":[0],"reason":"r"}]}"""
+        assertEquals("needs_context",MomentGeneration.rejection(MomentGeneration.review(unsupported,context)))
+        assertEquals("unclear_source",MomentGeneration.rejection(MomentGeneration.review(unsupported.replace("\"needsContext\":true","\"needsContext\":false"),context)))
+    }
+    @Test fun `published passages may finish a thought up to the later window`() {
+        fun source(end:Long)=JSONObject().put("version",2).put("generationId","g").put("originalExcerpt","").put("selectedStartMs",50000)
+            .put("selectedEndMs",end).put("passageStart",0).put("passageEnd",0).put("reviewModel","").put("generationMs",0).put("reviewMs",0).toString()
+        MomentGeneration.validateSource(source(135000),0,60000)
+        assertThrows(IllegalArgumentException::class.java) { MomentGeneration.validateSource(source(135001),0,60000) }
+        assertTrue(MomentGeneration.syncCompatible(source(75000),60000))
+        assertFalse(MomentGeneration.syncCompatible(source(75001),60000))
+        assertTrue(MomentGeneration.syncCompatible("",60000))
     }
     @Test fun `deleted moment during review is never resurrected`()=fixture { db ->
         var id=""

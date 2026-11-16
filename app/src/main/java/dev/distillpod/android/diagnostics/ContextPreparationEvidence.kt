@@ -7,7 +7,8 @@ internal class ContextPreparationEvidence {
     var source="missing"
     var outcome="failed"
     var reason="internal"
-    var expanded=false
+    var window=dev.distillpod.core.ContextWindow.STANDARD
+    val expanded get()=window!=dev.distillpod.core.ContextWindow.STANDARD
     var durationKnown=false
     var coverageComplete=false
     var missingDuration:Long?=null
@@ -20,8 +21,8 @@ internal class ContextPreparationEvidence {
         put("outcome",outcome.takeIf {it in OUTCOMES} ?: "failed")
         put("context_reason",reason.takeIf {it in REASONS} ?: "internal")
         put("expanded_context",expanded)
-        put("backward_window_ms",if(expanded)180000L else 120000L)
-        put("forward_window_ms",15000L)
+        put("backward_window_ms",window.backwardMs)
+        put("forward_window_ms",window.forwardMs)
         put("duration_known",durationKnown)
         put("coverage_measured",missingDuration!=null)
         put("coverage_complete",coverageComplete)
@@ -37,7 +38,7 @@ internal class ContextPreparationEvidence {
         put("preparation_elapsed_ms",elapsed.coerceAtLeast(0))
     }
     companion object {
-        val OUTCOMES=setOf("queued","waiting_auth","transcript_required","no_speech","needs_context","review_source","superseded","episode_missing","cancelled","failed")
-        val REASONS=setOf("ready","coverage_missing","source_mismatch","revision_mismatch","empty_speech","empty_context","oversized","invalid_bounds","episode_missing","superseded","cancelled","internal")
+        val OUTCOMES=setOf("queued","waiting_auth","transcript_required","no_speech","needs_context","review_source","unchanged_context","superseded","episode_missing","cancelled","failed")
+        val REASONS=setOf("ready","coverage_missing","source_mismatch","revision_mismatch","empty_speech","empty_context","oversized","invalid_bounds","unchanged_context","episode_missing","superseded","cancelled","internal")
     }
 }

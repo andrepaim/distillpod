@@ -34,7 +34,7 @@ class MomentDetailLayoutTest {
     private val actions = MomentActions(
         replay = { calls += "replay" }, share = { calls += "share" }, copy = { calls += "copy" },
         createPost = { calls += "post" }, openPosts = { calls += "posts" }, explain = { calls += "explain" },
-        improve = { calls += "improve" }, expandContext = { calls += "expand" }, retranscribe = { calls += "retranscribe" },
+        improve = { calls += "improve" }, includeEarlier = { calls += "earlier" }, includeLater = { calls += "later" }, retranscribe = { calls += "retranscribe" },
         generate = { calls += "generate" }, prepare = { calls += "prepare" }, pause = { calls += "pause" },
         connectAccount = { calls += "connect" }, restore = { calls += "restore:$it" }, delete = { calls += "delete" })
     private val source = JSONObject().put("selectedStartMs", 40_000).put("selectedEndMs", 62_000).put("generationId", "g")
@@ -126,6 +126,31 @@ class MomentDetailLayoutTest {
         compose.onNodeWithContentDescription("More actions for this moment").performClick()
         compose.onNodeWithText("Improve this distill").assertDoesNotExist()
         assertEquals(listOf("pause"), calls)
+    }
+
+    @Test fun `incomplete passage offers the speech that follows instead of a new transcript`() {
+        show(moment(state = "incomplete_passage", insight = null, quote = null, error = "Source review found the takeaway supported, but the selected passage stops before the idea is complete."))
+        compose.onNodeWithText("Passage is incomplete").assertIsDisplayed()
+        compose.onNodeWithText("Review the transcript").assertDoesNotExist()
+        compose.onNodeWithText("Transcribe and retry").assertDoesNotExist()
+        compose.onNodeWithText("Include what comes next").performScrollTo().performClick()
+        compose.onNodeWithText("Include earlier context").performScrollTo().performClick()
+        assertEquals(listOf("later", "earlier"), calls)
+    }
+
+    @Test fun `context recovery can extend in either direction or transcribe again`() {
+        show(moment(state = "needs_context", insight = null, quote = null))
+        compose.onNodeWithText("Include earlier context").performScrollTo().performClick()
+        compose.onNodeWithText("Include what comes next").performScrollTo().performClick()
+        compose.onNodeWithText("Transcribe and retry").performScrollTo().performClick()
+        assertEquals(listOf("earlier", "later", "retranscribe"), calls)
+    }
+
+    @Test fun `a passage finished well after the tap says it stays on this phone`() {
+        show(moment(quote = null, sourceJson = JSONObject(source).put("selectedEndMs", 90_000).toString()))
+        compose.onNodeWithText("Source passage").performScrollTo().performClick()
+        compose.onNodeWithText("The passage continues after your tap to finish the thought.").assertExists()
+        compose.onNodeWithText("stays on this phone", substring = true).assertExists()
     }
 
     @Test fun `source review without readable context says so`() {

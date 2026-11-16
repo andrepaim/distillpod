@@ -226,11 +226,12 @@ class AppViewModel(val graph: AppGraph, private val saved: SavedStateHandle) : V
         if (openSaved) open("capture:$saved")
     }
     fun generateCapture(id: String, confirm: Boolean = false) = action("capture:$id") { graph.diagnostics.usage("distillation");graph.captures.generate(id, confirm) }
-    fun improveCapture(id: String, expanded: Boolean = false) = action("capture:$id") { graph.captures.improve(id, expanded) }
+    fun improveCapture(id: String) = action("capture:$id") { graph.captures.improve(id) }
+    fun expandCapture(id: String, window: dev.distillpod.core.ContextWindow) = action("capture:$id") { graph.captures.expand(id, window) }
     fun retranscribeCapture(id: String) = action("capture:$id") {
         val moment=dao.distillation(id) ?: return@action
         graph.transcription.prepare(moment.episodeId, forceLocal=true)
-        graph.captures.improve(id, expanded=true)
+        graph.captures.improve(id, dev.distillpod.core.ContextWindow.EARLIER)
     }
     fun restoreCapture(id: String, version: String) = action("capture:$id") { graph.captures.restoreVersion(id, version) }
     fun cancelCapture(id: String) = action("capture:$id") { graph.jobs.cancelCapture(id); graph.captures.cancel(id) }

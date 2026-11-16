@@ -73,6 +73,13 @@ class PortableLibrarySync(private val db:AppDatabase,private val isolatedDemo:Bo
     /** Called inside a transaction which has already checked the AI attempt/source identity. */
     internal suspend fun recordMoment(value:DistillationEntity):Boolean {
         val ep=dao.episode(value.episodeId) ?: return false
+        if(!MomentGeneration.syncCompatible(value.sourceJson,value.endMs)) {
+            // Installations before #124 reject a passage ending more than 15 s after the tap, and one
+            // rejected record stops all of their sync. Keep it local, and drop any queued older snapshot:
+            // its acknowledgement would otherwise project the older cloud copy over this result.
+            sync.binding()?.let { sync.removeQueued(it.uid,it.generation,"moment_${value.id}") }
+            return false
+        }
         var payload=identity(ep)?.plus(mapOf("momentId" to value.id,"startMs" to value.startMs.toString(),"endMs" to value.endMs.toString(),
             "excerpt" to value.excerpt,"quote" to (value.quote?:""),"insight" to (value.insight?:""),"revision" to value.revision,
             "fingerprint" to value.fingerprint,"createdAt" to value.createdAt.toString(),"model" to (value.model?:""))) ?: return false

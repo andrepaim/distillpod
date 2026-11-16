@@ -10,6 +10,28 @@ class MomentContextTest {
         assertEquals(TimeRange(20_000,215_000),MomentContexts.range(200_000,500_000,true))
         assertEquals(TimeRange(0,100_000),MomentContexts.range(100_000,100_000))
     }
+    @Test fun `context can be extended forward where an idea continues after the tap`() {
+        assertEquals(TimeRange(80_000,275_000),MomentContexts.range(200_000,500_000,ContextWindow.LATER))
+        assertEquals(TimeRange(20_000,215_000),MomentContexts.range(200_000,500_000,ContextWindow.EARLIER))
+        assertEquals(MomentContexts.range(200_000,500_000),MomentContexts.range(200_000,500_000,ContextWindow.STANDARD))
+        // Clamped to the episode end and start; an unknown duration keeps the full forward reach.
+        assertEquals(TimeRange(130_000,260_000),MomentContexts.range(250_000,260_000,ContextWindow.LATER))
+        assertEquals(TimeRange(0,85_000),MomentContexts.range(10_000,0,ContextWindow.LATER))
+        // Near the start an earlier window adds nothing: callers detect the identical input.
+        assertEquals(MomentContexts.range(60_000,500_000),MomentContexts.range(60_000,500_000,ContextWindow.EARLIER))
+    }
+    @Test fun `every window fits the frozen context limit and the published passage bound`() {
+        for (window in ContextWindow.values()) {
+            val range=MomentContexts.range(1_000_000,0,window)
+            assertTrue(range.endMs-range.startMs<=MomentContexts.MAX_WINDOW_MS)
+            assertTrue(range.endMs-1_000_000<=MomentContexts.MAX_FORWARD_MS)
+            assertTrue(1_000_000-range.startMs<=MomentContexts.MAX_BACKWARD_MS)
+        }
+        assertEquals(ContextWindow.LATER,ContextWindow.of("later",false))
+        assertEquals(ContextWindow.EARLIER,ContextWindow.of(null,true))
+        assertEquals(ContextWindow.STANDARD,ContextWindow.of(null,false))
+        assertEquals(ContextWindow.STANDARD,ContextWindow.of("unknown",false))
+    }
     @Test fun `candidate sentences preserve original Portuguese and segment timing`() {
         val context=MomentContexts.build(TimeRange(0,10_000),TimeRange(0,25_000), listOf(
             SubtitleSegment(TimeRange(1000,9000),"Se faltar energia, a obra pode parar. Isso é uma hipótese.")))
