@@ -11,7 +11,7 @@
   <p><a href="https://github.com/andrepaim/distillpod/releases"><strong>Download the APK</strong></a> · <a href="docs/getting-started.md">Getting started</a> · <a href="docs/development.md">Build from source</a></p>
 </div>
 
-<!-- demo-video: the link is added before this pull request is merged -->
+https://github.com/user-attachments/assets/55f197e4-b3f2-404e-a715-b3a08b107cbb
 
 A one-minute tour: save a moment with one tap, read its takeaway, ask the episode a question, and share the idea.
 
