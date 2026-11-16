@@ -568,8 +568,18 @@ class TranscriptWorker(context: android.content.Context, params: WorkerParameter
     }
 }
 class CaptureWorker(context: android.content.Context, params: WorkerParameters) : CoroutineWorker(context, params) {
-    override suspend fun doWork(): Result { applicationContext.appGraph.ready.await(); applicationContext.appGraph.captures.run(inputData.getString("capture") ?: return Result.failure()) {
+    override suspend fun doWork(): Result {
+        val graph = applicationContext.appGraph
+        graph.ready.await()
+        val id = inputData.getString("capture") ?: return Result.failure()
         // Android reports a worker's stop reason from API 31; earlier versions record it as unknown.
-        if (android.os.Build.VERSION.SDK_INT >= 31) stopReason else androidx.work.WorkInfo.STOP_REASON_UNKNOWN
-    }; return Result.success() }
+        val reason = { if (android.os.Build.VERSION.SDK_INT >= 31) stopReason else androidx.work.WorkInfo.STOP_REASON_UNKNOWN }
+        graph.captures.run(id, stopReason = reason, stop = {
+            // A lost network constraint (a car's Wi-Fi to mobile handover) stops the worker and WorkManager
+            // reruns it; only Pause cancels it for good (#261).
+            if (!isStopped) dev.distillpod.android.work.WorkStop.ENDED
+            else graph.jobs.stopped("capture:$id", this.id, if (android.os.Build.VERSION.SDK_INT >= 31) stopReason else null)
+        })
+        return Result.success()
+    }
 }
