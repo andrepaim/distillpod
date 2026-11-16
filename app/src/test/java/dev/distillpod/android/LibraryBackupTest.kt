@@ -151,6 +151,57 @@ class LibraryBackupTest {
             assertEquals(0, backup.merge(backup.preview(bytes.inputStream())))
         } finally { source.close(); target.close() }
     }
+    /** #249: a backup made while the episode was only streamed, restored after its first download here. */
+    private suspend fun streamedBackup(source: AppDatabase, fingerprint: String) {
+        val dao = source.library()
+        dao.putPodcast(PodcastEntity("show", "https://example.test/feed", "A show"))
+        dao.putEpisode(EpisodeEntity("episode", "show", "guid", "Episode", "https://example.test/audio", durationMs = 60000, mediaFingerprint = fingerprint))
+        dao.putTranscript(TranscriptEntity("episode", "rev", fingerprint, "publisher", "en", source = "publisher", state = "ready", durationMs = 60000, processedMs = 60000))
+        dao.putSegments(listOf(SegmentEntity("episode", "rev", 0, 60000, "A useful source excerpt.")))
+        dao.putMessage(MessageEntity("message", "episode", "assistant", "Answer", revision = "rev", fingerprint = fingerprint))
+        dao.putDistillation(DistillationEntity("moment", "episode", 0, 10000, "A useful source excerpt.", insight = "Insight", revision = "rev",
+            fingerprint = fingerprint, state = "succeeded", attempt = "attempt"))
+        dao.putMomentAttempt(MomentAttemptEntity("attempt", "moment", JSONObject().put("revision", "rev").put("fingerprint", fingerprint).toString()))
+        dao.putDistillation(DistillationEntity("unverified", "episode", 0, 10000, fingerprint = "unverified:episode", state = "saved"))
+    }
+    private suspend fun downloadedHere(target: AppDatabase) {
+        target.library().putPodcast(PodcastEntity("show", "https://example.test/feed", "A show"))
+        target.library().putEpisode(EpisodeEntity("episode", "show", "guid", "Episode", "https://example.test/audio", durationMs = 60000,
+            localFile = "/private/device-only/audio", downloadState = "downloaded", mediaFingerprint = "file-hash"))
+    }
+    @Test fun `restoring work made before the first download follows the episode to its file hash`() = runBlocking {
+        val source = database(); val target = database()
+        try {
+            streamedBackup(source, dev.distillpod.core.episodeId("enclosure", "https://example.test/audio"))
+            downloadedHere(target)
+            val backup = LibraryBackup(target)
+            backup.merge(backup.preview(LibraryBackup(source).export().inputStream()))
+            val dao = target.library()
+            val transcript = dao.transcript("episode")!!
+            assertEquals("ready", transcript.state)
+            assertNull(transcript.error)
+            assertEquals("file-hash", transcript.fingerprint)
+            assertEquals("file-hash", dao.message("message")!!.fingerprint)
+            assertEquals("file-hash", dao.distillation("moment")!!.fingerprint)
+            assertEquals("file-hash", JSONObject(dao.momentAttempt("attempt")!!.contextJson).getString("fingerprint"))
+            assertEquals("unverified:episode", dao.distillation("unverified")!!.fingerprint)
+            assertEquals("rev", EpisodeTextResolver(target).complete("episode")!!.revision)
+        } finally { source.close(); target.close() }
+    }
+    @Test fun `restoring work tied to another file hash still marks its transcript stale`() = runBlocking {
+        val source = database(); val target = database()
+        try {
+            streamedBackup(source, "other-file-hash")
+            downloadedHere(target)
+            val backup = LibraryBackup(target)
+            backup.merge(backup.preview(LibraryBackup(source).export().inputStream()))
+            val dao = target.library()
+            assertEquals("stale", dao.transcript("episode")!!.state)
+            assertEquals("other-file-hash", dao.transcript("episode")!!.fingerprint)
+            assertEquals("other-file-hash", dao.message("message")!!.fingerprint)
+            assertEquals("other-file-hash", dao.distillation("moment")!!.fingerprint)
+        } finally { source.close(); target.close() }
+    }
     @Test fun `schema one backup is upgraded before preview and merge`() = runBlocking {
         val source = database(); val target = database()
         try {

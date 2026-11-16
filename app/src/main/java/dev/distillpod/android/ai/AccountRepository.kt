@@ -3,6 +3,7 @@ package dev.distillpod.android.ai
 import android.content.Context
 import dev.distillpod.android.AuthSession
 import dev.distillpod.android.SubscriptionProvider
+import dev.distillpod.android.CredentialStore
 import dev.distillpod.android.TokenVault
 import dev.distillpod.core.LoopbackCallbackServer
 import dev.distillpod.core.OAuthAttempt
@@ -14,17 +15,22 @@ import java.util.UUID
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
+import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import org.json.JSONObject
 
 data class AccountState(val connected: Boolean = false, val busy: Boolean = false, val message: String = "Connect ChatGPT for quotes, insights and episode chat.", val retry: Boolean = false, val models: List<String> = emptyList())
 
 /** Owns authorization independently of Activity instances. Pending PKCE state stays encrypted. */
-class AccountRepository(private val context: Context, private val scope: CoroutineScope) {
-    private val vault = TokenVault(context)
-    private val pendingVault = TokenVault(context, "chatgpt-pending", "distillpod-pending")
-    private val mutable = MutableStateFlow(AccountState(connected = runCatching { vault.read() != null }.getOrDefault(false)))
-    val session = AuthSession(vault::read, vault::write, onCredentialsChanged = { connected ->
+class AccountRepository internal constructor(
+    private val context: Context, private val scope: CoroutineScope,
+    private val vault: CredentialStore, private val pendingVault: CredentialStore,
+    authBase: HttpUrl, private val modelCatalog: (String) -> List<String>,
+) {
+    constructor(context: Context, scope: CoroutineScope) : this(context, scope, TokenVault(context), TokenVault(context, "chatgpt-pending", "distillpod-pending"),
+        "https://auth.openai.com/".toHttpUrl(), { SubscriptionProvider().models(it) })
+    private val mutable = MutableStateFlow(runCatching { vault.read() != null }.fold({ AccountState(connected = it) }, { AccountState(message = UNREADABLE_CONNECTION) }))
+    val session = AuthSession(vault::read, vault::write, authBase, onCredentialsChanged = { connected ->
         mutable.update { it.copy(connected = connected, models = if (connected) it.models else emptyList(), message = if (connected) it.message else "Reconnect your ChatGPT account to continue.") }
     })
     val state: StateFlow<AccountState> = mutable.asStateFlow()
@@ -52,7 +58,8 @@ class AccountRepository(private val context: Context, private val scope: Corouti
                 session.clearPendingConnection()
                 pendingCreatedAt = System.currentTimeMillis()
                 val listener = LoopbackCallbackServer(); owned = listener; server = listener
-                val saved = vault.read()?.let(::JSONObject)
+                // An unreadable vault (e.g. an invalidated Keystore key) counts as empty: sign in afresh and replace it.
+                val saved = runCatching { vault.read()?.let(::JSONObject) }.getOrNull()
                 val clientId = saved?.optString("client_id")?.takeIf { it.isNotBlank() && it != "dynamic_agent_client" }
                 val attempt = OAuthAttempt(random(), random(), random(), listener.redirectUri, clientId)
                 pendingAttempt = attempt; pendingCallback = null; savePending(attempt, null)
@@ -109,7 +116,7 @@ class AccountRepository(private val context: Context, private val scope: Corouti
 
     fun refreshModels() { val epoch = generation.get(); scope.launch(Dispatchers.IO) {
         try {
-            val models = session.withAccessToken { SubscriptionProvider().models(it) }
+            val models = session.withAccessToken(modelCatalog)
             if (generation.get() == epoch) mutable.update { if (it.connected) it.copy(models = models, message = "Connected. AI requests use your ChatGPT plan allowance.") else it }
         } catch (error: Exception) { if (generation.get() == epoch) mutable.update { it.copy(
             message = when (error) {
@@ -151,7 +158,8 @@ class AccountRepository(private val context: Context, private val scope: Corouti
     private suspend fun restorePending() {
         var owned: LoopbackCallbackServer? = null
         try {
-            val json = pendingVault.read()?.let(::JSONObject) ?: return
+            // Pending PKCE state is short-lived; an unreadable copy is discarded rather than reported as a failed sign-in.
+            val json = runCatching { pendingVault.read()?.let(::JSONObject) }.getOrElse { pendingVault.write(null); null } ?: return
             currentCoroutineContext().ensureActive()
             if (System.currentTimeMillis() - json.getLong("createdAt") > 600_000) { pendingVault.write(null); return }
             if (json.optString("phase") == "exchanging") {
@@ -180,5 +188,6 @@ class AccountRepository(private val context: Context, private val scope: Corouti
             .put("redirectUri", attempt.redirectUri).put("clientId", attempt.clientId ?: "").put("callback", callback ?: "").put("createdAt", pendingCreatedAt).put("phase", if (callback == null) "listening" else "received").toString())
     }
     private fun markExchanging() { pendingVault.read()?.let { pendingVault.write(JSONObject(it).put("phase", "exchanging").toString()) } }
+    private companion object { const val UNREADABLE_CONNECTION = "The saved ChatGPT connection can't be opened on this phone. Continue with ChatGPT to replace it." }
     private fun random(): String = ByteArray(32).also { SecureRandom().nextBytes(it) }.let { Base64.getUrlEncoder().withoutPadding().encodeToString(it) }
 }

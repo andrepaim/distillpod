@@ -17,6 +17,8 @@ Start in **Settings → ChatGPT → Continue with ChatGPT**. The connection powe
 
 Complete browser sign-in and return to DistillPod for its final connection result. A provider email alone does not establish that the app finished connecting. A retry can use more allowance. Playback, local transcription and source-moment capture also work without the connection.
 
+Once connected, **Settings → ChatGPT** lists the models your account offers; the selected one is what AI requests use. Your choice syncs with your other devices and backups. If the saved model isn't offered here (it was retired, your plan changed, or it came from another device), AI keeps working with the first available model, and Settings names the unavailable model and the one in use. Pick a model to change it; DistillPod doesn't replace your saved choice on its own.
+
 ## Follow your shows
 
 Search also finds what is already yours: as you type, it lists matching followed shows, library episodes, transcript passages and saved moments, all searched on the phone. Tap a transcript passage to open the transcript at that point. To find a new show, tap **Search the podcast directory** or the keyboard's search key, preview the artwork and publisher, then Follow. Search uses Apple’s iTunes podcast directory, so a show might require its public RSS address instead. Add RSS feed accepts that address directly. Settings also imports OPML subscription lists.
@@ -49,7 +51,7 @@ Audio and model downloads default to Wi-Fi/unmetered networks. In **Settings →
 
 ## Understand an episode
 
-Once the complete transcript is ready, open **Summary & chapters** to generate an overview and jump to chapter timestamps, or open episode chat to ask questions about what was said. Answers use transcript excerpts and source references; replay the relevant audio to check the context.
+Once the complete transcript is ready, open **Summary & chapters** to generate an overview and jump to chapter timestamps, or open episode chat to ask questions about what was said. Answers use transcript excerpts and source references; replay the relevant audio to check the context. Generation keeps going when you leave the screen or the app, and shows a **Generating summary & chapters** notification with **Pause**. Completed parts are saved: if Android interrupts the work, it continues from them on its own. After **Pause**, or if Android closed DistillPod during generation, use **Resume analysis**.
 
 ## Ask while listening
 
