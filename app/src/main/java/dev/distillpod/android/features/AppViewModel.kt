@@ -74,6 +74,16 @@ class AppViewModel(val graph: AppGraph, private val saved: SavedStateHandle) : V
      */
     internal val library: StateFlow<LibraryListing?> = libraryListings(podcasts, episodes, filter, player, backStack.map { it.lastOrNull() })
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+    /**
+     * Keys of Library refresh warnings the owner swiped away (#264); see [undismissedFeedProblems]. Null until
+     * settings load, so a dismissed warning does not flash on launch; an unreadable store dismisses nothing.
+     */
+    internal val dismissedFeedProblems: StateFlow<Set<String>?> = graph.settings.dismissedFeedProblems
+        .catch { emit(emptySet()) }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
+    /** Hides the Library warning for these failing shows until one of them refreshes, or another show fails. */
+    internal fun dismissFeedProblems(problems: List<PodcastEntity>) = action("dismiss-feed-problems") {
+        graph.settings.dismissFeedProblems(problems.mapTo(HashSet(), ::feedProblemKey))
+    }
     /** The same rows from current values, for a page composed before [library] reflects it. */
     internal fun currentLibraryListing(podcastId: String?): LibraryListing =
         libraryListing(podcasts.value, episodes.value, filter.value, podcastId, player.value.episodeId)

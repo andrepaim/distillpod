@@ -245,6 +245,7 @@ private val LIBRARY_FILTERS = listOf(Triple("all", "Latest", "Latest"), Triple("
     val routed by vm.library.collectAsStateWithLifecycle()
     val refreshing by remember(vm) { vm.feedRefreshing() }.collectAsStateWithLifecycle(false)
     val deletionBlocks by vm.audioDeletionBlocks.collectAsStateWithLifecycle()
+    val dismissedProblems by vm.dismissedFeedProblems.collectAsStateWithLifecycle()
     val actions = remember(vm) { vm.episodeActions() }
     val fallback = remember(podcastId) { lazy { vm.currentLibraryListing(podcastId) } }
     val listing = routed?.takeIf { it.podcastId == podcastId } ?: fallback.value
@@ -252,6 +253,9 @@ private val LIBRARY_FILTERS = listOf(Triple("all", "Latest", "Latest"), Triple("
     val subscribed = listing.subscribed
     val selected = listing.selected
     val visible = listing.visible
+    // The Library warning can be swiped away (#264); a show page always shows its own error.
+    val feedProblems = if (podcastId != null) listing.feedProblems
+        else dismissedProblems?.let { undismissedFeedProblems(listing.feedProblems, it) } ?: emptyList()
     val continueListening = if (podcastId == null && filter == "all") listing.continueListening else emptyList()
     val preparationRows = if (selected?.subscribed == true) showPreparationRows(vm, selected.id) else emptyList()
     val attentionIds = remember(preparationRows) { preparationRows.filter { it.retryable }.mapTo(mutableSetOf()) { it.episodeId } }
@@ -323,9 +327,10 @@ private val LIBRARY_FILTERS = listOf(Triple("all", "Latest", "Latest"), Triple("
                 }
             }
         }
-        if (listing.feedProblems.isNotEmpty()) item(key = "feed-problems") {
+        if (feedProblems.isNotEmpty()) item(key = "feed-problems") {
             Box(gutter.padding(bottom = DistillSpacing.gutter)) {
-                FeedProblems(listing.feedProblems, podcastId != null, refreshing, { vm.refresh(it) }, { vm.open("podcast:$it") }, vm::unsubscribe)
+                FeedProblems(feedProblems, podcastId != null, refreshing, { vm.refresh(it) }, { vm.open("podcast:$it") }, vm::unsubscribe,
+                    onDismiss = if (podcastId == null) ({ vm.dismissFeedProblems(listing.feedProblems) }) else null)
             }
         }
         if (listing.episodeCount > 0) stickyHeader(key = "filters") { LibraryFilters(filter, visible.size, vm::filter) }

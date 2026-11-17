@@ -102,6 +102,13 @@ class AppSettings(context: Context, private val store: androidx.datastore.core.D
         require(hours in 1..168) { "Choose an interval from 1 to 168 hours" }
         store.edit { it[intPreferencesKey("refreshHours")] = hours }
     }
+    /**
+     * Library refresh warnings the owner dismissed (#264), as [dev.distillpod.android.features.feedProblemKey]s.
+     * Device-local, like show pins: not part of backup or sync. Each dismissal replaces the whole set with the
+     * warning's current keys, so shows that have since refreshed drop out of it.
+     */
+    val dismissedFeedProblems = store.data.map { it[stringSetPreferencesKey("dismissedFeedProblems")].orEmpty().toSet() }
+    suspend fun dismissFeedProblems(keys: Set<String>) { store.edit { it[stringSetPreferencesKey("dismissedFeedProblems")] = keys } }
     /** Device-local, like show pins: not part of backup or sync. See docs/android/app-updates.md. */
     val updates = store.data.map { p -> UpdateState(p[booleanPreferencesKey("updateChecks")] ?: true,
         AvailableUpdate.parse(p[stringPreferencesKey("updateAvailable")]), p[longPreferencesKey("updateCheckedAt")] ?: 0) }
