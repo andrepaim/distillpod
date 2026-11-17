@@ -85,9 +85,9 @@ Add the DistillPod **Now playing** widget from your launcher's widget list. It s
 
 ## Sync supported library data
 
-In a configured build, open **Settings → Library sync → Connect Google & sync library**. Review existing feeds, approve only public sources, then choose the Google account for this library. Google sign-in is separate from ChatGPT and from the Drive file picker. An unconfigured source/debug build shows “Cloud sync is unavailable in this build.”
+In a configured build, open **Settings → Sync → Connect Google & sync library**. Review existing feeds, approve only public sources, then choose the Google account for this library. Google sign-in is separate from ChatGPT and from the Drive file picker. An unconfigured source/debug build says “Cloud sync is unavailable in this build” and offers automatic backup only.
 
-Approved subscriptions, listening progress, played status and saved moments synchronize. **Sync queue & preferences** additionally shares queue order and transcription model/language/AI-model choices. Full transcripts, analyses, episode chat and explanations still require Backup & Restore for transfer. Downloads, models and credentials stay on each device.
+Approved subscriptions, listening progress, played status and saved moments synchronize. **Sync queue & preferences** additionally shares queue order and transcription model/language/AI-model choices. Full transcripts, analyses, episode chat, explanations and posts do not sync; automatic backup keeps them. Downloads, models and credentials stay on each device.
 
 Update every installation before enabling contextual-moment sync's account
 protocol upgrade. Until then, new-format moments can remain pending while other
@@ -98,7 +98,7 @@ Use the same Google account on another installation. Offline changes wait for re
 
 ## Back up or move devices
 
-Settings → Backup & Restore → Create backup file connects a Drive document once, with a suggested filename. After setup, Back up now saves without another picker, and Restore a backup shows dated snapshots in the app. Reconnect that file once after reinstalling or on another phone. Import older backup supports standalone JSON files and shows all file types. Restore previews and safely merges data, keeping existing local records. See the [Drive backup guide](android/drive-backup.md) for retention, privacy and recovery.
+**Settings → Sync → Set up automatic backup** connects a Drive document once, with a suggested filename. DistillPod then adds a dated snapshot to it each day when the library changed and the phone is online; **Back up now** saves immediately. **Restore from a backup** opens Backups & restore, where Restore a backup shows dated snapshots in the app. Reconnect that file once after reinstalling or on another phone. Import older backup supports standalone JSON files and shows all file types. Restore previews and safely merges data, keeping existing local records. See the [Drive backup guide](android/drive-backup.md) for retention, privacy and recovery.
 
 Credentials, downloaded audio, model binaries and private device file paths are excluded. Reconnect the account and re-download audio/models on a destination installation. OPML transfers subscriptions only.
 

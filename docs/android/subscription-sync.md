@@ -4,7 +4,7 @@ Implemented on `main`. This is an incremental implementation of the [complete sy
 
 ## Use
 
-1. Open Settings → Library sync in a configured build.
+1. Open Settings → Sync in a configured build.
 2. Choose Connect Google & sync library. Review existing feeds and select only public sources whose metadata, listening progress and saved moments you want stored in the cloud. Leave private access links unselected. New directory-result follows are recognized as public sources.
 3. Continue with Google and choose the account for this library. Existing cloud subscriptions are merged/restored; ambiguous changes remain explicit conflicts.
 4. Sign into the same account on another installation. An empty local library can continue through the review with no feeds selected and restore the account's subscriptions, progress, completion and saved moments.

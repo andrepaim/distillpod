@@ -44,8 +44,10 @@ class DesignReviewDeviceTest {
     @Test fun settingsExposeBackupWithoutScrolling()=runBlocking<Unit> {
         open("settings")
         shot("settings-before-check")
-        compose.onNodeWithText("Backup & Restore").assertIsDisplayed().performClick()
-        compose.onNodeWithText("Connect a backup file once. DistillPod remembers it for your next backup and restore.").assertIsDisplayed()
+        compose.onNodeWithText("Sync").assertIsDisplayed().performClick()
+        compose.onNodeWithText("Set up automatic backup").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Restore from a backup").performScrollTo().performClick()
+        compose.onNodeWithText("Connect a backup file once. DistillPod adds a dated backup to it each day, and you can restore any of them here.").assertIsDisplayed()
     }
     @Test fun settingsRemainReachableAt160Percent() = settingsNavigationAtFontScale(1.6f)
     @Test fun settingsRemainReachableAt200Percent() = settingsNavigationAtFontScale(2f)
@@ -60,7 +62,7 @@ class DesignReviewDeviceTest {
             compose.activity.setContent {CompositionLocalProvider(LocalDensity provides Density(graph.context.resources.displayMetrics.density,scale)){ProductApp(vm)}}
         }
         repeat(2) { pass ->
-            compose.onNodeWithText("Backup & Restore").performScrollTo().assertIsDisplayed()
+            compose.onNodeWithText("Sync").performScrollTo().assertIsDisplayed()
             compose.onNodeWithText("Transcript preparation").performScrollTo().performClick()
             compose.onNodeWithText("Only transcribe while charging").performScrollTo().assertIsDisplayed()
             compose.onNodeWithText("Download network policy").performScrollTo().performClick()
@@ -76,7 +78,7 @@ class DesignReviewDeviceTest {
             compose.onNodeWithText("Export OPML").performScrollTo().assertIsDisplayed()
             compose.onNodeWithText("Moment saved sound").assertDoesNotExist()
             compose.onNodeWithText("Background progress").assertDoesNotExist()
-            compose.onNodeWithText("Library sync").performScrollTo().performClick()
+            compose.onNodeWithText("Sync & backups").performScrollTo().performClick()
             compose.onNodeWithContentDescription("Back").performClick()
             compose.onNodeWithText("Import OPML").performScrollTo().assertIsDisplayed()
             compose.onNodeWithContentDescription("Back").performClick()

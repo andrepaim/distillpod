@@ -87,6 +87,23 @@ class LibraryBackup(private val db: AppDatabase, private val assets: dev.distill
         LibraryExport(PostBackupBundle.pack(bytes, images.bytes), images.skipped, images.affectedPosts)
     }
 
+    /**
+     * Identifies a snapshot's library content, ignoring when and by which app version it was written, so an
+     * automatic backup can skip an unchanged library instead of crowding out older history. Post images count.
+     * Returns null for a snapshot it cannot read; callers then treat the library as changed.
+     */
+    fun contentFingerprint(snapshot: ByteArray): String? = runCatching {
+        val (bytes, images) = PostBackupBundle.unpack(snapshot)
+        val root = JSONObject(bytes.toString(Charsets.UTF_8))
+        val payload = root.getString("payload")
+        val content = if (root.optInt("version") == 2) JSONObject(payload).apply { remove("createdAt"); remove("appVersion") }.toString() else payload
+        val digest = MessageDigest.getInstance("SHA-256")
+        digest.update(root.optInt("databaseSchema").toString().toByteArray())
+        digest.update(content.toByteArray(Charsets.UTF_8))
+        images.toSortedMap().forEach { (name, image) -> digest.update(name.toByteArray(Charsets.UTF_8)); digest.update(image) }
+        digest.digest().joinToString("") { "%02x".format(it) }
+    }.getOrNull()
+
     suspend fun preview(input: InputStream): BackupPreview = withContext(Dispatchers.IO) {
         val (bytes, images) = PostBackupBundle.unpack(input.readBytesBounded())
         val root = JSONObject(bytes.toString(Charsets.UTF_8))

@@ -45,6 +45,8 @@ class AppGraph internal constructor(val context: Context, val scope: CoroutineSc
     val postAssets by lazy { dev.distillpod.android.sharing.PostAssets(java.io.File(context.filesDir, "post-images")) }
     // Restored progress, completions and moments of shared feeds upload like local edits.
     val backup by lazy { LibraryBackup(db, postAssets, portable = portableSync) }
+    /** One instance shared by the backup screens and the daily BackupWorker. */
+    val managedBackups by lazy { ManagedBackups(context, backup, settings, scope, schedule = { dev.distillpod.android.work.BackupJobs.configure(context, it) }) }
     val importedQueue=kotlinx.coroutines.flow.MutableStateFlow<List<String>?>(null)
     val playbackEvents = dev.distillpod.android.playback.PlaybackEvents()
     val playback by lazy { dev.distillpod.android.playback.PlaybackRepository(context, db, scope) }
@@ -115,6 +117,7 @@ class AppGraph internal constructor(val context: Context, val scope: CoroutineSc
                     StartupStep("posts") { resumePosts() },
                     StartupStep("network_policy") { jobs.configureNetworkPolicy() },
                     StartupStep("refresh") { jobs.configureRefresh() },
+                    StartupStep("backups") { dev.distillpod.android.work.BackupJobs.configure(context, managedBackups.connected.first()) },
                     StartupStep("update_checks") { dev.distillpod.android.work.UpdateJobs.configure(context, settings.updates.first().enabled) },
                     StartupStep("transcription") { transcription.recover() }),
                 afterReady = listOf(

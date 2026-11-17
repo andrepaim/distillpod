@@ -16,7 +16,7 @@ import dev.distillpod.android.ui.theme.Button
 import dev.distillpod.android.ui.theme.OutlinedButton
 import dev.distillpod.android.ui.theme.TextButton
 
-@Composable internal fun SubscriptionSyncSettings(vm:AppViewModel, onOpenBackup: () -> Unit) {
+@Composable internal fun SubscriptionSyncSettings(vm:AppViewModel) {
     val account=vm.graph.syncAccount
     val state by account.state.collectAsStateWithLifecycle()
     val binding by account.store.binding.collectAsStateWithLifecycle(initialValue=null)
@@ -42,7 +42,7 @@ import dev.distillpod.android.ui.theme.TextButton
     }
     if(upgradeMoments) AlertDialog(onDismissRequest={upgradeMoments=false},
         title={Text("Upgrade saved-moment sync?")},
-        text={Text("Update DistillPod on your other phones first. Older app versions will stop syncing after this account upgrade. Selected passages and takeaways will sync; full transcripts use the separate finished-content scope when available, or file backup.")},
+        text={Text("Update DistillPod on your other phones first. Older app versions will stop syncing after this account upgrade. Selected passages and takeaways will sync; full transcripts use the separate finished-content scope when available, or automatic backup.")},
         confirmButton={TextButton(onClick={upgradeMoments=false;vm.action("moment-sync-upgrade"){account.enableContextualMoments()}}){Text("Upgrade sync")}},
         dismissButton={TextButton(onClick={upgradeMoments=false}){Text("Not now")}})
     if(reviewing) {
@@ -54,10 +54,6 @@ import dev.distillpod.android.ui.theme.TextButton
         },{reviewing=false})
     }
     Column(verticalArrangement=Arrangement.spacedBy(10.dp)) {
-        // The top bar already names the page; the long sync vs backup text lives behind Learn more (#203).
-        DataProtectionInfo(state.configured, account.contentConfigured, fullScope != null, false, onOpenBackup,
-            details=listOf("Your library works offline. On a new phone, connect the same Google account for supported synced records; restore your backup file for other library text.",
-                DataProtectionGuidance.binding))
         if(!state.configured) {
             Text("Cloud sync is unavailable in this build.",color=MaterialTheme.colorScheme.onSurfaceVariant)
         } else {
@@ -87,7 +83,7 @@ import dev.distillpod.android.ui.theme.TextButton
                     Text("Optional: sync queue and " + DataProtectionGuidance.preferences + ".",style=MaterialTheme.typography.bodySmall)
                     Text(DataProtectionGuidance.expanded,style=MaterialTheme.typography.bodySmall)
                     OutlinedButton(onClick={vm.action("full-library-sync"){account.enableFullScope()}},enabled=binding?.enabled==true){Text("Sync queue & preferences")}
-                    if(!account.contentConfigured)Text("Transcripts and other finished text stay local. Use Backup & Restore to transfer them.",style=MaterialTheme.typography.bodySmall)
+                    if(!account.contentConfigured)Text("Transcripts and other finished text don't sync; automatic backup below keeps them.",style=MaterialTheme.typography.bodySmall)
                 }
                 if(fullScope!=null) Text(DataProtectionGuidance.expanded,style=MaterialTheme.typography.bodySmall)
                 TextButton(onClick={vm.action("sync-signout"){account.disconnect()}}){Text("Sign out of sync")}

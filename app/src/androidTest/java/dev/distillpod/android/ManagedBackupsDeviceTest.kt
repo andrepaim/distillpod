@@ -61,7 +61,7 @@ class ManagedBackupsDeviceTest {
         val targetSettings = AppSettings(context, PreferenceDataStoreFactory.create(scope = scope) { File(folder, "target.preferences_pb") })
         val legacySource = BackupDocuments(context, LibraryBackup(source), sourceSettings, scope) {}
         val legacyTarget = BackupDocuments(context, LibraryBackup(target), targetSettings, scope) {}
-        val managed = ManagedBackups(context, LibraryBackup(source), sourceSettings, scope, legacySource::review)
+        val managed = ManagedBackups(context, LibraryBackup(source), sourceSettings, scope, review = legacySource::review)
         var uri: android.net.Uri? = null
         try {
             source.library().putPodcast(PodcastEntity("managed-show", "https://example.test/feed", "Fixture"))
@@ -91,7 +91,7 @@ class ManagedBackupsDeviceTest {
             assertFalse(managed.state.value.message, managed.state.value.error)
             assertEquals(context.packageName, device.currentPackageName)
             // A fresh installation connects the same file once and reads its history, without changing it.
-            val fresh = ManagedBackups(context, LibraryBackup(target), targetSettings, scope, legacyTarget::review)
+            val fresh = ManagedBackups(context, LibraryBackup(target), targetSettings, scope, review = legacyTarget::review)
             phase("show-fresh")
             show(fresh, legacyTarget)
             compose.waitUntil(10000) { !fresh.state.value.working }
@@ -110,7 +110,7 @@ class ManagedBackupsDeviceTest {
             assertTrue(fresh.state.value.history.none { it.local })
             assertTrue(target.library().episodes().isEmpty())
             // Recreate the coordinator using persisted settings and grants, with no picker interaction.
-            val restarted = ManagedBackups(context, LibraryBackup(target), targetSettings, scope, legacyTarget::review)
+            val restarted = ManagedBackups(context, LibraryBackup(target), targetSettings, scope, review = legacyTarget::review)
             phase("show-restarted")
             show(restarted, legacyTarget)
             compose.waitUntil(20000) { restarted.state.value.history.size == 2 || restarted.state.value.error }
@@ -166,7 +166,7 @@ class ManagedBackupsDeviceTest {
             compose.waitUntil(20000) { legacySource.state.value.phase.startsWith("Saved and checked") || legacySource.state.value.error }
             assertFalse(legacySource.state.value.phase, legacySource.state.value.error)
             val name = BackupDocuments.Saved.parse(settings.value("lastBackup").first())!!.name
-            val managed = ManagedBackups(context, LibraryBackup(target), settings, scope, legacyTarget::review)
+            val managed = ManagedBackups(context, LibraryBackup(target), settings, scope, review = legacyTarget::review)
             show(managed, legacyTarget)
             compose.waitUntil(10000) { !managed.state.value.working }
             compose.onNodeWithText("Import older backup").performScrollTo().performClick(); root()

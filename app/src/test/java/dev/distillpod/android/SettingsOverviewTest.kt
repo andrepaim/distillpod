@@ -41,12 +41,15 @@ class SettingsOverviewTest {
         val headings = compose.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading)).fetchSemanticsNodes()
             .map { node -> node.config[SemanticsProperties.Text].joinToString { it.text } }
         assertEquals(listOf("Your library", "Playback & transcripts", "App access & privacy"), headings)
-        compose.onNodeWithText("Backup & Restore").assertIsDisplayed()
+        compose.onNodeWithText("Sync").assertIsDisplayed()
+        // Backup lives inside Sync: one place to keep a library safe.
+        compose.onNodeWithText("Backup & Restore").assertDoesNotExist()
+        compose.onNodeWithText("Library sync").assertDoesNotExist()
     }
 
     @Test fun `every destination keeps its route and About is a regular row`() {
         show(voiceEnabled = true)
-        val rows = listOf("Backup & Restore" to "backup", "Library sync" to "settings:sync",
+        val rows = listOf("Sync" to "settings:sync",
             "Library" to "settings:library", "Playback & headphones" to "settings:playback", "Voice" to "settings:voice",
             "Transcript preparation" to "settings:transcription", "ChatGPT" to "settings:ai",
             "Downloads & storage" to "settings:storage", "Notification access" to "settings:notifications",
@@ -66,7 +69,7 @@ class SettingsOverviewTest {
 
     @Test fun `rows show their current values from existing state`() {
         show(status = SettingsStatus(sync = "Synced 2 min ago", subscriptions = 12, transcripts = "Base · auto", wifiOnly = true, version = "0.25.0"))
-        for ((title, value) in listOf("Library sync" to "Synced 2 min ago", "Library" to "12 shows",
+        for ((title, value) in listOf("Sync" to "Synced 2 min ago", "Library" to "12 shows",
             "Transcript preparation" to "Base · auto", "Downloads & storage" to "Wi-Fi only", "About DistillPod" to "0.25.0"))
             compose.onNode(hasText(title) and hasText(value) and hasClickAction()).performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Connected").assertDoesNotExist()
@@ -81,7 +84,7 @@ class SettingsOverviewTest {
 
     @Test fun `rows stay reachable at two hundred percent font size`() {
         show(fontScale = 2f)
-        compose.onNodeWithText("Backup & Restore").assertIsDisplayed()
+        compose.onNodeWithText("Sync").assertIsDisplayed()
         compose.onNode(hasText("About DistillPod") and hasClickAction()).performScrollTo().assertIsDisplayed().performClick()
         assertEquals(listOf("settings:about"), opened)
     }
