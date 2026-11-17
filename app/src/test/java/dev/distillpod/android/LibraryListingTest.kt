@@ -38,7 +38,8 @@ class LibraryListingTest {
 
     @Test fun `library collects followed episodes and unfollowed ones that were downloaded or played`() {
         val listing = libraryListing(podcasts, episodes, "all", null, null)
-        assertEquals(listOf("new", "half", "done", "offline", "played", "v2", "v1"), listing.visible.map { it.id })
+        // Latest lists followed shows only (#266); the unfollowed show's retained episodes stay in the library.
+        assertEquals(listOf("new", "half", "done", "v2", "v1"), listing.visible.map { it.id })
         assertEquals(7, listing.episodeCount)
         assertEquals(listOf("p1", "yt"), listing.subscribed.map { it.id })
         assertNull(listing.selected)
@@ -50,6 +51,23 @@ class LibraryListingTest {
         assertEquals(listOf("offline"), libraryListing(podcasts, episodes, "downloads", null, null).visible.map { it.id })
         assertEquals(listOf("half", "played"), libraryListing(podcasts, episodes, "progress", null, null).visible.map { it.id })
         assertEquals("new", libraryListing(podcasts, episodes, "all", null, "new").resume?.id)
+    }
+
+    @Test fun `unfollowing a show removes its episodes from Latest only, and following again restores them (#266)`() {
+        val unfollowed = listOf(followed.copy(subscribed = false), other, channel)
+        val latest = libraryListing(unfollowed, episodes, "all", null, null)
+        // Downloaded, partly played and finished episodes of the unfollowed show all leave Latest; its count is its rows.
+        assertEquals(listOf("v2", "v1"), latest.visible.map { it.id })
+        // Retained media stays listed and playable under Downloaded and In progress.
+        val retained = episodes.map { if (it.id == "done") it.copy(localFile = "/media/done") else it }
+        assertEquals(listOf("done", "offline"), libraryListing(unfollowed, retained, "downloads", null, null).visible.map { it.id })
+        assertEquals(listOf("half", "played"), libraryListing(unfollowed, retained, "progress", null, null).visible.map { it.id })
+        // The library still holds them: the filters stay and the show's own page lists everything.
+        assertEquals(6, latest.episodeCount)
+        assertEquals(listOf("new", "half", "done"), libraryListing(unfollowed, episodes, "all", "p1", null).visible.map { it.id })
+        // Following again restores them to Latest.
+        val refollowed = libraryListing(listOf(followed, other.copy(subscribed = true), channel), episodes, "all", null, null)
+        assertEquals(listOf("new", "half", "done", "offline", "played", "stranger", "v2", "v1"), refollowed.visible.map { it.id })
     }
 
     @Test fun `continue listening lists the resume episode first, then other unfinished ones by last played`() {
