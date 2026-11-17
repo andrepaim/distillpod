@@ -8,6 +8,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.stateDescription
@@ -27,6 +28,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -187,12 +189,27 @@ internal fun episodeInProgress(ep: EpisodeEntity, player: PlaybackState): Boolea
 
 /**
  * Followed shows whose last refresh failed, each with its reason and a way out (#146). On a show page,
- * only that show's own error appears.
+ * only that show's own error appears. With [onDismiss], a rightward swipe or the "Dismiss warning"
+ * accessibility action hides the warning; it changes nothing stored about the shows (#264).
  */
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable internal fun FeedProblems(problems: List<PodcastEntity>, showPage: Boolean, refreshing: Boolean, onRetry: (String) -> Unit,
-    onOpen: (String) -> Unit, onUnsubscribe: (String) -> Unit, now: Long = System.currentTimeMillis()) {
+    onOpen: (String) -> Unit, onUnsubscribe: (String) -> Unit, now: Long = System.currentTimeMillis(), onDismiss: (() -> Unit)? = null) {
     if (problems.isEmpty()) return
+    if (onDismiss == null) { FeedProblemsCard(problems, showPage, refreshing, onRetry, onOpen, onUnsubscribe, now, null); return }
+    // The list keeps saved item state after the warning leaves; a warning for other failures starts unswiped.
+    val state = key(problems.map(::feedProblemKey)) { rememberSwipeToDismissBoxState() }
+    val latestDismiss by rememberUpdatedState(onDismiss)
+    // A short or cancelled swipe settles back to Settled; only a completed one dismisses.
+    LaunchedEffect(state.currentValue) { if (state.currentValue == SwipeToDismissBoxValue.StartToEnd) latestDismiss() }
+    SwipeToDismissBox(state, enableDismissFromEndToStart = false, backgroundContent = {}, modifier = Modifier.testTag("feed-problems-swipe")) {
+        FeedProblemsCard(problems, showPage, refreshing, onRetry, onOpen, onUnsubscribe, now, onDismiss)
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable private fun FeedProblemsCard(problems: List<PodcastEntity>, showPage: Boolean, refreshing: Boolean, onRetry: (String) -> Unit,
+    onOpen: (String) -> Unit, onUnsubscribe: (String) -> Unit, now: Long, onDismiss: (() -> Unit)?) {
     var expanded by rememberSaveable { mutableStateOf(false) }
     var confirm by remember { mutableStateOf<PodcastEntity?>(null) }
     confirm?.let { show ->
@@ -204,7 +221,10 @@ internal fun episodeInProgress(ep: EpisodeEntity, player: PlaybackState): Boolea
         Column(Modifier.padding(start = 14.dp, end = 6.dp, top = 12.dp, bottom = 6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Icon(Icons.Default.CloudOff, null, tint = tint, modifier = Modifier.size(20.dp))
-                Column(Modifier.weight(1f)) {
+                // The summary is one TalkBack stop; it carries the swipe's equivalent action.
+                Column(Modifier.weight(1f).then(if (onDismiss == null) Modifier else Modifier.semantics(mergeDescendants = true) {
+                    customActions = listOf(CustomAccessibilityAction("Dismiss warning") { onDismiss(); true })
+                })) {
                     Text(when {
                         showPage -> "This show couldn't refresh"
                         problems.size == 1 -> "1 show couldn't refresh"

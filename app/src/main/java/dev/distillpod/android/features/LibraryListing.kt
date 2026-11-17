@@ -43,6 +43,21 @@ internal fun libraryListing(podcasts: List<PodcastEntity>, episodes: List<Episod
     return LibraryListing(podcastId, filter, subscribed, selected, library.size, visible, resume, problems, continueListening)
 }
 
+/**
+ * Identifies one ongoing refresh failure of a show: its id and its last successful refresh. Retries that
+ * fail again keep the key; a successful refresh changes [PodcastEntity.refreshedAt], so a later failure is a
+ * new one (#264).
+ */
+internal fun feedProblemKey(show: PodcastEntity): String = "${show.id}@${show.refreshedAt}"
+
+/**
+ * The Library warning's shows after a dismissal (#264): failures the owner already dismissed stay hidden
+ * until that show refreshes successfully; a show that newly fails brings the warning back, listing only
+ * the new failures.
+ */
+internal fun undismissedFeedProblems(problems: List<PodcastEntity>, dismissed: Set<String>): List<PodcastEntity> =
+    if (dismissed.isEmpty()) problems else problems.filter { feedProblemKey(it) !in dismissed }
+
 /** The Library's continue-listening carousel holds at most this many episodes (proposal 5.4). */
 internal const val CONTINUE_LISTENING_LIMIT = 5
 

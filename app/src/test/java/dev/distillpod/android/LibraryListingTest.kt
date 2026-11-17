@@ -5,6 +5,8 @@ import dev.distillpod.android.data.PodcastEntity
 import dev.distillpod.android.features.LibraryListing
 import dev.distillpod.android.features.libraryListing
 import dev.distillpod.android.features.libraryListings
+import dev.distillpod.android.features.feedProblemKey
+import dev.distillpod.android.features.undismissedFeedProblems
 import dev.distillpod.android.playback.PlaybackState
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -79,6 +81,20 @@ class LibraryListingTest {
         assertEquals(listOf("p2"), libraryListing(failing, episodes, "all", "p2", null).feedProblems.map { it.id })
         assertEquals(emptyList<String>(), libraryListing(failing, episodes, "all", "yt", null).feedProblems.map { it.id })
         assertEquals(emptyList<String>(), libraryListing(podcasts, episodes, "all", null, null).feedProblems.map { it.id })
+    }
+
+    @Test fun `a dismissed refresh warning stays hidden until that show refreshes or another show fails (#264)`() {
+        val a = followed.copy(error = "Couldn't reach the feed.", refreshedAt = 100)
+        val b = channel.copy(error = "HTTP 404")
+        val dismissed = setOf(a, b).mapTo(HashSet(), ::feedProblemKey)
+        assertEquals(listOf(a, b), undismissedFeedProblems(listOf(a, b), emptySet()))
+        // Failing again on retry, with the same or another reason, is the same failure.
+        assertTrue(undismissedFeedProblems(listOf(a.copy(error = "HTTP 500"), b), dismissed).isEmpty())
+        // A show that refreshed successfully and then failed again is a new failure.
+        assertEquals(listOf("p1"), undismissedFeedProblems(listOf(a.copy(refreshedAt = 200), b), dismissed).map { it.id })
+        // So is a show that was not failing when the warning was dismissed.
+        val c = other.copy(subscribed = true, error = "Unreadable feed")
+        assertEquals(listOf("p2"), undismissedFeedProblems(listOf(a, b, c), dismissed).map { it.id })
     }
 
     @Test fun `show page lists only that show and keeps source order for video channels`() {
