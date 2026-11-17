@@ -1,5 +1,8 @@
 # Sync and file backup clarity (#23)
 
+> Superseded in part by [sync as one concept](sync-only-settings.md): Settings now shows one Sync page with
+> automatic daily backup, and the cross-link card described below was removed.
+
 This change explains existing behavior. It does not enable sync, change account
 binding, expand the portable preference set, alter the backup format or change
 restore preview/merge rules.

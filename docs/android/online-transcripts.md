@@ -55,7 +55,7 @@ The reader, summary/chapters and episode chat use the selected online transcript
 
 Online segment times support reader/chapter navigation with a timing caveat. **Saved audio-window captures and automatic ad skipping require publisher or local coverage.** Saving a moment can therefore start local preparation even when a full-episode online transcript exists. Capture never opts into service lookup. Automatic recovery can resume a previously requested lookup, subject to the current setting and source/network checks. Both ad approval and the playback service reject online ad timing.
 
-Manual Backup & Restore includes downloaded online text and provenance. It excludes retry cooldowns and service consent, clears pending lookup/replacement flags, and restores active jobs as paused. Older backup formats acquire safe defaults. Online JSON/timing/hash checks also run during import. Spark deployment continues to keep finished text local.
+Backups include downloaded online text and provenance. It excludes retry cooldowns and service consent, clears pending lookup/replacement flags, and restores active jobs as paused. Older backup formats acquire safe defaults. Online JSON/timing/hash checks also run during import. Spark deployment continues to keep finished text local.
 
 ## Validation
 

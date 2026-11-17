@@ -112,9 +112,9 @@ fun fileSize(bytes: Long): String = if (bytes >= 1_000_000_000) "%.1f GB".format
         route == "queue" -> "Listening queue"
         route == "settings" -> "Settings"
         route == "shows" -> "Your shows"
-        route.startsWith("settings:") -> when(route.substringAfter(':')) { "diagnostics" -> "Privacy & diagnostics"; "notifications" -> "Notification access"; "sync" -> "Library sync"; "ai" -> "ChatGPT"; "voice" -> "Voice"; "playback" -> "Playback & headphones"; "transcription" -> "Transcript preparation"; "storage" -> "Downloads & storage"; "library" -> "Library"; else -> "About DistillPod" }
+        route.startsWith("settings:") -> when(route.substringAfter(':')) { "diagnostics" -> "Privacy & diagnostics"; "notifications" -> "Notification access"; "sync" -> "Sync"; "ai" -> "ChatGPT"; "voice" -> "Voice"; "playback" -> "Playback & headphones"; "transcription" -> "Transcript preparation"; "storage" -> "Downloads & storage"; "library" -> "Library"; else -> "About DistillPod" }
         route.startsWith("transcript:") -> "Transcript"
-        route == "backup" -> "Backup & Restore"
+        route == "backup" -> "Backups & restore"
         route == "player" -> "Now playing"
         route.startsWith("analysis:") -> "Episode insights"
         route.startsWith("chat:") -> "Ask this episode"
@@ -188,7 +188,7 @@ fun fileSize(bytes: Long): String = if (bytes >= 1_000_000_000) "%.1f GB".format
                         }
                     }
                     route == "settings" || route.startsWith("settings:") -> SettingsPage(vm, preferences, account, models, episodes, route.substringAfter(':', "overview"))
-                    route == "backup" -> BackupPage(vm) { vm.open("settings:sync") }
+                    route == "backup" -> BackupPage(vm)
                     route == "player" -> PlayerPage(vm, episodes.firstOrNull { it.id == player.episodeId }, podcasts, fullscreenExitRequest) { videoFullscreen = it }
                     route.startsWith("episode:") -> EpisodePage(vm, episodes.firstOrNull { it.id == route.substringAfter(':') }, podcasts, player)
                     route.startsWith("capture:") -> CapturePage(vm, captures.firstOrNull { it.id == route.substringAfter(':') }, episodes, podcasts)
@@ -795,7 +795,7 @@ internal class QueueUndo(val snackbar: SnackbarHostState, val enqueue: (String, 
     if(section=="diagnostics") {DiagnosticsSettings(vm);return}
     LaunchedEffect(account.connected,section) { if (account.connected && section=="ai") vm.graph.account.refreshModels() }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        if(section=="sync") SubscriptionSyncSettings(vm) { vm.open("backup") }
+        if(section=="sync") SyncPage(vm)
         if(section=="voice") VoiceSettings(vm)
         if(section=="playback") {
             PlaybackHeadphoneSettings(vm, prefs)

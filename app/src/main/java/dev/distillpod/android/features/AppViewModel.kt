@@ -95,8 +95,12 @@ class AppViewModel(val graph: AppGraph, private val saved: SavedStateHandle) : V
             state.phase == AudioCleanupPhase.FAILED)) })
     val loaded = MutableStateFlow(false)
     val backupDocuments = BackupDocuments(graph.context, graph.backup, graph.settings, viewModelScope) { graph.playback.synchronizeRestoredQueue() }
-    val managedBackups = ManagedBackups(graph.context, graph.backup, graph.settings, viewModelScope, backupDocuments::review)
-    init { viewModelScope.launch { dao.observeEpisodes().first(); loaded.value = true } }
+    val managedBackups get() = graph.managedBackups
+    init {
+        viewModelScope.launch { dao.observeEpisodes().first(); loaded.value = true }
+        // Managed backups outlive this screen; their restore previews open in this one's review dialog.
+        viewModelScope.launch { graph.managedBackups.previews.collect(backupDocuments::review) }
+    }
     fun root(route: String) { saved["backStack"] = arrayListOf(route) }
     fun open(route: String) { if (backStack.value.lastOrNull() != route) saved["backStack"] = ArrayList(backStack.value + route) }
     fun back() { if (backStack.value.size > 1) saved["backStack"] = ArrayList(backStack.value.dropLast(1)) }

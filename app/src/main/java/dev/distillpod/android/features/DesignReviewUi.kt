@@ -62,8 +62,7 @@ private data class SettingsRow(val title: String, val detail: String, val icon: 
 /** Settings home (#188, #203): three announced groups of ListItems with their current values. */
 @Composable internal fun SettingsOverview(connected:Boolean,voiceEnabled:Boolean,status:SettingsStatus=SettingsStatus(),open:(String)->Unit) {
     val library = listOf(
-        SettingsRow("Backup & Restore","Save or bring back a portable copy",Icons.Default.Restore,"backup"),
-        SettingsRow("Library sync","Google account and sync status",Icons.Default.Sync,"settings:sync",status.sync),
+        SettingsRow("Sync","Google account, automatic backup and restore",Icons.Default.Sync,"settings:sync",status.sync),
         SettingsRow("Library","Import, export and refresh subscriptions",Icons.Default.ImportExport,"settings:library",
             status.subscriptions?.let { if (it == 1) "1 show" else "$it shows" }))
     val listening = listOfNotNull(
@@ -125,6 +124,16 @@ private data class SettingsRow(val title: String, val detail: String, val icon: 
     }
 }
 
+/**
+ * The Sync row's value: a failed backup needs attention first; then a connected sync account's own state;
+ * otherwise the automatic backup's state ("Backed up 3 h ago", "Off").
+ */
+internal fun settingsSyncValue(configured:Boolean,bound:Boolean,sync:String,backup:String):String=when {
+    backup=="Last backup failed"->"Needs attention"
+    configured&&bound->sync
+    else->backup
+}
+
 /** "Synced 2 min ago", "Paused", "Off": a few words read from the existing sync binding. */
 internal fun settingsSyncSummary(configured:Boolean,binding:SyncBindingEntity?,connected:Boolean,uid:String,pending:Int,now:Long):String=when {
     !configured->"Unavailable"
@@ -163,7 +172,11 @@ internal fun transcriptSettingSummary(model:String,automatic:Boolean):String {
     val pending by sync.pending.collectAsStateWithLifecycle(initialValue=0)
     val podcasts by vm.podcasts.collectAsStateWithLifecycle()
     val subscribed=remember(podcasts){podcasts.count{it.subscribed}}
-    val syncText=settingsSyncSummary(state.configured,binding,state.connected,state.uid,pending,System.currentTimeMillis())
+    val backupFile by vm.managedBackups.file.collectAsStateWithLifecycle(initialValue=null)
+    val backup by vm.managedBackups.status.collectAsStateWithLifecycle(initialValue=dev.distillpod.android.data.ManagedBackups.Status())
+    val now=System.currentTimeMillis()
+    val syncText=settingsSyncValue(state.configured,binding!=null,settingsSyncSummary(state.configured,binding,state.connected,state.uid,pending,now),
+        DataProtectionGuidance.backupLine(backupFile!=null,backup,now))
     val updates by vm.updates.collectAsStateWithLifecycle()
     return SettingsStatus(syncText,subscribed,transcriptSettingSummary(prefs.model,prefs.transcribeOnPlayback),prefs.wifiOnly,version,updates.available?.versionName)
 }

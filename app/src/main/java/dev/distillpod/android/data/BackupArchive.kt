@@ -67,10 +67,32 @@ internal object BackupArchive {
         }
     }
 
+    const val RECENT = 5
+    private const val WEEK = 7L * 24 * 60 * 60 * 1000
+
+    /**
+     * Which entries of a newest-first history survive the [keep] limit. The [RECENT] newest always stay. Older
+     * ones are thinned one at a time from the calendar week (7-day bucket since the epoch) holding the most of
+     * them, the most recent such week on a tie, dropping that week's oldest; with no crowded week, the oldest
+     * entry goes. Daily automatic backups then keep five days plus about one per earlier week, reaching back
+     * roughly a month instead of only ten days. Weeks are fixed so snapshots age into older weeks steadily.
+     */
+    fun <T> retain(newestFirst: List<T>, at: (T) -> Long, keep: Int = KEEP): List<T> {
+        val kept = newestFirst.toMutableList()
+        while (kept.size > keep) {
+            val crowded = kept.drop(RECENT).groupBy { at(it).coerceAtLeast(0) / WEEK }
+                .filterValues { it.size > 1 }.entries
+                .sortedWith(compareByDescending<Map.Entry<Long, List<T>>> { it.value.size }.thenByDescending { it.key })
+                .firstOrNull()?.value
+            kept.removeAt(kept.lastIndexOf(crowded?.last() ?: kept.last()))
+        }
+        return kept
+    }
+
     fun write(file: File, snapshots: List<Snapshot>): List<Snapshot> {
         require(snapshots.isNotEmpty())
         var total = 0L
-        val retained = snapshots.take(KEEP).takeWhile { total += it.record.bytes; total <= MAX_EXPANDED }
+        val retained = retain(snapshots, { it.record.at }).takeWhile { total += it.record.bytes; total <= MAX_EXPANDED }
         require(retained.isNotEmpty()) { "Backup exceeds the history size limit" }
         ZipOutputStream(file.outputStream().buffered()).use { zip ->
             zip.putNextEntry(ZipEntry("manifest.json"))

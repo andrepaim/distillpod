@@ -15,24 +15,25 @@ import org.junit.runner.RunWith
 class DataProtectionDeviceTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
 
-    @Test fun syncAndBackupCrossLinksPreserveBackNavigation() = runBlocking<Unit> {
+    @Test fun syncPageOpensRestoreAndBackReturnsToSync() = runBlocking<Unit> {
         val graph = compose.activity.applicationContext.appGraph
         graph.ready.await()
         withContext(Dispatchers.Main) {
             ViewModelProvider(compose.activity, AppViewModel.factory(graph))[AppViewModel::class.java].open("settings:sync")
         }
         assertBindingDisclosure()
-        compose.onNodeWithText("Open Backup & Restore").performScrollTo().performClick()
-        compose.onNodeWithText("Manual only: backups do not run on a schedule.").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("Open Library sync").performScrollTo().performClick()
-        assertBindingDisclosure()
+        compose.onNodeWithText("Set up automatic backup").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Restore from a backup").performScrollTo().performClick()
+        compose.onNodeWithText("Automatic: updated once a day when your library changes and the phone is online.").performScrollTo().assertIsDisplayed()
+        // Restore is a sub-page of Sync: there is no separate cross-link back, only Back.
+        compose.onNodeWithText("Open Library sync").assertDoesNotExist()
         compose.onNodeWithContentDescription("Back").performClick()
-        compose.onNodeWithText("Manual only: backups do not run on a schedule.").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Set up automatic backup").performScrollTo().assertIsDisplayed()
     }
 
     /** The binding disclosure is kept verbatim in the sync page's Learn more sheet (#203). */
     private fun assertBindingDisclosure() {
-        compose.onNodeWithContentDescription("Learn more about Sync and backup").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("Learn more about What's covered").performScrollTo().performClick()
         compose.onNodeWithText("Connecting binds this library", substring = true).performScrollTo().assertIsDisplayed()
         androidx.test.espresso.Espresso.pressBack()
         compose.waitUntil(5000) { compose.onAllNodesWithText("Connecting binds this library", substring = true).fetchSemanticsNodes().isEmpty() }

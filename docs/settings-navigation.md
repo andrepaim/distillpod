@@ -2,7 +2,7 @@
 
 Settings groups related tasks without changing stored preference values or defaults.
 
-- **Your library:** Backup & Restore, Library sync, and Library (subscription import/export and refresh).
+- **Your library:** Sync (cloud sync, automatic backup and restore) and Library (subscription import/export and refresh).
 - **Playback & transcripts:** Playback & headphones, optional Voice, Transcript preparation, ChatGPT, and Downloads & storage.
 - **App access & privacy:** Notification access, Privacy & diagnostics, and About DistillPod.
 
@@ -13,7 +13,7 @@ headings, and every destination, including About, is a full-width row.
 **Moment saved sound** has one editable control, under Playback & headphones.
 **Only transcribe while charging** is under Transcript preparation. Its **Download
 network policy** link opens Downloads & storage; Back returns to preparation.
-Library links to Library sync and Backup & Restore without duplicating their controls.
+Library links to Sync without duplicating its controls. Backups & restore (`backup`) is a sub-page of Sync; see [sync as one concept](android/sync-only-settings.md).
 
 ## Stable route contract
 

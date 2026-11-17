@@ -10,7 +10,8 @@ Use these guides for current instructions:
 - [Headphone capture](headphone-distill.md): optional previous-track capture while listening.
 - [Android Auto](android-auto.md): car setup, controls and assistant-search limitations.
 - [Contextual distills](contextual-distills.md): source selection, review and previous versions.
-- [Drive backup and restore](drive-backup.md): remembered backup files, dated snapshots, transfer and recovery.
+- [Drive backup and restore](drive-backup.md): remembered backup files, daily automatic snapshots, transfer and recovery.
+- [Sync as one concept](sync-only-settings.md): why Settings shows only Sync, and how automatic backup is scheduled.
 - [Library sync](subscription-sync.md): supported data, feed approval, account binding, conflicts and Firebase configuration.
 - [Existing online transcripts](online-transcripts.md): opt-in lookup, source matching and timing limitations.
 - [Privacy and data handling](../privacy.md): local storage, network requests, cloud records and exports.
