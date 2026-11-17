@@ -55,7 +55,8 @@ import dev.distillpod.android.ui.theme.extras
     val file by backups.file.collectAsStateWithLifecycle(initialValue = null)
     val status by backups.status.collectAsStateWithLifecycle(initialValue = ManagedBackups.Status())
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    LaunchedEffect(Unit) { while (true) { now = System.currentTimeMillis(); kotlinx.coroutines.delay(60_000) } }
+    // Restarts with each new status, so a backup that just finished is not newer than the clock it is shown against.
+    LaunchedEffect(status) { while (true) { now = System.currentTimeMillis(); kotlinx.coroutines.delay(60_000) } }
     val busy = state.working || state.awaitingDestination
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -70,7 +71,11 @@ import dev.distillpod.android.ui.theme.extras
                 Text(DataProtectionGuidance.backupLine(true, status, now), style = MaterialTheme.typography.titleSmall,
                     color = if (failed) MaterialTheme.colorScheme.error else MaterialTheme.extras.success)
                 Text(name, style = MaterialTheme.typography.bodySmall)
-                if (failed) Text(status.error, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                if (failed) {
+                    Text(status.error, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                    // Lost access is fixed by reconnecting the file, which lives on the restore page.
+                    TextButton(onClick = onOpenRestore, enabled = !busy) { Text("Reconnect or change the backup file") }
+                }
                 Text("Updated once a day when your library changes. Your file provider handles the cloud upload.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (state.working) {

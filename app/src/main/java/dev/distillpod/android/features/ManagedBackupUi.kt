@@ -59,7 +59,8 @@ private fun savedDate(at: Long) = DateTimeFormatter.ofPattern("d MMM yyyy · HH:
     val connect = rememberLauncherForActivityResult(picker, backups::connect)
     val older = rememberLauncherForActivityResult(picker, transfers::preview)
     var now by remember { mutableStateOf(System.currentTimeMillis()) }
-    LaunchedEffect(Unit) {
+    // Restarts with each history change, so a backup saved just now is not shown as ahead of the clock.
+    LaunchedEffect(state.history) {
         while (true) { now = System.currentTimeMillis(); kotlinx.coroutines.delay(60_000) }
     }
     val latestBackup = state.history.maxByOrNull { it.at }
@@ -86,7 +87,7 @@ private fun savedDate(at: Long) = DateTimeFormatter.ofPattern("d MMM yyyy · HH:
                         Icon(Icons.Default.Restore, null); Spacer(Modifier.width(8.dp)); Text("Restore a backup")
                     }
                 } ?: run {
-                    Text("Choose Drive, device storage or another provider in Android’s file picker. Select the account and folder there, separately from Library sync sign-in. The file keeps dated backup history.")
+                    Text("Choose Drive, device storage or another provider in Android’s file picker. Select the account and folder there, separately from the Google account used for cloud sync. The file keeps dated backup history.")
                     Button(onClick = { managed(backups::create) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Create backup file") }
                     OutlinedButton(onClick = { managed { connect.launch(arrayOf("*/*")) } }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Connect existing backup") }
                 }

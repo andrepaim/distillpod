@@ -81,6 +81,25 @@ Device tests updated for the new copy and navigation: `DataProtectionDeviceTest`
 `DesignReviewDeviceTest` (Settings at 160% and 200% font scale), `SubscriptionSyncUiDeviceTest` and
 `ManagedBackupsDeviceTest`. Run them in isolated emulator acceptance.
 
+### Physical device, 2026-11-17
+
+Galaxy S22 (Android 15), side-by-side debug build `dev.distillpod.android.sharecards`, no Firebase. Backup file
+in the phone's Downloads through the system picker (local storage provider, not Drive):
+
+- Settings shows one Sync row; the Sync page shows the unavailable-sync line, the backup card and the restore
+  link. Setup created `DistillPod-backups.zip` and registered the daily job (battery not low, network, 30-minute
+  backoff).
+- The first periodic run starts immediately on enqueue. It ran right after setup and skipped the unchanged
+  library (file hash unchanged). After a preference change and reconnecting the file, it wrote a second
+  snapshot (manifest checked: two dated snapshots).
+- `cmd jobscheduler run -f -n androidx.work.systemjobscheduler <pkg> <id>` cold-started the killed process, but
+  WorkManager declines a periodic run before its period ("not doing any work and rescheduling"). Forcing it
+  is therefore not a way to test a later daily run.
+- With the file moved away, Back up now showed "Last backup failed" with the reason and a reconnect link;
+  the Settings row showed "Needs attention". After moving it back, the error cleared ("Backed up just now").
+- Found and fixed on device: the card showed "On" instead of "Backed up just now" right after a save, because
+  its clock predated the save. The restore screen had the same stale clock, pre-existing.
+
 ## Risk assessment
 
 This change adds **background work that writes to a user-selected provider document**, which the per-change
