@@ -9,6 +9,7 @@
   @font-face { font-family: Inter; src: url("../../../../app/src/main/res/font/inter_medium.ttf"); font-weight: 500; }
   @font-face { font-family: Inter; src: url("../../../../app/src/main/res/font/inter_semibold.ttf"); font-weight: 600; }
   @font-face { font-family: Inter; src: url("../../../../app/src/main/res/font/inter_bold.ttf"); font-weight: 700; }
+  @font-face { font-family: Newsreader; src: url("../../../../app/src/main/res/font/newsreader_regular.ttf"); font-weight: 400; }
 
   :root {
     color-scheme: dark;
@@ -26,11 +27,12 @@
     --on-accent: #2a1800;
     --accent-container: #3b2a12;
     --on-accent-container: #ffddb0;
+    --success: #7bd88f;
   }
 
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--s0); color: var(--text); font: 400 14px/20px Inter, sans-serif; }
-  h1, h2, h3, h4, p, figure { margin: 0; }
+  h1, h2, h3, h4, p, figure, blockquote { margin: 0; }
   svg { flex-shrink: 0; }
   .symbols { position: absolute; width: 0; height: 0; overflow: hidden; }
   .icon { width: 20px; height: 20px; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; fill: none; }
@@ -48,7 +50,7 @@
   figcaption h3 { font-size: 15px; line-height: 20px; font-weight: 700; }
   figcaption p { font-size: 13px; line-height: 19px; }
 
-  .phone { display: flex; flex-direction: column; height: 780px; border: 1px solid var(--outline-variant); border-radius: 28px; overflow: hidden; background: var(--ink); }
+  .phone { display: flex; flex-direction: column; height: 800px; border: 1px solid var(--outline-variant); border-radius: 28px; overflow: hidden; background: var(--ink); }
   .statusbar { display: flex; justify-content: space-between; align-items: center; height: 32px; flex: 0 0 32px; padding: 0 20px; font-size: 12px; font-weight: 600; }
   .signals { display: flex; align-items: center; gap: 6px; }
   .signals .icon { width: 14px; height: 14px; }
@@ -76,12 +78,21 @@
   .text-button { display: flex; align-items: center; gap: 8px; min-height: 36px; width: fit-content; color: var(--accent); font-weight: 600; }
   .rule { height: 1px; background: var(--outline-variant); }
 
-  .welcome { padding: 22px 20px 14px; display: flex; flex-direction: column; }
-  .welcome-intro { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 10px 0 20px; text-align: center; }
-  .welcome-intro img { width: 64px; height: 72px; margin-bottom: 6px; }
-  .welcome-intro .lead { max-width: 270px; }
+  .welcome { padding: 16px 20px 14px; display: flex; flex-direction: column; gap: 12px; }
+  .welcome-brand { display: flex; align-items: center; gap: 9px; font-size: 15px; font-weight: 700; }
+  .welcome-brand img { width: 27px; height: 31px; }
+  .welcome .screen-title { text-wrap: balance; }
+  .welcome .lead { font-size: 14px; line-height: 20px; }
+  .example { background: var(--s1); border-radius: 16px; padding: 12px; }
+  .example-label { margin-bottom: 8px; color: var(--accent); font-size: 12.5px; line-height: 17px; font-weight: 600; }
+  .example blockquote { margin-top: 4px; font: 400 17px/21px Newsreader, serif; }
+  .example-takeaway { margin-top: 10px; border-top: 1px solid var(--outline-variant); padding-top: 9px; }
+  .example-takeaway p { margin-top: 4px; }
   .welcome-actions { display: flex; flex-direction: column; gap: 8px; }
-  .welcome-actions .button { min-height: 48px; }
+  .welcome .welcome-actions { margin-top: auto; }
+  .welcome-actions .button { min-height: 44px; }
+  .account-connected { display: flex; align-items: center; gap: 8px; min-height: 44px; border-radius: 12px; padding: 8px 12px; background: var(--s1); color: var(--success); font-weight: 600; }
+  .account-connected .icon { width: 17px; height: 17px; }
 
   .recovery { display: flex; flex-direction: column; padding: 18px 20px 14px; }
   .recovery .lead { margin-top: 8px; }
@@ -119,9 +130,9 @@
   .step + .step { border-top: 1px solid var(--outline-variant); }
   .step p { margin-top: 3px; }
   .step .button { width: fit-content; min-height: 38px; margin-top: 6px; padding: 5px 14px; }
-  .step .text-button { min-height: 31px; margin-top: 2px; font-size: 13px; }
+  .step-status { font-weight: 600; }
+  .download-progress { height: 4px; margin-top: 6px; border-radius: 4px; background: linear-gradient(90deg, var(--accent) 36%, var(--s4) 36%); }
   .setup-focus > .small { padding-top: 5px; }
-  .continue { padding: 14px 0 0; }
   .mini { flex: 0 0 56px; display: flex; align-items: center; gap: 9px; position: relative; margin: 0 8px 6px; padding: 7px 12px; border: 1px solid var(--outline-variant); border-radius: 16px; overflow: hidden; background: var(--s2); }
   .mini:after { content: ""; position: absolute; inset: auto 0 0; height: 2px; background: linear-gradient(90deg, var(--accent) 16%, var(--s4) 16%); }
   .art { display: grid; place-items: center; width: 34px; height: 34px; flex: 0 0 auto; border-radius: 8px; background: var(--s4); color: var(--muted); }
@@ -138,7 +149,8 @@
   .sync-account { display: grid; justify-items: start; gap: 8px; }
   .backup-card { display: grid; gap: 8px; padding: 15px; }
   .backup-card h4 { font-size: 20px; line-height: 26px; font-weight: 700; }
-  .backup-intro h4 { margin: 6px 0; }
+  .settings > .backup-stack { gap: 12px; }
+  .backup-intro h4 { margin: 6px 0; font-size: 24px; line-height: 29px; }
   .backup-intro .icon { width: 34px; height: 34px; color: var(--accent); }
   .disclosure { display: grid; grid-template-columns: 18px 1fr; gap: 8px; border-radius: 12px; padding: 10px; background: var(--s3); color: var(--text); }
   .disclosure .icon { width: 17px; height: 17px; color: var(--accent); }
@@ -177,6 +189,8 @@
   <symbol id="i-wave" viewBox="0 0 24 24"><path d="M4 10v4m4-7v10m4-13v16m4-13v10m4-7v4"/></symbol>
   <symbol id="i-headphones" viewBox="0 0 24 24"><path d="M4 14v-2a8 8 0 0 1 16 0v2"/><rect x="3" y="13" width="5" height="7" rx="2"/><rect x="16" y="13" width="5" height="7" rx="2"/></symbol>
   <symbol id="i-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4 10-10"/></symbol>
+  <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 2c0 6-4 10-10 10 6 0 10 4 10 10 0-6 4-10 10-10-6 0-10-4-10-10Z" fill="currentColor" stroke="none"/></symbol>
   <symbol id="i-sync" viewBox="0 0 24 24"><path d="M4 11a7 7 0 0 1 12-4l3 3m-4 0h4V6m1 7a7 7 0 0 1-12 4l-3-3m4 0H5v4"/></symbol>
   <symbol id="i-import" viewBox="0 0 24 24"><path d="M12 3v12m-4-4 4 4 4-4M4 15v5h16v-5"/></symbol>
   <symbol id="i-restore" viewBox="0 0 24 24"><path d="M3 11a9 9 0 1 1 2.7 7M3 6v5h5m4-4v5l4 2"/></symbol>
@@ -189,38 +203,65 @@
 <main class="board">
   <header class="board-header">
     <h1>DistillPod first-run setup</h1>
-    <p>Screen mockups for the first listen and library recovery.</p>
+    <p>Screen mockups for ChatGPT setup, the first listen and library recovery.</p>
   </header>
+
+  <section class="path" aria-labelledby="chatgpt-welcome">
+    <header>
+      <h2 id="chatgpt-welcome">Welcome and ChatGPT connection</h2>
+      <p>See what ChatGPT adds to a saved moment. Connect from Welcome, or go straight to listening or recovery.</p>
+    </header>
+    <div class="screens">
+      <figure>
+        <div class="phone" data-welcome="disconnected"></div>
+        <figcaption>
+          <h3>Welcome</h3>
+          <p>Connect ChatGPT opens Settings → ChatGPT. Find my first podcast goes straight to Search. Bring back my library opens recovery. Skip setup opens Library.</p>
+        </figcaption>
+      </figure>
+
+      <figure>
+        <div class="phone">
+          <div data-status></div>
+          <div class="top">
+            <svg class="icon" aria-hidden="true"><use href="#i-back"/></svg>
+            <h4>ChatGPT</h4>
+          </div>
+          <div class="content settings">
+            <div class="stack">
+              <p class="muted">Not connected</p>
+              <div class="sync-note">
+                <p class="small">AI actions send selected text to OpenAI and use your plan allowance.</p>
+                <div class="text-button">AI data use</div>
+              </div>
+              <div class="sync-account"><div class="button filled">Continue with ChatGPT</div></div>
+            </div>
+          </div>
+          <div data-nav="unselected"></div>
+          <div class="gesture nav-background" aria-hidden="true"><span></span></div>
+        </div>
+        <figcaption>
+          <h3>Existing ChatGPT settings</h3>
+          <p>Continue with ChatGPT opens sign-in. Settings shows the result and offers Cancel sign-in while pending. Back returns to Welcome with the current account state.</p>
+        </figcaption>
+      </figure>
+
+      <figure>
+        <div class="phone" data-welcome="connected"></div>
+        <figcaption>
+          <h3>Welcome after a successful connection</h3>
+          <p>Welcome shows ChatGPT connected after sign-in. Cancel or Back without connecting returns to the original Welcome. Both states offer listening, recovery and Skip setup.</p>
+        </figcaption>
+      </figure>
+    </div>
+  </section>
 
   <section class="path" aria-labelledby="first-listen">
     <header>
       <h2 id="first-listen">First listen</h2>
-      <p>Choose Find my first podcast, play any episode from Search, then open Library to set up takeaways.</p>
+      <p>Choose Find my first podcast on Welcome, play an episode from Search, then open Library to set up takeaways.</p>
     </header>
     <div class="screens">
-      <figure>
-        <div class="phone">
-          <div data-status></div>
-          <div class="content welcome">
-            <div class="welcome-intro">
-              <img src="../../../../branding/mark.svg" alt="">
-              <h4 class="screen-title">Welcome to DistillPod</h4>
-              <p class="lead">Listen to a podcast and save the last minute as a moment. You can set up short takeaways while you listen.</p>
-            </div>
-            <div class="welcome-actions">
-              <div class="button filled"><svg class="icon" aria-hidden="true"><use href="#i-search"/></svg>Find my first podcast</div>
-              <div class="button outlined">Bring back my library</div>
-              <div class="button">Skip setup</div>
-            </div>
-          </div>
-          <div class="gesture" aria-hidden="true"><span></span></div>
-        </div>
-        <figcaption>
-          <h3>Welcome</h3>
-          <p>Find my first podcast opens Search immediately. Choose an episode and press Play. Skip setup opens Library.</p>
-        </figcaption>
-      </figure>
-
       <figure>
         <div class="phone">
           <div data-status></div>
@@ -250,54 +291,23 @@
         </div>
         <figcaption>
           <h3>Library before playback</h3>
-          <p>Opening Library before your first listen shows the setup card above the episode list. Find podcasts takes you back to Search.</p>
+          <p>Opening Library before your first listen shows the setup card above the episode list. Find podcasts takes you to Search.</p>
         </figcaption>
       </figure>
 
       <figure>
-        <div class="phone">
-          <div data-status></div>
-          <div class="top">
-            <strong>DistillPod</strong>
-            <div class="end" aria-hidden="true"><svg class="icon"><use href="#i-gear"/></svg><svg class="icon"><use href="#i-more"/></svg></div>
-          </div>
-          <div class="content">
-            <div class="card setup-card">
-              <div class="card-header">
-                <h4 class="card-title">Setup guide</h4>
-                <span class="dismiss">Dismiss</span>
-              </div>
-              <div class="setup-focus">
-                <h4 class="section-title">Set up takeaways</h4>
-                <div class="step">
-                  <h4 class="card-title">Prepare the transcript on this phone</h4>
-                  <p class="small">Base · 148 MB · Not downloaded</p>
-                  <div class="button filled">Download Base</div>
-                </div>
-                <div class="step">
-                  <h4 class="card-title">Generate the takeaway</h4>
-                  <p class="small">AI actions send selected text to OpenAI and use your plan allowance.</p>
-                  <div class="text-button">Connect ChatGPT</div>
-                </div>
-                <p class="small">You can keep listening and save a moment’s source during setup.</p>
-              </div>
-              <div data-checklist="after"></div>
-              <div class="text-button more">More to explore</div>
-            </div>
-            <h4 class="section-title continue">Continue listening</h4>
-          </div>
-          <div class="mini">
-            <span class="art"><svg class="icon" aria-hidden="true"><use href="#i-wave"/></svg></span>
-            <div class="mini-copy"><strong>Keep the idea. Keep the context.</strong><span class="small">2 min left</span></div>
-            <svg class="icon" role="img" aria-label="Pause"><use href="#i-pause"/></svg>
-            <svg class="icon" role="img" aria-label="Queue"><use href="#i-queue"/></svg>
-          </div>
-          <div data-nav></div>
-          <div class="gesture nav-background" aria-hidden="true"><span></span></div>
-        </div>
+        <div class="phone" data-library-playing="missing"></div>
         <figcaption>
           <h3>Library after playback begins</h3>
-          <p>Download Base and Connect ChatGPT open their Settings pages while playback continues. Once ready, use Distill last 60 seconds in the player.</p>
+          <p>Download Base and Connect ChatGPT open separate Settings pages while playback continues. Choose either action first.</p>
+        </figcaption>
+      </figure>
+
+      <figure>
+        <div class="phone" data-library-playing="downloading"></div>
+        <figcaption>
+          <h3>Library while Base downloads</h3>
+          <p>Connect ChatGPT remains available while Base downloads. Once both are ready, use Distill last 60 seconds in the player.</p>
         </figcaption>
       </figure>
     </div>
@@ -400,7 +410,7 @@
             <div class="end" aria-hidden="true"><svg class="icon"><use href="#i-more"/></svg></div>
           </div>
           <div class="content settings">
-            <div class="stack">
+            <div class="stack backup-stack">
               <div class="backup-intro">
                 <svg class="icon" aria-hidden="true"><use href="#i-cloud"/></svg>
                 <h4 class="screen-title">Your library, kept in one file</h4>
@@ -409,7 +419,7 @@
               <div class="card backup-card">
                 <h4>Set up automatic backup</h4>
                 <p class="muted">Backs up daily when your library changes, the phone is online and the battery is sufficient.</p>
-                <p class="small">Choose device storage, Drive or another provider in Android’s file picker. Your provider handles cloud upload.</p>
+                <p class="small">Choose a file in Android’s picker. The provider handles cloud upload.</p>
                 <div class="button filled">Create backup file</div>
                 <div class="disclosure">
                   <svg class="icon" aria-hidden="true"><use href="#i-info"/></svg>
@@ -435,6 +445,78 @@
   </section>
 </main>
 
+<template id="welcome">
+  <div data-status></div>
+  <div class="content welcome">
+    <div class="welcome-brand">
+      <img src="../../../../branding/mark.svg" alt="">
+      <span>DistillPod</span>
+    </div>
+    <h4 class="screen-title">Turn a podcast moment into a takeaway</h4>
+    <p class="lead">Save the last 60 seconds and get a short takeaway from ChatGPT. You can ask follow-up questions about the episode, too.</p>
+    <div class="example">
+      <p class="example-label">Example</p>
+      <h4 class="card-title">From the last minute</h4>
+      <blockquote>“Our Monday meetings used to end with five action items. Once we picked the task that unblocked everyone else, the other four got done faster.”</blockquote>
+      <div class="example-takeaway">
+        <h4 class="card-title">ChatGPT takeaway</h4>
+        <p>Start with the task that unblocks the rest of the team.</p>
+      </div>
+    </div>
+    <div class="welcome-actions">
+      <p class="small" data-ai-disclosure>AI actions send selected text to OpenAI and use your plan allowance.</p>
+      <div class="button filled" data-connect><svg class="icon" aria-hidden="true"><use href="#i-spark"/></svg>Connect ChatGPT</div>
+      <div class="account-connected" data-connected hidden><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg>ChatGPT connected</div>
+      <div class="button outlined" data-podcast><svg class="icon" aria-hidden="true"><use href="#i-search"/></svg>Find my first podcast</div>
+      <div class="button outlined">Bring back my library</div>
+      <div class="button">Skip setup</div>
+    </div>
+  </div>
+  <div class="gesture" aria-hidden="true"><span></span></div>
+</template>
+
+<template id="library-playing">
+  <div data-status></div>
+  <div class="top">
+    <strong>DistillPod</strong>
+    <div class="end" aria-hidden="true"><svg class="icon"><use href="#i-gear"/></svg><svg class="icon"><use href="#i-more"/></svg></div>
+  </div>
+  <div class="content">
+    <div class="card setup-card">
+      <div class="card-header">
+        <h4 class="card-title">Setup guide</h4>
+        <span class="dismiss">Dismiss</span>
+      </div>
+      <div class="setup-focus">
+        <h4 class="section-title">Set up takeaways</h4>
+        <div class="step">
+          <h4 class="card-title">Prepare the transcript on this phone</h4>
+          <p class="small step-status" data-model-status>Base · 148 MB · Not downloaded</p>
+          <div class="download-progress" role="progressbar" aria-label="Base download" aria-valuenow="36" hidden></div>
+          <div class="button outlined" data-model-action>Download Base</div>
+        </div>
+        <div class="step">
+          <h4 class="card-title">Generate the takeaway</h4>
+          <p class="small step-status">ChatGPT · Not connected</p>
+          <p class="small">AI actions send selected text to OpenAI and use your plan allowance.</p>
+          <div class="button filled">Connect ChatGPT</div>
+        </div>
+        <p class="small">You can keep listening and save a moment’s source during setup.</p>
+      </div>
+      <div data-checklist="after"></div>
+      <div class="text-button more">More to explore</div>
+    </div>
+  </div>
+  <div class="mini">
+    <span class="art"><svg class="icon" aria-hidden="true"><use href="#i-wave"/></svg></span>
+    <div class="mini-copy"><strong>Keep the idea. Keep the context.</strong><span class="small">2 min left</span></div>
+    <svg class="icon" role="img" aria-label="Pause"><use href="#i-pause"/></svg>
+    <svg class="icon" role="img" aria-label="Queue"><use href="#i-queue"/></svg>
+  </div>
+  <div data-nav></div>
+  <div class="gesture nav-background" aria-hidden="true"><span></span></div>
+</template>
+
 <template id="status">
   <div class="statusbar" aria-hidden="true">
     <span>9:41</span>
@@ -458,10 +540,38 @@
 </template>
 
 <script>
+  const welcomeTemplate = document.getElementById("welcome");
+  for (const phone of document.querySelectorAll("[data-welcome]")) {
+    const screen = welcomeTemplate.content.cloneNode(true);
+    if (phone.dataset.welcome === "connected") {
+      screen.querySelector("[data-ai-disclosure]").remove();
+      screen.querySelector("[data-connect]").remove();
+      screen.querySelector("[data-connected]").hidden = false;
+      const find = screen.querySelector("[data-podcast]");
+      find.classList.replace("outlined", "filled");
+    } else {
+      screen.querySelector("[data-connected]").remove();
+    }
+    phone.append(screen);
+  }
+
+  const playingTemplate = document.getElementById("library-playing");
+  for (const phone of document.querySelectorAll("[data-library-playing]")) {
+    const screen = playingTemplate.content.cloneNode(true);
+    if (phone.dataset.libraryPlaying === "downloading") {
+      screen.querySelector("[data-model-status]").textContent = "Base · 148 MB · Downloading 36%";
+      screen.querySelector(".download-progress").hidden = false;
+      screen.querySelector("[data-model-action]").textContent = "Manage download";
+    }
+    phone.append(screen);
+  }
+
   for (const name of ["status", "nav"]) {
     const template = document.getElementById(name);
     for (const placeholder of document.querySelectorAll("[data-" + name + "]")) {
-      placeholder.replaceWith(template.content.cloneNode(true));
+      const content = template.content.cloneNode(true);
+      if (placeholder.dataset.nav === "unselected") content.querySelector(".active").classList.remove("active");
+      placeholder.replaceWith(content);
     }
   }
 

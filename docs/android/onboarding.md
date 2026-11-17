@@ -19,7 +19,7 @@ These steps are described in [Getting started](../getting-started.md), which a n
 
 ## Goals
 
-- A new user reaches a first saved moment with a takeaway without reading documentation.
+- On the first screen a new listener sees how ChatGPT turns a podcast passage into a takeaway, can connect their account, and knows how to try it on an episode.
 - A returning user restores their library before adding anything to the new phone.
 - Each connection is explained once, at the point of choosing it: what it does, what leaves the phone, and what works without it.
 - Every step can be skipped, and anything skipped stays easy to find later.
@@ -35,7 +35,7 @@ These steps are described in [Getting started](../getting-started.md), which a n
 
 ## Overview
 
-**Welcome** appears once on a fresh install. **Find my first podcast** opens Search immediately. **Bring back my library** opens the recovery choices before the listener adds shows or changes playback progress. **Skip setup** opens Library.
+**Welcome** introduces DistillPod through a worked example of a ChatGPT takeaway. Its primary action is **Connect ChatGPT**. **Find my first podcast** opens Search immediately. **Bring back my library** opens the recovery choices before the listener adds shows or changes playback progress. **Skip setup** opens Library.
 
 The Library card takes over after either path. Once the listener starts an episode, it offers **Set up takeaways** and shows what the selected transcription model and ChatGPT each contribute.
 
@@ -54,7 +54,7 @@ The second row is what protects existing installations: the release that introdu
 
 The decision is a pure function in `core/` taking those inputs, so the table is unit-tested without Android.
 
-`pending` becomes `done` when the listener selects **Find my first podcast**, chooses **Open library** from recovery, or taps **Skip setup**. These actions remove the setup screens from the back stack. Opening Sync or a file picker keeps recovery pending. Only the state is stored, not the step. The back stack already lives in saved state, so a process death mid-flow returns to the same screen. If the task is removed instead, the flow starts again from Welcome, and each screen shows the live result of anything already connected.
+`pending` becomes `done` when the listener selects **Find my first podcast**, chooses **Open library** from recovery, or taps **Skip setup**. These actions remove the setup screens from the back stack. Opening ChatGPT Settings, signing in, visiting Sync or opening a file picker keeps setup pending. Only the state is stored, not the step. The back stack already lives in saved state, so a process death mid-flow returns to the same screen. If the task is removed instead, the flow starts again from Welcome, and each screen shows the live result of anything already connected.
 
 **Instrumented tests.** About 50 device-test files launch `MainActivity` on an empty library, and the documentation capture script photographs that Library. `IsolatedTestRunner` therefore forces `done` and `cardDismissed` before the Application is created, the same way it already disables cloud sync. Tests of this feature opt back in.
 
@@ -64,10 +64,11 @@ Welcome and Bring back my library both offer **Skip setup**. Back returns from r
 
 ### Welcome
 
-“Listen to a podcast and save the last minute as a moment. You can set up short takeaways while you listen.”
+Lead with what happens when a listener hears something worth keeping. Show a short podcast passage beside the takeaway ChatGPT can produce from it. Mark it **Example** and bundle it with the app so it works offline. Mention that listeners can also ask questions about an episode.
 
+- **Connect ChatGPT** is the primary action on a fresh install. Put the disclosure beside it: “AI actions send selected text to OpenAI and use your plan allowance.” Open **Settings → ChatGPT** above Welcome and use the existing sign-in controls. On return, read the account state. After success, show **ChatGPT connected** and promote **Find my first podcast**. After cancellation or a failed sign-in, keep both connection and listening available. A model download can wait until the listener has an episode.
 - **Find my first podcast** goes directly to Search. The listener can find an episode and press Play without following a show, signing in or downloading a model.
-- **Bring back my library** opens recovery. The listener can choose **Open library** whenever they are ready.
+- **Bring back my library** opens recovery, including for someone who connected ChatGPT first. A returning listener can also restore first and connect ChatGPT on this phone later.
 
 ### Bring back my library
 
@@ -100,7 +101,7 @@ The first item of the Library list on the main Library page (not on a show page,
 
 Before the first play, the card helps the listener find a show or an episode. After playback begins, feature **Set up takeaways** on the next visit to Library. Use active playback or a positive live or saved playback position as evidence of listening. Loading an episode alone keeps the pre-listening card visible. Keep playback running when the listener opens Settings. The Setup guide also exposes these actions on demand.
 
-Under **Set up takeaways**, explain the two steps in listening order:
+Under **Set up takeaways**, show two independent statuses. A listener can connect ChatGPT while the selected model downloads. A listener who connected from Welcome sees that step checked.
 
 1. **Prepare the transcript on this phone.** Show the selected model’s name, size and download status. Open **Settings → Transcript preparation** for download, progress or pause. With Tiny installed and Base selected but missing, show **Download Base**. Network policy and the contextual notification prompt still apply.
 2. **Generate the takeaway.** Open **Settings → ChatGPT**, with its existing sign-in, cancel and retry controls. Explain before connection that AI actions send selected text to OpenAI and use the listener’s plan allowance. The listener can already play audio and save a moment’s source while setup is incomplete. Once ready, point them to **Distill last 60 seconds** in the player.
@@ -142,7 +143,7 @@ Risk is concentrated in two places: the first-run decision, where a wrong answer
 
 Review the [screen mockups](evidence/onboarding/mockups.png) or open the [HTML walkthrough](evidence/onboarding/mockups.html) locally. Walk through both tasks before approving the screens.
 
-1. Starting at Welcome, can a new listener find and play an episode immediately, then discover how to get a takeaway from the Library card?
+1. From the example on Welcome, can a listener explain what ChatGPT adds, find **Connect ChatGPT**, and understand what gets sent? Walk through connecting first and listening first. Both should lead to a playable episode and a clear next step toward a real takeaway.
 2. Starting with only a backup file, can a returning listener recover their library without signing in to Google and explain, before choosing the file, when DistillPod can write to it and what canceling restore does?
 
 ## Validation
@@ -151,10 +152,11 @@ The Sync change was exercised on a Galaxy S22 with a backup file in Downloads. B
 
 - **Unit:** the decision table, including update installs and each single non-empty input; card visibility and prerequisite states, including Tiny ready with Base selected but missing, and Base becoming ready after download. Cover each destination for **Save your first moment**.
 - **Device, isolated emulator:** a new `OnboardingDeviceTest` covering both paths, Skip from every screen, Back, process recreation on each screen, 160% and 200% font scale, TalkBack headings, the card's appearance and disappearance, and an update over a seeded database showing neither flow nor card. Include an upgrade with a remembered backup destination and verify that the destination and its schedule are preserved.
+- **ChatGPT on the isolated emulator:** verify the example renders offline without making an AI request. Open ChatGPT Settings from Welcome, exercise connected and canceled states with an account fixture, then return. Check the primary action, that recovery remains reachable, and that the card reflects the same account state while a model download is pending.
 - **First listen on the isolated emulator:** go from Welcome to Search, play a fixture episode, open Library, and follow **Set up takeaways** to each Settings page. Check that playback continues. With nothing loaded, check that **Save your first moment** reaches a playable episode or Search in an empty library.
 - **Sync and backup on the isolated emulator:** exercise the returning path with a configured test backend and a backup-only build. Seed a fixture provider with a managed archive containing one identifiable snapshot and use a different library on the test phone. Check the disclosure before the picker. Connect the archive, cancel the restore preview, and verify that the phone’s library was not merged. Let the first scheduled backup run with its constraints satisfied. Reopen the file, verify that a new snapshot was written and the original snapshot is still present, then restore the original without Google sign-in and return to Library. Verify that opening or skipping setup alone never creates a backup connection. Check that a connected file satisfies the optional card item without a Google account.
 - **Existing suites** must pass unchanged, which is the evidence that the test-runner default works.
-- **Manual, with task authorization:** live ChatGPT sign-in via the card and Google sign-in via recovery on an emulator. These are live account requests and are not run without the owner's approval.
+- **Manual, with task authorization:** live ChatGPT sign-in from Welcome or the card and Google sign-in via recovery on an emulator. These are live account requests and are not run without the owner's approval.
 - **Physical device:** installing the update over the owner's app must show nothing new. No uninstall or data clearing is involved.
 
 ## Documentation
@@ -167,8 +169,8 @@ Update [Getting started](../getting-started.md) so the first session follows the
 | --- | --- | --- |
 | 1. Screen mockups · design agent | Welcome, recovery, pre-picker disclosure and the Library card before and after first playback, using the existing Android theme. | Review the two [approval walkthroughs](#mockup-approval) before implementing the screens. |
 | 2. First-run decision · startup agent | Write failing decision-table tests. Read actual install, library, account and backup state before choosing the initial route. Persist the decision and dismissal atomically on the device. Default isolated tests to an existing install and let onboarding tests opt in. | A clean install reaches Welcome. Updating an empty or populated existing install reaches Library without a card. Backup and sync never transport these flags. |
-| 3. Startup and navigation · startup agent | Preserve the saved back stack and incoming intents while the decision loads. Wire fresh, recovery, skip, finish and Back transitions. | Search opens directly from Welcome. A deep link retains its destination above pending setup. Rotation, task recreation and a second launch preserve the specified behavior. |
-| 4. Guided actions and Library card · UI agent | Build Welcome, recovery and the contextual card. Derive action readiness from current playback, selected model, ChatGPT, follows and moments. Reuse Settings, the OPML picker and existing episode destinations. | Tiny installed with Base selected still offers Base. A first-moment tap always reaches the loaded player, a playable episode or Search. Dismissal and completion behave as specified. |
+| 3. Startup and navigation · startup agent | Preserve the saved back stack and incoming intents while the decision loads. Wire fresh, recovery, skip, finish and Back transitions. | ChatGPT Settings returns to pending Welcome. Search opens directly from Welcome. A deep link retains its destination above pending setup. Rotation, task recreation and a second launch preserve the specified behavior. |
+| 4. Guided actions and Library card · UI agent | Build the offline ChatGPT example and connection action on Welcome, recovery and the contextual card. Derive action readiness from current playback, selected model, ChatGPT, follows and moments. Reuse Settings, the OPML picker and existing episode destinations. | Tiny installed with Base selected still offers Base. A first-moment tap always reaches the loaded player, a playable episode or Search. Dismissal and completion behave as specified. |
 | 5. Backup disclosure and recovery · coordinator | Place the recurring-write disclosure before the picker. Exercise backup-only recovery with a seeded archive and distinct local library. | After canceling preview, the library remains intact. The first scheduled write preserves the original snapshot, which can still be selected and restored. |
 | 6. Integration, documentation and validation · coordinator | Connect the card under Latest and the guide under About, review the combined routing and accessibility, update user docs, and run the validation above against the integrated revision. | Record red/green tests, isolated emulator results, in-place physical upgrade evidence and limitations. Reconcile current main and verify required PR and combined-commit CI before completion. |
 
