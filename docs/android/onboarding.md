@@ -98,7 +98,7 @@ The first item of the Library list on the main Library page (not on a show page,
 | Save your first moment | Any moment has been saved | Open the player for the loaded episode. If none is loaded, open a playable episode’s detail page. If the library has no playable episode, open Search. |
 | Sync & backups (optional) | A Google sync binding exists or an automatic backup file is connected | Open Settings → Sync, including on backup-only builds. |
 
-Before the first play, the card helps the listener find a show or an episode. After playback begins, feature **Set up takeaways** on the next visit to Library. Use active playback or saved listening progress as evidence of listening. Keep playback running when the listener opens Settings. The Setup guide also exposes these actions on demand.
+Before the first play, the card helps the listener find a show or an episode. After playback begins, feature **Set up takeaways** on the next visit to Library. Use active playback or a positive live or saved playback position as evidence of listening. Loading an episode alone keeps the pre-listening card visible. Keep playback running when the listener opens Settings. The Setup guide also exposes these actions on demand.
 
 Under **Set up takeaways**, explain the two steps in listening order:
 
@@ -140,7 +140,7 @@ Risk is concentrated in two places: the first-run decision, where a wrong answer
 
 ## Mockup approval
 
-Walk through both tasks before approving the screens:
+Review the [screen mockups](evidence/onboarding/mockups.png) or open the [HTML walkthrough](evidence/onboarding/mockups.html) locally. Walk through both tasks before approving the screens.
 
 1. Starting at Welcome, can a new listener find and play an episode immediately, then discover how to get a takeaway from the Library card?
 2. Starting with only a backup file, can a returning listener recover their library without signing in to Google and explain, before choosing the file, when DistillPod can write to it and what canceling restore does?
@@ -171,6 +171,10 @@ Update [Getting started](../getting-started.md) so the first session follows the
 | 4. Guided actions and Library card · UI agent | Build Welcome, recovery and the contextual card. Derive action readiness from current playback, selected model, ChatGPT, follows and moments. Reuse Settings, the OPML picker and existing episode destinations. | Tiny installed with Base selected still offers Base. A first-moment tap always reaches the loaded player, a playable episode or Search. Dismissal and completion behave as specified. |
 | 5. Backup disclosure and recovery · coordinator | Place the recurring-write disclosure before the picker. Exercise backup-only recovery with a seeded archive and distinct local library. | After canceling preview, the library remains intact. The first scheduled write preserves the original snapshot, which can still be selected and restored. |
 | 6. Integration, documentation and validation · coordinator | Connect the card under Latest and the guide under About, review the combined routing and accessibility, update user docs, and run the validation above against the integrated revision. | Record red/green tests, isolated emulator results, in-place physical upgrade evidence and limitations. Reconcile current main and verify required PR and combined-commit CI before completion. |
+
+For task 2, load the device-local decision first. If it is missing, wait for library initialization and read the database and durable account/file state. The empty lists initially emitted by UI flows can appear before an existing library loads. If initialization fails, suppress onboarding for that launch and preserve the option to retry the read. For task 3, test a playback or update intent arriving before the initial route is chosen and verify its requested destination survives restoration.
+
+For task 4, resolve the selected model against its local file as well as its database status. Test recovery when a ready row refers to a missing file. In the guide, send **Save your first moment** to an episode available in the listener’s library before falling back to Search.
 
 The coordinator serializes Gradle, emulator and phone use. The startup agent owns the route dispatcher and startup logic. The UI agent owns the new composables and card rules. The coordinator owns Library and About insertion points, backup disclosure, cross-feature acceptance and documentation.
 
