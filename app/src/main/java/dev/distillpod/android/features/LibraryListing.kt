@@ -14,8 +14,9 @@ internal data class LibraryListing(val podcastId: String?, val filter: String, v
     val continueListening: List<EpisodeEntity> = listOfNotNull(resume))
 
 /**
- * The Library tab lists followed shows plus episodes kept offline or already played; a show page
- * lists that show. The episode loaded in the player resumes first, otherwise the most recently played
+ * The Library tab collects followed shows plus episodes kept offline or already played; a show page
+ * lists that show. On the Library tab, Latest lists only followed shows' episodes, so unfollowing a show
+ * removes it there while its retained media stays under Downloaded and In progress (#266). The episode loaded in the player resumes first, otherwise the most recently played
  * unfinished one. [LibraryListing.continueListening] follows it with the other unfinished episodes, most
  * recently played first, up to [CONTINUE_LISTENING_LIMIT]. [LibraryListing.feedProblems] are followed shows
  * (or the open show) whose refresh failed.
@@ -29,7 +30,8 @@ internal fun libraryListing(podcasts: List<PodcastEntity>, episodes: List<Episod
         if (podcastId != null) ep.podcastId == podcastId else ep.podcastId in followed || ep.localFile != null || ep.lastPlayedAt > 0
     }
     val filtered = library.filter { ep ->
-        when (filter) { "downloads" -> ep.localFile != null; "progress" -> ep.positionMs > 0 && !ep.completed; else -> true }
+        when (filter) { "downloads" -> ep.localFile != null; "progress" -> ep.positionMs > 0 && !ep.completed
+            else -> podcastId != null || ep.podcastId in followed }
     }
     val visible = if (selected?.feedUrl?.let { dev.distillpod.core.YouTubeUrl.source(it) } != null)
         filtered.sortedBy { it.sourceOrder ?: Int.MAX_VALUE } else filtered
