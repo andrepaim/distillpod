@@ -5,8 +5,10 @@ import androidx.datastore.preferences.core.*
 import androidx.datastore.preferences.preferencesDataStore
 import dev.distillpod.core.FirstRunSetup
 import dev.distillpod.core.FirstRunStatus
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.withContext
 import org.json.JSONArray
 
 internal fun searchHistory(raw: String): List<String> = runCatching {
@@ -53,13 +55,16 @@ class AppSettings(context: Context, private val store: androidx.datastore.core.D
     // First-run state stays device-local and is never part of PortablePreferences.
     internal val firstRunSetup = store.data.map { it.firstRunSetup() }
 
-    internal suspend fun initializeFirstRunSetup(initial: FirstRunSetup): FirstRunSetup =
+    // DataStore runs the edit in the caller's context while it holds its write lock. Keep this
+    // startup write independent of Main so it cannot hold up another settings change.
+    internal suspend fun initializeFirstRunSetup(initial: FirstRunSetup): FirstRunSetup = withContext(Dispatchers.IO) {
         checkNotNull(store.edit { prefs ->
             if (prefs[firstRunStatusKey] == null) {
                 prefs[firstRunStatusKey] = if (initial.status == FirstRunStatus.PENDING) "pending" else "done"
                 prefs[setupCardDismissedKey] = initial.cardDismissed
             }
         }.firstRunSetup())
+    }
 
     internal suspend fun completeFirstRunSetup(): FirstRunSetup = checkNotNull(store.edit { prefs ->
         if (prefs[firstRunStatusKey] == "pending") prefs[firstRunStatusKey] = "done"
