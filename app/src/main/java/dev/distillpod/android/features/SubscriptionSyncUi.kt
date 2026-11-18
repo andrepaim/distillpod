@@ -69,6 +69,8 @@ import dev.distillpod.android.ui.theme.TextButton
             Text(librarySyncStatus(binding,state.connected,state.uid,pending,rejected),color=MaterialTheme.colorScheme.secondary)
             if(state.busy)LinearProgressIndicator(Modifier.fillMaxWidth())
             else if(!state.connected || binding==null || state.uid!=binding?.uid) {
+                if (binding == null) Text(DataProtectionGuidance.binding, style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Button(onClick={if(binding==null)reviewing=true else signIn()}) {Text("Connect Google & sync library")}
             } else {
                 Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {

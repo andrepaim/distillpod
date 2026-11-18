@@ -3,8 +3,12 @@ package dev.distillpod.android.data
 import android.content.Context
 import androidx.datastore.preferences.core.*
 import androidx.datastore.preferences.preferencesDataStore
+import dev.distillpod.core.FirstRunSetup
+import dev.distillpod.core.FirstRunStatus
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.withContext
 import org.json.JSONArray
 
 internal fun searchHistory(raw: String): List<String> = runCatching {
@@ -14,6 +18,16 @@ internal fun searchHistory(raw: String): List<String> = runCatching {
 }.getOrDefault(emptyList())
 
 private val Context.settingsDataStore by preferencesDataStore("settings")
+private val firstRunStatusKey = stringPreferencesKey("firstRunStatus")
+private val setupCardDismissedKey = booleanPreferencesKey("setupCardDismissed")
+
+private fun androidx.datastore.preferences.core.Preferences.firstRunSetup(): FirstRunSetup? =
+    when (this[firstRunStatusKey]) {
+        null -> null
+        "pending" -> FirstRunSetup(FirstRunStatus.PENDING, this[setupCardDismissedKey] ?: false)
+        "done" -> FirstRunSetup(FirstRunStatus.DONE, this[setupCardDismissedKey] ?: false)
+        else -> FirstRunSetup.ExistingInstall
+    }
 
 data class Preferences(
     val model: String = "tiny", val language: String = "auto", val wifiOnly: Boolean = true,
@@ -38,6 +52,28 @@ internal fun showSpeeds(raw: String?): Map<String, Float> = runCatching {
 }.getOrDefault(emptyMap())
 
 class AppSettings(context: Context, private val store: androidx.datastore.core.DataStore<androidx.datastore.preferences.core.Preferences> = context.applicationContext.settingsDataStore, private val db:AppDatabase?=null, private val portableChanged:()->Unit={}) {
+    // First-run state stays device-local and is never part of PortablePreferences.
+    internal val firstRunSetup = store.data.map { it.firstRunSetup() }
+
+    // DataStore runs the edit in the caller's context while it holds its write lock. Keep this
+    // startup write independent of Main so it cannot hold up another settings change.
+    internal suspend fun initializeFirstRunSetup(initial: FirstRunSetup): FirstRunSetup = withContext(Dispatchers.IO) {
+        checkNotNull(store.edit { prefs ->
+            if (prefs[firstRunStatusKey] == null) {
+                prefs[firstRunStatusKey] = if (initial.status == FirstRunStatus.PENDING) "pending" else "done"
+                prefs[setupCardDismissedKey] = initial.cardDismissed
+            }
+        }.firstRunSetup())
+    }
+
+    internal suspend fun completeFirstRunSetup(): FirstRunSetup = checkNotNull(store.edit { prefs ->
+        if (prefs[firstRunStatusKey] == "pending") prefs[firstRunStatusKey] = "done"
+    }.firstRunSetup())
+
+    internal suspend fun dismissSetupCard(): FirstRunSetup = checkNotNull(store.edit { prefs ->
+        if (prefs[firstRunStatusKey] == "done") prefs[setupCardDismissedKey] = true
+    }.firstRunSetup())
+
     val shows = store.data.map { p -> ShowPreferences(
         format = ShowFormat.entries.firstOrNull { it.name == p[stringPreferencesKey("showsFormat")] } ?: ShowFormat.ALL,
         sort = ShowSort.entries.firstOrNull { it.name == p[stringPreferencesKey("showsSort")] } ?: ShowSort.TITLE,

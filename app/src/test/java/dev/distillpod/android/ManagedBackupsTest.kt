@@ -4,17 +4,23 @@ import android.content.Context
 import android.content.Intent
 import android.database.MatrixCursor
 import android.net.Uri
+import android.os.Looper
 import android.os.ParcelFileDescriptor
 import android.provider.DocumentsContract.Document
 import android.provider.DocumentsProvider
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
+import androidx.work.WorkInfo
+import androidx.work.WorkManager
+import androidx.work.testing.WorkManagerTestInitHelper
 import dev.distillpod.android.data.*
 import dev.distillpod.android.features.BackupFilePicker
+import dev.distillpod.android.sync.SubscriptionCloudAccess
 import java.io.File
 import java.io.IOException
 import java.util.UUID
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -24,6 +30,7 @@ import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.shadows.ShadowContentResolver
 
@@ -296,6 +303,90 @@ class ManagedBackupsTest {
             assertTrue(status.savedAt > 0 && status.checkedAt >= status.savedAt)
         }
     }
+    @Test fun `canceling restore keeps automatic backup active and preserves the original snapshot`() = runBlocking {
+        fixture { context, _, _, scope, origin, provider, uri, folder, _ ->
+            origin.created(uri)
+            done(origin, "seed original archive")
+            assertFalse(origin.state.value.message, origin.state.value.error)
+            val originalArchive = BackupArchive.hash(provider.file)
+            val original = BackupArchive.read(provider.file, File(folder, "original")).single().record
+            val priorInstrumentation = SubscriptionCloudAccess.instrumentation
+            SubscriptionCloudAccess.instrumentation = true
+            WorkManagerTestInitHelper.initializeTestWorkManager(context)
+            val manager = WorkManager.getInstance(context)
+            val graph = context.appGraph
+            try {
+                awaitMain { graph.ready.isCompleted }
+                graph.ready.await()
+                val target = graph.db.library()
+                target.putPodcast(PodcastEntity("local-show", "https://example.test/local", "Local show"))
+                target.putEpisode(EpisodeEntity("local-episode", "local-show", "local-guid", "Local episode",
+                    "https://example.test/local-audio", positionMs = 27000))
+                val backups = graph.managedBackups
+                val transfers = BackupDocuments(context, graph.backup, graph.settings, scope) {}
+                scope.launch(start = CoroutineStart.UNDISPATCHED) { backups.previews.collect(transfers::review) }
+
+                backups.connect(uri)
+                done(backups, "connect existing archive")
+                assertFalse(backups.state.value.message, backups.state.value.error)
+                assertEquals(original.id, backups.state.value.history.single().id)
+                assertEquals(originalArchive, BackupArchive.hash(provider.file))
+                val scheduled = manager.getWorkInfosForUniqueWork("managed-backup").get(5, TimeUnit.SECONDS).single()
+                assertEquals(WorkInfo.State.ENQUEUED, scheduled.state)
+
+                backups.preview(original.id, false)
+                awaitMain { transfers.state.value.preview != null || backups.state.value.error }
+                assertFalse(backups.state.value.message, backups.state.value.error)
+                assertNotNull(transfers.state.value.preview)
+                transfers.dismissPreview()
+                assertNull(transfers.state.value.preview)
+                assertEquals(listOf("local-episode"), target.episodes().map { it.id })
+                assertTrue(backups.connected.first())
+                assertEquals(originalArchive, BackupArchive.hash(provider.file))
+
+                val driver = checkNotNull(WorkManagerTestInitHelper.getTestDriver(context))
+                driver.setAllConstraintsMet(scheduled.id)
+                awaitMain { backups.state.value.history.size == 2 || backups.state.value.error }
+                assertFalse(backups.state.value.message, backups.state.value.error)
+                val written = BackupArchive.read(provider.file, File(folder, "after-scheduled-run"))
+                assertEquals(2, written.size)
+                assertEquals(original, written.single { it.record.id == original.id }.record)
+                assertNull(target.episode("episode"))
+
+                backups.refresh(choose = true)
+                done(backups, "reopen history")
+                assertTrue(backups.state.value.chooseBackup)
+                assertTrue(backups.state.value.history.any { it.id == original.id && !it.local })
+                backups.preview(original.id, false)
+                awaitMain { transfers.state.value.preview != null || backups.state.value.error }
+                assertFalse(backups.state.value.message, backups.state.value.error)
+                assertNotNull(transfers.state.value.preview)
+                transfers.restore(restorePreferences = false)
+                awaitMain { transfers.state.value.phase.startsWith("Restored") || transfers.state.value.error }
+                assertFalse(transfers.state.value.phase, transfers.state.value.error)
+                assertEquals(12000L, target.episode("episode")?.positionMs)
+                assertEquals(27000L, target.episode("local-episode")?.positionMs)
+            } finally {
+                try {
+                    manager.cancelAllWork().result.get(5, TimeUnit.SECONDS)
+                    graph.scope.cancel()
+                    awaitMain { graph.scope.coroutineContext.job.isCompleted }
+                    graph.db.close()
+                    WorkManagerTestInitHelper.closeWorkDatabase()
+                } finally {
+                    SubscriptionCloudAccess.instrumentation = priorInstrumentation
+                }
+            }
+        }
+    }
+
+    private suspend fun awaitMain(condition: () -> Boolean) = withTimeout(15000) {
+        while (!condition()) {
+            shadowOf(Looper.getMainLooper()).idle()
+            delay(10)
+        }
+    }
+
     @Test fun `automatic failure is stored for Settings and lost access waits for the user`() = runBlocking {
         fixture { _, _, _, _, backups, provider, uri, _, _ ->
             backups.created(uri); done(backups, "created")

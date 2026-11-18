@@ -28,7 +28,7 @@ class SubscriptionSyncAccount(private val graph:AppGraph) {
     data class State(val configured:Boolean=false,val connected:Boolean=false,val uid:String="",val busy:Boolean=false,val email:String="",val message:String="")
     private val context get()=graph.context
     val store=SubscriptionSyncStore(graph.db)
-    private val mutable=MutableStateFlow(State(configured=!SubscriptionCloudAccess.instrumentation && listOf(R.string.sync_api_key,R.string.sync_web_client_id,R.string.sync_app_id,R.string.sync_project_id).all {context.getString(it).isNotBlank()}))
+    private val mutable=MutableStateFlow(State(configured=SubscriptionCloudAccess.configured(context)))
     val state=mutable.asStateFlow()
     val pending=graph.db.sync().observeCount()
     val conflicts=graph.db.sync().observeConflicts()

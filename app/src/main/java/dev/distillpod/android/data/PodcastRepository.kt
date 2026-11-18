@@ -1,8 +1,8 @@
 package dev.distillpod.android.data
 
 import androidx.room.withTransaction
+import dev.distillpod.core.FeedEpisode
 import dev.distillpod.core.episodeId
-import dev.distillpod.core.parseFeed
 import dev.distillpod.core.parseFeedStream
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.Dispatchers
@@ -168,32 +168,55 @@ class PodcastRepository(private val db: AppDatabase, private val http: OkHttpCli
             try { refresh(existing.id) } catch(cancelled:kotlinx.coroutines.CancellationException) { throw cancelled } catch(_:Exception) { /* Follow remains saved offline. */ }
             return@withContext existing.id
         }
-        if (youtubeUrl != null) {
+        loadPodcast(url, youtubeUrl != null, follow = true).also { onSubscriptionChanged() }
+    }
+
+    /** Opens a source for playback without changing its follow, sharing or refresh settings. */
+    suspend fun browse(rawUrl: String): String = withContext(Dispatchers.IO) {
+        val youtubeUrl = YouTubeUrl.source(rawUrl)
+        val url = youtubeUrl ?: publicHttpUrl(rawUrl).toString()
+        val existing = dao.podcastByUrl(url)
+        if (existing != null && dao.episodesForPodcast(existing.id).isNotEmpty()) return@withContext existing.id
+        loadPodcast(url, youtubeUrl != null, follow = false)
+    }
+
+    private suspend fun loadPodcast(url: String, video: Boolean, follow: Boolean): String {
+        if (video) {
             val source = requireNotNull(youtube) { "YouTube support is unavailable" }
             val id = episodeId("podcast", url)
             val feed = source.feed(id, url)
-            db.withTransaction {
-                subscriptionSync.follow(PodcastEntity(id, url, feed.title, feed.author, feed.description, feed.imageUrl,
-                    originalFeedUrl = url, websiteUrl = url, refreshedAt = System.currentTimeMillis()))
-                saveEpisodes(id, feed.episodes)
-            }
-            onSubscriptionChanged()
-            return@withContext id
+            val podcast = PodcastEntity(id, url, feed.title, feed.author, feed.description, feed.imageUrl,
+                subscribed = follow, originalFeedUrl = url, websiteUrl = url, refreshedAt = System.currentTimeMillis())
+            return saveLoadedPodcast(podcast, feed.episodes)
         }
-        http.newCall(Request.Builder().url(url).build()).execute().use { response ->
+        return http.newCall(Request.Builder().url(url).build()).execute().use { response ->
             check(response.isSuccessful) { "Could not load that feed. Check the URL and connection." }
             val finalUrl = response.request.url.toString()
-            val existingRedirect = dao.podcastByUrl(finalUrl)
-            val id = existingRedirect?.id ?: episodeId("podcast", finalUrl)
+            val id = episodeId("podcast", finalUrl)
             val feed = response.body!!.byteStream().use { parseFeedStream(id, it, finalUrl) }
-            db.withTransaction {
-                subscriptionSync.follow(PodcastEntity(id, finalUrl, feed.title, feed.author, feed.description, feed.imageUrl, true,
-                    response.header("ETag"), response.header("Last-Modified"), System.currentTimeMillis(), originalFeedUrl = url, websiteUrl = feed.websiteUrl))
-                saveEpisodes(id, feed.episodes)
-            }
-            onSubscriptionChanged()
-            id
+            val podcast = PodcastEntity(id, finalUrl, feed.title, feed.author, feed.description, feed.imageUrl, follow,
+                response.header("ETag"), response.header("Last-Modified"), System.currentTimeMillis(), originalFeedUrl = url, websiteUrl = feed.websiteUrl)
+            saveLoadedPodcast(podcast, feed.episodes)
         }
+    }
+
+    private suspend fun saveLoadedPodcast(podcast: PodcastEntity, episodes: List<FeedEpisode>): String = db.withTransaction {
+        // Check after fetching. A concurrent browse, follow or refresh may already own the source's identity.
+        val existing = dao.podcastByUrl(podcast.feedUrl) ?: dao.podcastByUrl(podcast.originalFeedUrl)
+        val id = existing?.id ?: podcast.id
+        if (podcast.subscribed) {
+            subscriptionSync.follow(podcast.copy(id = id))
+        } else {
+            dao.putPodcast(podcast.copy(
+                id = id,
+                feedUrl = existing?.feedUrl ?: podcast.feedUrl,
+                originalFeedUrl = existing?.originalFeedUrl ?: podcast.originalFeedUrl,
+                subscribed = existing?.subscribed ?: false,
+            ))
+        }
+        val resolvedEpisodes = if (id == podcast.id) episodes else episodes.map { it.copy(id = episodeId(id, it.guid)) }
+        saveEpisodes(id, resolvedEpisodes, updateAutomation = podcast.subscribed)
+        id
     }
 
     suspend fun refresh(id: String) = withContext(Dispatchers.IO) {
@@ -237,7 +260,7 @@ class PodcastRepository(private val db: AppDatabase, private val http: OkHttpCli
         }
     }
 
-    private suspend fun saveEpisodes(podcastId: String, items: List<dev.distillpod.core.FeedEpisode>) {
+    private suspend fun saveEpisodes(podcastId: String, items: List<FeedEpisode>, updateAutomation: Boolean = true) {
         val saved = dao.episodesForPodcast(podcastId).associateBy { it.guid }
         val episodes = items.map { item ->
             val old = saved[item.guid]
@@ -266,6 +289,7 @@ class PodcastRepository(private val db: AppDatabase, private val http: OkHttpCli
             .sortedWith(compareBy<EpisodeEntity> { it.sourceOrder ?: Int.MAX_VALUE }.thenBy { it.id })
             .mapIndexed { index, episode -> episode.copy(sourceOrder = items.size + index) } else emptyList()
         dao.putEpisodes(episodes + retained)
+        if (!updateAutomation) return
         val automation = db.automation().show(podcastId)
         if (automation != null) {
             if (automation.initialized) episodes.filter { it.guid !in saved && (it.publishedAt == 0L || it.publishedAt >= automation.enabledAt) }

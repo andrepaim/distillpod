@@ -16,6 +16,10 @@ Release preparation reviewed against `main` at `e67cd37` on November 6, 2026. Th
 
 The latest private S25 update retained its signing identity, Firebase client configuration, saved-key status and existing shortcut choices; see the [settings validation](evidence/headphone-settings-validation.md). The earlier [online-transcript installation](online-transcripts.md#s25-installation--november-5) separately records library-data preservation and its then-current setting. Neither establishes a new live sync test of this release candidate. The [published 0.15.0 release notes](https://github.com/andrepaim/distillpod/releases/tag/v0.15.0-alpha.1) describe headphone capture. The published-build row records the verified baseline at preparation; check [GitHub Releases](https://github.com/andrepaim/distillpod/releases) for subsequent publication.
 
+## First-run onboarding
+
+The feature branch adds Welcome for fresh installs and a dismissible Library guide. Returning listeners can restore first. ChatGPT, local transcription and library sync are independent choices. See the [onboarding design and validation criteria](onboarding.md).
+
 ## Implemented on main
 
 - **Voice preview:** phone Ask, encrypted on-phone API key management, live recording feedback, a bounded answer sheet and playback restoration. Supported Car API 8 hosts have native Ask/Library controls; browse tabs have aligned resource icons. The 0.16.0 distribution candidate enables voice while ordinary source/debug defaults remain disabled. Voice uses a separate OpenAI API key and API allowance. [Setup and validation limits](voice-mode.md).
