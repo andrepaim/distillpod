@@ -75,6 +75,25 @@ internal const val ChatGptDataUse = "AI actions send selected text to OpenAI and
 @Composable
 internal fun OnboardingWelcome(vm: AppViewModel, account: AccountState) {
     val configured = remember(vm) { SubscriptionCloudAccess.configured(vm.graph.context) }
+    OnboardingWelcomeContent(
+        account = account,
+        syncConfigured = configured,
+        onConnect = { vm.open("settings:ai") },
+        onFindPodcast = { vm.finishSetup("search") },
+        onRecover = { vm.open(OnboardingRecoveryRoute) },
+        onSkip = { vm.finishSetup("library") },
+    )
+}
+
+@Composable
+internal fun OnboardingWelcomeContent(
+    account: AccountState,
+    syncConfigured: Boolean,
+    onConnect: () -> Unit,
+    onFindPodcast: () -> Unit,
+    onRecover: () -> Unit,
+    onSkip: () -> Unit,
+) {
     SetupPage {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(painterResource(R.drawable.ic_launcher_monochrome), null, Modifier.size(44.dp),
@@ -96,26 +115,26 @@ internal fun OnboardingWelcome(vm: AppViewModel, account: AccountState) {
                 Text("Start with the task that unblocks the rest of the team.")
             }
         }
-        val libraryProtection = if (configured) "Google library sync is separate." else "Backups work separately."
+        val libraryProtection = if (syncConfigured) "Google library sync is separate." else "Backups work separately."
         SetupDetail("ChatGPT is optional. Play podcasts and prepare transcripts on your phone. $libraryProtection")
         Column(verticalArrangement = Arrangement.spacedBy(DistillSpacing.sm)) {
-            val findPodcast = { vm.finishSetup("search") }
+            val primaryAction = Modifier.fillMaxWidth().testTag("onboarding-primary-action")
             if (account.connected) {
                 SetupConnected("ChatGPT connected")
-                Button(onClick = findPodcast, modifier = Modifier.fillMaxWidth()) { Text("Find my first podcast") }
+                Button(onClick = onFindPodcast, modifier = primaryAction) { Text("Find my first podcast") }
             } else {
                 SetupDetail(ChatGptDataUse)
-                Button(onClick = { vm.open("settings:ai") }, modifier = Modifier.fillMaxWidth()) {
+                Button(onClick = onConnect, modifier = primaryAction) {
                     Icon(Icons.Default.AutoAwesome, null)
                     Spacer(Modifier.width(DistillSpacing.sm))
                     Text("Connect ChatGPT")
                 }
-                OutlinedButton(onClick = findPodcast, modifier = Modifier.fillMaxWidth()) { Text("Find my first podcast") }
+                OutlinedButton(onClick = onFindPodcast, modifier = Modifier.fillMaxWidth()) { Text("Find my first podcast") }
             }
-            OutlinedButton(onClick = { vm.open(OnboardingRecoveryRoute) }, modifier = Modifier.fillMaxWidth()) {
+            OutlinedButton(onClick = onRecover, modifier = Modifier.fillMaxWidth()) {
                 Text("Bring back my library")
             }
-            TextButton(onClick = { vm.finishSetup("library") }, modifier = Modifier.fillMaxWidth()) { Text("Skip setup") }
+            TextButton(onClick = onSkip, modifier = Modifier.fillMaxWidth()) { Text("Skip setup") }
         }
     }
 }
