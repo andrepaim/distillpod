@@ -1,14 +1,12 @@
 # First-run setup
 
-Proposed November 17, 2026. The first-run flow and Library card are design proposals. The unified Sync page and daily automatic backup already exist on main. [Sync design](https://github.com/andrepaim/distillpod/blob/fe0242e18224bcc069b7e848ebf5b6a356838aed/docs/android/sync-only-settings.md) · [Implementation PR #270](https://github.com/andrepaim/distillpod/pull/270) · [0.33.0-alpha.1 release preparation #271](https://github.com/andrepaim/distillpod/pull/271)
-
-Screen mockups come before code and need the owner's approval; items marked **To verify** are assumptions that have not been tested.
+The Android first-run flow introduces ChatGPT takeaways and offers direct paths to listening, on-device transcripts and library recovery. It builds on the unified Sync page and automatic backup shipped in 0.33.0-alpha.1. [Onboarding implementation and validation](https://github.com/andrepaim/distillpod/pull/274) · [Sync implementation #270](https://github.com/andrepaim/distillpod/pull/270) · [Release preparation #271](https://github.com/andrepaim/distillpod/pull/271)
 
 ## Problem
 
-A fresh install opens on an empty Library that says "Your library starts here" with a **Find podcasts** button. Everything that makes DistillPod more than a podcast player needs setup that the app never mentions:
+In 0.33.0-alpha.1, a fresh install opened on an empty Library that said "Your library starts here" with a **Find podcasts** button. Listeners had to discover these capabilities in Settings.
 
-| Capability | Where it is set up today | What happens without it |
+| Capability | Settings entry point | What happens without it |
 | --- | --- | --- |
 | Takeaways, summaries, chapters, episode chat, explanations, suggestions | **Settings → ChatGPT** | A saved moment keeps its source but gets no takeaway |
 | Transcripts for saved moments | **Settings → Transcript preparation**, download Tiny or Base | Transcript preparation waits for a model that was never downloaded |
@@ -27,7 +25,7 @@ These steps are described in [Getting started](../getting-started.md), which a n
 
 ## Non-goals
 
-- No change to stored preferences, defaults, sync protocol, backup format or the Settings routes.
+- Existing playback and account preferences, defaults, the sync protocol, backup format and Settings routes stay compatible. Onboarding adds two device-local preferences.
 - No new place to edit a preference. Settings remains the only editor for each one.
 - Not shown to existing installations, including the owner's phone.
 - The notification request stays where #193 put it, after the first download or transcript job.
@@ -51,7 +49,7 @@ On the first launch that finds no stored value, the app decides once:
 | No followed shows, no episodes, no saved moments, ChatGPT not connected, no sync binding, no connected backup file, and the package was never updated (`firstInstallTime == lastUpdateTime`) | `pending` |
 | Anything else | `done` and `cardDismissed`, written silently |
 
-The second row is what protects existing installations: the release that introduces this feature arrives as an update, so its first launch records `done` and shows nothing. **To verify:** that `firstInstallTime == lastUpdateTime` holds on a fresh sideloaded install and differs after an update, on the emulator and on Android 10.
+The second row is what protects existing installations: the release that introduces this feature arrives as an update, so its first launch records `done` and shows nothing. Fresh sideloads on the Android 10 and Android 15 emulators opened Welcome. In-place updates over an empty installation opened Library on both versions. The populated Android 15 upgrade also preserved playback progress and the backup destination.
 
 The decision is a pure function in `core/` taking those inputs, so the table is unit-tested without Android.
 
@@ -143,7 +141,7 @@ Risk is concentrated in two places: the first-run decision, where a wrong answer
 
 ## Mockup approval
 
-Review the [screen mockups](evidence/onboarding/mockups.png) or open the [HTML walkthrough](evidence/onboarding/mockups.html) locally. Walk through these tasks before approving the screens.
+The owner reviewed the [screen mockups](evidence/onboarding/mockups.png) and approved the flow before implementation. The [HTML walkthrough](evidence/onboarding/mockups.html) preserves the three review scenarios.
 
 1. From the example on Welcome, can a listener explain what ChatGPT adds, find **Connect ChatGPT**, and understand what gets sent? Walk through connecting first and listening first. Both should lead to a playable episode and a clear next step toward a real takeaway.
 2. From Welcome, can a listener go straight to playback and dismiss setup? Can they find local transcripts or Google library sync independently, and see which account each action requires?
@@ -151,7 +149,7 @@ Review the [screen mockups](evidence/onboarding/mockups.png) or open the [HTML w
 
 ## Validation
 
-The Sync change was exercised on a Galaxy S22 with a backup file in Downloads. Background writes to Drive with the app closed and a later daily run under Doze were still unverified in the release notes. The checks below cover the proposed onboarding flow. [Validation recorded for #271](https://github.com/andrepaim/distillpod/pull/271)
+The Sync change was exercised on a Galaxy S22 with a backup file in Downloads. Background writes to Drive with the app closed and a later daily run under Doze were still unverified in the release notes. The checks below cover onboarding. The implementation PR records the results and remaining limitations. [Validation recorded for #271](https://github.com/andrepaim/distillpod/pull/271)
 
 - **Unit:** the decision table, including update installs and each single non-empty input; card visibility and prerequisite states, including Tiny ready with Base selected but missing, and Base becoming ready after download. Cover each destination for **Save your first moment**.
 - **Device, isolated emulator:** a new `OnboardingDeviceTest` covering both paths, Skip from every screen, Back, process recreation on each screen, 160% and 200% font scale, TalkBack headings, the card's appearance and disappearance, and an update over a seeded database showing neither flow nor card. Include an upgrade with a remembered backup destination and verify that the destination and its schedule are preserved.
@@ -184,7 +182,7 @@ For task 4, resolve the selected model against its local file as well as its dat
 
 The coordinator serializes Gradle, emulator and phone use. The startup agent owns the route dispatcher and startup logic. The UI agent owns the new composables and card rules. The coordinator owns Library and About insertion points, backup disclosure, cross-feature acceptance and documentation.
 
-## Open decisions
+## Implemented choices
 
-1. **Online transcript lookup.** Decide whether the takeaway guidance should link to the existing opt-in in Settings. It sends episode titles to a third party and saved moments still need the local model for timing.
-2. **Setup card for existing installations.** Proposed: never, with **Setup guide** in About as the way in.
+1. **Online transcript lookup.** The guide opens Transcript preparation for the selected on-device model. Listeners can separately opt into online lookup in Settings. That option sends episode titles to a third party. Saved moments use the local model for timing.
+2. **Existing installations.** An upgrade opens the listener’s Library. The setup guide is available in About, and the automatic setup card stays dismissed.
