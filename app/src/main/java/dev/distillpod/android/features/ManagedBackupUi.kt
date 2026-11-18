@@ -74,7 +74,8 @@ private fun savedDate(at: Long) = DateTimeFormatter.ofPattern("d MMM yyyy · HH:
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(if (state.location == null) "Set up automatic backup" else "Connected backup file", style = MaterialTheme.typography.titleLarge)
-                Text("Automatic: updated once a day when your library changes and the phone is online.", style = MaterialTheme.typography.bodyMedium)
+                Text("Automatic: updated once a day when your library changes, the phone is online and the battery is sufficient.",
+                    style = MaterialTheme.typography.bodyMedium)
                 Text(DataProtectionGuidance.backupAge(latestBackup?.at, now), style = MaterialTheme.typography.bodySmall)
                 if (latestBackup?.local == true) Text("Recovery copy on this phone; provider file is unavailable.", style = MaterialTheme.typography.bodySmall)
                 Text("The file provider handles cloud upload. A saved and checked file does not verify cloud upload.", style = MaterialTheme.typography.bodySmall)
@@ -89,6 +90,20 @@ private fun savedDate(at: Long) = DateTimeFormatter.ofPattern("d MMM yyyy · HH:
                 } ?: run {
                     Text("Choose Drive, device storage or another provider in Android’s file picker. Select the account and folder there, separately from the Google account used for cloud sync. The file keeps dated backup history.")
                     Button(onClick = { managed(backups::create) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Create backup file") }
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        shape = MaterialTheme.shapes.small,
+                    ) {
+                        Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Icon(Icons.Default.Info, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
+                            Text(
+                                "Connecting this file lets DistillPod add daily backups to it. " +
+                                    "You’ll choose which snapshot to restore next. If you cancel the restore, automatic backup stays on.",
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                    }
                     OutlinedButton(onClick = { managed { connect.launch(arrayOf("*/*")) } }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Connect existing backup") }
                 }
                 Text("Keeps the five newest backups plus one from each earlier week, up to ten, within the history size limit. Your original standalone exports are kept.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

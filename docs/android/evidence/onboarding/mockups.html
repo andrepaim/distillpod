@@ -1,0 +1,583 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DistillPod first-run setup mockups</title>
+<style>
+  @font-face { font-family: Inter; src: url("../../../../app/src/main/res/font/inter_regular.ttf"); font-weight: 400; }
+  @font-face { font-family: Inter; src: url("../../../../app/src/main/res/font/inter_medium.ttf"); font-weight: 500; }
+  @font-face { font-family: Inter; src: url("../../../../app/src/main/res/font/inter_semibold.ttf"); font-weight: 600; }
+  @font-face { font-family: Inter; src: url("../../../../app/src/main/res/font/inter_bold.ttf"); font-weight: 700; }
+  @font-face { font-family: Newsreader; src: url("../../../../app/src/main/res/font/newsreader_regular.ttf"); font-weight: 400; }
+
+  :root {
+    color-scheme: dark;
+    --ink: #0f0e0d;
+    --s0: #0b0a09;
+    --s1: #191816;
+    --s2: #22201d;
+    --s3: #2c2925;
+    --s4: #36322d;
+    --text: #f2eee8;
+    --muted: #aba397;
+    --outline: #7a7266;
+    --outline-variant: #3a3631;
+    --accent: #ffb547;
+    --on-accent: #2a1800;
+    --accent-container: #3b2a12;
+    --on-accent-container: #ffddb0;
+    --success: #7bd88f;
+  }
+
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--s0); color: var(--text); font: 400 14px/20px Inter, sans-serif; }
+  h1, h2, h3, h4, p, figure, blockquote { margin: 0; }
+  svg { flex-shrink: 0; }
+  .symbols { position: absolute; width: 0; height: 0; overflow: hidden; }
+  .icon { width: 20px; height: 20px; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; fill: none; }
+  .board { width: min(100% - 48px, 1136px); margin: auto; padding: 42px 0; }
+  .board-header { padding-bottom: 28px; border-bottom: 1px solid var(--outline-variant); }
+  .board h1 { font-size: 38px; line-height: 46px; letter-spacing: -1px; }
+  .board-header p, .path > header p, figcaption p { margin-top: 6px; color: var(--muted); }
+  .path { margin-top: 27px; }
+  .path + .path { margin-top: 37px; padding-top: 26px; border-top: 1px solid var(--outline-variant); }
+  .path > header { margin-bottom: 16px; }
+  .path > header h2 { font-size: 22px; line-height: 28px; letter-spacing: -.3px; }
+  .screens { display: grid; gap: 22px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  figure { min-width: 0; }
+  figcaption { min-height: 102px; padding: 12px 2px 0; }
+  figcaption h3 { font-size: 15px; line-height: 20px; font-weight: 700; }
+  figcaption p { font-size: 13px; line-height: 19px; }
+
+  .phone { display: flex; flex-direction: column; height: 824px; border: 1px solid var(--outline-variant); border-radius: 28px; overflow: hidden; background: var(--ink); }
+  .statusbar { display: flex; justify-content: space-between; align-items: center; height: 32px; flex: 0 0 32px; padding: 0 20px; font-size: 12px; font-weight: 600; }
+  .signals { display: flex; align-items: center; gap: 6px; }
+  .signals .icon { width: 14px; height: 14px; }
+  .gesture { flex: 0 0 24px; display: grid; place-items: center; }
+  .gesture span { width: 100px; height: 4px; border-radius: 4px; background: var(--text); }
+  .gesture.nav-background { background: var(--s1); }
+  .top { flex: 0 0 54px; display: flex; align-items: center; gap: 16px; padding: 0 20px; }
+  .top h4 { font-size: 20px; line-height: 26px; font-weight: 700; }
+  .top strong { font-size: 27px; line-height: 33px; letter-spacing: -.5px; }
+  .top .end { margin-left: auto; display: flex; align-items: center; gap: 16px; }
+  .content { flex: 1; min-height: 0; overflow: auto; padding: 10px 16px 18px; scrollbar-width: thin; scrollbar-color: var(--s4) transparent; }
+  .screen-title { font-size: 28px; line-height: 34px; letter-spacing: -.5px; }
+  .lead { font-size: 16px; line-height: 24px; color: var(--muted); }
+  .muted { color: var(--muted); }
+  .small { color: var(--muted); font-size: 12.5px; line-height: 17px; }
+  .section-title { font-size: 17px; line-height: 22px; font-weight: 600; }
+  .card-title { font-size: 15px; line-height: 20px; font-weight: 700; }
+  .stack { display: flex; flex-direction: column; gap: 12px; }
+  .card { background: var(--s1); border-radius: 16px; padding: 14px; }
+
+  .button { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 42px; border: 1px solid transparent; border-radius: 100px; padding: 8px 14px; text-align: center; color: var(--accent); font-weight: 600; }
+  .button .icon { width: 18px; height: 18px; }
+  .filled { background: var(--accent); color: var(--on-accent); }
+  .outlined { border-color: var(--outline); }
+  .text-button { display: flex; align-items: center; gap: 8px; min-height: 36px; width: fit-content; color: var(--accent); font-weight: 600; }
+  .rule { height: 1px; background: var(--outline-variant); }
+
+  .welcome { padding: 14px 20px 12px; display: flex; flex-direction: column; gap: 9px; }
+  .welcome-brand { display: flex; align-items: center; gap: 9px; font-size: 15px; font-weight: 700; }
+  .welcome-brand img { width: 27px; height: 31px; }
+  .welcome .screen-title { text-wrap: balance; }
+  .welcome .lead { font-size: 14px; line-height: 20px; }
+  .optional-account { color: var(--muted); font-size: 13px; line-height: 18px; }
+  .optional-account strong { color: var(--text); font-weight: 600; }
+  .example { background: var(--s1); border-radius: 16px; padding: 12px; }
+  .example-label { margin-bottom: 6px; color: var(--accent); font-size: 12.5px; line-height: 17px; font-weight: 600; }
+  .example blockquote { margin-top: 4px; font: 400 17px/21px Newsreader, serif; }
+  .example-takeaway { margin-top: 10px; border-top: 1px solid var(--outline-variant); padding-top: 9px; }
+  .example-takeaway p { margin-top: 4px; }
+  .welcome-actions { display: flex; flex-direction: column; gap: 8px; }
+  .welcome .welcome-actions { margin-top: auto; }
+  .welcome-actions .button { min-height: 44px; }
+  .account-connected { display: flex; align-items: center; gap: 8px; min-height: 44px; border-radius: 12px; padding: 8px 12px; background: var(--s1); color: var(--success); font-weight: 600; }
+  .account-connected .icon { width: 17px; height: 17px; }
+
+  .recovery { display: flex; flex-direction: column; padding: 18px 20px 14px; }
+  .recovery .lead { margin-top: 8px; }
+  .recovery .destination-list { display: grid; gap: 10px; margin: 24px 0 16px; }
+  .destination { display: flex; align-items: center; gap: 12px; padding: 14px; }
+  .destination .icon:first-child { color: var(--accent); }
+  .destination .icon:last-child { margin-left: auto; }
+  .destination p { margin-top: 3px; }
+  .recovery .small { margin-top: 9px; }
+  .recovery .welcome-actions { margin-top: auto; padding-top: 16px; }
+
+  .nav { flex: 0 0 61px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: center; background: var(--s1); color: var(--muted); font: 500 11px/14px Inter, sans-serif; }
+  .tab { display: grid; justify-items: center; gap: 3px; }
+  .tab > span { display: grid; place-items: center; width: 56px; height: 30px; border-radius: 99px; }
+  .tab.active { color: var(--text); }
+  .tab.active > span { background: var(--accent-container); color: var(--on-accent-container); }
+
+  .setup-card { display: flex; flex-direction: column; gap: 8px; padding: 12px; }
+  .card-header { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .dismiss { display: flex; align-items: center; min-height: 28px; padding: 0 4px; color: var(--accent); font-size: 12.5px; font-weight: 600; }
+  .setup-item { display: flex; align-items: center; min-height: 35px; gap: 9px; padding: 0 2px; font-size: 13px; font-weight: 500; }
+  .setup-item + .setup-item { border-top: 1px solid var(--outline-variant); }
+  .setup-item .icon { width: 16px; height: 16px; }
+  .setup-item .icon { margin-left: auto; color: var(--muted); }
+  .more { min-height: 31px; margin-left: 1px; font-size: 12.5px; }
+
+  .library-empty { display: grid; justify-items: center; gap: 9px; padding: 36px 8px; text-align: center; }
+  .library-empty .icon { width: 38px; height: 38px; color: var(--muted); }
+  .library-empty h4 { font-size: 20px; line-height: 26px; }
+  .library-empty p { max-width: 250px; }
+  .setup-focus { border-radius: 12px; padding: 10px 12px; background: var(--s2); }
+  .setup-focus p { margin-top: 3px; }
+  .setup-focus .button { width: fit-content; min-height: 38px; margin-top: 6px; padding: 5px 14px; }
+  .step-status { font-weight: 600; }
+  .download-progress { height: 4px; margin-top: 6px; border-radius: 4px; background: linear-gradient(90deg, var(--accent) 36%, var(--s4) 36%); }
+  .mini { flex: 0 0 56px; display: flex; align-items: center; gap: 9px; position: relative; margin: 0 8px 6px; padding: 7px 12px; border: 1px solid var(--outline-variant); border-radius: 16px; overflow: hidden; background: var(--s2); }
+  .mini:after { content: ""; position: absolute; inset: auto 0 0; height: 2px; background: linear-gradient(90deg, var(--accent) 16%, var(--s4) 16%); }
+  .art { display: grid; place-items: center; width: 34px; height: 34px; flex: 0 0 auto; border-radius: 8px; background: var(--s4); color: var(--muted); }
+  .mini-copy { flex: 1; min-width: 0; }
+  .mini-copy strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; line-height: 17px; }
+  .mini-copy span { display: block; }
+
+  .settings { padding: 12px 20px 18px; }
+  .settings > .stack { gap: 16px; }
+  .settings .card { display: grid; gap: 8px; }
+  .settings .section-title { margin-bottom: 7px; }
+  .settings .text-button { font-size: 13px; }
+  .sync-note .text-button { margin-top: 4px; }
+  .sync-account { display: grid; justify-items: start; gap: 8px; }
+  .backup-card { display: grid; gap: 8px; padding: 15px; }
+  .backup-card h4 { font-size: 20px; line-height: 26px; font-weight: 700; }
+  .settings > .backup-stack { gap: 12px; }
+  .backup-intro h4 { margin: 6px 0; font-size: 24px; line-height: 29px; }
+  .backup-intro .icon { width: 34px; height: 34px; color: var(--accent); }
+  .disclosure { display: grid; grid-template-columns: 18px 1fr; gap: 8px; border-radius: 12px; padding: 10px; background: var(--s3); color: var(--text); }
+  .disclosure .icon { width: 17px; height: 17px; color: var(--accent); }
+  .disclosure p + p { margin-top: 5px; }
+  .disclosure .small { color: var(--text); }
+
+  @media (max-width: 1120px) {
+    .screens { gap: 16px; }
+  }
+
+  @media (max-width: 990px) {
+    .screens { grid-template-columns: repeat(auto-fit, minmax(min(100%, 335px), 1fr)); }
+    figure { max-width: 365px; }
+  }
+
+  @media (max-width: 460px) {
+    .board { width: min(100% - 24px, 365px); padding-top: 20px; }
+    .board h1 { font-size: 28px; line-height: 34px; }
+    .phone { height: 750px; }
+    figcaption { min-height: auto; padding-bottom: 12px; }
+  }
+</style>
+</head>
+<body>
+<svg class="symbols" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="M20 12H4m7-7-7 7 7 7"/></symbol>
+  <symbol id="i-next" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.8" cy="10.8" r="5.8"/><path d="m15 15 5 5"/></symbol>
+  <symbol id="i-library" viewBox="0 0 24 24"><rect x="7" y="4" width="13" height="13" rx="2"/><path d="M4 8v12h12m-1-7.5V7.5l2.5 1M15 12.5a1.5 1 0 1 1-3 0 1.5 1 0 1 1 3 0Z"/></symbol>
+  <symbol id="i-saved" viewBox="0 0 24 24"><path d="M6 5a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v15l-6-4-6 4Z" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-queue" viewBox="0 0 24 24"><path d="M3 6h11M3 10h11M3 14h7m9 2V6h3"/><ellipse cx="17" cy="17" rx="2.3" ry="1.8" fill="currentColor"/></symbol>
+  <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="m9 4 1-2h4l1 2 2 1 2-.3 2 3.5-1.3 1.8v2.6L21 14l-2 3.6-2-.3-2 1-1 2h-4l-1-2-2-1-2 .3L3 14l1.3-1.4V10L3 8.2l2-3.5 2 .3Z"/></symbol>
+  <symbol id="i-more" viewBox="0 0 24 24"><path d="M12 5v.1m0 6.9v.1m0 6.9v.1" stroke-width="3.6"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="m8 5 12 7-12 7Z" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 24 24"><path d="M9 6v12m6-12v12" stroke-width="3"/></symbol>
+  <symbol id="i-wave" viewBox="0 0 24 24"><path d="M4 10v4m4-7v10m4-13v16m4-13v10m4-7v4"/></symbol>
+  <symbol id="i-headphones" viewBox="0 0 24 24"><path d="M4 14v-2a8 8 0 0 1 16 0v2"/><rect x="3" y="13" width="5" height="7" rx="2"/><rect x="16" y="13" width="5" height="7" rx="2"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4 10-10"/></symbol>
+  <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 2c0 6-4 10-10 10 6 0 10 4 10 10 0-6 4-10 10-10-6 0-10-4-10-10Z" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-sync" viewBox="0 0 24 24"><path d="M4 11a7 7 0 0 1 12-4l3 3m-4 0h4V6m1 7a7 7 0 0 1-12 4l-3-3m4 0H5v4"/></symbol>
+  <symbol id="i-import" viewBox="0 0 24 24"><path d="M12 3v12m-4-4 4 4 4-4M4 15v5h16v-5"/></symbol>
+  <symbol id="i-restore" viewBox="0 0 24 24"><path d="M3 11a9 9 0 1 1 2.7 7M3 6v5h5m4-4v5l4 2"/></symbol>
+  <symbol id="i-cloud" viewBox="0 0 24 24"><path d="M7 19a4 4 0 1 1-.7-7.9 5.8 5.8 0 0 1 11.2 1H18a3.5 3.5 0 0 1 0 7Z"/><path d="m10 14 2 2 4-4"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5m0-8v.1"/></symbol>
+  <symbol id="i-wifi" viewBox="0 0 24 24"><path d="M3 9a15 15 0 0 1 18 0m-15 3a10 10 0 0 1 12 0m-9 3a5 5 0 0 1 6 0m-3 3v.1" stroke-width="2.3"/></symbol>
+  <symbol id="i-battery" viewBox="0 0 24 24"><rect x="3" y="6" width="17" height="12" rx="2" fill="currentColor"/><path d="M22 10v4"/></symbol>
+</svg>
+
+<main class="board">
+  <header class="board-header">
+    <h1>DistillPod first-run setup</h1>
+    <p>Screen mockups for ChatGPT setup, the first listen and library recovery.</p>
+  </header>
+
+  <section class="path" aria-labelledby="chatgpt-welcome">
+    <header>
+      <h2 id="chatgpt-welcome">Welcome and ChatGPT connection</h2>
+      <p>See what ChatGPT adds to a saved moment. Connect from Welcome, or go straight to listening or recovery.</p>
+    </header>
+    <div class="screens">
+      <figure>
+        <div class="phone" data-welcome="disconnected"></div>
+        <figcaption>
+          <h3>Welcome</h3>
+          <p>Connect ChatGPT opens Settings → ChatGPT. Find my first podcast opens Search for immediate playback. Bring back my library opens recovery. Skip setup opens Library.</p>
+        </figcaption>
+      </figure>
+
+      <figure>
+        <div class="phone">
+          <div data-status></div>
+          <div class="top">
+            <svg class="icon" aria-hidden="true"><use href="#i-back"/></svg>
+            <h4>ChatGPT</h4>
+          </div>
+          <div class="content settings">
+            <div class="stack">
+              <p class="muted">Not connected</p>
+              <div class="sync-note">
+                <p class="small">AI actions send selected text to OpenAI and use your plan allowance.</p>
+                <div class="text-button">AI data use</div>
+              </div>
+              <div class="sync-account"><div class="button filled">Continue with ChatGPT</div></div>
+            </div>
+          </div>
+          <div data-nav="unselected"></div>
+          <div class="gesture nav-background" aria-hidden="true"><span></span></div>
+        </div>
+        <figcaption>
+          <h3>Existing ChatGPT settings</h3>
+          <p>Continue with ChatGPT opens sign-in. Settings shows the result and offers Cancel sign-in while pending. Back returns to Welcome with the current account state.</p>
+        </figcaption>
+      </figure>
+
+      <figure>
+        <div class="phone" data-welcome="connected"></div>
+        <figcaption>
+          <h3>Welcome after a successful connection</h3>
+          <p>Welcome shows ChatGPT connected after sign-in. Cancel or Back without connecting returns to the original Welcome. Both states offer listening, recovery and Skip setup.</p>
+        </figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section class="path" aria-labelledby="first-listen">
+    <header>
+      <h2 id="first-listen">First listen</h2>
+      <p>Choose Find my first podcast on Welcome and play an episode from Search. The Library guide offers on-device transcripts and optional ChatGPT takeaways.</p>
+    </header>
+    <div class="screens">
+      <figure>
+        <div class="phone">
+          <div data-status></div>
+          <div class="top">
+            <strong>DistillPod</strong>
+            <div class="end" aria-hidden="true"><svg class="icon"><use href="#i-gear"/></svg><svg class="icon"><use href="#i-more"/></svg></div>
+          </div>
+          <div class="content">
+            <div class="card setup-card">
+              <div class="card-header">
+                <h4 class="card-title">Setup guide</h4>
+                <span class="dismiss">Dismiss</span>
+              </div>
+              <p class="muted">Find an episode to play. Follow the show if you’d like new episodes in Library.</p>
+              <div class="button filled"><svg class="icon" aria-hidden="true"><use href="#i-search"/></svg>Find podcasts</div>
+              <div data-guide-actions="before"></div>
+              <div class="text-button more">More to explore</div>
+            </div>
+            <div class="library-empty">
+              <svg class="icon" aria-hidden="true"><use href="#i-headphones"/></svg>
+              <h4>Your library starts here</h4>
+              <p class="muted">Find a podcast or add its RSS feed. Your library stays available offline.</p>
+            </div>
+          </div>
+          <div data-nav></div>
+          <div class="gesture nav-background" aria-hidden="true"><span></span></div>
+        </div>
+        <figcaption>
+          <h3>Library before playback</h3>
+          <p>On-device transcripts opens Transcript preparation. You can dismiss the card and reopen the guide in Settings → About DistillPod → Setup guide.</p>
+        </figcaption>
+      </figure>
+
+      <figure>
+        <div class="phone" data-library-playing="missing"></div>
+        <figcaption>
+          <h3>Library after playback begins</h3>
+          <p>Download Base opens Transcript preparation. You can use transcripts on their own or choose Connect ChatGPT for takeaways. Playback continues.</p>
+        </figcaption>
+      </figure>
+
+      <figure>
+        <div class="phone" data-library-playing="downloading"></div>
+        <figcaption>
+          <h3>Library while Base downloads</h3>
+          <p>Connect ChatGPT stays available during the download. Distill last 60 seconds saves a moment. A transcript and ChatGPT can add a takeaway.</p>
+        </figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section class="path" aria-labelledby="returning-listener">
+    <header>
+      <h2 id="returning-listener">Restore from an existing backup</h2>
+      <p>Choose Bring back my library on Welcome. Open Sync &amp; backups, then Restore from a backup.</p>
+    </header>
+    <div class="screens">
+      <figure>
+        <div class="phone">
+          <div data-status></div>
+          <div class="top" aria-label="Back to Welcome"><svg class="icon" aria-hidden="true"><use href="#i-back"/></svg></div>
+          <div class="content recovery">
+            <h4 class="screen-title">Bring back my library</h4>
+            <p class="lead">Restore your library before you start adding shows or listening on this phone.</p>
+            <div class="destination-list">
+              <div class="card destination">
+                <svg class="icon" aria-hidden="true"><use href="#i-sync"/></svg>
+                <div>
+                  <h4 class="card-title">Sync &amp; backups</h4>
+                  <p class="small">Restore a backup file without Google sync, or connect your original account.</p>
+                </div>
+                <svg class="icon" aria-hidden="true"><use href="#i-next"/></svg>
+              </div>
+              <div class="card destination">
+                <svg class="icon" aria-hidden="true"><use href="#i-import"/></svg>
+                <div>
+                  <h4 class="card-title">Import OPML</h4>
+                  <p class="small">Bring in subscriptions from another podcast app.</p>
+                </div>
+                <svg class="icon" aria-hidden="true"><use href="#i-next"/></svg>
+              </div>
+            </div>
+            <p class="muted">Have both sync and a backup? Connect your original account first, then restore the backup when sync finishes.</p>
+            <p class="small">Backup files contain readable personal text and feed addresses. Keep them private.</p>
+            <div class="welcome-actions">
+              <div class="button filled">Open library</div>
+              <div class="button">Skip setup</div>
+            </div>
+          </div>
+          <div class="gesture" aria-hidden="true"><span></span></div>
+        </div>
+        <figcaption>
+          <h3>Recovery choices</h3>
+          <p>Sync &amp; backups is the route for a backup file. The Google option and ordering guidance appear only on builds with cloud sync.</p>
+        </figcaption>
+      </figure>
+
+      <figure>
+        <div class="phone">
+          <div data-status></div>
+          <div class="top">
+            <svg class="icon" aria-hidden="true"><use href="#i-back"/></svg>
+            <h4>Sync</h4>
+          </div>
+          <div class="content settings">
+            <div class="stack">
+              <div class="sync-note">
+                <p class="small">Sync keeps subscriptions, progress and saved moments current across phones. Automatic backup keeps a daily copy of everything else, like transcripts, insights, chats and posts, in a file you choose.</p>
+                <div class="text-button">What’s covered</div>
+              </div>
+              <div>
+                <h4 class="section-title">Cloud sync</h4>
+                <div class="sync-account">
+                  <p class="muted">Not connected</p>
+                  <p class="small">Connecting binds this library to its original Google account. Signing out pauses sync and keeps the binding.</p>
+                  <div class="button filled">Connect Google &amp; sync library</div>
+                </div>
+              </div>
+              <div class="rule"></div>
+              <div>
+                <h4 class="section-title">Automatic backup</h4>
+                <div class="card">
+                  <p class="muted">Keep transcripts, insights, chats and posts in a backup file in Google Drive or another place you choose.</p>
+                  <div class="button filled">Set up automatic backup</div>
+                  <div class="text-button">Already have a backup file?</div>
+                </div>
+                <div class="text-button"><svg class="icon" aria-hidden="true"><use href="#i-restore"/></svg>Restore from a backup</div>
+              </div>
+            </div>
+          </div>
+          <div data-nav></div>
+          <div class="gesture nav-background" aria-hidden="true"><span></span></div>
+        </div>
+        <figcaption>
+          <h3>Existing Sync destination</h3>
+          <p>With only a backup, choose Restore from a backup. This path works without connecting a Google account, including on backup-only builds.</p>
+        </figcaption>
+      </figure>
+
+      <figure>
+        <div class="phone">
+          <div data-status></div>
+          <div class="top">
+            <svg class="icon" aria-hidden="true"><use href="#i-back"/></svg>
+            <h4>Backups &amp; restore</h4>
+            <div class="end" aria-hidden="true"><svg class="icon"><use href="#i-more"/></svg></div>
+          </div>
+          <div class="content settings">
+            <div class="stack backup-stack">
+              <div class="backup-intro">
+                <svg class="icon" aria-hidden="true"><use href="#i-cloud"/></svg>
+                <h4 class="screen-title">Your library, kept in one file</h4>
+                <p class="muted">Connect a backup file once. You can restore a dated copy whenever you need it.</p>
+              </div>
+              <div class="card backup-card">
+                <h4>Set up automatic backup</h4>
+                <p class="muted">Backs up daily when your library changes, the phone is online and the battery is sufficient.</p>
+                <p class="small">Choose a file in Android’s picker. The provider handles cloud upload.</p>
+                <div class="button filled">Create backup file</div>
+                <div class="disclosure">
+                  <svg class="icon" aria-hidden="true"><use href="#i-info"/></svg>
+                  <p class="small">Connecting this file lets DistillPod add daily backups to it. You’ll choose which snapshot to restore next. If you cancel the restore, automatic backup stays on.</p>
+                </div>
+                <div class="button outlined">Connect existing backup</div>
+              </div>
+              <div>
+                <h4 class="section-title">Have an older export?</h4>
+                <div class="button outlined">Import older backup</div>
+              </div>
+            </div>
+          </div>
+          <div data-nav></div>
+          <div class="gesture nav-background" aria-hidden="true"><span></span></div>
+        </div>
+        <figcaption>
+          <h3>Disclosure before Android’s file picker</h3>
+          <p>Choose Restore a backup, select a dated snapshot, then choose Merge library. Go back to recovery and choose Open library. Turn off automatic backup disconnects the file and keeps its history.</p>
+        </figcaption>
+      </figure>
+    </div>
+  </section>
+</main>
+
+<template id="welcome">
+  <div data-status></div>
+  <div class="content welcome">
+    <div class="welcome-brand">
+      <img src="../../../../branding/mark.svg" alt="">
+      <span>DistillPod</span>
+    </div>
+    <h4 class="screen-title">Turn a podcast moment into a takeaway</h4>
+    <p class="lead">Save the last 60 seconds. With ChatGPT, you can get a takeaway or ask follow-up questions about the episode.</p>
+    <div class="example">
+      <p class="example-label">Example</p>
+      <h4 class="card-title">From the last minute</h4>
+      <blockquote>“Our Monday meetings used to end with five action items. Once we picked the task that unblocked everyone else, the other four got done faster.”</blockquote>
+      <div class="example-takeaway">
+        <h4 class="card-title">ChatGPT takeaway</h4>
+        <p>Start with the task that unblocks the rest of the team.</p>
+      </div>
+    </div>
+    <p class="optional-account"><strong>ChatGPT is optional.</strong> Play podcasts and prepare transcripts on your phone. Google library sync is separate where available.</p>
+    <div class="welcome-actions">
+      <p class="small" data-ai-disclosure>AI actions send selected text to OpenAI and use your plan allowance.</p>
+      <div class="button filled" data-connect><svg class="icon" aria-hidden="true"><use href="#i-spark"/></svg>Connect ChatGPT</div>
+      <div class="account-connected" data-connected hidden><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg>ChatGPT connected</div>
+      <div class="button outlined" data-podcast><svg class="icon" aria-hidden="true"><use href="#i-search"/></svg>Find my first podcast</div>
+      <div class="button outlined">Bring back my library</div>
+      <div class="button">Skip setup</div>
+    </div>
+  </div>
+  <div class="gesture" aria-hidden="true"><span></span></div>
+</template>
+
+<template id="library-playing">
+  <div data-status></div>
+  <div class="top">
+    <strong>DistillPod</strong>
+    <div class="end" aria-hidden="true"><svg class="icon"><use href="#i-gear"/></svg><svg class="icon"><use href="#i-more"/></svg></div>
+  </div>
+  <div class="content">
+    <div class="card setup-card">
+      <div class="card-header">
+        <h4 class="card-title">Setup guide</h4>
+        <span class="dismiss">Dismiss</span>
+      </div>
+      <div class="setup-focus">
+        <h4 class="card-title">On-device transcripts</h4>
+        <p class="small">Prepare transcripts on this phone and read them as you listen.</p>
+        <p class="small step-status" data-model-status>Base · 148 MB · Not downloaded</p>
+        <div class="download-progress" role="progressbar" aria-label="Base download" aria-valuenow="36" hidden></div>
+        <div class="button outlined" data-model-action>Download Base</div>
+      </div>
+      <div class="setup-focus">
+        <h4 class="card-title">ChatGPT takeaways (optional)</h4>
+        <p class="small step-status">Not connected</p>
+        <p class="small">AI actions send selected text to OpenAI and use your plan allowance.</p>
+        <div class="button filled">Connect ChatGPT</div>
+      </div>
+      <div data-guide-actions="after"></div>
+      <div class="text-button more">More to explore</div>
+    </div>
+  </div>
+  <div class="mini">
+    <span class="art"><svg class="icon" aria-hidden="true"><use href="#i-wave"/></svg></span>
+    <div class="mini-copy"><strong>Keep the idea. Keep the context.</strong><span class="small">2 min left</span></div>
+    <svg class="icon" role="img" aria-label="Pause"><use href="#i-pause"/></svg>
+    <svg class="icon" role="img" aria-label="Queue"><use href="#i-queue"/></svg>
+  </div>
+  <div data-nav></div>
+  <div class="gesture nav-background" aria-hidden="true"><span></span></div>
+</template>
+
+<template id="status">
+  <div class="statusbar" aria-hidden="true">
+    <span>9:41</span>
+    <span class="signals"><svg class="icon"><use href="#i-wifi"/></svg><svg class="icon"><use href="#i-battery"/></svg></span>
+  </div>
+</template>
+<template id="nav">
+  <div class="nav" aria-label="Navigation">
+    <div class="tab active"><span><svg class="icon" aria-hidden="true"><use href="#i-library"/></svg></span>Library</div>
+    <div class="tab"><span><svg class="icon" aria-hidden="true"><use href="#i-search"/></svg></span>Search</div>
+    <div class="tab"><span><svg class="icon" aria-hidden="true"><use href="#i-saved"/></svg></span>Saved</div>
+    <div class="tab"><span><svg class="icon" aria-hidden="true"><use href="#i-queue"/></svg></span>Queue</div>
+  </div>
+</template>
+<template id="item">
+  <div class="setup-item">
+    <span></span>
+    <svg class="icon" aria-hidden="true"><use href="#i-next"/></svg>
+  </div>
+</template>
+
+<script>
+  const welcomeTemplate = document.getElementById("welcome");
+  for (const phone of document.querySelectorAll("[data-welcome]")) {
+    const screen = welcomeTemplate.content.cloneNode(true);
+    if (phone.dataset.welcome === "connected") {
+      screen.querySelector("[data-ai-disclosure]").remove();
+      screen.querySelector("[data-connect]").remove();
+      screen.querySelector("[data-connected]").hidden = false;
+      const find = screen.querySelector("[data-podcast]");
+      find.classList.replace("outlined", "filled");
+    } else {
+      screen.querySelector("[data-connected]").remove();
+    }
+    phone.append(screen);
+  }
+
+  const playingTemplate = document.getElementById("library-playing");
+  for (const phone of document.querySelectorAll("[data-library-playing]")) {
+    const screen = playingTemplate.content.cloneNode(true);
+    if (phone.dataset.libraryPlaying === "downloading") {
+      screen.querySelector("[data-model-status]").textContent = "Base · 148 MB · Downloading 36%";
+      screen.querySelector(".download-progress").hidden = false;
+      screen.querySelector("[data-model-action]").textContent = "Manage download";
+    }
+    phone.append(screen);
+  }
+
+  for (const name of ["status", "nav"]) {
+    const template = document.getElementById(name);
+    for (const placeholder of document.querySelectorAll("[data-" + name + "]")) {
+      const content = template.content.cloneNode(true);
+      if (placeholder.dataset.nav === "unselected") content.querySelector(".active").classList.remove("active");
+      placeholder.replaceWith(content);
+    }
+  }
+
+  const itemTemplate = document.getElementById("item");
+  for (const guideActions of document.querySelectorAll("[data-guide-actions]")) {
+    const items = ["Follow a show", "Save your first moment", "Sync & backups (optional)"];
+    if (guideActions.dataset.guideActions === "before") items.splice(1, 0, "On-device transcripts", "ChatGPT takeaways (optional)");
+    for (const label of items) {
+      const row = itemTemplate.content.cloneNode(true);
+      row.querySelector("span").textContent = label;
+      guideActions.append(row);
+    }
+  }
+</script>
+</body>
+</html>

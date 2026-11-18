@@ -13,6 +13,12 @@ class SettingsOrganizationTest(unittest.TestCase):
     def section(self, name):
         return self.product.split('if(section=="' + name + '") {', 1)[1].split('if(section==', 1)[0]
 
+    def test_setup_guide_uses_canonical_settings_controls(self):
+        onboarding = (FEATURES / "OnboardingUi.kt").read_text()
+        # Constructing the cloud account starts its background recovery worker.
+        self.assertNotIn("vm.graph.syncAccount", onboarding)
+        self.assertNotRegex(onboarding, r"vm\.(?:flag|text)\s*\(")
+
     def test_sound_has_one_editable_control(self):
         source = "\n".join(p.read_text() for p in FEATURES.glob("*.kt"))
         self.assertEqual(1, len(re.findall(r'vm.flag\("distillSound",', source)))

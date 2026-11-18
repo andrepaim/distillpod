@@ -209,6 +209,14 @@
       "28f7205a1e2d7afd4270755090c6d23e2f20ad72d630c8ba9fc21d753f45f1d0"
     ]
   },
+  "docs/android/evidence/onboarding/mockups.png": {
+    "reason": "Visually reviewed synthetic first-run onboarding boards in 7f0d031, 7989bcf and a4c1ae5. Each PNG was reproduced byte for byte in headless Chromium from its corresponding mockups.html, bundled fonts and Ember mark.",
+    "sha256": [
+      "8c3be3dbd51bf4ff906cf6be33d08701ae10efce5a0574c773738568aadf4c33",
+      "774cd19e5e7e90f13ba27e941b3bc1d0107b9bb19cd834f2ab0b0895263fe690",
+      "93a88dcc325c9eb9bfd058eb2dd84518d671eaac5d74b1ef207767f02423c925"
+    ]
+  },
   "docs/android/evidence/social-redesign/attention-infographic.png": {
     "reason": "Synthetic UI fixture or explicitly public validation sample; visually reviewed in the November 2026 audit.",
     "sha256": [

@@ -135,6 +135,7 @@ interface LibraryDao {
 
     @Query("SELECT * FROM podcasts ORDER BY title COLLATE NOCASE") fun observePodcasts(): Flow<List<PodcastEntity>>
     @Query("SELECT * FROM podcasts ORDER BY title COLLATE NOCASE") suspend fun podcasts(): List<PodcastEntity>
+    @Query("SELECT EXISTS(SELECT 1 FROM podcasts WHERE subscribed = 1)") suspend fun hasFollowedShows(): Boolean
     @Query("SELECT * FROM podcasts WHERE id=:id") suspend fun podcast(id: String): PodcastEntity?
     @Query("SELECT * FROM podcasts WHERE feedUrl=:url OR originalFeedUrl=:url LIMIT 1") suspend fun podcastByUrl(url: String): PodcastEntity?
     @Upsert suspend fun putPodcast(value: PodcastEntity)
@@ -144,6 +145,7 @@ interface LibraryDao {
     @Query("DELETE FROM podcasts WHERE id=:id") suspend fun deletePodcast(id: String)
     @Query("SELECT * FROM episodes ORDER BY publishedAt DESC, COALESCE(sourceOrder, 2147483647), title, id") fun observeEpisodes(): Flow<List<EpisodeEntity>>
     @Query("SELECT * FROM episodes ORDER BY publishedAt DESC, COALESCE(sourceOrder, 2147483647), title, id") suspend fun episodes(): List<EpisodeEntity>
+    @Query("SELECT EXISTS(SELECT 1 FROM episodes)") suspend fun hasEpisodes(): Boolean
     @Query("SELECT * FROM episodes WHERE podcastId=:id ORDER BY COALESCE(sourceOrder, 2147483647), publishedAt DESC, title, id") suspend fun episodesForPodcast(id: String): List<EpisodeEntity>
     @Query("SELECT e.* FROM episodes e INNER JOIN podcasts p ON p.id=e.podcastId WHERE p.subscribed=1 AND e.completed=0 ORDER BY e.publishedAt DESC, COALESCE(e.sourceOrder, 2147483647), e.id LIMIT 1")
     suspend fun autoNewestUnfinished(): EpisodeEntity?
@@ -234,6 +236,7 @@ interface LibraryDao {
     @Transaction suspend fun deleteTranscriptText(id: String) { deleteSegments(id); deleteCoverage(id); deletePreviousTranscript(id) }
     @Query("SELECT * FROM distillations ORDER BY createdAt DESC") fun observeDistillations(): Flow<List<DistillationEntity>>
     @Query("SELECT * FROM distillations ORDER BY createdAt DESC") suspend fun distillations(): List<DistillationEntity>
+    @Query("SELECT EXISTS(SELECT 1 FROM distillations)") suspend fun hasSavedMoments(): Boolean
     @Query("SELECT * FROM distillations WHERE id=:id") suspend fun distillation(id: String): DistillationEntity?
     @Query("SELECT * FROM distillations WHERE episodeId=:id AND createdAt>:after AND ABS(endMs-:position)<1000 ORDER BY createdAt DESC LIMIT 1") suspend fun recentCapture(id: String, position: Long, after: Long): DistillationEntity?
     @Upsert suspend fun putDistillation(value: DistillationEntity)

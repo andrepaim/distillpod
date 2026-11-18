@@ -14,7 +14,7 @@ import dev.distillpod.android.ui.theme.OutlinedButton
 @Composable fun DataControls(vm: AppViewModel) {
     val busy by vm.busy.collectAsStateWithLifecycle()
     val exportOpml = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/x-opml")) { uri -> uri?.let(vm::exportOpml) }
-    val importOpml = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let(vm::importOpml) }
+    val importOpml = rememberOpmlImport(vm)
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text("Sync keeps your library current across phones, with a daily automatic backup of everything else.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         OutlinedButton(onClick = { vm.open("settings:sync") }) { Text("Sync & backups") }
@@ -22,9 +22,15 @@ import dev.distillpod.android.ui.theme.OutlinedButton
         Text("OPML shares feed subscriptions with other podcast apps. It excludes listening history and saved moments.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(onClick = { exportOpml.launch("distillpod-subscriptions.opml") }, enabled = "opml" !in busy) { Text("Export OPML") }
-            OutlinedButton(onClick = { importOpml.launch(arrayOf("text/*", "application/xml", "application/octet-stream")) }, enabled = "opml" !in busy) { Text("Import OPML") }
+            OutlinedButton(onClick = importOpml, enabled = "opml" !in busy) { Text("Import OPML") }
         }
     }
+}
+
+@Composable
+internal fun rememberOpmlImport(vm: AppViewModel): () -> Unit {
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let(vm::importOpml) }
+    return { picker.launch(arrayOf("text/*", "application/xml", "application/octet-stream")) }
 }
 
 /** Canonical notification destination; platform recovery behavior lives in NotificationAccess. */

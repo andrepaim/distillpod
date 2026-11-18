@@ -11,6 +11,7 @@ release-note file alone does not mean an APK has been published.
 | Task | Guide |
 | --- | --- |
 | Install, follow a show, listen and save your first moment | [Getting started](getting-started.md) |
+| Choose a first-run path or revisit the setup guide | [First-run setup](android/onboarding.md) |
 | Watch headphone capture or on-screen distillation | [Videos, screenshots and text walkthroughs](demos/README.md) |
 | Save a moment without taking out your phone | [Headphone controls](android/headphone-distill.md#setup-and-expected-experience) |
 | Use the player on a compatible car display | [Android Auto](android/android-auto.md) |

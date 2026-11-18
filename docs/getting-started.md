@@ -7,9 +7,14 @@ This guide follows `main`, which can be ahead of the downloadable APK. Check the
 Watch the [headphone-capture demo](demos/headphone-capture.mp4) or the
 [on-screen distillation demo](demos/distillation.mp4). Both use synthetic content;
 [transcripts and recording details](demos/README.md) describe the examples.
-For a first session: follow a show, play an episode, prepare its transcript, then
-save a moment. ChatGPT adds the generated takeaway; saving the source works even
-when disconnected.
+
+## First launch
+
+Welcome shows an example of a saved passage and the takeaway ChatGPT can generate from it. Choose **Connect ChatGPT** to set up takeaways and episode questions, or **Find my first podcast** to start listening immediately. Playback, on-device transcription and Google library sync each work with ChatGPT disconnected.
+
+Moving to another phone? Choose **Bring back my library**. **Sync & backups** opens the Google sync and backup options available in your build. Connecting an existing managed backup file enables future daily writes. Choose a dated snapshot and review it before merging. **Import OPML** brings over subscriptions from another podcast app.
+
+**Skip setup** opens Library. Under **Latest**, the setup card links to listening, local transcripts, ChatGPT and sync. You can dismiss it and reopen the guide in **Settings → About DistillPod → Setup guide**. Existing installations go directly to the app after updating.
 
 ## Connect ChatGPT
 

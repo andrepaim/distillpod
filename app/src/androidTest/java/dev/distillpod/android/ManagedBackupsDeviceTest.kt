@@ -96,6 +96,8 @@ class ManagedBackupsDeviceTest {
             show(fresh, legacyTarget)
             compose.waitUntil(10000) { !fresh.state.value.working }
             phase("connect-scroll-assert-click")
+            compose.onNodeWithText("If you cancel the restore, automatic backup stays on.", substring = true)
+                .performScrollTo().assertIsDisplayed()
             compose.onNodeWithText("Connect existing backup").performScrollTo()
                 .also { phase("scroll-complete-before-display-assert") }.assertIsDisplayed()
                 .also { phase("display-assert-complete-before-enabled-assert") }.assertIsEnabled()
