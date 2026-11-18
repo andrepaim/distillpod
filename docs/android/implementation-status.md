@@ -18,7 +18,7 @@ The latest private S25 update retained its signing identity, Firebase client con
 
 ## First-run onboarding
 
-The feature branch adds Welcome for fresh installs and a dismissible Library guide. Returning listeners can restore first. ChatGPT, local transcription and library sync are independent choices. See the [onboarding design and validation criteria](onboarding.md).
+Since 0.34.0-alpha.1, a fresh install opens on Welcome and Library shows a dismissible setup guide; existing installations update straight to Library. Returning listeners can restore first. ChatGPT, local transcription and library sync are independent choices. See the [onboarding design and validation criteria](onboarding.md).
 
 ## Implemented on main
 
