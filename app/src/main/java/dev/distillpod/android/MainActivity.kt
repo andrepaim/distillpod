@@ -10,9 +10,11 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.SystemBarStyle
 import androidx.activity.viewModels
+import androidx.lifecycle.DEFAULT_ARGS_KEY
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import androidx.lifecycle.viewmodel.MutableCreationExtras
 import dev.distillpod.android.features.AppViewModel
 import dev.distillpod.android.features.ProductApp
 import dev.distillpod.android.work.UpdateNotice
@@ -22,7 +24,13 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 
 class MainActivity : ComponentActivity() {
-    private val model: AppViewModel by viewModels { AppViewModel.factory(applicationContext.appGraph) }
+    private val model: AppViewModel by viewModels(
+        extrasProducer = {
+            // Interpret launch requests explicitly and let the saved-state registry restore the task.
+            MutableCreationExtras(defaultViewModelCreationExtras).apply { this[DEFAULT_ARGS_KEY] = Bundle.EMPTY }
+        },
+        factoryProducer = { AppViewModel.factory(applicationContext.appGraph) },
+    )
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge(statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT), navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT))

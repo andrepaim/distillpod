@@ -9,7 +9,6 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import androidx.test.uiautomator.UiDevice
 import dev.distillpod.android.data.DistillationEntity
 import dev.distillpod.android.data.EpisodeEntity
 import dev.distillpod.android.data.ModelEntity
@@ -40,7 +39,6 @@ import org.junit.runner.RunWith
 class OnboardingLibraryDeviceTest {
     @get:Rule val compose = createEmptyComposeRule()
     private val instrumentation get() = InstrumentationRegistry.getInstrumentation()
-    private val device get() = UiDevice.getInstance(instrumentation)
     private val card = hasTestTag("library-setup-card")
 
     @Test fun signedOutListenerBrowsesPlaysAndFindsBothSetupActions() {
@@ -76,7 +74,7 @@ class OnboardingLibraryDeviceTest {
                 val episode = runBlocking { dao.episodesForPodcast(show.id).single() }
                 compose.onNodeWithContentDescription("Play ${episode.title}").performClick()
                 compose.waitUntil(15_000) { vm.player.value.episodeId == episode.id && vm.player.value.playing }
-                tap("Library")
+                compose.onNode(hasText("Library") and hasClickAction()).performClick()
                 awaitRoute(vm, "library")
                 compose.onNode(hasText("Setup guide") and SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading))
                     .assertIsDisplayed()
@@ -85,7 +83,7 @@ class OnboardingLibraryDeviceTest {
                 compose.onNode(hasText("Download Base") and hasClickAction()).performScrollTo().assertIsDisplayed()
                 assertTrue(vm.player.value.playing)
 
-                device.pressBack()
+                compose.onNodeWithContentDescription("Back").performClick()
                 awaitRoute(vm, "library")
                 tap("Connect ChatGPT")
                 awaitRoute(vm, "settings:ai")
@@ -93,7 +91,7 @@ class OnboardingLibraryDeviceTest {
                 assertFalse(graph.account.state.value.connected)
                 assertTrue(vm.player.value.playing)
 
-                device.pressBack()
+                compose.onNodeWithContentDescription("Back").performClick()
                 awaitRoute(vm, "library")
                 tap("Save your first moment")
                 awaitRoute(vm, "player")
@@ -111,7 +109,7 @@ class OnboardingLibraryDeviceTest {
             awaitRoute(vm, "library")
             tap("Save your first moment")
             awaitRoute(vm, "search")
-            device.pressBack()
+            compose.onNodeWithContentDescription("Back").performClick()
             awaitRoute(vm, "library")
 
             val dao = vm.graph.db.library()
@@ -127,7 +125,7 @@ class OnboardingLibraryDeviceTest {
             awaitCard()
             tap("Save your first moment")
             awaitRoute(vm, "episode:${episode.id}")
-            device.pressBack()
+            compose.onNodeWithContentDescription("Back").performClick()
             awaitRoute(vm, "library")
 
             runBlocking { dao.putDistillation(DistillationEntity("setup-moment", episode.id, 0, 2_000)) }
@@ -171,8 +169,13 @@ class OnboardingLibraryDeviceTest {
         return vm
     }
 
-    private fun awaitRoute(vm: AppViewModel, route: String) =
-        compose.waitUntil(15_000) { vm.loaded.value && vm.backStack.value.last() == route }
+    private fun awaitRoute(vm: AppViewModel, route: String) {
+        try {
+            compose.waitUntil(15_000) { vm.loaded.value && vm.backStack.value.lastOrNull() == route }
+        } catch (error: ComposeTimeoutException) {
+            throw AssertionError("Expected route $route. Loaded: ${vm.loaded.value}, stack: ${vm.backStack.value}", error)
+        }
+    }
 
     private fun awaitCard(visible: Boolean = true) =
         compose.waitUntil(10_000) { compose.onAllNodes(card).fetchSemanticsNodes().isNotEmpty() == visible }

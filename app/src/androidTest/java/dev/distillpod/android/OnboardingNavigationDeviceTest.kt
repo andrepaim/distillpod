@@ -60,7 +60,7 @@ class OnboardingNavigationDeviceTest {
         return context
     }
 
-    private fun awaitStack(scenario: ActivityScenario<MainActivity>, expected: List<String>) {
+    private fun awaitStack(scenario: ActivityScenario<MainActivity>, expected: List<String>): AppViewModel {
         lateinit var vm: AppViewModel
         scenario.onActivity { activity ->
             vm = ViewModelProvider(activity, AppViewModel.factory(activity.applicationContext.appGraph))[AppViewModel::class.java]
@@ -73,6 +73,7 @@ class OnboardingNavigationDeviceTest {
             throw AssertionError("Expected stack $expected, actual ${vm.backStack.value}, loaded=${vm.loaded.value}, " +
                 "setup=${vm.onboarding.value}, activity=${scenario.state}, foreground=${device.currentPackageName}", timeout)
         }
+        return vm
     }
 
     private fun tap(label: String) = compose.onNode(hasText(label) and hasClickAction()).performScrollTo().performClick()
@@ -84,8 +85,12 @@ class OnboardingNavigationDeviceTest {
 
     @Test fun externalDestinationsAndRecoverySurviveActivityRecreation() {
         val context = uninitializedApp()
-        ActivityScenario.launch<MainActivity>(Intent(context, MainActivity::class.java).putExtra("openPlayer", true)).use { scenario ->
-            awaitStack(scenario, welcome + "player")
+        val request = Intent(context, MainActivity::class.java)
+            .putExtra("openPlayer", true)
+            .putExtra("query", "A note from the caller")
+        ActivityScenario.launch<MainActivity>(request).use { scenario ->
+            val vm = awaitStack(scenario, welcome + "player")
+            assertEquals("Only the requested destination is applied", "", vm.query.value)
             scenario.onActivity { activity ->
                 activity.startActivity(Intent(activity, MainActivity::class.java)
                     .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP).putExtra(UpdateNotice.OPEN_ABOUT, true))
