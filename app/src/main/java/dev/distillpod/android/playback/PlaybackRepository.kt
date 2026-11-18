@@ -55,6 +55,18 @@ internal fun playbackLoading(playWhenReady: Boolean, playbackState: Int, suppres
 internal fun playbackLoading(player: Player) =
     playbackLoading(player.playWhenReady, player.playbackState, player.playbackSuppressionReason)
 
+internal fun playbackSnapshot(player: Player) = PlaybackState(
+    episodeId = player.currentMediaItem?.mediaId,
+    title = player.mediaMetadata.title?.toString().orEmpty(),
+    positionMs = player.currentPosition.coerceAtLeast(0),
+    durationMs = player.duration.coerceAtLeast(0),
+    playing = player.isPlaying,
+    speed = player.playbackParameters.speed,
+    queue = (0 until player.mediaItemCount).map { player.getMediaItemAt(it).mediaId },
+    error = player.playerError?.let { "Playback stopped. Check your connection or download this episode." },
+    loading = playbackLoading(player),
+)
+
 /** Media3 can deliver an initial no-op AUTO_TRANSITION after connecting a controller. */
 internal fun voicePositionChanged(reason: Int, oldId: String?, newId: String?, oldMs: Long, newMs: Long) =
     reason != Player.DISCONTINUITY_REASON_AUTO_TRANSITION || oldId != newId || oldMs != newMs
@@ -119,15 +131,10 @@ class PlaybackRepository(private val context: Context, private val db: AppDataba
         future.addListener({
             runCatching { future.get() }.onSuccess { controller ->
                 fun refreshState() {
-                    mutable.value = PlaybackState(controller.currentMediaItem?.mediaId, controller.mediaMetadata.title?.toString() ?: "",
-                        controller.currentPosition.coerceAtLeast(0), controller.duration.coerceAtLeast(0), controller.isPlaying,
-                        controller.playbackParameters.speed, (0 until controller.mediaItemCount).map { controller.getMediaItemAt(it).mediaId }, mutable.value.error,
-                        playbackLoading(controller))
+                    mutable.value = playbackSnapshot(controller)
                 }
                 controller.addListener(object : Player.Listener {
                     override fun onEvents(player: Player, events: Player.Events) { refreshState() }
-                    override fun onPlayerError(error: androidx.media3.common.PlaybackException) { mutable.update { it.copy(error = "Playback stopped. Check your connection or download this episode.") } }
-                    override fun onMediaItemTransition(item: MediaItem?, reason: Int) { mutable.update { it.copy(error = null) } }
                 })
                 scope.launch {
                     while (isActive) {
