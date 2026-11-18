@@ -50,7 +50,7 @@
   figcaption h3 { font-size: 15px; line-height: 20px; font-weight: 700; }
   figcaption p { font-size: 13px; line-height: 19px; }
 
-  .phone { display: flex; flex-direction: column; height: 800px; border: 1px solid var(--outline-variant); border-radius: 28px; overflow: hidden; background: var(--ink); }
+  .phone { display: flex; flex-direction: column; height: 824px; border: 1px solid var(--outline-variant); border-radius: 28px; overflow: hidden; background: var(--ink); }
   .statusbar { display: flex; justify-content: space-between; align-items: center; height: 32px; flex: 0 0 32px; padding: 0 20px; font-size: 12px; font-weight: 600; }
   .signals { display: flex; align-items: center; gap: 6px; }
   .signals .icon { width: 14px; height: 14px; }
@@ -78,13 +78,15 @@
   .text-button { display: flex; align-items: center; gap: 8px; min-height: 36px; width: fit-content; color: var(--accent); font-weight: 600; }
   .rule { height: 1px; background: var(--outline-variant); }
 
-  .welcome { padding: 16px 20px 14px; display: flex; flex-direction: column; gap: 12px; }
+  .welcome { padding: 14px 20px 12px; display: flex; flex-direction: column; gap: 9px; }
   .welcome-brand { display: flex; align-items: center; gap: 9px; font-size: 15px; font-weight: 700; }
   .welcome-brand img { width: 27px; height: 31px; }
   .welcome .screen-title { text-wrap: balance; }
   .welcome .lead { font-size: 14px; line-height: 20px; }
+  .optional-account { color: var(--muted); font-size: 13px; line-height: 18px; }
+  .optional-account strong { color: var(--text); font-weight: 600; }
   .example { background: var(--s1); border-radius: 16px; padding: 12px; }
-  .example-label { margin-bottom: 8px; color: var(--accent); font-size: 12.5px; line-height: 17px; font-weight: 600; }
+  .example-label { margin-bottom: 6px; color: var(--accent); font-size: 12.5px; line-height: 17px; font-weight: 600; }
   .example blockquote { margin-top: 4px; font: 400 17px/21px Newsreader, serif; }
   .example-takeaway { margin-top: 10px; border-top: 1px solid var(--outline-variant); padding-top: 9px; }
   .example-takeaway p { margin-top: 4px; }
@@ -116,8 +118,7 @@
   .setup-item { display: flex; align-items: center; min-height: 35px; gap: 9px; padding: 0 2px; font-size: 13px; font-weight: 500; }
   .setup-item + .setup-item { border-top: 1px solid var(--outline-variant); }
   .setup-item .icon { width: 16px; height: 16px; }
-  .setup-item .icon:first-child { color: var(--muted); }
-  .setup-item .icon:last-child { margin-left: auto; color: var(--muted); }
+  .setup-item .icon { margin-left: auto; color: var(--muted); }
   .more { min-height: 31px; margin-left: 1px; font-size: 12.5px; }
 
   .library-empty { display: grid; justify-items: center; gap: 9px; padding: 36px 8px; text-align: center; }
@@ -125,14 +126,10 @@
   .library-empty h4 { font-size: 20px; line-height: 26px; }
   .library-empty p { max-width: 250px; }
   .setup-focus { border-radius: 12px; padding: 10px 12px; background: var(--s2); }
-  .setup-focus > h4 { margin-bottom: 6px; }
-  .setup-focus .step { padding: 7px 0; }
-  .step + .step { border-top: 1px solid var(--outline-variant); }
-  .step p { margin-top: 3px; }
-  .step .button { width: fit-content; min-height: 38px; margin-top: 6px; padding: 5px 14px; }
+  .setup-focus p { margin-top: 3px; }
+  .setup-focus .button { width: fit-content; min-height: 38px; margin-top: 6px; padding: 5px 14px; }
   .step-status { font-weight: 600; }
   .download-progress { height: 4px; margin-top: 6px; border-radius: 4px; background: linear-gradient(90deg, var(--accent) 36%, var(--s4) 36%); }
-  .setup-focus > .small { padding-top: 5px; }
   .mini { flex: 0 0 56px; display: flex; align-items: center; gap: 9px; position: relative; margin: 0 8px 6px; padding: 7px 12px; border: 1px solid var(--outline-variant); border-radius: 16px; overflow: hidden; background: var(--s2); }
   .mini:after { content: ""; position: absolute; inset: auto 0 0; height: 2px; background: linear-gradient(90deg, var(--accent) 16%, var(--s4) 16%); }
   .art { display: grid; place-items: center; width: 34px; height: 34px; flex: 0 0 auto; border-radius: 8px; background: var(--s4); color: var(--muted); }
@@ -188,7 +185,6 @@
   <symbol id="i-pause" viewBox="0 0 24 24"><path d="M9 6v12m6-12v12" stroke-width="3"/></symbol>
   <symbol id="i-wave" viewBox="0 0 24 24"><path d="M4 10v4m4-7v10m4-13v16m4-13v10m4-7v4"/></symbol>
   <symbol id="i-headphones" viewBox="0 0 24 24"><path d="M4 14v-2a8 8 0 0 1 16 0v2"/><rect x="3" y="13" width="5" height="7" rx="2"/><rect x="16" y="13" width="5" height="7" rx="2"/></symbol>
-  <symbol id="i-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/></symbol>
   <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4 10-10"/></symbol>
   <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 2c0 6-4 10-10 10 6 0 10 4 10 10 0-6 4-10 10-10-6 0-10-4-10-10Z" fill="currentColor" stroke="none"/></symbol>
   <symbol id="i-sync" viewBox="0 0 24 24"><path d="M4 11a7 7 0 0 1 12-4l3 3m-4 0h4V6m1 7a7 7 0 0 1-12 4l-3-3m4 0H5v4"/></symbol>
@@ -216,7 +212,7 @@
         <div class="phone" data-welcome="disconnected"></div>
         <figcaption>
           <h3>Welcome</h3>
-          <p>Connect ChatGPT opens Settings → ChatGPT. Find my first podcast goes straight to Search. Bring back my library opens recovery. Skip setup opens Library.</p>
+          <p>Connect ChatGPT opens Settings → ChatGPT. Find my first podcast opens Search for immediate playback. Bring back my library opens recovery. Skip setup opens Library.</p>
         </figcaption>
       </figure>
 
@@ -259,7 +255,7 @@
   <section class="path" aria-labelledby="first-listen">
     <header>
       <h2 id="first-listen">First listen</h2>
-      <p>Choose Find my first podcast on Welcome, play an episode from Search, then open Library to set up takeaways.</p>
+      <p>Choose Find my first podcast on Welcome and play an episode from Search. The Library guide offers on-device transcripts and optional ChatGPT takeaways.</p>
     </header>
     <div class="screens">
       <figure>
@@ -277,7 +273,7 @@
               </div>
               <p class="muted">Find an episode to play. Follow the show if you’d like new episodes in Library.</p>
               <div class="button filled"><svg class="icon" aria-hidden="true"><use href="#i-search"/></svg>Find podcasts</div>
-              <div data-checklist="before"></div>
+              <div data-guide-actions="before"></div>
               <div class="text-button more">More to explore</div>
             </div>
             <div class="library-empty">
@@ -291,7 +287,7 @@
         </div>
         <figcaption>
           <h3>Library before playback</h3>
-          <p>Opening Library before your first listen shows the setup card above the episode list. Find podcasts takes you to Search.</p>
+          <p>On-device transcripts opens Transcript preparation. You can dismiss the card and reopen the guide in Settings → About DistillPod → Setup guide.</p>
         </figcaption>
       </figure>
 
@@ -299,7 +295,7 @@
         <div class="phone" data-library-playing="missing"></div>
         <figcaption>
           <h3>Library after playback begins</h3>
-          <p>Download Base and Connect ChatGPT open separate Settings pages while playback continues. Choose either action first.</p>
+          <p>Download Base opens Transcript preparation. You can use transcripts on their own or choose Connect ChatGPT for takeaways. Playback continues.</p>
         </figcaption>
       </figure>
 
@@ -307,7 +303,7 @@
         <div class="phone" data-library-playing="downloading"></div>
         <figcaption>
           <h3>Library while Base downloads</h3>
-          <p>Connect ChatGPT remains available while Base downloads. Once both are ready, use Distill last 60 seconds in the player.</p>
+          <p>Connect ChatGPT stays available during the download. Distill last 60 seconds saves a moment. A transcript and ChatGPT can add a takeaway.</p>
         </figcaption>
       </figure>
     </div>
@@ -453,7 +449,7 @@
       <span>DistillPod</span>
     </div>
     <h4 class="screen-title">Turn a podcast moment into a takeaway</h4>
-    <p class="lead">Save the last 60 seconds and get a short takeaway from ChatGPT. You can ask follow-up questions about the episode, too.</p>
+    <p class="lead">Save the last 60 seconds. With ChatGPT, you can get a takeaway or ask follow-up questions about the episode.</p>
     <div class="example">
       <p class="example-label">Example</p>
       <h4 class="card-title">From the last minute</h4>
@@ -463,6 +459,7 @@
         <p>Start with the task that unblocks the rest of the team.</p>
       </div>
     </div>
+    <p class="optional-account"><strong>ChatGPT is optional.</strong> Play podcasts and prepare transcripts on your phone. Google library sync is separate where available.</p>
     <div class="welcome-actions">
       <p class="small" data-ai-disclosure>AI actions send selected text to OpenAI and use your plan allowance.</p>
       <div class="button filled" data-connect><svg class="icon" aria-hidden="true"><use href="#i-spark"/></svg>Connect ChatGPT</div>
@@ -488,22 +485,19 @@
         <span class="dismiss">Dismiss</span>
       </div>
       <div class="setup-focus">
-        <h4 class="section-title">Set up takeaways</h4>
-        <div class="step">
-          <h4 class="card-title">Prepare the transcript on this phone</h4>
-          <p class="small step-status" data-model-status>Base · 148 MB · Not downloaded</p>
-          <div class="download-progress" role="progressbar" aria-label="Base download" aria-valuenow="36" hidden></div>
-          <div class="button outlined" data-model-action>Download Base</div>
-        </div>
-        <div class="step">
-          <h4 class="card-title">Generate the takeaway</h4>
-          <p class="small step-status">ChatGPT · Not connected</p>
-          <p class="small">AI actions send selected text to OpenAI and use your plan allowance.</p>
-          <div class="button filled">Connect ChatGPT</div>
-        </div>
-        <p class="small">You can keep listening and save a moment’s source during setup.</p>
+        <h4 class="card-title">On-device transcripts</h4>
+        <p class="small">Prepare transcripts on this phone and read them as you listen.</p>
+        <p class="small step-status" data-model-status>Base · 148 MB · Not downloaded</p>
+        <div class="download-progress" role="progressbar" aria-label="Base download" aria-valuenow="36" hidden></div>
+        <div class="button outlined" data-model-action>Download Base</div>
       </div>
-      <div data-checklist="after"></div>
+      <div class="setup-focus">
+        <h4 class="card-title">ChatGPT takeaways (optional)</h4>
+        <p class="small step-status">Not connected</p>
+        <p class="small">AI actions send selected text to OpenAI and use your plan allowance.</p>
+        <div class="button filled">Connect ChatGPT</div>
+      </div>
+      <div data-guide-actions="after"></div>
       <div class="text-button more">More to explore</div>
     </div>
   </div>
@@ -533,7 +527,6 @@
 </template>
 <template id="item">
   <div class="setup-item">
-    <svg class="icon" role="img" aria-label="Incomplete"><use href="#i-circle"/></svg>
     <span></span>
     <svg class="icon" aria-hidden="true"><use href="#i-next"/></svg>
   </div>
@@ -576,13 +569,13 @@
   }
 
   const itemTemplate = document.getElementById("item");
-  for (const checklist of document.querySelectorAll("[data-checklist]")) {
+  for (const guideActions of document.querySelectorAll("[data-guide-actions]")) {
     const items = ["Follow a show", "Save your first moment", "Sync & backups (optional)"];
-    if (checklist.dataset.checklist === "before") items.splice(1, 0, "Set up takeaways");
+    if (guideActions.dataset.guideActions === "before") items.splice(1, 0, "On-device transcripts", "ChatGPT takeaways (optional)");
     for (const label of items) {
       const row = itemTemplate.content.cloneNode(true);
       row.querySelector("span").textContent = label;
-      checklist.append(row);
+      guideActions.append(row);
     }
   }
 </script>
