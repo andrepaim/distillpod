@@ -1,8 +1,10 @@
 package dev.distillpod.android
 
+import android.app.SearchManager
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.provider.MediaStore
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -13,6 +15,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import dev.distillpod.android.features.AppViewModel
 import dev.distillpod.android.features.ProductApp
+import dev.distillpod.android.work.UpdateNotice
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -25,9 +28,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge(statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT), navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT))
         observeTranscriptionRecovery({ applicationContext.appGraph.ready.await() },
             { applicationContext.appGraph.transcription.resumeQueued() })
-        if (intent.getBooleanExtra("openPlayer", false)) model.open("player")
-        mediaSearch(intent)
-        openAbout(intent)
+        if (savedInstanceState == null) openRequestedScreen(intent)
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.RESUMED) {
                 applicationContext.appGraph.account.browser.collect { url ->
@@ -59,18 +60,19 @@ class MainActivity : ComponentActivity() {
         applicationContext.appGraph.syncAccount.kick()
     }
     override fun onPause() { applicationContext.appGraph.account.foreground(false); super.onPause() }
-    override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); mediaSearch(intent); if (intent.getBooleanExtra("openPlayer", false)) model.open("player"); openAbout(intent) }
-    /** The update notification opens Settings › About; a boolean extra cannot name any other route. */
-    private fun openAbout(intent: Intent) { if (intent.getBooleanExtra(dev.distillpod.android.work.UpdateNotice.OPEN_ABOUT, false)) model.open("settings:about") }
-    private fun mediaSearch(request:Intent) {
-        if(request.action!="android.media.action.MEDIA_PLAY_FROM_SEARCH")return
-        lifecycleScope.launch {
-            val graph=applicationContext.appGraph
-            graph.ready.await()
-            val id=kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                dev.distillpod.android.auto.AutoPlayback(graph.db).voice(request.getStringExtra(android.app.SearchManager.QUERY) ?: request.getStringExtra(android.provider.MediaStore.EXTRA_MEDIA_TITLE) ?: request.getStringExtra(android.provider.MediaStore.EXTRA_MEDIA_ARTIST).orEmpty())
-            }
-            if(id!=null)runCatching {graph.playback.play(id)}
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        openRequestedScreen(intent)
+    }
+
+    private fun openRequestedScreen(request: Intent) {
+        if (request.getBooleanExtra("openPlayer", false)) model.open("player")
+        if (request.getBooleanExtra(UpdateNotice.OPEN_ABOUT, false)) model.open("settings:about")
+        if (request.action == "android.media.action.MEDIA_PLAY_FROM_SEARCH") {
+            val query = request.getStringExtra(SearchManager.QUERY)
+                ?: request.getStringExtra(MediaStore.EXTRA_MEDIA_TITLE)
+                ?: request.getStringExtra(MediaStore.EXTRA_MEDIA_ARTIST).orEmpty()
+            model.playFromMediaSearch(query)
         }
     }
 

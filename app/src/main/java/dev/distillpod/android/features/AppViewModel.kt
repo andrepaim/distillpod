@@ -7,15 +7,22 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import dev.distillpod.android.AppGraph
+import dev.distillpod.android.auto.AutoPlayback
 import dev.distillpod.android.data.*
 import dev.distillpod.android.video.streamNeedsResolving
+import dev.distillpod.core.FirstRunSetup
+import dev.distillpod.core.FirstRunStatus
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.*
 
+private const val BACK_STACK = "backStack"
+private const val LAUNCH_ROUTES = "launchRoutes"
+private const val SETUP_DESTINATION = "setupDestination"
+
 class AppViewModel(val graph: AppGraph, private val saved: SavedStateHandle) : ViewModel() {
     private val dao = graph.db.library()
-    val backStack = saved.getStateFlow("backStack", arrayListOf("library"))
+    val backStack = saved.getStateFlow(BACK_STACK, arrayListOf<String>())
     val query = saved.getStateFlow("query", "")
     val filter = saved.getStateFlow("filter", "all")
     val chatDraft = saved.getStateFlow("chatDraft", "")
@@ -104,16 +111,85 @@ class AppViewModel(val graph: AppGraph, private val saved: SavedStateHandle) : V
         finished = { state -> messages.trySend(audioCleanupSummary(state.result, state.cancelled,
             state.phase == AudioCleanupPhase.FAILED)) })
     val loaded = MutableStateFlow(false)
+    private val firstRun = MutableStateFlow<FirstRunSetup?>(null)
+    internal val onboarding = firstRun.asStateFlow()
     val backupDocuments = BackupDocuments(graph.context, graph.backup, graph.settings, viewModelScope) { graph.playback.synchronizeRestoredQueue() }
     val managedBackups get() = graph.managedBackups
     init {
-        viewModelScope.launch { dao.observeEpisodes().first(); loaded.value = true }
+        viewModelScope.launch {
+            val setup = graph.loadFirstRunSetup()
+            dao.observeEpisodes().first()
+            val launchRoutes = saved.remove<ArrayList<String>>(LAUNCH_ROUTES).orEmpty()
+            updateFirstRun(setup, launchRoutes)
+            saved.remove<String>(SETUP_DESTINATION)
+            loaded.value = true
+            if (!FirstRunTestAccess.bypass) {
+                // Another task may have completed setup or dismissed the card while this one was in the background.
+                graph.settings.firstRunSetup.filterNotNull()
+                    .catch { /* Retain the known state if the store fails after it was read. */ }
+                    .collect { updateFirstRun(it) }
+            }
+        }
         // Managed backups outlive this screen; their restore previews open in this one's review dialog.
         viewModelScope.launch { graph.managedBackups.previews.collect(backupDocuments::review) }
     }
-    fun root(route: String) { saved["backStack"] = arrayListOf(route) }
-    fun open(route: String) { if (backStack.value.lastOrNull() != route) saved["backStack"] = ArrayList(backStack.value + route) }
-    fun back() { if (backStack.value.size > 1) saved["backStack"] = ArrayList(backStack.value.dropLast(1)) }
+    fun root(route: String) {
+        if (!loaded.value) saved.remove<ArrayList<String>>(LAUNCH_ROUTES)
+        saved[BACK_STACK] = ArrayList(replaceProductRoot(backStack.value, route))
+    }
+    fun open(route: String) {
+        if (!loaded.value) {
+            val launchRoutes = saved.get<ArrayList<String>>(LAUNCH_ROUTES).orEmpty()
+            saved[LAUNCH_ROUTES] = ArrayList(appendProductRoute(launchRoutes, route))
+            return
+        }
+        val stack = backStack.value
+        if (stack.lastOrNull() != route) saved[BACK_STACK] = ArrayList(stack + route)
+    }
+    fun back() { if (backStack.value.size > 1) saved[BACK_STACK] = ArrayList(backStack.value.dropLast(1)) }
+
+    internal fun playFromMediaSearch(query: String) {
+        viewModelScope.launch {
+            graph.ready.await()
+            val id = withContext(Dispatchers.IO) { AutoPlayback(graph.db).voice(query) } ?: return@launch
+            try {
+                graph.playback.play(id)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                return@launch
+            }
+            loaded.first { it }
+            if (firstRun.value?.status == FirstRunStatus.PENDING) open("player")
+        }
+    }
+
+    internal fun finishSetup(destination: String) {
+        require(destination == "search" || destination == "library")
+        if (firstRun.value?.status != FirstRunStatus.PENDING || backStack.value.lastOrNull()?.isOnboardingRoute() != true) return
+        action("finish-setup") {
+            // A saved task can be restored between the DataStore write and the navigation update.
+            saved[SETUP_DESTINATION] = destination
+            try {
+                updateFirstRun(graph.settings.completeFirstRunSetup())
+            } finally {
+                saved.remove<String>(SETUP_DESTINATION)
+            }
+        }
+    }
+
+    internal fun dismissSetupCard() {
+        if (firstRun.value != FirstRunSetup(FirstRunStatus.DONE, cardDismissed = false)) return
+        action("dismiss-setup-card") { updateFirstRun(graph.settings.dismissSetupCard()) }
+    }
+
+    private fun updateFirstRun(setup: FirstRunSetup, launchRoutes: List<String> = emptyList()) {
+        if (setup.status == FirstRunStatus.PENDING && firstRun.value?.status == FirstRunStatus.DONE) return
+        val stack = backStack.value
+        val updated = firstRunBackStack(stack, launchRoutes, setup.status, saved[SETUP_DESTINATION])
+        if (updated != stack) saved[BACK_STACK] = ArrayList(updated)
+        firstRun.value = setup
+    }
     fun query(value: String) {
         val bounded = value.take(if (isFeedAddress(value)) 2048 else 200)
         if (bounded != query.value) { saved["query"] = bounded; directorySearch.clear() }
@@ -141,8 +217,14 @@ class AppViewModel(val graph: AppGraph, private val saved: SavedStateHandle) : V
     }
     fun retrySearch(provider: String) = directorySearch.retry(provider)
     fun subscribe(url: String) = action("subscribe:$url") {
-        val candidate = search.value.results.firstOrNull { it.feedUrl == url }
+        // The show page uses its final URL after a redirect. Retain directory-follow approval for its listed source.
+        val originalUrl = podcasts.value.firstOrNull { it.feedUrl == url }?.originalFeedUrl
+        val candidate = search.value.results.firstOrNull { it.feedUrl == url || it.feedUrl == originalUrl }
         val id = if (candidate != null) graph.podcasts.follow(candidate) else graph.podcasts.subscribe(url); messages.send("Subscribed"); open("podcast:$id")
+    }
+    internal fun browsePodcast(url: String) = action("browse-podcast") {
+        val id = graph.podcasts.browse(url)
+        open("podcast:$id")
     }
     val episodeDetails = graph.podcasts.episodeDetails
     /** Quiet background check; the episode page shows checking, unavailable and retry states. */

@@ -54,7 +54,7 @@ object UpdateNotice {
         if (!notifications.areNotificationsEnabled()) return
         context.getSystemService(NotificationManager::class.java)
             .createNotificationChannel(NotificationChannel(CHANNEL, "App updates", NotificationManager.IMPORTANCE_LOW))
-        val about = PendingIntent.getActivity(context, 1, Intent(context, MainActivity::class.java).putExtra(OPEN_ABOUT, true)
+        val about = PendingIntent.getActivity(context, NOTIFICATION_ID, Intent(context, MainActivity::class.java).putExtra(OPEN_ABOUT, true)
             .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val download = PendingIntent.getActivity(context, 2, Intent(Intent.ACTION_VIEW, Uri.parse(update.apkUrl)),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
