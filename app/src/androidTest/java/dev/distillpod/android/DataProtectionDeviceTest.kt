@@ -24,7 +24,7 @@ class DataProtectionDeviceTest {
         assertBindingDisclosure()
         compose.onNodeWithText("Set up automatic backup").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Restore from a backup").performScrollTo().performClick()
-        compose.onNodeWithText("Automatic: updated once a day when your library changes and the phone is online.").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Automatic: updated once a day when your library changes, the phone is online and the battery is sufficient.").performScrollTo().assertIsDisplayed()
         // Restore is a sub-page of Sync: there is no separate cross-link back, only Back.
         compose.onNodeWithText("Open Library sync").assertDoesNotExist()
         compose.onNodeWithContentDescription("Back").performClick()
