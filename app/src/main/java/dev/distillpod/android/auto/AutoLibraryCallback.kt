@@ -60,6 +60,7 @@ class AutoLibraryCallback(
     private val catalog=AutoCatalog(db,artwork)
     private val playback=AutoPlayback(db)
     private val subscriptions=mutableSetOf<String>()
+    private val changes=AutoChildrenChanges()
     private var captureBusy=false
     private val headphoneButton = HeadphoneDistillButton(report={ reason -> diagnostics?.event("headphone.previous",reason=reason,source="headphones") })
     private val headphoneNext = HeadphoneDistillButton(android.view.KeyEvent.KEYCODE_MEDIA_NEXT,report={reason -> diagnostics?.event("headphone.next",reason=reason,source="headphones")})
@@ -114,7 +115,13 @@ class AutoLibraryCallback(
     override fun onGetChildren(session: MediaLibrarySession,browser: MediaSession.ControllerInfo,parentId: String,page: Int,pageSize: Int,params: LibraryParams?) = request {
         if(catalog.item(parentId)?.mediaMetadata?.isBrowsable!=true || page<0 || pageSize<=0)
             LibraryResult.ofError(SessionError.ERROR_BAD_VALUE)
-        else LibraryResult.ofItemList(if(pageSize>AutoCatalog.MAX_PAGE) catalog.legacyChildren(parentId) else catalog.children(parentId,page,pageSize),params)
+        else if(pageSize>AutoCatalog.MAX_PAGE) {
+            // Legacy hosts such as Android Auto fetch the complete list; remember it so unchanged lists stay put.
+            val children=catalog.legacyChildren(parentId)
+            if(page==0)changes.served(parentId,children)
+            LibraryResult.ofItemList(children,params)
+        }
+        else LibraryResult.ofItemList(catalog.children(parentId,page,pageSize),params)
     }
     override fun onGetItem(session: MediaLibrarySession,browser: MediaSession.ControllerInfo,mediaId: String) = request {
         catalog.item(mediaId)?.let { LibraryResult.ofItem(it,null) } ?: LibraryResult.ofError(SessionError.ERROR_BAD_VALUE)
@@ -125,16 +132,21 @@ class AutoLibraryCallback(
     }
     override fun onUnsubscribe(session: MediaLibrarySession,browser: MediaSession.ControllerInfo,parentId:String)=request {
         withContext(Dispatchers.Main.immediate) {
-            if(session.getSubscribedControllers(parentId).none {it!=browser})synchronized(subscriptions){subscriptions.remove(parentId)}
+            if(session.getSubscribedControllers(parentId).none {it!=browser})synchronized(subscriptions){subscriptions.remove(parentId);changes.forget(parentId)}
         }
         LibraryResult.ofVoid()
     }
-    /** Called with coalesced database changes; the session routes notifications to subscribed controllers. */
-    suspend fun libraryChanged(session:MediaLibrarySession) {
+    /**
+     * Called with coalesced library and artwork changes; the session routes notifications to subscribed controllers.
+     * Only lists whose rows differ are announced: the host reloads and rebuilds an announced list even mid-scroll (#277).
+     */
+    suspend fun libraryChanged(session:MediaLibrarySession) =
+        libraryChanged { parent,count -> session.notifyChildrenChanged(parent,count,null) }
+    internal suspend fun libraryChanged(notify:(String,Int)->Unit) {
         val parents=synchronized(subscriptions){subscriptions.toList()}
         for(parent in parents) {
-            val count=withContext(Dispatchers.IO){catalog.legacyChildren(parent).size}
-            session.notifyChildrenChanged(parent,count,null)
+            val children=withContext(Dispatchers.IO){catalog.legacyChildren(parent)}
+            if(changes.changed(parent,children))notify(parent,children.size)
         }
     }
     override fun onSearch(session:MediaLibrarySession,browser:MediaSession.ControllerInfo,query:String,params:LibraryParams?)=request {
