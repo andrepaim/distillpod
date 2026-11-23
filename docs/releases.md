@@ -65,7 +65,7 @@ One designated release owner coordinates the entire checklist below, including v
   ```
 
 - Follow the **Publish APK** run for that tag through completion. It verifies the source version and main ancestry, reruns validation, builds an unsigned non-debuggable candidate, then signs and publishes a prerelease with APK, `SHA256SUMS`, and `build-info.json`.
-- If a run fails, inspect its failure and any draft/assets before retrying. Retry the same tag only for the same immutable source when the workflow can safely resume. If source/version changes are needed, prepare a new version/code and tag through this checklist. Do not replace published assets or move a published tag to conceal a failed release.
+- If a run fails, inspect its failure and any draft/assets before retrying. Retry the same tag only for the same immutable source. A rerun of the publish job checks the tag's release first: with no release it creates the draft as usual; with exactly one draft it re-signs, replaces every asset of that draft with the newly built ones (`gh release upload --clobber`) and publishes it; with a published release, more than one draft, a draft holding other asset names, or a failed lookup it stops without changing anything. The unsigned APK artifact is kept for one day, so after that a rerun of only the failed jobs cannot download it; rerun all jobs instead, which revalidates and rebuilds the same tag. If source/version changes are needed, prepare a new version/code and tag through this checklist. Do not replace published assets or move a published tag to conceal a failed release.
 
 ### 6. Verify publication and report
 
