@@ -40,7 +40,7 @@ class DraftRoutingTest(unittest.TestCase):
 
     def test_draft_never_satisfies_required_gate(self):
         data = results('draft')
-        for job in ['android_build', 'native', 'firebase', 'emulator']:
+        for job in ['android_build', 'voice_build', 'native', 'firebase', 'emulator', 'emulator_part2']:
             data[job]['result'] = 'skipped'
         with self.assertRaisesRegex(ValueError, 'Draft.*incomplete'):
             validate_gate(data, 'pull_request', {}, SHA)
@@ -66,6 +66,20 @@ class PhaseTimingTest(unittest.TestCase):
             self.assertEqual({'phase', 'elapsed_seconds', 'exit_code'}, set(rows[0]))
             self.assertGreaterEqual(rows[0]['elapsed_seconds'], 0)
             self.assertNotIn('private-marker', json.dumps(rows))
+
+    def test_each_emulator_job_records_its_own_ordinary_phase_and_unknown_names_fail(self):
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / 'timing.jsonl'
+            env = dict(os.environ, DISTILLPOD_PHASE_TIMINGS=str(target))
+            for phase in ['ordinary', 'ordinary-part2']:
+                run = subprocess.run([sys.executable, str(ROOT / 'scripts/ci_phase.py'), phase, '--', 'true'],
+                                     env=env, capture_output=True)
+                self.assertEqual(0, run.returncode)
+            self.assertEqual(['ordinary', 'ordinary-part2'],
+                             [json.loads(line)['phase'] for line in target.read_text().splitlines()])
+            run = subprocess.run([sys.executable, str(ROOT / 'scripts/ci_phase.py'), 'ordinary-part3', '--', 'true'],
+                                 env=env, capture_output=True)
+            self.assertNotEqual(0, run.returncode)
 
     def test_missing_executable_is_recorded_and_fails(self):
         with tempfile.TemporaryDirectory() as directory:

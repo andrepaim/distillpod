@@ -13,12 +13,14 @@ import zlib
 
 WORKFLOW = '.github/workflows/ci.yml'
 ARTIFACT = 'ci-validation-proof-'
-BUILD_JOBS = {'Android build validation', 'Firebase protocol and security rules',
-              'Native bridge validation', 'Isolated Android acceptance'}
+BUILD_JOBS = {'Android build validation', 'Opt-in voice build validation',
+              'Firebase protocol and security rules', 'Native bridge validation',
+              'Isolated Android acceptance', 'Isolated Android acceptance, part 2'}
 REQUIRED = {'Select validation and check documentation',
             'Repository security / Secrets and personal data guard',
-            'Android build validation', 'Firebase protocol and security rules',
-            'Native bridge validation', 'Isolated Android acceptance', 'Kotlin, lint and APK'}
+            *BUILD_JOBS, 'Kotlin, lint and APK'}
+# A direct PR never builds the release candidate: its job must be present and skipped.
+SKIPPED = {'Unsigned release build'}
 
 
 def git(root, *args):
@@ -112,8 +114,9 @@ def verify_evidence(root, proof, run, jobs, repository, tested_commit=None):
                     for step in job.get('steps', [])):
                 return False
         names = [j['name'] for j in jobs]
-        return (len(names) == len(set(names)) and REQUIRED.issubset(names) and
-                all(j.get('conclusion') == 'success' for j in jobs))
+        return (len(names) == len(set(names)) and (REQUIRED | SKIPPED).issubset(names) and
+                all(j.get('conclusion') == ('skipped' if j['name'] in SKIPPED else 'success')
+                    for j in jobs))
     except (KeyError, TypeError, ValueError, OSError, subprocess.CalledProcessError):
         return False
 

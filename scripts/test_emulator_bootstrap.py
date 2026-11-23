@@ -69,8 +69,11 @@ elif cmd[:3]==['shell','am','instrument']:
         path.chmod(0o700)
 
     def run_fixture(self, case, ci="true", serial="emulator-5554", fail_class="", installed="",
-                    qemu="1", clear_result="Success", onboarding_count="1"):
+                    qemu="1", clear_result="Success", onboarding_count="1", part=None):
         env = os.environ.copy()
+        env.pop("DISTILLPOD_ORDINARY_PART", None)
+        if part is not None:
+            env["DISTILLPOD_ORDINARY_PART"] = part
         env.update(GITHUB_ACTIONS=ci, DISTILLPOD_ADB=str(self.root / "bin/fake-adb"),
                    DISTILLPOD_SERIAL=serial, DISTILLPOD_LOG=str(self.root / "instrumentation.log"),
                    DISTILLPOD_AUTO_LOG=str(self.root / "auto-log"), PROOF_ROOT=str(self.root),
@@ -117,6 +120,73 @@ elif cmd[:3]==['shell','am','instrument']:
         self.assertIn("verifyCheckpoint"," ".join(phases[4]))
         self.assertTrue(any(call==["shell","am","force-stop","dev.distillpod.android"] for call in calls))
         self.assertTrue(any(call[:3] == ["shell", "am", "clear-debug-app"] for call in calls))
+
+    @staticmethod
+    def selection(calls, key):
+        command = next(call for call in calls if call[:3] == ["shell", "am", "instrument"] and key in call
+                       and "firstRunOnboarding" not in call)
+        return command[command.index(key) + 1].split(",")
+
+    def test_two_hosted_parts_partition_the_ordinary_suite_exactly(self):
+        result, calls = self.run_fixture("race")
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+        excluded = self.selection(calls, "notClass")
+        (self.root / "calls").unlink()
+        result, calls = self.run_fixture("race", part="1")
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+        part1_excluded = self.selection(calls, "notClass")
+        (self.root / "calls").unlink()
+        result, calls = self.run_fixture("race", part="2")
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+        part2 = self.selection(calls, "class")
+        self.assertTrue(part2)
+        self.assertEqual(len(part2), len(set(part2)))
+        # Part 1 excludes exactly the ordinary exclusions plus part 2, so a new class runs in part 1.
+        self.assertEqual(excluded + part2, part1_excluded)
+        # Part 2 holds whole classes that are neither excluded nor partly excluded.
+        for name in part2:
+            self.assertNotIn("#", name)
+            self.assertFalse(any(e == name or e.startswith(name + "#") for e in excluded), name)
+
+    def test_part1_keeps_onboarding_and_every_later_ordinary_phase(self):
+        result, calls = self.run_fixture("race", part="1")
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+        onboarding = [call for call in calls if call[:3] == ["shell", "am", "instrument"] and "firstRunOnboarding" in call]
+        self.assertEqual(10, len(onboarding))
+        phases = [call for call in calls if call[:3] == ["shell", "am", "instrument"] and "firstRunOnboarding" not in call]
+        self.assertEqual(10, len(phases))
+        self.assertIn("notClass", phases[0])
+        self.assertEqual("dev.distillpod.android.CloudQueueTeardownDeviceTest", phases[1][phases[1].index("class") + 1])
+
+    def test_part2_runs_only_its_classes_on_a_fresh_emulator(self):
+        result, calls = self.run_fixture("race", part="2")
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+        self.assertIn(["shell", "pm", "list", "packages", "dev.distillpod.android"], calls)
+        self.assertEqual(2, sum(call[0] == "install" for call in calls))
+        self.assertFalse(any(call[:3] == ["shell", "pm", "clear"] for call in calls))
+        commands = [call for call in calls if call[:3] == ["shell", "am", "instrument"]]
+        self.assertEqual(1, len(commands))
+        self.assertNotIn("notClass", commands[0])
+        self.assertIn("dev.distillpod.android.NativePipelineDeviceTest", self.selection(calls, "class"))
+        self.assertTrue(any(call[:3] == ["shell", "am", "clear-debug-app"] for call in calls))
+        self.assertFalse(list(self.root.glob("instrumentation-onboarding-*.log")))
+
+    def test_unknown_part_or_overlapping_part2_fails_before_any_device_action(self):
+        result, calls = self.run_fixture("race", part="3")
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("must be all, 1 or 2", result.stderr)
+        self.assertEqual([], calls)
+        script = self.root / "scripts/emulator-tests.sh"
+        for overlap in ["$DISTILLPOD_APP.HeadphoneVoiceDeviceTest", "$DISTILLPOD_APP.SearchDesignDeviceTest"]:
+            text = script.read_text()
+            script.write_text(text.replace('DISTILLPOD_PART2_CLASSES="', f'DISTILLPOD_PART2_CLASSES="{overlap},', 1))
+            for part in ["all", "1", "2"]:
+                result, calls = self.run_fixture("race", part=part)
+                with self.subTest(overlap=overlap, part=part):
+                    self.assertNotEqual(0, result.returncode)
+                    self.assertIn("excluded from ordinary acceptance", result.stderr)
+                    self.assertEqual([], calls)
+            script.write_text(text)
 
     def test_hosted_onboarding_is_isolated_and_exercises_fresh_and_updated_installs(self):
         result, calls = self.run_fixture("race")

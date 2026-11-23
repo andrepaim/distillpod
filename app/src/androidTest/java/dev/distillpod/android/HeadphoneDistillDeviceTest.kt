@@ -10,6 +10,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
+import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.UiDevice
@@ -63,6 +64,9 @@ class HeadphoneDistillDeviceTest {
         val component = ComponentName(context, PlaybackService::class.java)
         var modern: MediaController? = null
         var legacy: PlatformBrowser? = null
+        // Android 15 grants audio focus only to a visible app or an existing foreground service, so
+        // open DistillPod as a listener would; do not rely on an earlier test class leaving it on top.
+        val activity = ActivityScenario.launch(MainActivity::class.java)
         try {
             runBlocking {
                 graph.settings.flag("headphoneDistill", true)
@@ -147,6 +151,7 @@ class HeadphoneDistillDeviceTest {
             await { main { controller.currentPosition < 1000 || controller.currentMediaItem?.mediaId == "$id-a" } }
         } finally {
             main { modern?.let { it.stop(); it.clearMediaItems(); it.release() }; legacy?.disconnect() }
+            activity.close()
             runBlocking {
                 graph.settings.flag("headphoneDistill", prefs.headphoneDistill)
                 graph.settings.flag("transcribeOnPlayback", prefs.transcribeOnPlayback)

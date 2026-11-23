@@ -185,15 +185,15 @@ both `arm64-v8a` and `x86_64`. The init script is inert without the explicit CI
 opt-in and rejects other ABIs, non-hosted/physical targets, release tasks and
 unexpected default filters. With the shared build resource held, run
 `python3 scripts/verify_emulator_abi.py` for isolated Gradle-model regressions.
-Cloud acceptance continues using the ordinary phase's compatible APK pair;
-startup has a separate offline identity and voice has different resources and
+Cloud acceptance continues using the compatible APK pair that ordinary part 2
+installs in the same emulator job; startup has a separate offline identity and voice has different resources and
 manifest settings, so those pairs cannot be substituted for one another.
 
 CI also waits up to 30 seconds for user storage to become RUNNING_UNLOCKED after the emulator reports boot completion. A development phone still requires its owner to unlock it; the script does not dismiss a secure keyguard.
 
 The browser integration check validates receipt of a real browser's callback and its state/client identity. A separate Android TCP check reads the complete HTTP response while the listener scope remains open. This tests callback delivery and response completion independently of Chrome's accessibility representation of a plain-text page.
 
-CI validates both the default-disabled and opt-in voice build configurations. After ordinary/cloud emulator acceptance, `scripts/voice-device-tests.sh /tmp/distillpod-fixtures` builds with `distillpodVoiceEnabled=true` and runs only the synthetic headphone-key/foreground-service and isolated Keystore tests. The runner refuses physical phones; it uses no live provider credential or paid request. The voice-only device test is excluded from default-disabled acceptance.
+CI validates both the default-disabled and opt-in voice build configurations, in separate parallel jobs. In the second emulator job, after ordinary part 2 and cloud acceptance, `scripts/voice-device-tests.sh /tmp/distillpod-fixtures` builds with `distillpodVoiceEnabled=true` and runs only the synthetic headphone-key/foreground-service and isolated Keystore tests. The runner refuses physical phones; it uses no live provider credential or paid request. The voice-only device test is excluded from default-disabled acceptance.
 
 ## Firebase acceptance
 
@@ -231,9 +231,11 @@ Manual and reusable/release runs retain full validation. Main merge pushes may
 reuse verified identical-tree evidence as described below. Never use a
 draft result or an older ready result to satisfy final-revision acceptance.
 
-The emulator job records startup, ordinary (including teardown, Android Auto and
-notification), cloud and voice phase durations and exit codes in
-`/tmp/distillpod-ci-phase-timings.jsonl`, uploaded with emulator results. Child
+Each emulator job records its phase durations and exit codes in
+`/tmp/distillpod-ci-phase-timings.jsonl`, uploaded with that job's results:
+startup and ordinary (part 1, including onboarding, teardown, Android Auto and
+notification) in `emulator-test-results`; `ordinary-part2`, cloud and voice in
+`emulator-test-results-part2`. Child
 output streams normally; the timing file contains no command arguments or app
 content. Each phase includes its existing builds/setup/cleanup. Failures retain
 the command status and stop later phases; no automatic retry is added. Abrupt
@@ -256,8 +258,8 @@ crash causality, or a shared cause with an earlier packaging failure.
 The same explicitly enabled hosted emulator runs stream the emulator's `main`,
 `system` and `crash` logcat buffers to a host file for each phase (#251). The
 device ring buffer is too small to retain an early failure in a long phase. Only a
-failed phase keeps its stream, as `/tmp/distillpod-logcat-<phase>.txt` in the
-emulator results artifact, bounded to its newest 64 MiB. A successful phase
+failed phase keeps its stream, as `/tmp/distillpod-logcat-<phase>.txt` in that
+job's emulator results artifact, bounded to its newest 64 MiB. A successful phase
 discards it. Logcat is raw app and system output: the disposable emulator holds
 only synthetic fixtures, and phones and non-hosted runs never enable the capture.
 Do not add credentials or personal content to app logs. Capture failure never
@@ -289,7 +291,8 @@ failure in selection falls back to full validation; a verification failure after
 jobs have been omitted fails the aggregate rather than passing. Lookups are
 bounded to five matching runs, one complete page of up to 100 jobs/artifacts per
 candidate, and 45 seconds per lookup. Reuse also requires a successful full main
-Android-build and emulator execution within 24 hours among the last five
+`Android build validation` and `Isolated Android acceptance` execution (the two
+jobs that save Gradle caches) within 24 hours among the last five
 successful main runs. Otherwise main performs full validation and refreshes its
 shared Gradle caches; repeated lightweight merges cannot indefinitely starve cache
 writes. This is a bounded eligibility rule, not a new scheduled workflow. Truncated evidence cannot authorize reuse.
@@ -312,6 +315,51 @@ commits for personal data containers and unreviewed binary media. See
 [repository security](security.md) for local checks and asset-review requirements.
 
 `ci.yml` runs Kotlin tests, lint/APK assembly, release-tool guards, host native validation and emulator acceptance on main pushes and pull requests. Its reusable form also gates the release workflow.
+
+### CI job graph
+
+After `Select validation and check documentation` (`plan`) chooses full
+validation, these jobs run in parallel on standard hosted runners (#281):
+
+| Job (check name) | Timeout | Work | Artifacts |
+| --- | --- | --- | --- |
+| `android_build` (Android build validation) | 35 min | Script tests, ABI regressions, `:core:test`, default unit tests, lint and debug APK | `android-reports`, `distillpod-debug-test-build` |
+| `voice_build` (Opt-in voice build validation) | 30 min | Unit tests, lint and debug APK with `distillpodVoiceEnabled=true` | `android-voice-reports` |
+| `release_build` (Unsigned release build) | 30 min | Release calls only: `lintRelease`/`assembleRelease` with voice enabled and `--no-build-cache` | `distillpod-unsigned-release` (1 day), `android-release-reports` |
+| `firebase` (Firebase protocol and security rules) | 15 min | Firestore/Storage emulator suites | none |
+| `native` (Native bridge validation) | 15 min | Host CMake build and CTest | none |
+| `emulator` (Isolated Android acceptance) | 35 min | Startup phase, then ordinary part 1 | `emulator-test-results` |
+| `emulator_part2` (Isolated Android acceptance, part 2) | 35 min | Ordinary part 2, cloud and voice phases | `emulator-test-results-part2` |
+
+`Kotlin, lint and APK` (`android`) then runs the gate. The required contexts
+`Kotlin, lint and APK`, `Native bridge validation` and `Isolated Android
+acceptance` keep their names. Every build and acceptance job ends with `Verify
+validation source`, which merged-tree reuse requires. The release job keeps the
+secret handling and artifact name that `release.yml`'s publish job downloads.
+
+`scripts/emulator-tests.sh` divides ordinary acceptance with
+`DISTILLPOD_ORDINARY_PART`. Part 2 runs the whole classes listed in
+`DISTILLPOD_PART2_CLASSES`; part 1 runs onboarding, every other ordinary class
+(including any newly added class, unlisted), queue teardown, Android Auto and
+notification phases. The two selections together equal the unsplit suite
+(`all`, the local default), and the script refuses a part 2 class that ordinary
+acceptance excludes in whole or in part. The list only balances the two jobs'
+duration; move a class between parts by editing it, and compare the total test
+count of both jobs with a previous run. Each emulator pays its own setup, boot
+and cold Gradle build, so the split divides test execution, not fixed cost.
+
+Only `android_build` and `emulator` save Gradle User Home caches, and only on
+pushes to main (the existing `cache-read-only` expression). `voice_build` and
+`release_build` restore the `android_build` entry, and `emulator_part2` the
+`emulator` entry, by setting `GRADLE_BUILD_ACTION_CACHE_KEY_JOB`; they are always
+read-only, so a cache generation is still written by two jobs. The two Whisper
+fixture models are cached under a key derived from their SHA-256 values
+(`scripts/prepare-fixtures.sh --cache-key`); the first emulator job saves the entry
+when it was missing, and the script verifies both files after every restore.
+`scripts/sdk-install.sh` installs pinned SDK packages with up to three attempts,
+discarding partial downloads between them. The emulator jobs install the system
+image, emulator and the action's build/platform tools this way before
+`android-emulator-runner`, so its own installs find them present.
 
 Main pushes that change only Markdown, documentation screenshots/videos under
 `docs/`, historical JSON/JSONL/TXT reports under `docs/android/evidence/`, or
@@ -340,9 +388,11 @@ validated. Targets cannot escape the repository. Android/Firebase/native/
 emulator jobs are intentionally omitted only for this validated route.
 
 The existing required `Kotlin, lint and APK` context is now an always-running
-aggregate gate. Actual full Android builds run as `Android build validation`.
-The gate requires the classifier, PR security scan and every selected full job
-to succeed; failed/cancelled or unexpectedly skipped dependencies do not pass.
+aggregate gate over the job graph below. The gate requires the classifier, PR
+security scan and every selected full job to succeed; failed/cancelled, missing
+or unexpectedly skipped dependencies do not pass. `Unsigned release build` must
+succeed for a full reusable call with `build_release: true` and must be skipped
+on every other route.
 Existing required context names and branch-protection settings are preserved.
 PR security uses the reusable security workflow so the gate verifies its result
 without a duplicate PR scan. Standalone main-push, scheduled and manual security

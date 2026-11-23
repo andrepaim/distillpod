@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from ci_validation import choose_route, validate_gate
+from ci_validation import choose_route, validate_gate, FULL_JOBS, RELEASE_JOB
 
 
 class Repository(contextlib.AbstractContextManager):
@@ -164,14 +164,15 @@ class RoutingTests(unittest.TestCase):
 
 
 SHA = 'a' * 40
-JOBS = ['android_build', 'firebase', 'native', 'emulator']
+JOBS = sorted(FULL_JOBS)
 
 
-def results(mode='full'):
+def results(mode='full', release=False):
     return {'security': {'result': 'success'}, 'plan': {'result': 'success', 'outputs': {
         'mode': mode, 'docs_validated': 'true' if mode == 'docs' else 'not_selected',
         'checkout_sha': SHA, 'changed_count': '1'}},
-        **{job: {'result': 'skipped' if mode == 'docs' else 'success'} for job in JOBS}}
+        **{job: {'result': 'skipped' if mode == 'docs' else 'success'} for job in JOBS},
+        RELEASE_JOB: {'result': 'success' if release else 'skipped'}}
 
 
 class GateTests(unittest.TestCase):
@@ -209,6 +210,53 @@ class GateTests(unittest.TestCase):
         del data['emulator']
         with self.assertRaises(ValueError):
             validate_gate(data, 'pull_request', {}, SHA)
+
+    def test_every_parallel_job_is_required_and_none_may_be_missing_or_extra(self):
+        self.assertEqual({'android_build', 'voice_build', 'firebase', 'native', 'emulator',
+                          'emulator_part2'}, FULL_JOBS)
+        for job in [*JOBS, RELEASE_JOB, 'plan', 'security']:
+            data = results()
+            del data[job]
+            with self.subTest(job=job), self.assertRaisesRegex(ValueError, 'missing or unexpected'):
+                validate_gate(data, 'pull_request', {}, SHA)
+        data = results()
+        data['unlisted_job'] = {'result': 'success'}
+        with self.assertRaisesRegex(ValueError, 'missing or unexpected'):
+            validate_gate(data, 'pull_request', {}, SHA)
+
+    def test_release_build_must_succeed_only_for_a_full_release_call(self):
+        release = {'build_release': True}
+        self.assertIsNone(validate_gate(results(release=True), 'push', release, SHA))
+        self.assertIsNone(validate_gate(results(release=True), 'pull_request', release, SHA))
+        for status in ['skipped', 'failure', 'cancelled', 'unknown', None]:
+            data = results(release=True)
+            data[RELEASE_JOB]['result'] = status
+            with self.subTest(status=status), self.assertRaisesRegex(ValueError, RELEASE_JOB):
+                validate_gate(data, 'push', release, SHA)
+        # Without the release input the candidate job must not run at all.
+        for event, inputs in [('pull_request', {}), ('push', {}), ('workflow_dispatch', {}),
+                              ('push', {'build_release': False}), ('push', {'build_release': 'true'})]:
+            data = results()
+            if event == 'push' and not inputs:
+                data['security']['result'] = 'skipped'  # Direct pushes use standalone security.
+            self.assertIsNone(validate_gate(data, event, inputs, SHA))
+            for status in ['success', 'failure', 'cancelled', None]:
+                data[RELEASE_JOB]['result'] = status
+                with self.subTest(event=event, inputs=inputs, status=status), \
+                        self.assertRaisesRegex(ValueError, RELEASE_JOB):
+                    validate_gate(data, event, inputs, SHA)
+        data = results('docs')
+        data[RELEASE_JOB]['result'] = 'success'
+        with self.assertRaisesRegex(ValueError, RELEASE_JOB):
+            validate_gate(data, 'pull_request', {}, SHA)
+
+    def test_a_release_call_still_requires_every_parallel_job(self):
+        for job in JOBS:
+            for status in ['failure', 'cancelled', 'skipped']:
+                data = results(release=True)
+                data[job]['result'] = status
+                with self.subTest(job=job, status=status), self.assertRaisesRegex(ValueError, job):
+                    validate_gate(data, 'push', {'build_release': True}, SHA)
 
     def test_failed_classifier_unvalidated_docs_wrong_revision_and_unknown_route_fail(self):
         for field, value in [('docs_validated', 'false'), ('mode', 'unknown'),

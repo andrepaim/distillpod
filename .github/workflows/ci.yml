@@ -57,6 +57,7 @@ jobs:
           python3 -m unittest discover -s scripts -p 'test_docs_validation.py'
           python3 -m unittest discover -s scripts -p 'test_ci_throughput.py'
           python3 -m unittest discover -s scripts -p 'test_ci_validation_proof.py'
+          python3 -m unittest discover -s scripts -p 'test_ci_workflow.py'
       - name: Select from the complete PR diff
         id: select
         env:
@@ -128,7 +129,7 @@ jobs:
         with:
           cache-read-only: ${{ github.event_name != 'push' || github.ref != 'refs/heads/main' || inputs.build_release == true }}
       - name: Install pinned native tools
-        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0' 'ndk;27.2.12479018' 'cmake;3.22.1'
+        run: scripts/sdk-install.sh 'platforms;android-35' 'build-tools;35.0.0' 'ndk;27.2.12479018' 'cmake;3.22.1'
       - name: Validate release tooling
         run: |
           python3 -m unittest discover -s scripts -p 'test_*.py'
@@ -142,10 +143,100 @@ jobs:
           ./gradlew --no-daemon --stacktrace :core:test :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
       - name: Stage default debug APK
         run: install -D -m 0444 app/build/outputs/apk/debug/app-debug.apk "$RUNNER_TEMP/distillpod-default-debug/app-debug.apk"
+      - name: Verify validation source
+        run: python3 scripts/ci_validation_proof.py check-source
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: android-reports
+          path: |
+            core/build/reports/tests
+            app/build/reports
+          retention-days: 14
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: distillpod-debug-test-build
+          path: ${{ runner.temp }}/distillpod-default-debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+  voice_build:
+    needs: plan
+    if: needs.plan.outputs.mode == 'full'
+    name: Opt-in voice build validation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      GRADLE_OPTS: -Dorg.gradle.caching=true
+      # Restore the default build's Gradle home. Only android_build saves that entry.
+      GRADLE_BUILD_ACTION_CACHE_KEY_JOB: android_build
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
+        with:
+          log-accepted-android-sdk-licenses: false
+      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+        with:
+          # Always read-only: writing would race android_build for the same cache key.
+          cache-read-only: true
+      - name: Install pinned native tools
+        run: scripts/sdk-install.sh 'platforms;android-35' 'build-tools;35.0.0' 'ndk;27.2.12479018' 'cmake;3.22.1'
       - name: Validate opt-in voice configuration
-        run: ./gradlew --no-daemon --stacktrace :app:testDebugUnitTest :app:lintDebug :app:assembleDebug -PdistillpodVoiceEnabled=true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 scripts/fetch_youtube_extractor.py --output app/build/generated/youtube/res/raw/ytdlp.bin
+          ./gradlew --no-daemon --stacktrace :app:testDebugUnitTest :app:lintDebug :app:assembleDebug -PdistillpodVoiceEnabled=true
+      - name: Verify validation source
+        run: python3 scripts/ci_validation_proof.py check-source
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: android-voice-reports
+          path: app/build/reports
+          retention-days: 14
+
+  release_build:
+    needs: plan
+    # Reusable release calls only; every other route reports skipped, which the gate requires.
+    if: inputs.build_release == true && needs.plan.outputs.mode == 'full'
+    name: Unsigned release build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      GRADLE_OPTS: -Dorg.gradle.caching=true
+      # Restore the default build's dependencies; the candidate itself uses no build cache.
+      GRADLE_BUILD_ACTION_CACHE_KEY_JOB: android_build
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
+        with:
+          log-accepted-android-sdk-licenses: false
+      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+        with:
+          cache-read-only: ${{ github.event_name != 'push' || github.ref != 'refs/heads/main' || inputs.build_release == true }}
+      - name: Install pinned native tools
+        run: scripts/sdk-install.sh 'platforms;android-35' 'build-tools;35.0.0' 'ndk;27.2.12479018' 'cmake;3.22.1'
+      - name: Fetch pinned YouTube extractor
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/fetch_youtube_extractor.py --output app/build/generated/youtube/res/raw/ytdlp.bin
       - name: Build unsigned distribution candidate
-        if: inputs.build_release == true
         env:
           FIREBASE_CONFIG_JSON: ${{ secrets.FIREBASE_CONFIG_JSON }}
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
@@ -164,20 +255,10 @@ jobs:
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
-          name: android-reports
-          path: |
-            core/build/reports/tests
-            app/build/reports
+          name: android-release-reports
+          path: app/build/reports
           retention-days: 14
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: distillpod-debug-test-build
-          path: ${{ runner.temp }}/distillpod-default-debug/app-debug.apk
-          if-no-files-found: error
-          retention-days: 7
-          compression-level: 0
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: inputs.build_release == true
         with:
           name: distillpod-unsigned-release
           path: app/build/outputs/apk/release/app-release-unsigned.apk
@@ -205,6 +286,9 @@ jobs:
       - name: Verify validation source
         run: python3 scripts/ci_validation_proof.py check-source
 
+  # Emulator acceptance runs on two disposable emulators of similar duration. This job keeps the
+  # required context name and hosts startup plus ordinary part 1; emulator_part2 runs the part 2
+  # classes (see scripts/emulator-tests.sh), cloud and voice.
   emulator:
     needs: plan
     if: needs.plan.outputs.mode == 'full'
@@ -213,6 +297,95 @@ jobs:
     timeout-minutes: 35
     env:
       GRADLE_OPTS: -Dorg.gradle.caching=true
+      DISTILLPOD_EMULATOR_ABI: x86_64
+      DISTILLPOD_FAILURE_DIAGNOSTICS: 'true'
+      DISTILLPOD_SERIAL: emulator-5554
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
+        with:
+          log-accepted-android-sdk-licenses: false
+      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+        with:
+          cache-read-only: ${{ github.event_name != 'push' || github.ref != 'refs/heads/main' || inputs.build_release == true }}
+      - name: Identify verified public inference fixtures
+        id: fixture_key
+        run: echo "key=$(scripts/prepare-fixtures.sh --cache-key)" >> "$GITHUB_OUTPUT"
+      - name: Restore verified public inference fixtures
+        id: fixtures
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          # Keyed on the models' SHA-256 values; scripts/prepare-fixtures.sh verifies them again.
+          path: |
+            /tmp/distillpod-fixtures/ggml-tiny.en.bin
+            /tmp/distillpod-fixtures/ggml-tiny.bin
+          key: ${{ steps.fixture_key.outputs.key }}
+      - name: Prepare verified public inference fixtures
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 scripts/fetch_youtube_extractor.py --output app/build/generated/youtube/res/raw/ytdlp.bin
+          scripts/prepare-fixtures.sh /tmp/distillpod-fixtures
+      - name: Save verified public inference fixtures
+        if: steps.fixtures.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            /tmp/distillpod-fixtures/ggml-tiny.en.bin
+            /tmp/distillpod-fixtures/ggml-tiny.bin
+          key: ${{ steps.fixture_key.outputs.key }}
+      - name: Install pinned SDK packages and emulator system image
+        # build-tools 37.0.0, platform-tools and emulator are what the emulator action installs;
+        # installed here, its own installs are no-ops and every download is retried.
+        run: scripts/sdk-install.sh 'platforms;android-35' 'build-tools;35.0.0' 'ndk;27.2.12479018' 'cmake;3.22.1' 'build-tools;37.0.0' platform-tools emulator 'system-images;android-35;google_apis;x86_64'
+      - name: Enable emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          disable-animations: true
+          script: |
+            python3 scripts/ci_phase.py startup -- env DISTILLPOD_SERIAL=emulator-5554 scripts/startup56-emulator-tests.sh
+            python3 scripts/ci_phase.py ordinary -- env DISTILLPOD_SERIAL=emulator-5554 DISTILLPOD_ORDINARY_PART=1 scripts/emulator-tests.sh /tmp/distillpod-fixtures
+      - name: Verify validation source
+        run: python3 scripts/ci_validation_proof.py check-source
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: emulator-test-results
+          path: |
+            /tmp/distillpod-notification-*.log
+            /tmp/distillpod-instrumentation*.log
+            /tmp/distillpod-sync-device.log*
+            /tmp/distillpod-voice-device.log
+            /tmp/distillpod-startup56-device.log
+            /tmp/distillpod-ci-phase-timings.jsonl
+            /tmp/distillpod-ci-failure-state.jsonl
+            /tmp/distillpod-logcat-*.txt
+          retention-days: 14
+
+  emulator_part2:
+    needs: plan
+    if: needs.plan.outputs.mode == 'full'
+    name: Isolated Android acceptance, part 2
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      GRADLE_OPTS: -Dorg.gradle.caching=true
+      # Restore the first emulator job's Gradle home. Only that job saves the entry.
+      GRADLE_BUILD_ACTION_CACHE_KEY_JOB: emulator
       DISTILLPOD_EMULATOR_ABI: x86_64
       DISTILLPOD_FAILURE_DIAGNOSTICS: 'true'
       DISTILLPOD_SERIAL: emulator-5554
@@ -241,16 +414,31 @@ jobs:
           log-accepted-android-sdk-licenses: false
       - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
         with:
-          cache-read-only: ${{ github.event_name != 'push' || github.ref != 'refs/heads/main' || inputs.build_release == true }}
+          # Always read-only: writing would race the emulator job for the same cache key.
+          cache-read-only: true
       - name: Install cloud emulator tools
         run: npm ci --prefix firebase --ignore-scripts --no-audit --no-fund
+      - name: Identify verified public inference fixtures
+        id: fixture_key
+        run: echo "key=$(scripts/prepare-fixtures.sh --cache-key)" >> "$GITHUB_OUTPUT"
+      - name: Restore verified public inference fixtures
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          # The emulator job saves this entry; prepare-fixtures.sh verifies the files again.
+          path: |
+            /tmp/distillpod-fixtures/ggml-tiny.en.bin
+            /tmp/distillpod-fixtures/ggml-tiny.bin
+          key: ${{ steps.fixture_key.outputs.key }}
       - name: Prepare verified public inference fixtures
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           python3 scripts/fetch_youtube_extractor.py --output app/build/generated/youtube/res/raw/ytdlp.bin
           scripts/prepare-fixtures.sh /tmp/distillpod-fixtures
-          sdkmanager 'platforms;android-35' 'build-tools;35.0.0' 'ndk;27.2.12479018' 'cmake;3.22.1'
+      - name: Install pinned SDK packages and emulator system image
+        # build-tools 37.0.0, platform-tools and emulator are what the emulator action installs;
+        # installed here, its own installs are no-ops and every download is retried.
+        run: scripts/sdk-install.sh 'platforms;android-35' 'build-tools;35.0.0' 'ndk;27.2.12479018' 'cmake;3.22.1' 'build-tools;37.0.0' platform-tools emulator 'system-images;android-35;google_apis;x86_64'
       - name: Enable emulator acceleration
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -263,8 +451,7 @@ jobs:
           arch: x86_64
           disable-animations: true
           script: |
-            python3 scripts/ci_phase.py startup -- env DISTILLPOD_SERIAL=emulator-5554 scripts/startup56-emulator-tests.sh
-            python3 scripts/ci_phase.py ordinary -- env DISTILLPOD_SERIAL=emulator-5554 scripts/emulator-tests.sh /tmp/distillpod-fixtures
+            python3 scripts/ci_phase.py ordinary-part2 -- env DISTILLPOD_SERIAL=emulator-5554 DISTILLPOD_ORDINARY_PART=2 scripts/emulator-tests.sh /tmp/distillpod-fixtures
             python3 scripts/ci_phase.py cloud -- env JAVA_HOME="$DISTILLPOD_FIREBASE_JAVA" PATH="$DISTILLPOD_FIREBASE_JAVA/bin:$PATH" firebase/node_modules/.bin/firebase --config firebase/firebase.json emulators:exec --only auth,firestore,storage --project demo-distillpod-sync 'env DISTILLPOD_SERIAL=emulator-5554 scripts/sync-device-tests.sh'
             python3 scripts/ci_phase.py voice -- env DISTILLPOD_SERIAL=emulator-5554 scripts/voice-device-tests.sh /tmp/distillpod-fixtures
       - name: Verify validation source
@@ -272,13 +459,11 @@ jobs:
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
-          name: emulator-test-results
+          name: emulator-test-results-part2
           path: |
-            /tmp/distillpod-notification-*.log
             /tmp/distillpod-instrumentation*.log
             /tmp/distillpod-sync-device.log*
             /tmp/distillpod-voice-device.log
-            /tmp/distillpod-startup56-device.log
             /tmp/distillpod-ci-phase-timings.jsonl
             /tmp/distillpod-ci-failure-state.jsonl
             /tmp/distillpod-logcat-*.txt
@@ -288,7 +473,7 @@ jobs:
     # Preserve this required context; it now verifies all selected dependencies.
     name: Kotlin, lint and APK
     if: always()
-    needs: [plan, security, android_build, firebase, native, emulator]
+    needs: [plan, security, android_build, voice_build, release_build, firebase, native, emulator, emulator_part2]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:

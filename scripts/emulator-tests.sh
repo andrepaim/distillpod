@@ -10,6 +10,28 @@ DISTILLPOD_TEST_APP="$DISTILLPOD_APP.test"
 DISTILLPOD_TEST_RUNNER="$DISTILLPOD_TEST_APP/$DISTILLPOD_APP.IsolatedTestRunner"
 DISTILLPOD_ONBOARDING_CLASS="$DISTILLPOD_APP.OnboardingNavigationDeviceTest"
 DISTILLPOD_ONBOARDING_LIBRARY_CLASS="$DISTILLPOD_APP.OnboardingLibraryDeviceTest"
+# Not ordinary acceptance: live, opt-in, phone-only, separately sequenced or other-phase tests.
+DISTILLPOD_EXCLUDED_TESTS="dev.distillpod.android.CloudQueueChoicePhoneDeviceTest,dev.distillpod.android.CloudQueueTeardownDeviceTest,dev.distillpod.android.NotificationAccessDeviceTest,dev.distillpod.android.NotificationPromptDeviceTest,dev.distillpod.android.QueueControlsPhoneDeviceTest,dev.distillpod.android.OwnerVideocastDeviceTest,dev.distillpod.android.YouTubeAcceptanceDeviceTest,dev.distillpod.android.VideoStartupDeviceTest,dev.distillpod.android.HeadphoneVoiceDeviceTest,dev.distillpod.android.DocumentationMediaDeviceTest,dev.distillpod.android.VisualBaselineDeviceTest,dev.distillpod.android.AutoBrowserDeviceTest,dev.distillpod.android.AutoRestartDeviceTest,dev.distillpod.android.FullContentSyncDeviceTest,dev.distillpod.android.SubscriptionSyncDeviceTest,dev.distillpod.android.SyncCompactionDeviceTest,dev.distillpod.android.SubscriptionRestartDeviceTest,dev.distillpod.android.AuthNetworkDeviceTest,dev.distillpod.android.LiveCaptureDeviceTest,dev.distillpod.android.LiveMomentQualityDeviceTest,dev.distillpod.android.LiveUnderstandingDeviceTest,dev.distillpod.android.LiveExploreDeviceTest,dev.distillpod.android.PodcastBenchmarkDeviceTest,dev.distillpod.android.LibrarySearchBenchmarkDeviceTest,dev.distillpod.android.FullEpisodeDeviceTest,dev.distillpod.android.PlaybackReliabilityDeviceTest,dev.distillpod.android.SearchDesignDeviceTest#realDirectoryShowsPublisherThumbnails,$DISTILLPOD_ONBOARDING_CLASS,$DISTILLPOD_ONBOARDING_LIBRARY_CLASS"
+# Hosted CI divides ordinary acceptance between two emulators (#281). Part 2 runs exactly these
+# classes; part 1 runs every other ordinary test, so a new test class runs in part 1 without being
+# listed here. The list only balances the two jobs' duration; keep whole classes together.
+DISTILLPOD_PART2_CLASSES="$DISTILLPOD_APP.NativePipelineDeviceTest,$DISTILLPOD_APP.ManagedBackupsDeviceTest,$DISTILLPOD_APP.DesignReviewDeviceTest,$DISTILLPOD_APP.SleepTimerDeviceTest,$DISTILLPOD_APP.FileImportTest,$DISTILLPOD_APP.NativeInferenceTest,$DISTILLPOD_APP.CloudQueueOrderingDeviceTest,$DISTILLPOD_APP.AutomaticTranscriptionDeviceTest,$DISTILLPOD_APP.ShowsOrganizationDeviceTest"
+# all (default): the whole ordinary suite. 1: onboarding, every ordinary class outside part 2,
+# queue teardown, Android Auto and notification phases. 2: only the part 2 classes.
+DISTILLPOD_ORDINARY_PART="${DISTILLPOD_ORDINARY_PART:-all}"
+case "$DISTILLPOD_ORDINARY_PART" in
+    all|1|2) ;;
+    *) echo 'DISTILLPOD_ORDINARY_PART must be all, 1 or 2' >&2; exit 1 ;;
+esac
+# Part 2 selects whole classes, so it must not contain an excluded class or method.
+for DISTILLPOD_PART2_CLASS in ${DISTILLPOD_PART2_CLASSES//,/ }; do
+    for DISTILLPOD_EXCLUDED_TEST in ${DISTILLPOD_EXCLUDED_TESTS//,/ }; do
+        if [[ "$DISTILLPOD_EXCLUDED_TEST" == "$DISTILLPOD_PART2_CLASS" || "$DISTILLPOD_EXCLUDED_TEST" == "$DISTILLPOD_PART2_CLASS#"* ]]; then
+            echo "Part 2 class $DISTILLPOD_PART2_CLASS is excluded from ordinary acceptance" >&2
+            exit 1
+        fi
+    done
+done
 
 device() { "$DISTILLPOD_ADB" -P "${DISTILLPOD_ADB_PORT:-5037}" -s "$DISTILLPOD_SERIAL" "$@"; }
 test -f "$DISTILLPOD_FIXTURES/ggml-tiny.en.bin"
@@ -82,7 +104,7 @@ install_apk() {
 install_apk "$DISTILLPOD_APP_APK" "${DISTILLPOD_INSTALL_FLAGS[@]}"
 install_apk app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk "${DISTILLPOD_INSTALL_FLAGS[@]}"
 
-if [[ "${GITHUB_ACTIONS:-false}" == true ]]; then
+if [[ "${GITHUB_ACTIONS:-false}" == true && "$DISTILLPOD_ORDINARY_PART" != 2 ]]; then
     run_onboarding_case() {
         local selector="$1" phase="$2" log
         shift 2
@@ -124,8 +146,16 @@ if [[ "${GITHUB_ACTIONS:-false}" == true ]]; then
     run_onboarding_case "$DISTILLPOD_ONBOARDING_CLASS#updatedInstallOpensItsLibraryWithoutTheNewSetup" upgrade-empty -e firstRunUpgrade true
     clear_onboarding_state "$DISTILLPOD_APP"
 fi
-"$DISTILLPOD_ADB" -P "${DISTILLPOD_ADB_PORT:-5037}" -s "$DISTILLPOD_SERIAL" shell am instrument -w -r -e notClass "dev.distillpod.android.CloudQueueChoicePhoneDeviceTest,dev.distillpod.android.CloudQueueTeardownDeviceTest,dev.distillpod.android.NotificationAccessDeviceTest,dev.distillpod.android.NotificationPromptDeviceTest,dev.distillpod.android.QueueControlsPhoneDeviceTest,dev.distillpod.android.OwnerVideocastDeviceTest,dev.distillpod.android.YouTubeAcceptanceDeviceTest,dev.distillpod.android.VideoStartupDeviceTest,dev.distillpod.android.HeadphoneVoiceDeviceTest,dev.distillpod.android.DocumentationMediaDeviceTest,dev.distillpod.android.VisualBaselineDeviceTest,dev.distillpod.android.AutoBrowserDeviceTest,dev.distillpod.android.AutoRestartDeviceTest,dev.distillpod.android.FullContentSyncDeviceTest,dev.distillpod.android.SubscriptionSyncDeviceTest,dev.distillpod.android.SyncCompactionDeviceTest,dev.distillpod.android.SubscriptionRestartDeviceTest,dev.distillpod.android.AuthNetworkDeviceTest,dev.distillpod.android.LiveCaptureDeviceTest,dev.distillpod.android.LiveMomentQualityDeviceTest,dev.distillpod.android.LiveUnderstandingDeviceTest,dev.distillpod.android.LiveExploreDeviceTest,dev.distillpod.android.PodcastBenchmarkDeviceTest,dev.distillpod.android.LibrarySearchBenchmarkDeviceTest,dev.distillpod.android.FullEpisodeDeviceTest,dev.distillpod.android.PlaybackReliabilityDeviceTest,dev.distillpod.android.SearchDesignDeviceTest#realDirectoryShowsPublisherThumbnails,$DISTILLPOD_ONBOARDING_CLASS,$DISTILLPOD_ONBOARDING_LIBRARY_CLASS" "$DISTILLPOD_TEST_RUNNER" | tee "$DISTILLPOD_LOG"
+case "$DISTILLPOD_ORDINARY_PART" in
+    all) DISTILLPOD_SELECTION=(-e notClass "$DISTILLPOD_EXCLUDED_TESTS") ;;
+    1) DISTILLPOD_SELECTION=(-e notClass "$DISTILLPOD_EXCLUDED_TESTS,$DISTILLPOD_PART2_CLASSES") ;;
+    2) DISTILLPOD_SELECTION=(-e class "$DISTILLPOD_PART2_CLASSES") ;;
+esac
+"$DISTILLPOD_ADB" -P "${DISTILLPOD_ADB_PORT:-5037}" -s "$DISTILLPOD_SERIAL" shell am instrument -w -r "${DISTILLPOD_SELECTION[@]}" "$DISTILLPOD_TEST_RUNNER" | tee "$DISTILLPOD_LOG"
 python3 scripts/device_result.py "$DISTILLPOD_LOG"
+if [[ "$DISTILLPOD_ORDINARY_PART" == 2 ]]; then
+    exit 0
+fi
 
 # Closing this controller deliberately ends its service connection. Use a separate
 # instrumentation process so subsequent cases receive a fresh application graph.

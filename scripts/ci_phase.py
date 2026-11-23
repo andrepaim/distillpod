@@ -6,13 +6,13 @@ from pathlib import Path
 import subprocess
 import time
 
-from ci_failure_state import record_failure_state
+from ci_failure_state import PHASES, record_failure_state
 import ci_logcat
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('phase', choices=['startup', 'ordinary', 'cloud', 'voice'])
+    parser.add_argument('phase', choices=PHASES)
     parser.add_argument('command', nargs=argparse.REMAINDER)
     args = parser.parse_args()
     command = args.command
