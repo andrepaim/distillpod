@@ -47,6 +47,10 @@ import dev.distillpod.android.ui.theme.Button
 import dev.distillpod.android.ui.theme.OutlinedButton
 import dev.distillpod.android.ui.theme.FilterChip
 
+/** Only a failed Video request reports the video track. Audio failures surface as the player's stopped state. */
+internal fun modeSwitchFailure(requestedVideo: Boolean): String? =
+    if (requestedVideo) "Video is unavailable. Switched to audio mode." else null
+
 private tailrec fun Context.activity(): Activity? = when (this) {
     is Activity -> this
     is ContextWrapper -> baseContext.activity()
@@ -124,12 +128,13 @@ private tailrec fun Context.activity(): Activity? = when (this) {
     }
     LaunchedEffect(playback, episodeId, video) {
         val request = currentCoroutineContext().job
+        val requestedVideo = video
         modeRequest.set(request)
         firstFrame = false
         loading = true
-        try { playback.video(episodeId, video) }
+        try { playback.video(episodeId, requestedVideo) }
         catch (e: CancellationException) { throw e }
-        catch (_: Exception) { video = false; error = "Video is unavailable. Switched to audio mode." }
+        catch (_: Exception) { video = false; error = modeSwitchFailure(requestedVideo) }
         finally { modeRequest.compareAndSet(request, null); loading = false }
     }
     DisposableEffect(lifecycle, playback, episodeId) {

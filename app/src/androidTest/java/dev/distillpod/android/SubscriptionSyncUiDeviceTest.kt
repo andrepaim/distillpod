@@ -56,15 +56,15 @@ class SubscriptionSyncUiDeviceTest {
         withContext(Dispatchers.Main) {
             ViewModelProvider(compose.activity,AppViewModel.factory(graph))[AppViewModel::class.java].root("settings")
         }
-        compose.onNodeWithText("Library sync").performScrollTo().assertIsDisplayed().performClick()
+        compose.onNodeWithText("Sync").performScrollTo().assertIsDisplayed().performClick()
         // The isolated runner disables cloud sync, so assert the unavailable-build
         // explanation instead of advertising functionality this build cannot use.
-        compose.onNodeWithText("Library sync is unavailable in this build. Use a backup file to transfer your library.")
+        compose.onNodeWithText("Cloud sync is unavailable in this build. Automatic backup still keeps your whole library in a file you choose.")
             .performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("Cloud sync is unavailable in this build.").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Set up automatic backup").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Connect Google & sync library").assertDoesNotExist()
         // The full scope and binding disclosures are kept verbatim behind Learn more (#203).
-        compose.onNodeWithContentDescription("Learn more about Sync and backup").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("Learn more about What's covered").performScrollTo().performClick()
         compose.onNodeWithText("local transcription model selection, transcript language and AI model selection", substring = true)
             .performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Neither transfers audio downloads, model binaries or account secrets.", substring = true)

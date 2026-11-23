@@ -46,7 +46,7 @@ class CaptureRepository(private val db: AppDatabase, private val ai: AiGateway, 
                     val fresh=DistillationEntity(UUID.randomUUID().toString(),id,(position-60000).coerceAtLeast(0),position,
                         fingerprint=if(verifiedSource)ep.mediaFingerprint else "unverified:${ep.id}",attempt=UUID.randomUUID().toString())
                     dao.putDistillation(fresh)
-                    dao.putMomentAttempt(MomentAttemptEntity(fresh.attempt,fresh.id,AttemptDiagnostics.context(false,request=request,consentEpoch=requestEpoch?.takeIf {it==diagnostics?.correlationEpoch})))
+                    dao.putMomentAttempt(MomentAttemptEntity(fresh.attempt,fresh.id,AttemptDiagnostics.context(ContextWindow.STANDARD,request=request,consentEpoch=requestEpoch?.takeIf {it==diagnostics?.correlationEpoch})))
                     portable.recordMoment(fresh)
                     fresh to true
                 }
@@ -91,8 +91,9 @@ class CaptureRepository(private val db: AppDatabase, private val ai: AiGateway, 
             }
             val attempt = dao.momentAttempt(saved.attempt) ?: MomentAttemptEntity(UUID.randomUUID().toString(),saved.id,"{\"expanded\":false}")
             identity=correlation(attempt).copy(collectionEpoch=collectionEpoch)
-            val expanded = JSONObject(attempt.contextJson).optBoolean("expanded")
-            evidence.expanded=expanded
+            val pending = JSONObject(attempt.contextJson)
+            val window = MomentGeneration.window(attempt.contextJson)
+            evidence.window=window
             val availableTranscript=dao.transcript(ep.id)
             evidence.source=availableTranscript?.source ?: "missing"
             val transcript = availableTranscript?.takeUnless { it.source == "online" }
@@ -103,7 +104,7 @@ class CaptureRepository(private val db: AppDatabase, private val ai: AiGateway, 
                 ?: transcript?.takeIf { it.state == "ready" && it.fingerprint == ep.mediaFingerprint && it.durationMs > 0 }?.durationMs
                 ?: 0L
             evidence.durationKnown=duration>0
-            val range = try {MomentContexts.range(saved.endMs, duration, expanded)}
+            val range = try {MomentContexts.range(saved.endMs, duration, window)}
                 catch(error:IllegalArgumentException) {invalidBoundsFailure=true;throw error}
             val storedCoverage=transcript?.let {dao.coverage(ep.id,it.revision)}.orEmpty()
             val coverage = try {storedCoverage.map {c -> TimeRange(c.startMs,c.endMs)}}
@@ -149,6 +150,25 @@ class CaptureRepository(private val db: AppDatabase, private val ai: AiGateway, 
                 !connected() -> "waiting_auth"
                 else -> "queued"
             }
+            val frozen=MomentGeneration.contextJson(context,transcript.revision,ep.mediaFingerprint,original,window)
+            // An explicit expansion that yields exactly the source already tried would spend two AI
+            // requests on identical input (#124). Restore the previous outcome and say so instead.
+            val unchanged = state !in setOf("no_speech","needs_context") && pending.optString("expandedFrom").ifBlank { null }
+                ?.let { dao.momentAttempt(it) }?.let { MomentGeneration.sameSource(it.contextJson,frozen) } == true
+            if(unchanged) {
+                evidence.outcome="unchanged_context";evidence.reason="unchanged_context"
+                val restored=db.withTransaction {
+                    val current=dao.distillation(saved.id)
+                    if(current?.state!="waiting_transcript" || current.attempt!=saved.attempt) false else {
+                        dao.putMomentAttempt(attempt.copy(state="unchanged",contextJson=AttemptDiagnostics.preserve(attempt.contextJson,frozen,diagnostics?.correlationEpoch)))
+                        dao.putDistillation(current.copy(state=pending.optString("previousState").takeIf { it.isNotBlank() && it !in busy } ?: "needs_context",
+                            error=UNCHANGED_CONTEXT));true
+                    }
+                }
+                evidence.frozen=restored
+                if(!restored) {evidence.outcome="superseded";evidence.reason="superseded"}
+                return
+            }
             evidence.outcome=state
             evidence.reason=when(state) {
                 "no_speech" -> "empty_speech"
@@ -162,7 +182,7 @@ class CaptureRepository(private val db: AppDatabase, private val ai: AiGateway, 
                     // Observe stale dependencies without changing selection or existing persistence policy.
                     if(dao.episode(ep.id)?.mediaFingerprint!=ep.mediaFingerprint)evidence.reason="source_mismatch"
                     else if(dao.transcript(ep.id)?.revision!=transcript.revision)evidence.reason="revision_mismatch"
-                    dao.putMomentAttempt(attempt.copy(contextJson=AttemptDiagnostics.preserve(attempt.contextJson,MomentGeneration.contextJson(context,transcript.revision,ep.mediaFingerprint,original,expanded),diagnostics?.correlationEpoch)))
+                    dao.putMomentAttempt(attempt.copy(contextJson=AttemptDiagnostics.preserve(attempt.contextJson,frozen,diagnostics?.correlationEpoch)))
                     val updated=current.copy(excerpt=current.excerpt.ifBlank { raw },attempt=attempt.id,
                         revision=if(current.insight==null)transcript.revision else current.revision,state=state,
                         error=when(state) { "no_speech" -> "No transcribed speech was found in this window."; "needs_context" -> "No complete source segments fit this window. Expand the context."; else -> null })
@@ -194,12 +214,23 @@ class CaptureRepository(private val db: AppDatabase, private val ai: AiGateway, 
         dao.distillations().filter { it.episodeId==id && it.state=="waiting_transcript" }.forEach { hydrate(it) }
     }
 
+    /**
+     * Retries with more source in one direction (#124). When the wider window yields exactly the source
+     * of the current attempt, the moment returns to its previous state without any AI request.
+     */
+    suspend fun expand(id: String, window: ContextWindow) = improve(id, window, "expanded_context", detectUnchanged = true)
+
     /** Explicit regeneration keeps the published result until a replacement has passed review. */
-    suspend fun improve(id: String, expanded: Boolean = false, retryTrigger:String=if(expanded)"expanded_context" else "explicit_retry") {
+    suspend fun improve(id: String, window: ContextWindow = ContextWindow.STANDARD,
+        retryTrigger:String=if(window!=ContextWindow.STANDARD)"expanded_context" else "explicit_retry", detectUnchanged: Boolean = false) {
         val pending=db.withTransaction {
             val current=dao.distillation(id) ?: return@withTransaction null
             if(current.state in busy)return@withTransaction null
-            val attempt=MomentAttemptEntity(UUID.randomUUID().toString(),id,AttemptDiagnostics.context(expanded,previous=dao.momentAttempt(current.attempt),trigger=retryTrigger,consentEpoch=diagnostics?.correlationEpoch))
+            val previous=dao.momentAttempt(current.attempt)
+            val context=JSONObject(AttemptDiagnostics.context(window,previous=previous,trigger=retryTrigger,consentEpoch=diagnostics?.correlationEpoch))
+            // Local bookkeeping for the unchanged-source check; preparation replaces it with the frozen context.
+            if(detectUnchanged && previous!=null)context.put("expandedFrom",previous.id).put("previousState",current.state)
+            val attempt=MomentAttemptEntity(UUID.randomUUID().toString(),id,context.toString())
             dao.putMomentAttempt(attempt)
             current.copy(attempt=attempt.id,state="waiting_transcript",error=null).also { dao.putDistillation(it) }
         } ?: return
@@ -214,13 +245,13 @@ class CaptureRepository(private val db: AppDatabase, private val ai: AiGateway, 
         val ep=dao.episode(saved.episodeId) ?: return
         val ctx=JSONObject(attempt.contextJson)
         if(ctx.getString("fingerprint")!=ep.mediaFingerprint || dao.transcript(ep.id)?.revision!=ctx.getString("revision")) {
-            improve(id,ctx.optBoolean("expanded"),"transcript_changed");return
+            improve(id,MomentGeneration.window(attempt.contextJson),"transcript_changed");return
         }
         if(saved.fingerprint!=ep.mediaFingerprint && !confirmSource || saved.state=="review_source" && !confirmSource) {
             dao.putDistillation(saved.copy(state="review_source",error="Review this source before generating."));return
         }
         // Content rejections are new attempts. Failed review requests resume the saved candidate.
-        if(attempt.state in setOf("needs_context","unclear_source","rejected","succeeded")) { improve(id,ctx.optBoolean("expanded"));return }
+        if(attempt.state in setOf("needs_context","unclear_source","rejected","succeeded","unchanged")) { improve(id,MomentGeneration.window(attempt.contextJson));return }
         val queued=db.withTransaction {
             val current=dao.distillation(id) ?: return@withTransaction false
             if(current.attempt!=saved.attempt || current.state in busy)return@withTransaction false
@@ -256,6 +287,10 @@ class CaptureRepository(private val db: AppDatabase, private val ai: AiGateway, 
         if(!saved.insight.isNullOrBlank())dao.putMomentVersion(MomentVersionEntity(UUID.randomUUID().toString(),saved.id,momentSnapshot(saved)))
     }
 
+    private companion object {
+        const val INCOMPLETE_PASSAGE="Source review found the takeaway supported, but the selected passage stops before the idea is complete. Your previous result and source are kept."
+        const val UNCHANGED_CONTEXT="Expanding the context found no new transcript, so nothing was sent to ChatGPT. Try the other direction, or transcribe again."
+    }
     private class ObsoleteMomentSource:IllegalStateException("The transcript or audio changed. Prepare the source again.")
 
     private suspend fun valid(id: String, attempt: MomentAttemptEntity): DistillationEntity? {
@@ -267,7 +302,7 @@ class CaptureRepository(private val db: AppDatabase, private val ai: AiGateway, 
         return current
     }
 
-    suspend fun run(id: String) {
+    suspend fun run(id: String, stop: suspend () -> dev.distillpod.android.work.WorkStop = { dev.distillpod.android.work.WorkStop.ENDED }, stopReason: () -> Int? = { null }) {
         val (saved,acquiredAttempt,claimedEvidence)=db.withTransaction {
             val current=dao.distillation(id)?.takeIf {it.state=="queued"} ?: return@withTransaction null
             val acquired=dao.momentAttempt(current.attempt)?.let { attempt ->
@@ -359,9 +394,10 @@ class CaptureRepository(private val db: AppDatabase, private val ai: AiGateway, 
             val outcome=db.withTransaction {
                 val current=valid(id,attempt) ?: return@withTransaction null
                 if(!review.accepted) {
-                    val state=if(review.needsContext)"needs_context" else "unclear_source"
+                    val state=MomentGeneration.rejection(review)
                     dao.putMomentAttempt(attempt.copy(state="rejected"))
-                    dao.putDistillation(current.copy(state=state,error="The proposed takeaway did not pass source review. Your previous result and source are kept."))
+                    dao.putDistillation(current.copy(state=state,error=if(state=="incomplete_passage")INCOMPLETE_PASSAGE
+                        else "The proposed takeaway did not pass source review. Your previous result and source are kept."))
                 } else {
                     archive(current)
                     val accepted=candidate.copy(quote=if(review.quoteFaithful)candidate.quote else null)
@@ -371,7 +407,7 @@ class CaptureRepository(private val db: AppDatabase, private val ai: AiGateway, 
                     MomentGeneration.validateSource(finished.sourceJson,finished.startMs,finished.endMs)
                     dao.putDistillation(finished);dao.putMomentAttempt(attempt.copy(state="succeeded"));portable.recordMoment(finished)
                 }
-                if(review.accepted)"succeeded" else if(review.needsContext)"needs_context" else "unclear_source"
+                if(review.accepted)"succeeded" else MomentGeneration.rejection(review)
             }
             if(outcome==null) {diagnostics?.event("distillation.discarded",saved.id,reason="superseded",correlation=evidence);return}
             terminalRecorded=true
@@ -380,10 +416,18 @@ class CaptureRepository(private val db: AppDatabase, private val ai: AiGateway, 
             onPortableChanged()
         } catch(error: Exception) {
             val alreadyTerminal=terminalRecorded
+            // A worker stop (a lost network constraint, as in a car's Wi-Fi to mobile handover) surfaces as cancellation
+            // or as the in-flight request failing; WorkManager reruns the work, so it is not the moment's end (#261).
+            val workStop=if(error is CancellationException || error is java.io.IOException)
+                withContext(NonCancellable) {runCatching {stop()}.getOrDefault(dev.distillpod.android.work.WorkStop.ENDED)}
+                else dev.distillpod.android.work.WorkStop.ENDED
+            val rescheduled=workStop==dev.distillpod.android.work.WorkStop.RESCHEDULED
+            // Record why an interruption happened: WorkManager's stop reason is set before it cancels the worker.
+            if(error is CancellationException || rescheduled)summary.stopped(dev.distillpod.android.diagnostics.WorkStopReasons.category(runCatching {stopReason()}.getOrNull()))
             // Preserve observed failure even if the ownership-storage check itself fails.
             if(!terminalRecorded) {
                 if(error is ObsoleteMomentSource)summary.discarded() else summary.fail(when {
-                    error is CancellationException -> "interrupted"
+                    error is CancellationException || rescheduled -> "interrupted"
                     error is QuotaExceeded -> "quota"
                     error is ReauthorizationRequired -> "auth_failure"
                     parsingResponse -> "invalid_response"
@@ -395,13 +439,16 @@ class CaptureRepository(private val db: AppDatabase, private val ai: AiGateway, 
             val owned=withContext(NonCancellable) { db.withTransaction {
                 val current=dao.distillation(id)
                 if(current==null || current.attempt!=saved.attempt || current.state !in setOf("running","reviewing") || dao.momentAttempt(saved.attempt)?.run!=execution)return@withTransaction false
-                dao.putDistillation(current.copy(
+                // The rerun claims a queued moment and reuses the attempt's saved candidate and review.
+                if(rescheduled)dao.putDistillation(current.copy(state="queued",error=null))
+                else dao.putDistillation(current.copy(
                     state=when(error) {is QuotaExceeded -> "waiting_quota";is ReauthorizationRequired -> "waiting_auth";else -> "failed"},
                     error=if(error is CancellationException)"Generation was interrupted. Your source and any completed candidate are saved." else safeFailure(error)))
                 true
             } }
             if(!owned && !alreadyTerminal)summary.discarded()
-            if(owned) {
+            if(owned && rescheduled)diagnostics?.event("distillation.queued",saved.id,reason="queued",correlation=evidence)
+            else if(owned) {
                 diagnostics?.failure("distillation",error,saved.id,correlation=evidence)
                 if(error is QuotaExceeded || error is ReauthorizationRequired)diagnostics?.event("distillation.queued",saved.id,
                     reason=if(error is QuotaExceeded)"waiting_quota" else "waiting_auth",correlation=evidence)

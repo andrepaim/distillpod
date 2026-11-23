@@ -6,6 +6,7 @@ import androidx.room.withTransaction
 import androidx.test.core.app.ApplicationProvider
 import dev.distillpod.android.data.*
 import dev.distillpod.core.episodeId
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
@@ -16,6 +17,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import java.util.concurrent.TimeUnit
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
@@ -44,6 +46,43 @@ class ProductionDataTest {
             server.enqueue(MockResponse().setResponseCode(304))
             repo.refresh(id)
             assertEquals(1, db.library().episodes().size)
+        } }
+    }
+
+    /** #226: the 304 branch wrote back the show row read before the request, re-subscribing it. */
+    @Test fun `unsubscribing while a not-modified refresh is in flight stays unsubscribed`() = runBlocking {
+        database().useDatabase { db -> MockWebServer().use { server ->
+            server.enqueue(MockResponse().setBody("""<rss><channel><title>Show</title><item><guid>e1</guid><title>One</title><enclosure url="${server.url("/a.mp3")}"/></item></channel></rss>""").setHeader("ETag", "\"v1\""))
+            val repo = PodcastRepository(db, OkHttpClient())
+            val id = repo.subscribe(server.url("/feed").toString())
+            server.takeRequest()
+            // The feed is unchanged; the answer takes a moment, as on a slow mobile network.
+            server.enqueue(MockResponse().setResponseCode(304).setHeadersDelay(1500, TimeUnit.MILLISECONDS))
+            val refresh = launch(Dispatchers.IO) { repo.refresh(id) }
+            assertNotNull(server.takeRequest(5, TimeUnit.SECONDS))   // the refresh request is in flight
+            repo.unsubscribe(id)
+            refresh.join()
+            assertFalse("The show was re-subscribed by the refresh", db.library().podcast(id)!!.subscribed)
+        } }
+    }
+
+    @Test fun `a not-modified refresh records only its time and clears the error, keeping concurrent edits`() = runBlocking {
+        database().useDatabase { db -> MockWebServer().use { server ->
+            server.enqueue(MockResponse().setBody("""<rss><channel><title>Show</title><item><guid>e1</guid><title>One</title><enclosure url="${server.url("/a.mp3")}"/></item></channel></rss>""").setHeader("ETag", "\"v1\""))
+            val repo = PodcastRepository(db, OkHttpClient())
+            val id = repo.subscribe(server.url("/feed").toString())
+            server.takeRequest()
+            db.library().putPodcast(db.library().podcast(id)!!.copy(refreshedAt = 1, error = "Earlier failure"))
+            server.enqueue(MockResponse().setResponseCode(304).setHeadersDelay(1500, TimeUnit.MILLISECONDS))
+            val refresh = launch(Dispatchers.IO) { repo.refresh(id) }
+            assertNotNull(server.takeRequest(5, TimeUnit.SECONDS))
+            // Another writer (for example a cloud projection) edits the row while the request is in flight.
+            val edited = db.library().podcast(id)!!.copy(title = "Renamed elsewhere", imageUrl = "https://example.test/art.png")
+            db.library().putPodcast(edited)
+            refresh.join()
+            val after = db.library().podcast(id)!!
+            assertEquals(edited.copy(refreshedAt = after.refreshedAt, error = null), after)
+            assertTrue(after.refreshedAt > 1)
         } }
     }
 

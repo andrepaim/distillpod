@@ -15,7 +15,10 @@ def verify_result(output: str) -> int:
 
 if __name__ == '__main__':
     try:
-        print(f'Android instrumentation passed: {verify_result(Path(sys.argv[1]).read_text())} tests')
+        count = verify_result(Path(sys.argv[1]).read_text())
+        if len(sys.argv) > 2 and count != int(sys.argv[2]):
+            raise ValueError(f'Expected {sys.argv[2]} test(s), got {count}')
+        print(f'Android instrumentation passed: {count} tests')
     except (ValueError, OSError, IndexError) as error:
         print(str(error), file=sys.stderr)
         sys.exit(1)

@@ -16,12 +16,15 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.automirrored.filled.Article
 import androidx.compose.material3.*
@@ -42,6 +45,7 @@ import kotlinx.coroutines.launch
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.layout.ContentScale
@@ -58,6 +62,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import dev.distillpod.android.DiagnosticsActivity
 import dev.distillpod.android.ai.AccountState
+import dev.distillpod.android.ai.resolveAiModel
 import dev.distillpod.android.data.*
 import dev.distillpod.android.playback.PlaybackState
 import dev.distillpod.android.ui.theme.extras
@@ -68,6 +73,8 @@ import dev.distillpod.android.ui.theme.OutlinedButton
 import dev.distillpod.android.ui.theme.TextButton
 import dev.distillpod.android.ui.theme.FilterChip
 import dev.distillpod.android.ui.theme.DistillComponentDefaults
+import dev.distillpod.core.SetupModelStatus
+import dev.distillpod.core.setupModelStatus
 
 fun timestamp(ms: Long): String {
     val seconds = ms.coerceAtLeast(0) / 1000
@@ -78,7 +85,18 @@ fun fileSize(bytes: Long): String = if (bytes >= 1_000_000_000) "%.1f GB".format
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable fun ProductApp(vm: AppViewModel) {
     val stack by vm.backStack.collectAsStateWithLifecycle()
-    val route = stack.last()
+    val loaded by vm.loaded.collectAsStateWithLifecycle()
+    val route = stack.lastOrNull()
+    if (!loaded || route == null) {
+        DistillTheme {
+            Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                Box(contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+            }
+        }
+        return
+    }
+    val setupScreen = route.isOnboardingRoute()
+    val productRoot = stack.firstOrNull { !it.isOnboardingRoute() }
     var videoFullscreen by remember { mutableStateOf(false) }
     var fullscreenExitRequest by remember { mutableIntStateOf(0) }
     LaunchedEffect(route) { if (route != "player") videoFullscreen = false }
@@ -91,7 +109,6 @@ fun fileSize(bytes: Long): String = if (bytes >= 1_000_000_000) "%.1f GB".format
     val preferences by vm.graph.preferences.collectAsStateWithLifecycle()
     val account by vm.graph.account.state.collectAsStateWithLifecycle()
     val busy by vm.busy.collectAsStateWithLifecycle()
-    val loaded by vm.loaded.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     val screenState = rememberSaveableStateHolder()
     LaunchedEffect(Unit) { for (message in vm.messages) snackbar.showSnackbar(message) }
@@ -108,9 +125,10 @@ fun fileSize(bytes: Long): String = if (bytes >= 1_000_000_000) "%.1f GB".format
         route == "queue" -> "Listening queue"
         route == "settings" -> "Settings"
         route == "shows" -> "Your shows"
-        route.startsWith("settings:") -> when(route.substringAfter(':')) { "diagnostics" -> "Privacy & diagnostics"; "notifications" -> "Notification access"; "sync" -> "Library sync"; "ai" -> "ChatGPT"; "voice" -> "Voice"; "playback" -> "Playback & headphones"; "transcription" -> "Transcript preparation"; "storage" -> "Downloads & storage"; "library" -> "Library"; else -> "About DistillPod" }
+        route == SetupGuideRoute -> "Setup guide"
+        route.startsWith("settings:") -> when(route.substringAfter(':')) { "diagnostics" -> "Privacy & diagnostics"; "notifications" -> "Notification access"; "sync" -> "Sync"; "ai" -> "ChatGPT"; "voice" -> "Voice"; "playback" -> "Playback & headphones"; "transcription" -> "Transcript preparation"; "storage" -> "Downloads & storage"; "library" -> "Library"; else -> "About DistillPod" }
         route.startsWith("transcript:") -> "Transcript"
-        route == "backup" -> "Backup & Restore"
+        route == "backup" -> "Backups & restore"
         route == "player" -> "Now playing"
         route.startsWith("analysis:") -> "Episode insights"
         route.startsWith("chat:") -> "Ask this episode"
@@ -124,8 +142,10 @@ fun fileSize(bytes: Long): String = if (bytes >= 1_000_000_000) "%.1f GB".format
         BackupDocumentLaunchers(vm)
         NotificationPromptHost(vm.notificationPrompt, snackbar) { vm.open("settings:notifications") }
         Scaffold(containerColor = MaterialTheme.colorScheme.background, snackbarHost = { SnackbarHost(snackbar) }, topBar = {
-            if (!videoFullscreen) TopAppBar(title = { Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold) },
-                navigationIcon = { if (stack.size > 1) IconButton(onClick = vm::back) { Icon(if (route == "player") Icons.Default.KeyboardArrowDown else Icons.Default.ArrowBack, "Back") } },
+            if (!videoFullscreen && route != OnboardingWelcomeRoute) TopAppBar(title = {
+                if (!setupScreen) Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
+            },
+                navigationIcon = { if (stack.size > 1) IconButton(onClick = vm::back) { Icon(if (route == "player") Icons.Default.KeyboardArrowDown else Icons.AutoMirrored.Filled.ArrowBack, "Back") } },
                 actions = {
                     // Proposal 5.6: the settings gear only on Library; every other screen reaches Settings through its overflow menu.
                     val settings = OverflowAction("Settings", Icons.Default.Settings) { vm.open("settings") }
@@ -133,6 +153,7 @@ fun fileSize(bytes: Long): String = if (bytes >= 1_000_000_000) "%.1f GB".format
                         vm.refresh(route.takeIf { it.startsWith("podcast:") }?.substringAfter(':'))
                     }
                     when {
+                        setupScreen -> Unit
                         route == "player" -> {
                             val playing = episodes.firstOrNull { it.id == player.episodeId }
                             if (playing != null) PlayerOverflowMenu(vm, playing, podcasts.firstOrNull { it.id == playing.podcastId })
@@ -151,15 +172,15 @@ fun fileSize(bytes: Long): String = if (bytes >= 1_000_000_000) "%.1f GB".format
                     }
                 }, colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background))
         }, bottomBar = {
-            Column {
-                if (player.episodeId != null && route != "player") {
+            if (!setupScreen && route != "player") Column {
+                if (player.episodeId != null) {
                     val current = episodes.firstOrNull { it.id == player.episodeId }
                     MiniPlayer(player, current?.imageUrl ?: podcasts.firstOrNull { it.id == current?.podcastId }?.imageUrl, { vm.open("player") }, vm::toggle, { vm.root("queue") })
                 }
-                if (route != "player") NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainerLow, tonalElevation = 0.dp) {
+                NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainerLow, tonalElevation = 0.dp) {
                     listOf(Triple("library", "Library", Icons.Default.LibraryMusic), Triple("search", "Search", Icons.Default.Search),
                         Triple("saved", "Saved", Icons.Default.Bookmark), Triple("queue", "Queue", Icons.Default.QueueMusic)).forEach { (key, label, icon) ->
-                        NavigationBarItem(selected = stack.first() == key, onClick = { vm.root(key) }, icon = { Icon(icon, label) }, label = { Text(label) },
+                        NavigationBarItem(selected = productRoot == key, onClick = { vm.root(key) }, icon = { Icon(icon, label) }, label = { Text(label) },
                             colors = DistillComponentDefaults.navigationBarItemColors())
                     }
                 }
@@ -169,7 +190,8 @@ fun fileSize(bytes: Long): String = if (bytes >= 1_000_000_000) "%.1f GB".format
                 .then(if (route == "player" && !videoFullscreen) Modifier.navigationBarsPadding() else Modifier)) {
                 screenState.SaveableStateProvider(route) {
                 when {
-                    !loaded -> CircularProgressIndicator(Modifier.align(Alignment.Center))
+                    route == OnboardingWelcomeRoute -> OnboardingWelcome(vm, account)
+                    route == OnboardingRecoveryRoute -> OnboardingRecovery(vm)
                     route == "library" || route.startsWith("podcast:") -> LibraryPage(vm, podcasts, transcripts, captures, player, route.takeIf { it.startsWith("podcast:") }?.substringAfter(':'))
                     route == "search" -> SearchPage(vm, podcasts)
                     route == "queue" -> QueuePage(vm, episodes, podcasts, player, snackbar)
@@ -183,8 +205,9 @@ fun fileSize(bytes: Long): String = if (bytes >= 1_000_000_000) "%.1f GB".format
                             ShowPreparationDetails(vm, it.id, parts[1] == "attention")
                         }
                     }
+                    route == SetupGuideRoute -> SetupGuidePage(vm)
                     route == "settings" || route.startsWith("settings:") -> SettingsPage(vm, preferences, account, models, episodes, route.substringAfter(':', "overview"))
-                    route == "backup" -> BackupPage(vm) { vm.open("settings:sync") }
+                    route == "backup" -> BackupPage(vm)
                     route == "player" -> PlayerPage(vm, episodes.firstOrNull { it.id == player.episodeId }, podcasts, fullscreenExitRequest) { videoFullscreen = it }
                     route.startsWith("episode:") -> EpisodePage(vm, episodes.firstOrNull { it.id == route.substringAfter(':') }, podcasts, player)
                     route.startsWith("capture:") -> CapturePage(vm, captures.firstOrNull { it.id == route.substringAfter(':') }, episodes, podcasts)
@@ -241,13 +264,18 @@ private val LIBRARY_FILTERS = listOf(Triple("all", "Latest", "Latest"), Triple("
     val routed by vm.library.collectAsStateWithLifecycle()
     val refreshing by remember(vm) { vm.feedRefreshing() }.collectAsStateWithLifecycle(false)
     val deletionBlocks by vm.audioDeletionBlocks.collectAsStateWithLifecycle()
+    val dismissedProblems by vm.dismissedFeedProblems.collectAsStateWithLifecycle()
     val actions = remember(vm) { vm.episodeActions() }
     val fallback = remember(podcastId) { lazy { vm.currentLibraryListing(podcastId) } }
     val listing = routed?.takeIf { it.podcastId == podcastId } ?: fallback.value
     val filter = listing.filter
+    val setupGuide = if (podcastId == null && filter == "all") setupGuideForLibrary(vm) else null
     val subscribed = listing.subscribed
     val selected = listing.selected
     val visible = listing.visible
+    // The Library warning can be swiped away (#264); a show page always shows its own error.
+    val feedProblems = if (podcastId != null) listing.feedProblems
+        else dismissedProblems?.let { undismissedFeedProblems(listing.feedProblems, it) } ?: emptyList()
     val continueListening = if (podcastId == null && filter == "all") listing.continueListening else emptyList()
     val preparationRows = if (selected?.subscribed == true) showPreparationRows(vm, selected.id) else emptyList()
     val attentionIds = remember(preparationRows) { preparationRows.filter { it.retryable }.mapTo(mutableSetOf()) { it.episodeId } }
@@ -260,6 +288,9 @@ private val LIBRARY_FILTERS = listOf(Triple("all", "Latest", "Latest"), Triple("
     LaunchedEffect(podcastId, filter, showResume) { list.scrollToItem(0) }
     PullToRefreshBox(isRefreshing = refreshing, onRefresh = { vm.refresh(podcastId) }, modifier = Modifier.fillMaxSize()) {
     LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(top = 8.dp, bottom = 20.dp)) {
+        if (setupGuide != null) item(key = "library-setup") {
+            LibrarySetupCard(vm, setupGuide, gutter.padding(bottom = DistillSpacing.section))
+        }
         if (selected != null) item {
             Column(gutter.padding(bottom = DistillSpacing.gutter)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -311,17 +342,13 @@ private val LIBRARY_FILTERS = listOf(Triple("all", "Latest", "Latest"), Triple("
                             Icon(Icons.Default.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
-                } else androidx.compose.foundation.lazy.LazyRow(Modifier.padding(top = 6.dp), contentPadding = PaddingValues(horizontal = DistillSpacing.gutter),
-                    horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                    items(subscribed, key = { it.id }) { p -> Column(Modifier.width(76.dp).clickable { vm.open("podcast:${p.id}") }) {
-                        Cover(p.imageUrl, Modifier.size(76.dp)); Text(p.title, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 6.dp))
-                    } }
-                }
+                } else HomeShowRail(subscribed, { vm.open("podcast:${it.id}") }, Modifier.padding(top = 6.dp))
             }
         }
-        if (listing.feedProblems.isNotEmpty()) item(key = "feed-problems") {
+        if (feedProblems.isNotEmpty()) item(key = "feed-problems") {
             Box(gutter.padding(bottom = DistillSpacing.gutter)) {
-                FeedProblems(listing.feedProblems, podcastId != null, refreshing, { vm.refresh(it) }, { vm.open("podcast:$it") }, vm::unsubscribe)
+                FeedProblems(feedProblems, podcastId != null, refreshing, { vm.refresh(it) }, { vm.open("podcast:$it") }, vm::unsubscribe,
+                    onDismiss = if (podcastId == null) ({ vm.dismissFeedProblems(listing.feedProblems) }) else null)
             }
         }
         if (listing.episodeCount > 0) stickyHeader(key = "filters") { LibraryFilters(filter, visible.size, vm::filter) }
@@ -329,7 +356,9 @@ private val LIBRARY_FILTERS = listOf(Triple("all", "Latest", "Latest"), Triple("
             when {
                 filter == "downloads" && listing.episodeCount > 0 -> Empty("Ready for offline listening", "Download an episode from Latest and it will appear here.", "Show latest", { vm.filter("all") })
                 filter == "progress" && listing.episodeCount > 0 -> Empty("Nothing in progress", "Episodes you start listening to will appear here.", "Show latest", { vm.filter("all") })
-                else -> Empty(if (subscribed.isEmpty()) "Your library starts here" else "No episodes here yet", "Find a podcast or add its RSS feed. Your library stays available offline.", "Find podcasts", { vm.root("search") })
+                else -> Empty(if (subscribed.isEmpty()) "Your library starts here" else "No episodes here yet",
+                    "Find a podcast or add its RSS feed. Your library stays available offline.",
+                    if (setupGuide?.listened == false) null else "Find podcasts", { vm.root("search") })
             }
         }
         // Other rows get a constant idle state so position ticks recompose only the current row.
@@ -791,7 +820,7 @@ internal class QueueUndo(val snackbar: SnackbarHostState, val enqueue: (String, 
     if(section=="diagnostics") {DiagnosticsSettings(vm);return}
     LaunchedEffect(account.connected,section) { if (account.connected && section=="ai") vm.graph.account.refreshModels() }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        if(section=="sync") SubscriptionSyncSettings(vm) { vm.open("backup") }
+        if(section=="sync") SyncPage(vm)
         if(section=="voice") VoiceSettings(vm)
         if(section=="playback") {
             PlaybackHeadphoneSettings(vm, prefs)
@@ -807,12 +836,7 @@ internal class QueueUndo(val snackbar: SnackbarHostState, val enqueue: (String, 
             if (account.retry) OutlinedButton(onClick = { vm.graph.account.retry() }) { Text("Retry account connection") }
             if (account.connected) {
                 OutlinedButton(onClick = { vm.graph.account.disconnect() }) { Text("Disconnect account") }
-                if (account.models.isNotEmpty()) {
-                    Text("AI model", style = MaterialTheme.typography.titleSmall)
-                    account.models.forEach { model -> Row(Modifier.fillMaxWidth().clickable { vm.text("aiModel", model) }, verticalAlignment = Alignment.CenterVertically) {
-                        RadioButton(selected = prefs.selectedAiModel == model || prefs.selectedAiModel.isBlank() && model == account.models.first(), onClick = { vm.text("aiModel", model) }); Text(model, Modifier.weight(1f))
-                    } }
-                }
+                AiModelChoices(account.models, prefs.selectedAiModel) { vm.text("aiModel", it) }
                 TextButton(onClick = { vm.graph.account.refreshModels() }) { Text("Refresh model access") }
             }
         }
@@ -829,15 +853,32 @@ internal class QueueUndo(val snackbar: SnackbarHostState, val enqueue: (String, 
         }
         TextButton(onClick = { vm.open("settings:storage") }) { Text("Download network policy") }
         Text("Tiny and Base support English and Portuguese. Model files stay on this phone.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        val readyFiles = rememberReadySetupModelFiles(vm, models)
         whisperModels.forEach { spec ->
             val status = models.firstOrNull { it.id == spec.id }
+            val checking = status?.state == "ready" && readyFiles == null
+            val modelStatus = if (checking) null else setupModelStatus(status?.state, readyFiles?.contains(spec.id) == true)
             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) { RadioButton(selected = prefs.model == spec.id, onClick = { vm.text("model", spec.id) }); Column { Text(spec.title); Text(fileSize(spec.bytes), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) } }
-                    when (status?.state) {
-                        "ready" -> Row(verticalAlignment = Alignment.CenterVertically) { Text("Ready", color = MaterialTheme.extras.success, modifier = Modifier.weight(1f)); TextButton(onClick = { vm.deleteModel(spec.id) }) { Text("Delete model") } }
-                        "queued", "downloading" -> { LinearProgressIndicator(progress = { ((status.bytes).toFloat() / spec.bytes).coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth()); TextButton(onClick = { vm.pauseModel(spec.id) }) { Text("Pause download") } }
-                        else -> OutlinedButton(onClick = { vm.downloadModel(spec.id) }) { Text(if (status?.state in listOf("failed", "paused")) "Resume model download" else "Download model") }
+                    Row(verticalAlignment = Alignment.CenterVertically) { RadioButton(selected = prefs.model == spec.id, onClick = { vm.selectModel(spec.id) }); Column { Text(spec.title); Text(fileSize(spec.bytes), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) } }
+                    when (modelStatus) {
+                        null -> Text("Checking model file…")
+                        SetupModelStatus.READY -> Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("Ready", color = MaterialTheme.extras.success, modifier = Modifier.weight(1f))
+                            TextButton(onClick = { vm.deleteModel(spec.id) }) { Text("Delete model") }
+                        }
+                        SetupModelStatus.QUEUED, SetupModelStatus.DOWNLOADING -> {
+                            LinearProgressIndicator(progress = { ((status?.bytes ?: 0).toFloat() / spec.bytes).coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth())
+                            TextButton(onClick = { vm.pauseModel(spec.id) }) { Text("Pause download") }
+                        }
+                        SetupModelStatus.MISSING, SetupModelStatus.FAILED, SetupModelStatus.PAUSED -> {
+                            val label = when {
+                                status?.state == "ready" -> "Download ${modelName(spec.id)}"
+                                modelStatus == SetupModelStatus.MISSING -> "Download model"
+                                else -> "Resume model download"
+                            }
+                            OutlinedButton(onClick = { vm.downloadModel(spec.id) }) { Text(label) }
+                        }
                     }
                     status?.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
                 }
@@ -858,6 +899,7 @@ internal class QueueUndo(val snackbar: SnackbarHostState, val enqueue: (String, 
         if(section=="notifications") { NotificationControls() }
         if(section=="about") {
         Text("DistillPod · $version", style = MaterialTheme.typography.labelLarge)
+        SettingsGroupCard { SetupLink("Setup guide", onClick = { vm.open(SetupGuideRoute) }) }
         val updates by vm.updates.collectAsState()
         val busy by vm.busy.collectAsState()
         AppUpdatesSection(updates, "update-check" in busy, System.currentTimeMillis(), { vm.flag("updateChecks", it) }, vm::checkForUpdates) { url ->
@@ -878,4 +920,18 @@ internal class QueueUndo(val snackbar: SnackbarHostState, val enqueue: (String, 
         trailingContent = { Switch(checked, onChange, modifier = Modifier.semantics { contentDescription = title }) },
         colors = ListItemDefaults.colors(containerColor = androidx.compose.ui.graphics.Color.Transparent, supportingColor = MaterialTheme.colorScheme.onSurfaceVariant),
         modifier = Modifier.fillMaxWidth())
+}
+
+/** Shows the model AI requests actually use; a saved model the account no longer offers is named, not silently hidden. */
+@Composable
+internal fun AiModelChoices(models: List<String>, saved: String, onSelect: (String) -> Unit) {
+    val active = resolveAiModel(saved, models) ?: return
+    Column(Modifier.selectableGroup(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Text("AI model", style = MaterialTheme.typography.titleSmall)
+        if (saved.isNotBlank() && saved != active)
+            Text("Your saved model, $saved, isn't available for this account, so AI is using $active. Choose a model to change it.", color = MaterialTheme.extras.warning)
+        models.forEach { model -> Row(Modifier.fillMaxWidth().selectable(model == active, role = Role.RadioButton) { onSelect(model) }, verticalAlignment = Alignment.CenterVertically) {
+            RadioButton(selected = model == active, onClick = null); Text(model, Modifier.weight(1f))
+        } }
+    }
 }

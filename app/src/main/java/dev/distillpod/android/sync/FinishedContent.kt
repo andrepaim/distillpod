@@ -55,7 +55,8 @@ class FinishedContent(private val db:AppDatabase,private val isolatedDemo:Boolea
         }
         return db.withTransaction {
             val dao=db.library();val old=dao.episode(id);val oldTranscript=dao.transcript(id)
-            if(old!=null && old.mediaFingerprint!=fingerprint)return@withTransaction false
+            // A streamed and a downloaded copy of the same enclosure are the same source (#250).
+            val source=if(old==null)fingerprint else syncedSourceFingerprint(old,fingerprint,identity.getValue("audioUrl"))?:return@withTransaction false
             if(oldTranscript!=null && ((oldTranscript.revision!=revision && !replaceRevision) || oldTranscript.state in setOf("processing","queued")))return@withTransaction false
             val oldAnalysis=dao.analysis(id)
             if(oldAnalysis?.state in setOf("queued","running"))return@withTransaction false
@@ -64,18 +65,19 @@ class FinishedContent(private val db:AppDatabase,private val isolatedDemo:Boolea
             // References can arrive in a later metadata page; retain the staged artifact and retry.
             if(reports.any {dao.distillation(it.distillationId)?.episodeId!=id})return@withTransaction false
             if(messages.any {it.replyTo!=null && messages.none {parent->parent.id==it.replyTo} && dao.message(it.replyTo)==null})return@withTransaction false
+            if(old!=null && source!=old.mediaFingerprint)adoptSyncedFingerprint(db,old,source)
             val ep=restoreEpisodeIdentity(db,identity)
             check(ep.id==id) {"Episode aliases require explicit mapping before artifact import"}
             if(oldTranscript!=null && oldTranscript.revision==revision && oldTranscript.state=="ready") {
                 require(dao.segments(id,revision)==segments) {"An immutable transcript revision changed"}
             } else {
-                dao.deleteSegments(id);dao.deleteCoverage(id);dao.putTranscriptAt(transcript, TranscriptWriteSite.FINISHED_CONTENT);dao.putSegments(segments);coverage.forEach {dao.putCoverage(it)}
+                dao.deleteTranscriptText(id);dao.putTranscriptAt(transcript.copy(fingerprint=source), TranscriptWriteSite.FINISHED_CONTENT);dao.putSegments(segments);coverage.forEach {dao.putCoverage(it)}
             }
             if(analysis!=null && (dao.analysis(id)==null || replaceRevision))dao.putAnalysis(analysis)
             for(message in messages) {
                 val existing=dao.message(message.id)
                 require(existing==null || (existing.episodeId==id && existing.text==message.text && existing.replyTo==message.replyTo)) {"Message identity changed"}
-                if(existing==null)dao.putMessage(message)
+                if(existing==null)dao.putMessage(message.copy(fingerprint=source))
             }
             for(report in reports)if(dao.research(report.id)==null)dao.putResearch(report)
             true

@@ -15,15 +15,47 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.flow.*
 import org.json.JSONObject
 
-/** A user-authorized document is remembered across launches. Drive uploads remain owned by its provider. */
+/**
+ * A user-authorized document is remembered across launches. Drive uploads remain owned by its provider.
+ * Once a file is connected, [automatic] adds a snapshot each day (see BackupWorker); the screens and the
+ * worker share this one instance, so a scheduled run shows its progress and never overlaps a manual one.
+ */
 class ManagedBackups(
     private val context: Context,
     private val library: LibraryBackup,
     private val settings: AppSettings,
     private val scope: CoroutineScope,
-    private val review: (BackupPreview) -> Unit,
+    /** Called with true when a file becomes connected and false when it is forgotten. */
+    private val schedule: (Boolean) -> Unit = {},
+    /** Receives a restore preview; without one, previews go to [previews] for whichever screen is open. */
+    private val review: ((BackupPreview) -> Unit)? = null,
 ) {
-    companion object { private val operations = Mutex() }
+    companion object {
+        private val operations = Mutex()
+        private const val STATUS = "managedBackupStatus"
+    }
+    /** The latest backup outcome, kept so Settings can show it without reading the provider file. */
+    data class Status(val checkedAt: Long = 0, val savedAt: Long = 0, val error: String = "") {
+        fun json() = JSONObject().put("checkedAt", checkedAt).put("savedAt", savedAt).put("error", error).toString()
+        companion object {
+            fun parse(raw: String) = runCatching { JSONObject(raw).let {
+                Status(it.optLong("checkedAt"), it.optLong("savedAt"), it.optString("error").take(300))
+            } }.getOrDefault(Status())
+        }
+    }
+    sealed interface Automatic {
+        data object Saved : Automatic
+        data object Unchanged : Automatic
+        data object NotConnected : Automatic
+        data object Busy : Automatic
+        /** [needsUser] when retrying cannot help: access was lost, the file is gone or its format is newer. */
+        data class Failed(val needsUser: Boolean) : Automatic
+    }
+    val previews = MutableSharedFlow<BackupPreview>(extraBufferCapacity = 1)
+    val status: Flow<Status> = settings.value(STATUS).map(Status::parse)
+    /** The connected backup file's display name, or null when automatic backup is off. */
+    val file: Flow<String?> = settings.value("managedBackup").map { Location.parse(it)?.name }
+    val connected: Flow<Boolean> = file.map { it != null }
     data class Choice(val id: String, val at: Long, val version: String, val shows: Int, val episodes: Int, val moments: Int, val local: Boolean = false)
     data class Location(val uri: Uri, val name: String, val initialized: Boolean) {
         fun json() = JSONObject().put("uri", uri.toString()).put("name", name).put("initialized", initialized).toString()
@@ -51,35 +83,66 @@ class ManagedBackups(
     private val operationGuard = Any()
     private var activeOperation: Any? = null
 
+    private fun begin(message: String): Any? = synchronized(operationGuard) {
+        if (state.value.working) null else Any().also { activeOperation = it; status(message) }
+    }
     private fun operation(message: String, block: suspend (File) -> Unit) {
-        val operation = synchronized(operationGuard) {
-            if (state.value.working) return
-            Any().also { activeOperation = it; status(message) }
-        }
-        scope.launch {
-            val folder = File(context.cacheDir, "managed-backup-${UUID.randomUUID()}")
-            try {
-                withContext(Dispatchers.IO) {
-                    folder.mkdirs(); recoveryDirectory.mkdirs()
-                    require(folder.isDirectory && recoveryDirectory.isDirectory) { "Phone storage is unavailable. Free some space and try again." }
-                    operations.withLock { block(folder) }
-                }
-            } catch (cancelled: CancellationException) { throw cancelled }
-            catch (error: Exception) {
-                state.value = state.value.copy(working = false, error = true, chooseBackup = false, message = when (error) {
-                    is SecurityException -> "Access to the backup file was lost. Connect the existing file again."
-                    is IllegalArgumentException -> error.message?.take(200) ?: "This backup file is not supported."
-                    is java.util.zip.ZipException, is org.json.JSONException -> "This is not a valid backup history. Use Import older backup for a standalone JSON file."
-                    else -> "The backup file is unavailable. Check the file provider's account and connection, or reconnect the file. Any verified recovery copy is kept on this phone."
-                })
-            } finally {
-                withContext(NonCancellable + Dispatchers.IO) { folder.deleteRecursively() }
-                // A completed result enables the next action before this operation's
-                // temporary-folder cleanup returns. Never interrupt that newer action.
-                synchronized(operationGuard) {
-                    if (activeOperation === operation && state.value.working) state.value = state.value.copy(working = false, error = true, message = "Backup interrupted. Retry when ready; any verified recovery copy has been kept.")
-                }
+        val operation = begin(message) ?: return
+        scope.launch { perform(operation, block) }
+    }
+    private fun failureMessage(error: Exception) = when (error) {
+        is SecurityException -> "Access to the backup file was lost. Connect the existing file again."
+        is IllegalArgumentException -> error.message?.take(200) ?: "This backup file is not supported."
+        is java.util.zip.ZipException, is org.json.JSONException -> "This is not a valid backup history. Use Import older backup for a standalone JSON file."
+        else -> "The backup file is unavailable. Check the file provider's account and connection, or reconnect the file. Any verified recovery copy is kept on this phone."
+    }
+    /** Runs [block] under the process-wide backup lock and returns its failure, already shown in [state]. */
+    private suspend fun perform(operation: Any, block: suspend (File) -> Unit): Exception? {
+        val folder = File(context.cacheDir, "managed-backup-${UUID.randomUUID()}")
+        try {
+            withContext(Dispatchers.IO) {
+                folder.mkdirs(); recoveryDirectory.mkdirs()
+                require(folder.isDirectory && recoveryDirectory.isDirectory) { "Phone storage is unavailable. Free some space and try again." }
+                operations.withLock { block(folder) }
             }
+            return null
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (error: Exception) {
+            state.value = state.value.copy(working = false, error = true, chooseBackup = false, message = failureMessage(error))
+            return error
+        } finally {
+            withContext(NonCancellable + Dispatchers.IO) { folder.deleteRecursively() }
+            // A completed result enables the next action before this operation's
+            // temporary-folder cleanup returns. Never interrupt that newer action.
+            synchronized(operationGuard) {
+                if (activeOperation === operation && state.value.working) state.value = state.value.copy(working = false, error = true, message = "Backup interrupted. Retry when ready; any verified recovery copy has been kept.")
+            }
+        }
+    }
+    private suspend fun record(change: (Status) -> Status) {
+        // Status is a convenience for Settings; failing to store it never fails a verified backup.
+        try { settings.text(STATUS, change(status.first()).json()) } catch (error: Exception) { if (error is CancellationException) throw error }
+    }
+
+    /**
+     * The scheduled backup: the same verified write as [backup], skipped when the library has not changed since
+     * the newest snapshot. It runs in the caller's coroutine so a worker can wait for its outcome.
+     */
+    suspend fun automatic(): Automatic {
+        val selected = location() ?: return Automatic.NotConnected
+        val operation = synchronized(operationGuard) {
+            if (state.value.working || state.value.awaitingDestination) return Automatic.Busy
+            Any().also { activeOperation = it; status("Backing up automatically…") }
+        }
+        var saved = false
+        val error = perform(operation) { folder ->
+            state.value = state.value.copy(location = selected)
+            saved = writeBackup(selected, folder, skipUnchanged = true)
+        }
+        error?.let { failed(it) }
+        return when {
+            error == null -> if (saved) Automatic.Saved else Automatic.Unchanged
+            else -> Automatic.Failed(needsUser = error is SecurityException || error is BackupArchive.Unsupported || error is java.io.FileNotFoundException)
         }
     }
 
@@ -108,6 +171,7 @@ class ManagedBackups(
                 throw error
             }
             if (previous != null && previous.uri != uri) release(previous.uri)
+            schedule(true)
         }
     }
     fun connect(uri: Uri?) {
@@ -121,13 +185,20 @@ class ManagedBackups(
             atomicCopy(recovery(selected), file)
             settings.text("managedBackup", selected.json())
             if (previous != null && previous.uri != uri) release(previous.uri)
-            state.value = State("Backup file connected. Future saves and restores use this file.", location = selected, history = snapshots.map { choice(it.record) })
+            val latest = snapshots.maxOfOrNull { it.record.at } ?: 0L
+            record { Status(checkedAt = System.currentTimeMillis(), savedAt = latest) }
+            schedule(true)
+            state.value = State("Backup file connected. It is updated automatically each day; restores use this file.", location = selected, history = snapshots.map { choice(it.record) })
         }
     }
     fun backup() = operation("Preparing your library backup…") { folder ->
         val selected = location() ?: throw IllegalArgumentException("Create or connect a backup file first.")
         state.value = state.value.copy(location = selected)
-        writeBackup(selected, folder)
+        try { writeBackup(selected, folder) }
+        catch (error: Exception) { if (error !is CancellationException) failed(error); throw error }
+    }
+    private suspend fun failed(error: Exception) = withContext(NonCancellable) {
+        record { it.copy(checkedAt = System.currentTimeMillis(), error = failureMessage(error)) }
     }
     fun refresh(choose: Boolean = false) = operation("Loading saved backups…") { folder ->
         val selected = location()
@@ -155,17 +226,20 @@ class ManagedBackups(
         val snapshot = snapshots.firstOrNull { it.record.id == id } ?: throw IllegalArgumentException("That backup changed. Refresh the history and choose again.")
         val preview = snapshot.file.inputStream().use { library.preview(it) }
         state.value = state.value.copy(message = "", working = false, error = false, chooseBackup = false)
-        review(preview)
+        review?.invoke(preview) ?: previews.emit(preview)
     }
     fun disconnect() = operation("Disconnecting the backup file…") { _ ->
         // Disconnecting changes only this installation's preference; it never deletes cloud files or recovery data.
         val previous = location()
         settings.text("managedBackup", "")
+        record { Status() }
+        schedule(false)
         previous?.let { release(it.uri) }
         state.value = State("Backup file disconnected. Its saved backups were kept.")
     }
 
-    private suspend fun writeBackup(selected: Location, folder: File, fresh: Boolean = false) {
+    /** Returns false when [skipUnchanged] found the library identical to the newest snapshot and wrote nothing. */
+    private suspend fun writeBackup(selected: Location, folder: File, fresh: Boolean = false, skipUnchanged: Boolean = false): Boolean {
         var original: File? = null
         var recovered = false
         val remote = if (fresh) null else download(selected.uri, File(folder, "previous.zip"))
@@ -183,7 +257,18 @@ class ManagedBackups(
         }
         val safeOriginal = original
         val previous = safeOriginal?.let { BackupArchive.read(it, File(folder, "previous")) }.orEmpty()
-        val bytes = library.export(PortablePreferences.from(settings.flow.first()), context.packageManager.getPackageInfo(context.packageName, 0).versionName.orEmpty())
+        val export = library.exportWithReport(PortablePreferences.from(settings.flow.first()), context.packageManager.getPackageInfo(context.packageName, 0).versionName.orEmpty())
+        val bytes = export.bytes
+        val newest = previous.maxByOrNull { it.record.at }
+        if (skipUnchanged && !recovered && newest != null) {
+            val current = library.contentFingerprint(bytes)
+            if (current != null && current == library.contentFingerprint(newest.file.readBytes())) {
+                if (safeOriginal != null) atomicCopy(recovery(selected), safeOriginal)
+                record { it.copy(checkedAt = System.currentTimeMillis(), savedAt = maxOf(it.savedAt, newest.record.at), error = "") }
+                state.value = State("Backup is up to date. Nothing changed since the latest backup.", location = selected, history = previous.map { choice(it.record) })
+                return false
+            }
+        }
         val preview = library.preview(bytes.inputStream())
         val snapshot = File(folder, "current.json").apply { writeBytes(bytes) }
         val archive = File(folder, "next.zip")
@@ -209,13 +294,16 @@ class ManagedBackups(
             throw error
         }
         // A metadata failure must not delete or roll back a verified provider-file backup.
-        val warnings = mutableListOf<String>()
+        val warnings = listOfNotNull(export.warning).toMutableList()
         try { atomicCopy(recovery(selected), archive) } catch (_: IOException) { warnings += "The recovery copy could not be updated on this phone." }
         val connected = selected.copy(initialized = true)
         try { settings.text("managedBackup", connected.json()) } catch (error: Exception) { if (error is CancellationException) throw error; warnings += "Connection details could not be saved. Reconnect this file after restarting." }
+        val savedAt = retained.maxOfOrNull { it.record.at } ?: System.currentTimeMillis()
+        record { Status(checkedAt = System.currentTimeMillis(), savedAt = savedAt) }
         state.value = State((if (recovered) "Backup repaired and saved. " else "Backup saved and checked. ") +
             "The file provider handles any cloud upload and sync; cloud upload is not verified here." + warnings.joinToString(" ", prefix = if (warnings.isEmpty()) "" else " "),
             error = warnings.isNotEmpty(), location = connected, history = retained.map { choice(it.record) })
+        return true
     }
     private fun release(uri: Uri) { runCatching { resolver.releasePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION) } }
     private fun persist(uri: Uri) {

@@ -50,6 +50,9 @@ class HttpYouTubeMetadataFetcher(http: OkHttpClient) : YouTubeMetadataFetcher {
     private companion object { const val LIMIT = 2_000_000L }
 }
 
+private const val SINGLE_VIDEO_JSON =
+    "%(.{id,url,title,channel,uploader,description,thumbnails,availability,live_status,is_live,duration,timestamp,upload_date,formats})j"
+
 /** No account, cookies, API key, remote service or runtime code update. */
 class AndroidYouTubeExtractor(private val context: Context,
     private val signal: (String, String, Long, String) -> Unit = { _, _, _, _ -> }) : YouTubeExtractor {
@@ -63,10 +66,14 @@ class AndroidYouTubeExtractor(private val context: Context,
                 val data = ExtractionCall(execute = { id ->
                     initializeRuntime()
                     val request = YoutubeDLRequest(url).addOption("--ignore-config").addOption("--no-update")
-                        .addOption("--skip-download").addOption("--dump-single-json")
+                        .addOption("--skip-download")
                         .addOption("--socket-timeout", 12).addOption("--retries", 0).addOption("--extractor-retries", 0)
-                    if (flat) request.addOption("--flat-playlist").addOption("--playlist-end", limit)
-                    else request.addOption("--no-playlist")
+                    if (flat) {
+                        request.addOption("--flat-playlist").addOption("--playlist-end", limit).addOption("--dump-single-json")
+                    } else {
+                        // Multi-language caption tables can exceed the response limit on ordinary lectures.
+                        request.addOption("--no-playlist").addOption("--print", SINGLE_VIDEO_JSON)
+                    }
                     val response = YoutubeDL.getInstance().execute(request, id, null)
                     require(response.out.length <= 10_000_000) { "YouTube response is too large" }
                     JSONObject(response.out)

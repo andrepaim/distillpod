@@ -4,6 +4,7 @@ import androidx.room.withTransaction
 import dev.distillpod.android.ai.AiGateway
 import dev.distillpod.android.QuotaExceeded
 import dev.distillpod.android.ReauthorizationRequired
+import dev.distillpod.android.work.WorkStop
 import dev.distillpod.core.TimeRange
 import dev.distillpod.core.normalizeRanges
 import kotlinx.coroutines.*
@@ -46,7 +47,12 @@ internal fun validatedAnalysis(text: String, segments: List<SegmentEntity>): JSO
     return value.put("summary", summary)
 }
 
-/** Completed parts are checkpoints; interrupted requests always require explicit retry. */
+private const val ANALYSIS_PAUSED = "Analysis paused. Completed parts are saved."
+
+/**
+ * Completed parts are checkpoints. An analysis stopped by the system resumes from them when WorkManager reruns
+ * it (#84); a pause or other interruption waits for an explicit retry.
+ */
 class EpisodeUnderstanding(private val db: AppDatabase, private val ai: AiGateway,
     private val enqueueAnalysis: (String) -> Unit, private val enqueueReply: (String) -> Unit) {
     private val dao = db.library()
@@ -67,7 +73,8 @@ class EpisodeUnderstanding(private val db: AppDatabase, private val ai: AiGatewa
         }
         enqueueAnalysis(id)
     }
-    suspend fun runAnalysis(id: String) {
+    /** [stop] classifies a cancellation: only a stop WorkManager reruns returns the row to the queue. */
+    suspend fun runAnalysis(id: String, stop: suspend () -> WorkStop = { WorkStop.ENDED }) {
         val row = db.withTransaction { dao.analysis(id)?.takeIf { it.state == "queued" }?.also { dao.putAnalysis(it.copy(state = "running", error = null)) } } ?: return
         try {
             val transcript = source(id, row.revision)
@@ -117,7 +124,14 @@ class EpisodeUnderstanding(private val db: AppDatabase, private val ai: AiGatewa
             updateAnalysis(row) { it.copy(state = "succeeded", summary = summaries.single(),
                 chaptersJson = JSONArray(chapters).toString(), adsJson = JSONArray(ads).toString(), completedParts = parts.size, totalParts = parts.size, model = finalModel, error = null) }
         } catch (error: Exception) {
-            withContext(NonCancellable) { updateAnalysis(row) { it.copy(state = failureState(error), error = failureText(error)) } }
+            withContext(NonCancellable) {
+                val stopped = if (error is CancellationException) stop() else null
+                updateAnalysis(row) { when (stopped) {
+                    WorkStop.RESCHEDULED -> it.copy(state = "queued", error = null)
+                    WorkStop.PAUSED -> it.copy(state = "failed", error = ANALYSIS_PAUSED)
+                    else -> it.copy(state = failureState(error), error = failureText(error))
+                } }
+            }
             if (error is CancellationException) throw error
         }
     }
@@ -198,6 +212,9 @@ class EpisodeUnderstanding(private val db: AppDatabase, private val ai: AiGatewa
             if (error is CancellationException) throw error
         }
     }
+    /** Pauses only work that is still queued or running; a result that finished first stays visible. */
+    suspend fun pauseAnalysis(id: String) { dao.pauseAnalysis(id, ANALYSIS_PAUSED) }
+    suspend fun pauseReply(id: String) { dao.pauseReply(id, "This reply is incomplete. Retry when ready.") }
     private suspend fun requireActive(row: AnalysisEntity) {
         require(dao.analysis(row.episodeId)?.let { it.state == "running" && it.revision == row.revision && it.attempt == row.attempt } == true) { "Analysis was paused" }
     }

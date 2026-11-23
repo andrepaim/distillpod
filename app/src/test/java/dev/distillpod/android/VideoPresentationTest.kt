@@ -1,6 +1,7 @@
 package dev.distillpod.android
 
 import dev.distillpod.android.features.VideoPresentation
+import dev.distillpod.android.features.modeSwitchFailure
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -20,5 +21,9 @@ class VideoPresentationTest {
         val exited = VideoPresentation().orientation(true, true).exit()
         assertFalse(exited.orientation(true, true).fullscreen)
         assertTrue(exited.orientation(false, true).orientation(true, true).fullscreen)
+    }
+    @Test fun `failed audio request never reports an unavailable video`() {
+        assertNull(modeSwitchFailure(requestedVideo = false))
+        assertEquals("Video is unavailable. Switched to audio mode.", modeSwitchFailure(requestedVideo = true))
     }
 }

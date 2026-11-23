@@ -7,6 +7,7 @@ import subprocess
 import time
 
 from ci_failure_state import record_failure_state
+import ci_logcat
 
 
 def main():
@@ -21,11 +22,22 @@ def main():
         parser.error('a command is required')
     start = time.monotonic()
     try:
+        logcat = ci_logcat.start(args.phase)
+    except Exception:
+        # Optional diagnostics must never prevent or replace the phase itself.
+        logcat = None
+        print('CI logcat capture could not start', flush=True)
+    try:
         code = subprocess.run(command).returncode
         if code < 0:
             code = 128 - code
     except OSError:
         code = 127
+    try:
+        if ci_logcat.finish(logcat, args.phase, failed=code != 0):
+            print(f'CI logcat for failed phase {args.phase} saved', flush=True)
+    except Exception:
+        print('CI logcat could not be saved', flush=True)
     record = {'phase': args.phase, 'elapsed_seconds': round(time.monotonic() - start, 3),
               'exit_code': code}
     if code:

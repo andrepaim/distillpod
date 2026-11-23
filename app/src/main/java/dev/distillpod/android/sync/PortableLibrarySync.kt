@@ -73,6 +73,13 @@ class PortableLibrarySync(private val db:AppDatabase,private val isolatedDemo:Bo
     /** Called inside a transaction which has already checked the AI attempt/source identity. */
     internal suspend fun recordMoment(value:DistillationEntity):Boolean {
         val ep=dao.episode(value.episodeId) ?: return false
+        if(!MomentGeneration.syncCompatible(value.sourceJson,value.endMs)) {
+            // Installations before #124 reject a passage ending more than 15 s after the tap, and one
+            // rejected record stops all of their sync. Keep it local, and drop any queued older snapshot:
+            // its acknowledgement would otherwise project the older cloud copy over this result.
+            sync.binding()?.let { sync.removeQueued(it.uid,it.generation,"moment_${value.id}") }
+            return false
+        }
         var payload=identity(ep)?.plus(mapOf("momentId" to value.id,"startMs" to value.startMs.toString(),"endMs" to value.endMs.toString(),
             "excerpt" to value.excerpt,"quote" to (value.quote?:""),"insight" to (value.insight?:""),"revision" to value.revision,
             "fingerprint" to value.fingerprint,"createdAt" to value.createdAt.toString(),"model" to (value.model?:""))) ?: return false
@@ -213,8 +220,12 @@ internal suspend fun projectPortable(db:AppDatabase,r:CloudSubscription,force:Bo
             val insight=p.getValue("insight").ifBlank {null};val quote=p.getValue("quote").ifBlank {null}
             val source=p["sourceJson"].orEmpty()
             MomentGeneration.validateSource(source,p.getValue("startMs").toLong(),p.getValue("endMs").toLong())
+            // A streamed and a downloaded copy of the same enclosure are the same source (#250); any other
+            // identity is kept as sent, so the moment stays in source review.
+            val sent=p.getValue("fingerprint")
+            val fingerprint=syncedSourceFingerprint(ep,sent,p.getValue("audioUrl"))?.also {if(it!=ep.mediaFingerprint)adoptSyncedFingerprint(db,ep,it)}?:sent
             val restored=DistillationEntity(p.getValue("momentId"),ep.id,p.getValue("startMs").toLong(),p.getValue("endMs").toLong(),p.getValue("excerpt"),quote,insight,
-                p.getValue("revision"),p.getValue("fingerprint"),state=if(insight!=null)"succeeded" else "saved",createdAt=p.getValue("createdAt").toLong(),model=p.getValue("model").ifBlank {null},sourceJson=source)
+                p.getValue("revision"),fingerprint,state=if(insight!=null)"succeeded" else "saved",createdAt=p.getValue("createdAt").toLong(),model=p.getValue("model").ifBlank {null},sourceJson=source)
             val local=dao.distillation(restored.id)
             // An acknowledgement of our own snapshot must not erase a queued/reviewing attempt.
             if(local==null || momentSnapshot(local)!=momentSnapshot(restored) || force) {

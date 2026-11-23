@@ -4,7 +4,7 @@ DistillPod keeps its library, queue, listening position, transcripts, saved exce
 
 ## Current Spark-only deployment
 
-The selected deployment has billing disabled. Sync is optional and requires a Firebase-configured build; ordinary source/debug builds have no production Firebase configuration. Google sign-in and feed review are required before library data is shared. Queue and portable preferences can synchronize through Firestore without enabling Cloud Storage. Transcripts and other finished text remain local; their experimental Storage adapter is disabled in builds. Manual Backup & Restore remains available for text transfer.
+The selected deployment has billing disabled. Sync is optional and requires a Firebase-configured build; ordinary source/debug builds have no production Firebase configuration. Google sign-in and feed review are required before library data is shared. Queue and portable preferences can synchronize through Firestore without enabling Cloud Storage. Transcripts and other finished text remain local; their experimental Storage adapter is disabled in builds. Automatic backup to a file you choose keeps transcripts and other text.
 
 ## Optional library sync
 
@@ -34,7 +34,7 @@ Whisper transcription runs locally on the phone. Requested AI operations send se
 
 ## Backups and exports
 
-Library backups contain readable personal library data: subscription and episode metadata, progress, queue, transcripts, saved moments and stored generated text, plus language/model choices. Manual Drive backup uses Android’s document picker; the selected provider manages cloud sync. Managed backups are ZIP histories containing readable library data, social-post cover thumbnails and images from earlier infographic posts, with no passphrase encryption. Image-bearing snapshots use a bounded binary wrapper; older JSON snapshots remain readable. Persistent access to the user-selected file is stored only on that installation. Verified recovery copies stay in private app storage. They exclude account credentials, downloaded audio, model binaries and device-private file paths. OPML contains subscription titles and feed addresses. Choose destinations carefully and share exports only deliberately.
+Library backups contain readable personal library data: subscription and episode metadata, progress, queue, transcripts, saved moments and stored generated text, plus language/model choices. Drive backup uses a file chosen once in Android’s document picker and is updated daily by a background job when the library changed; the selected provider manages cloud sync. Managed backups are ZIP histories containing readable library data, social-post cover thumbnails and images from earlier infographic posts, with no passphrase encryption. Image-bearing snapshots use a bounded binary wrapper; older JSON snapshots remain readable. Persistent access to the user-selected file is stored only on that installation. Verified recovery copies stay in private app storage. They exclude account credentials, downloaded audio, model binaries and device-private file paths. OPML contains subscription titles and feed addresses. Choose destinations carefully and share exports only deliberately.
 
 Do not include personal backups, feeds containing access tokens, recordings, account data or private screenshots in issue reports. A minimal reproduction on a development emulator is preferable. Repeated AI requests may consume additional plan allowance.
 

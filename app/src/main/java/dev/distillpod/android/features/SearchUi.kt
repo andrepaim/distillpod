@@ -38,6 +38,7 @@ import dev.distillpod.android.data.PodcastEntity
 import dev.distillpod.core.YouTubeUrl
 import dev.distillpod.android.ui.theme.extras
 import dev.distillpod.android.ui.theme.Button
+import dev.distillpod.android.ui.theme.OutlinedButton
 import dev.distillpod.android.ui.theme.TextButton
 
 @Composable internal fun SearchPage(vm: AppViewModel, podcasts: List<PodcastEntity>) {
@@ -48,7 +49,7 @@ import dev.distillpod.android.ui.theme.TextButton
     val library by vm.librarySearch.collectAsStateWithLifecycle()
     SearchScreen(query, state, recent, podcasts, busy, vm::query,
         { term -> vm.query(term); vm.search() }, vm::clearSearches, vm::subscribe,
-        { vm.open("podcast:$it") }, { vm.open("recommendations") }, vm::retrySearch, library, vm::open)
+        { vm.open("podcast:$it") }, { vm.open("recommendations") }, vm::retrySearch, library, vm::open, vm::browsePodcast)
 }
 
 private val SEARCH_FORMATS = listOf("All", "Audio", "Video")
@@ -69,7 +70,8 @@ private val topics = listOf(SearchTopic("Technology", Icons.Default.Memory), Sea
 @Composable internal fun SearchScreen(query: String, state: SearchState, recent: List<String>, podcasts: List<PodcastEntity>, busy: Set<String>,
     onQuery: (String) -> Unit, onSearch: (String) -> Unit, onClearRecent: () -> Unit, onFollow: (String) -> Unit,
     onOpenPodcast: (String) -> Unit, onExplore: () -> Unit, onRetryProvider: (String) -> Unit = {},
-    library: LibrarySearchState = LibrarySearchState(), onOpenRoute: (String) -> Unit = {}) {
+    library: LibrarySearchState = LibrarySearchState(), onOpenRoute: (String) -> Unit = {},
+    onBrowse: (String) -> Unit = {}) {
     var format by rememberSaveable { mutableStateOf("All") }
     fun accepts(provider: String) = format == "All" || (provider == "youtube") == (format == "Video")
     val librarySections = remember(library.matches, format) { librarySections(library.matches, format) }
@@ -86,7 +88,7 @@ private val topics = listOf(SearchTopic("Technology", Icons.Default.Memory), Sea
     var preview by remember { mutableStateOf<PodcastCandidate?>(null) }
     var rss by rememberSaveable { mutableStateOf(false) }
     var rssDraft by rememberSaveable { mutableStateOf("") }
-    val adding = busy.any { it.startsWith("subscribe:") }
+    val adding = "browse-podcast" in busy || busy.any { it.startsWith("subscribe:") }
     val list = rememberLazyListState()
     // Back from a result keeps the list where it was; only a new search or filter starts at the top.
     val listKey = "${displayed.submittedQuery}|$format|${library.terms}"
@@ -212,9 +214,21 @@ private val topics = listOf(SearchTopic("Technology", Icons.Default.Memory), Sea
                 Text(candidate.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
                 if (candidate.author.isNotBlank()) Text(candidate.author, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (candidate.category.isNotBlank()) StatusLabel(candidate.category)
-                Text(if (followed != null) "Already in your library. Open the show to browse its episodes." else "Follow this show to browse its episodes and keep it in your library.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Button(onClick = { if (followed != null) { preview = null; onOpenPodcast(followed.id) } else follow(candidate) }, enabled = !adding,
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp).semantics { contentDescription = if (followed != null) "Open previewed podcast" else "Follow previewed podcast" }) { Text(if (followed != null) "Open podcast" else "Follow podcast") }
+                if (followed == null) {
+                    Text("Browse episodes to listen now, or follow the show to add it to your library.",
+                        style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Button(onClick = { preview = null; onBrowse(candidate.feedUrl) }, enabled = !adding,
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) { Text("Browse episodes") }
+                    OutlinedButton(onClick = { follow(candidate) }, enabled = !adding,
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp).semantics { contentDescription = "Follow previewed podcast" }) {
+                        Text("Follow podcast")
+                    }
+                } else {
+                    Button(onClick = { preview = null; onOpenPodcast(followed.id) }, enabled = !adding,
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp).semantics { contentDescription = "Open previewed podcast" }) {
+                        Text("Open podcast")
+                    }
+                }
             }
         }
     }
@@ -226,6 +240,8 @@ private val topics = listOf(SearchTopic("Technology", Icons.Default.Memory), Sea
             OutlinedTextField(rssDraft, { rssDraft = it.take(2048) }, label = { Text("RSS or YouTube URL") }, modifier = Modifier.fillMaxWidth().testTag("Feed address"), maxLines = 3)
             Button(onClick = { rss = false; onQuery(rssDraft.trim()); onFollow(rssDraft.trim()) }, enabled = isFeedAddress(rssDraft) && !adding,
                 modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) { Text("Add feed") }
+            OutlinedButton(onClick = { rss = false; onQuery(rssDraft.trim()); onBrowse(rssDraft.trim()) }, enabled = isFeedAddress(rssDraft) && !adding,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) { Text("Browse episodes") }
         }
     }
 }

@@ -40,6 +40,8 @@ class MomentExplanation(private val db: AppDatabase, private val ai: AiGateway, 
             if (error is CancellationException) throw error
         }
     }
+    /** Pauses only an explanation that is still queued or running; a finished one stays visible. */
+    suspend fun pause(id: String) { dao.pauseResearch(id, "Explanation paused. Your source is saved.") }
     suspend fun recoverInterrupted() {
         dao.researches().forEach { if (it.state == "running") dao.putResearch(it.copy(state = "failed", error = "Explanation was interrupted. Retry when ready.")) else if (it.state == "queued") enqueue(it.id) }
     }

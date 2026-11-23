@@ -15,9 +15,9 @@ class AttemptDiagnosticsTest {
     private fun id()=UUID.randomUUID().toString()
     private val epoch=id()
     @Test fun `retry comparisons are local flags and never leak model or input text`() {
-        val first=MomentAttemptEntity(id(),id(),JSONObject(AttemptDiagnostics.context(false,request=id(),consentEpoch=epoch))
+        val first=MomentAttemptEntity(id(),id(),JSONObject(AttemptDiagnostics.context(dev.distillpod.core.ContextWindow.STANDARD,request=id(),consentEpoch=epoch))
             .put("revision",id()).put("promptVersion",1).toString(),model="private-model")
-        val next=MomentAttemptEntity(id(),first.momentId,JSONObject(AttemptDiagnostics.context(true,previous=first,trigger="transcript_changed",consentEpoch=epoch))
+        val next=MomentAttemptEntity(id(),first.momentId,JSONObject(AttemptDiagnostics.context(dev.distillpod.core.ContextWindow.EARLIER,previous=first,trigger="transcript_changed",consentEpoch=epoch))
             .put("revision",id()).put("promptVersion",2).toString(),model="different-private-model")
         val c=AttemptDiagnostics.correlation(next,first,consentEpoch=epoch)
         assertEquals(first.id,c.previousAttemptId)
@@ -28,7 +28,7 @@ class AttemptDiagnosticsTest {
         assertEquals(true,c.fields()["correlation_complete"])
     }
     @Test fun `explicit resume trigger is consumed and later recovery is distinct`() {
-        val a=MomentAttemptEntity(id(),id(),AttemptDiagnostics.context(false,request=id(),consentEpoch=epoch),generationCalls=1,candidateJson="saved")
+        val a=MomentAttemptEntity(id(),id(),AttemptDiagnostics.context(dev.distillpod.core.ContextWindow.STANDARD,request=id(),consentEpoch=epoch),generationCalls=1,candidateJson="saved")
         val resumed=a.copy(contextJson=AttemptDiagnostics.resume(a.contextJson,"review_resume",epoch))
         val acquired=resumed.copy(contextJson=AttemptDiagnostics.executionContext(resumed,epoch))
         assertEquals("review_resume",AttemptDiagnostics.correlation(acquired,consentEpoch=epoch).retryTrigger)

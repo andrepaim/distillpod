@@ -19,6 +19,23 @@ data class BackupPreview internal constructor(internal val payload: String, val 
     val moments get() = counts["distillations"] ?: 0
 }
 
+/**
+ * An exported library and the post images left out because they could not be read; [affectedPosts] holds the
+ * episode name of each post saved without its image.
+ */
+class LibraryExport(val bytes: ByteArray, val skippedImages: Int = 0, val affectedPosts: List<String> = emptyList()) {
+    /** What the backup screens tell the user, or null when nothing was left out. */
+    val warning: String? get() {
+        if (skippedImages == 0) return null
+        val names = affectedPosts.distinct()
+        val shown = names.take(3).joinToString(", ") { "“${it.take(60)}”" } + if (names.size > 3) " and ${names.size - 3} more" else ""
+        val images = if (skippedImages == 1) "1 post image could not be read and was left out."
+            else "$skippedImages post images could not be read and were left out."
+        val posts = if (affectedPosts.size == 1) "Post saved without it" else "Posts saved without them"
+        return "$images $posts: $shown."
+    }
+}
+
 /** A bounded, versioned data transfer. Only allowlisted library tables enter this format. */
 class LibraryBackup(private val db: AppDatabase, private val assets: dev.distillpod.android.sharing.PostAssets? = null,
     private val now: () -> Long = System::currentTimeMillis,
@@ -32,7 +49,13 @@ class LibraryBackup(private val db: AppDatabase, private val assets: dev.distill
     }
     private fun sha(text: String) = MessageDigest.getInstance("SHA-256").digest(text.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
 
-    suspend fun export(preferences: PortablePreferences? = null, appVersion: String = ""): ByteArray = db.withTransaction {
+    suspend fun export(preferences: PortablePreferences? = null, appVersion: String = ""): ByteArray = exportWithReport(preferences, appVersion).bytes
+
+    /**
+     * A post image that cannot be read never blocks the backup: it is left out, the exported post no longer
+     * references it, and the result reports it. The library itself is not changed.
+     */
+    suspend fun exportWithReport(preferences: PortablePreferences? = null, appVersion: String = ""): LibraryExport = db.withTransaction {
         val tables = JSONObject()
         var count = 0
         for (table in backupTables) {
@@ -54,14 +77,32 @@ class LibraryBackup(private val db: AppDatabase, private val assets: dev.distill
             }
             tables.put(table, rows)
         }
+        val images = PostBackupBundle.collect(tables, assets)
         val createdAt = System.currentTimeMillis()
         val payload = if (preferences == null) tables.toString() else JSONObject().put("library", tables)
             .put("preferences", PortablePreferences.parse(preferences.json()).json()).put("createdAt", createdAt).put("appVersion", appVersion.take(100)).toString()
         val bytes = JSONObject().put("format", "distillpod-library").put("version", if (preferences == null) 1 else 2).put("databaseSchema", 7)
             .put("createdAt", createdAt).put("payload", payload).put("sha256", sha(payload)).toString().toByteArray(Charsets.UTF_8)
         require(bytes.size <= BACKUP_LIMIT) { "This library exceeds the 32 MB backup limit" }
-        PostBackupBundle.pack(bytes, PostBackupBundle.references(tables), assets)
+        LibraryExport(PostBackupBundle.pack(bytes, images.bytes), images.skipped, images.affectedPosts)
     }
+
+    /**
+     * Identifies a snapshot's library content, ignoring when and by which app version it was written, so an
+     * automatic backup can skip an unchanged library instead of crowding out older history. Post images count.
+     * Returns null for a snapshot it cannot read; callers then treat the library as changed.
+     */
+    fun contentFingerprint(snapshot: ByteArray): String? = runCatching {
+        val (bytes, images) = PostBackupBundle.unpack(snapshot)
+        val root = JSONObject(bytes.toString(Charsets.UTF_8))
+        val payload = root.getString("payload")
+        val content = if (root.optInt("version") == 2) JSONObject(payload).apply { remove("createdAt"); remove("appVersion") }.toString() else payload
+        val digest = MessageDigest.getInstance("SHA-256")
+        digest.update(root.optInt("databaseSchema").toString().toByteArray())
+        digest.update(content.toByteArray(Charsets.UTF_8))
+        images.toSortedMap().forEach { (name, image) -> digest.update(name.toByteArray(Charsets.UTF_8)); digest.update(image) }
+        digest.digest().joinToString("") { "%02x".format(it) }
+    }.getOrNull()
 
     suspend fun preview(input: InputStream): BackupPreview = withContext(Dispatchers.IO) {
         val (bytes, images) = PostBackupBundle.unpack(input.readBytesBounded())
@@ -214,13 +255,36 @@ class LibraryBackup(private val db: AppDatabase, private val assets: dev.distill
             repeat(rows.length()) { i ->
                 val row = rows.getJSONObject(i)
                 if (row.has("episodeId") && !row.isNull("episodeId")) episodeIds[row.getString("episodeId")]?.let { row.put("episodeId", it) }
+                if (table in listOf("transcripts", "messages", "distillations")) dao.episode(row.getString("episodeId"))?.let { current ->
+                    if (row.getString("fingerprint") == downloadedSince(current)) row.put("fingerprint", current.mediaFingerprint)
+                }
                 if (table == "transcripts") {
                     val current = dao.episode(row.getString("episodeId"))
                     if (current != null && current.mediaFingerprint != row.getString("fingerprint")) row.put("state", "stale").put("error", "Restored transcript belongs to an older audio source. Prepare the current audio again.")
                 }
             }
         }
+        // A prepared or failed attempt checks its frozen context against the episode identity on retry.
+        val moments = tables.getJSONArray("distillations").let { rows -> (0 until rows.length()).map { rows.getJSONObject(it) } }
+            .associate { it.getString("id") to it.getString("episodeId") }
+        val attempts = tables.getJSONArray("moment_attempts")
+        repeat(attempts.length()) { i ->
+            val row = attempts.getJSONObject(i)
+            val current = moments[row.getString("momentId")]?.let { dao.episode(it) } ?: return@repeat
+            val context = JSONObject(row.getString("contextJson"))
+            if (context.optString("fingerprint") == downloadedSince(current)) row.put("contextJson", context.put("fingerprint", current.mediaFingerprint).toString())
+        }
     }
+
+    /**
+     * A backup made while an episode was only streamed carries its provisional enclosure identity. When
+     * the episode has since been downloaded here, the file's hash replaced that identity without implying
+     * different audio (#245), so restored work tied to it follows the episode to the hash (#249). Returns
+     * that provisional identity, or null while the episode still has it. Any other identity is kept, and
+     * a transcript tied to it is restored stale.
+     */
+    private fun downloadedSince(current: EpisodeEntity): String? =
+        dev.distillpod.core.episodeId("enclosure", current.audioUrl).takeIf { it != current.mediaFingerprint }
 
     private fun exists(table: String, keys: List<Column>, row: JSONObject): Boolean {
         check(keys.isNotEmpty())

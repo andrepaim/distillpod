@@ -1,18 +1,19 @@
-# Google Drive backup and restore
+# Google Drive automatic backup and restore
 
 ## One-time setup
 
-Open **Settings → Backup & Restore → Create backup file**. In Android’s picker choose the intended **Drive account → My Drive**, select a folder, and save the suggested **DistillPod-backups.zip** name. DistillPod remembers read/write access to that exact document. After setup:
+Open **Settings → Sync → Set up automatic backup** (or **Restore from a backup → Create backup file**). In Android’s picker choose the intended **Drive account → My Drive**, select a folder, and save the suggested **DistillPod-backups.zip** name. DistillPod remembers read/write access to that exact document. After setup:
 
+- A daily background job adds a snapshot when the library changed since the newest one and the phone is online with battery not low. See [sync as one concept](sync-only-settings.md#automatic-backup) for skip, retry and failure rules. The Sync page and its Settings row show the last backup time or failure.
 - **Back up now** saves to the connected file without choosing a folder or typing a filename.
 - **Restore a backup** lists dated snapshots inside DistillPod, newest first. Select one, review its contents, then merge.
 - **Connect existing backup** reconnects a managed backup file after reinstalling or on another phone. This requires a file selection once on that installation.
 - **Connect another backup file** changes the destination. **Create another backup file** starts a separate history while keeping the old file.
-- **Forget backup connection** removes the remembered connection and releases its persistent file permission. It does not delete the cloud file or library.
+- **Turn off automatic backup** removes the remembered connection, cancels the daily job and releases its persistent file permission. It does not delete the cloud file or library.
 
-The connected document keeps up to ten recent snapshots, subject to a 128 MiB total expanded-history limit and a 64 MiB archive limit. Each individual snapshot keeps the existing 32 MiB/100,000-record library limits. Older snapshots are removed from this managed history to fit the count and expanded-size limits. If the compressed archive still exceeds its limit, create another backup file; the existing file is kept. Standalone JSON files exported by older versions are never automatically converted, overwritten or deleted.
+The connected document keeps up to ten snapshots: the five newest plus the newest of each earlier calendar week, subject to a 128 MiB total expanded-history limit and a 64 MiB archive limit. Each individual snapshot keeps the existing 32 MiB/100,000-record library limits. Older snapshots are removed from this managed history to fit the count and expanded-size limits. If the compressed archive still exceeds its limit, create another backup file; the existing file is kept. Standalone JSON files exported by older versions are never automatically converted, overwritten or deleted.
 
-This is **one-tap saving to a remembered destination**, not a scheduled background backup or live synchronization between libraries. Your file provider manages upload and cloud sync. A successful read-back confirms the provider accepted the saved bytes, not that another device has already downloaded them. Check Drive before relying on the file from another device.
+This is **a daily backup to a remembered destination**, not live synchronization between libraries. Your file provider manages upload and cloud sync. A successful read-back confirms the provider accepted the saved bytes, not that another device has already downloaded them. Check Drive before relying on the file from another device.
 
 ## Restoring and older exports
 
@@ -36,9 +37,11 @@ Room library merge and optional preference storage are separate transactions. Pr
 
 Included: subscriptions and episode metadata, listening position/completion, queue and saved player speed, transcripts/coverage, saved moments, analyses and parts, stored chat/research/suggestions. Portable preferences are explicitly allowlisted: transcription model choice, language and AI model choice.
 
+Posts are included with their stored images: card cover thumbnails and earlier infographic images travel in the same ZIP bundle, and restore refuses a bundle whose library names an image it does not carry. A post image that is missing or damaged on the phone does not block the backup. That image is left out, and the backed-up copy of its post no longer refers to it. A card loses its cover and tint, and the Cover look becomes Ember. An earlier infographic becomes a text post that keeps its description. The library on the phone is not changed. **Back up now** and **Save backup to Google Drive** report how many images were left out and name the affected posts by episode. Such a backup is an ordinary format-2 bundle, so earlier app versions restore it too.
+
 Excluded: downloaded audio, private audio paths, model binaries, account tokens, device network/power/storage settings, job requests/states, recent searches, connected-document URIs and backup receipts. Preferred models can be unavailable on the destination; install/select an available model before using them.
 
-Managed histories are ZIP files containing a small manifest and ordinary versioned DistillPod JSON snapshots. ZIP compression is **not encryption**. The contents include personal text and feed URLs, which may include private access links. Keep the file private. Checksums detect corruption, not authorship. Passphrase encryption and scheduled backups remain future work.
+Managed histories are ZIP files containing a small manifest and ordinary versioned DistillPod JSON snapshots. ZIP compression is **not encryption**. The contents include personal text and feed URLs, which may include private access links. Keep the file private. Checksums detect corruption, not authorship. Passphrase encryption remains future work.
 
 History format 1 contains bounded entries with independent SHA-256 checksums. Import checks entry names, duplicates, expanded sizes, record metadata and hashes, and never extracts user-supplied paths. Every selected snapshot still passes the existing library validation and atomic-merge rules. Standalone library formats 1 and 2 with backup schema markers 1–4 are supported. The backup schema marker is separate from the Room database schema (currently 8). Older backups receive defaults for fields introduced later, including online transcripts; lookup consent and retry cooldowns are not restored.
 

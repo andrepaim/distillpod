@@ -50,18 +50,19 @@ class AppJobs(private val context: Context) {
             if (info.constraints.requiredNetworkType != network) manager.updateWork(request(kind, target, prefs, info)).get()
         }
         context.appGraph.transcription.configureNetworkPolicy()
-        configureRefresh()
     } }
     fun refresh(id:String = "") { manager.enqueueUniqueWork(if(id.isBlank())"refresh" else "refresh:$id", ExistingWorkPolicy.KEEP, request("refresh", id, Preferences(wifiOnly = false))) }
     /**
      * Runs on every process start and Settings change. An unchanged schedule is kept as is; updating it
      * each time would bump the request generation and rewrite WorkManager state for nothing.
+     * Feed checks are small and run on any network; the Wi-Fi / unmetered setting limits downloads only (#233).
+     * A schedule registered by an earlier version with an unmetered constraint is updated in place.
      */
     suspend fun configureRefresh() {
         val prefs = context.appGraph.settings.flow.first()
         if (!prefs.refresh) { manager.cancelUniqueWork("refresh-periodic"); return }
         val interval = TimeUnit.HOURS.toMillis(prefs.refreshHours.toLong())
-        val network = if (prefs.wifiOnly) NetworkType.UNMETERED else NetworkType.CONNECTED
+        val network = NetworkType.CONNECTED
         val current = withContext(Dispatchers.IO) { manager.getWorkInfosForUniqueWork("refresh-periodic").get() }.firstOrNull { !it.state.isFinished }
         val unchanged = current != null && current.periodicityInfo?.repeatIntervalMillis == interval &&
             current.constraints.requiredNetworkType == network
@@ -85,13 +86,25 @@ class AppJobs(private val context: Context) {
      */
     internal suspend fun stopped(kind: String, id: String, workId: java.util.UUID, stopReason: Int?) = withContext(NonCancellable + Dispatchers.IO) {
         downloadControls.withLock {
-            val byApp = stopReason?.let { it == WorkInfo.STOP_REASON_CANCELLED_BY_APP }
-                ?: (manager.getWorkInfoById(workId).get()?.state == WorkInfo.State.CANCELLED)
-            if (byApp) transition(kind, id, "paused", null, PAUSABLE_TRANSFER_STATES)
-            else if (manager.getWorkInfosForUniqueWork("$kind:$id").get().any { !it.state.isFinished })
-                transition(kind, id, "queued", null, PAUSABLE_TRANSFER_STATES)
+            when (classifyStop("$kind:$id", workId, stopReason)) {
+                WorkStop.PAUSED -> transition(kind, id, "paused", null, PAUSABLE_TRANSFER_STATES)
+                WorkStop.RESCHEDULED -> transition(kind, id, "queued", null, PAUSABLE_TRANSFER_STATES)
+                WorkStop.ENDED -> {}
+            }
         }
         Unit
+    }
+    /** Same rules for a stopped AI request (#84): Pause cancels it, any other stop is rerun by WorkManager. */
+    internal suspend fun stopped(name: String, workId: java.util.UUID, stopReason: Int?): WorkStop =
+        withContext(NonCancellable + Dispatchers.IO) { classifyStop(name, workId, stopReason) }
+    private fun classifyStop(name: String, workId: java.util.UUID, stopReason: Int?): WorkStop {
+        val byApp = stopReason?.let { it == WorkInfo.STOP_REASON_CANCELLED_BY_APP }
+            ?: (manager.getWorkInfoById(workId).get()?.state == WorkInfo.State.CANCELLED)
+        return when {
+            byApp -> WorkStop.PAUSED
+            manager.getWorkInfosForUniqueWork(name).get().any { !it.state.isFinished } -> WorkStop.RESCHEDULED
+            else -> WorkStop.ENDED
+        }
     }
     /** Settle an active transfer that no longer has work; never rewrites a pause, resume or completion. */
     internal suspend fun settle(kind: String, id: String, state: String, error: String?) =
@@ -139,6 +152,9 @@ class AppJobs(private val context: Context) {
         } }
         .addTag("$kind:$id").build()
 }
+
+/** How a worker stop ends: Pause in the app or notification, a stop WorkManager reruns, or neither. */
+enum class WorkStop { PAUSED, RESCHEDULED, ENDED }
 
 private val ACTIVE_TRANSFER_STATES = listOf("queued", "downloading")
 /** The transfer records its own cancellation as paused before the worker classifies the stop. */
@@ -213,12 +229,33 @@ class UnderstandingWorker(context: Context, params: WorkerParameters) : Coroutin
         graph.ready.await()
         val target = inputData.getString("id") ?: return Result.failure()
         when (inputData.getString("kind")) {
-            "analysis" -> graph.understanding.runAnalysis(target)
+            "analysis" -> {
+                // A long analysis outlasts an ordinary job's time limit once the user leaves the app (#84).
+                // Appended duplicates and finished rows return at once without a notification.
+                if (graph.db.library().analysis(target)?.state == "queued") startForeground(graph, "Generating summary & chapters")
+                graph.understanding.runAnalysis(target) {
+                    if (!isStopped) WorkStop.ENDED
+                    else graph.jobs.stopped("analysis:$target", id, if (Build.VERSION.SDK_INT >= 31) stopReason else null)
+                }
+            }
             "reply" -> graph.understanding.runReply(target)
             "explain" -> graph.explanations.run(target)
             else -> return Result.failure()
         }
         return Result.success()
+    }
+
+    /**
+     * Without the foreground service the analysis still runs as an ordinary job, and a stop at its time
+     * limit resumes from the saved parts, so a refused or failed start never blocks the request.
+     */
+    private suspend fun startForeground(graph: AppGraph, title: String) {
+        try { setForeground(workForeground(applicationContext, id, title)) }
+        catch (error: Exception) {
+            if (error is CancellationException) throw error
+            currentCoroutineContext().ensureActive()
+            if (!error.isForegroundStartRejected()) graph.diagnostics.failure("worker", error)
+        }
     }
 }
 class RecommendationWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
@@ -230,11 +267,16 @@ class RecommendationWorker(context: Context, params: WorkerParameters) : Corouti
     }
 }
 
+/** Downloads, transcription and AI work share one channel. Its id keeps existing user settings; recreating it updates the name. */
+const val PROCESSING_CHANNEL = "processing"
+fun createProcessingChannel(context: Context) = context.getSystemService(NotificationManager::class.java)
+    .createNotificationChannel(NotificationChannel(PROCESSING_CHANNEL, "Background tasks", NotificationManager.IMPORTANCE_LOW))
+
 fun workForeground(context: Context, workId: java.util.UUID, title: String, media: Boolean = false): ForegroundInfo {
     val manager = context.getSystemService(NotificationManager::class.java)
-    manager.createNotificationChannel(NotificationChannel("processing", "Downloads and transcription", NotificationManager.IMPORTANCE_LOW))
+    createProcessingChannel(context)
     val intent = PendingIntent.getActivity(context, 0, Intent(context, MainActivity::class.java), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-    val notification = NotificationCompat.Builder(context, "processing").setSmallIcon(android.R.drawable.ic_popup_sync)
+    val notification = NotificationCompat.Builder(context, PROCESSING_CHANNEL).setSmallIcon(android.R.drawable.ic_popup_sync)
         .setContentTitle(title).setContentText("DistillPod · tap to view progress").setContentIntent(intent).setOngoing(true)
         .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Pause", WorkManager.getInstance(context).createCancelPendingIntent(workId)).build()
     val type = if (media && Build.VERSION.SDK_INT >= 35) ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROCESSING else ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC

@@ -7,15 +7,22 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import dev.distillpod.android.AppGraph
+import dev.distillpod.android.auto.AutoPlayback
 import dev.distillpod.android.data.*
 import dev.distillpod.android.video.streamNeedsResolving
+import dev.distillpod.core.FirstRunSetup
+import dev.distillpod.core.FirstRunStatus
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.*
 
+private const val BACK_STACK = "backStack"
+private const val LAUNCH_ROUTES = "launchRoutes"
+private const val SETUP_DESTINATION = "setupDestination"
+
 class AppViewModel(val graph: AppGraph, private val saved: SavedStateHandle) : ViewModel() {
     private val dao = graph.db.library()
-    val backStack = saved.getStateFlow("backStack", arrayListOf("library"))
+    val backStack = saved.getStateFlow(BACK_STACK, arrayListOf<String>())
     val query = saved.getStateFlow("query", "")
     val filter = saved.getStateFlow("filter", "all")
     val chatDraft = saved.getStateFlow("chatDraft", "")
@@ -35,15 +42,13 @@ class AppViewModel(val graph: AppGraph, private val saved: SavedStateHandle) : V
     val captures = dao.observeDistillations().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     val localTranscripts = dao.observeTranscripts().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     val onlineTranscripts = dao.observeOnlineTranscripts().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
-    val transcripts = combine(localTranscripts, onlineTranscripts, episodes) { local, online, library ->
+    /** Transcripts kept readable while an explicit local replacement is prepared (#229). */
+    val previousTranscripts = dao.observePreviousTranscripts().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    val transcripts = combine(localTranscripts, previousTranscripts, onlineTranscripts, episodes) { local, previous, online, library ->
         val localById = local.associateBy { it.episodeId }
+        val previousById = previous.associateBy { it.episodeId }
         val onlineById = online.associateBy { it.episodeId }
-        library.mapNotNull { ep ->
-            val row = localById[ep.id]
-            val cached = onlineById[ep.id]?.takeIf { it.matches(ep) }
-            if (row?.state == "ready" && row.source != "online" && row.fingerprint == ep.mediaFingerprint) row
-            else cached?.transcript(ep) ?: row
-        }
+        library.mapNotNull { ep -> effectiveTranscript(ep, localById[ep.id], previousById[ep.id], onlineById[ep.id]) }
     }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     val audioDeletionBlocks = combine(episodes, localTranscripts, dao.observeQueue(), graph.media.active.changes) {
         library, local, queue, _ ->
@@ -70,15 +75,32 @@ class AppViewModel(val graph: AppGraph, private val saved: SavedStateHandle) : V
 
     val player = graph.playback.state
     /**
+     * The Shows screen's pins, which also order Home's "Your shows" row (#276). Null until settings load, so the
+     * row does not reorder on launch; an unreadable store pins nothing.
+     */
+    private val pinnedShows: StateFlow<Set<String>?> = graph.settings.shows.map { it.pinnedFeeds }
+        .catch { emit(emptySet()) }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
+    /**
      * Rows for the Library tab or show page on top of the back stack, filtered here instead of on
      * every recomposition (#141). Shared eagerly on Main.immediate, so navigation and filter changes
-     * update it before the page composes; other screens hold null and filter nothing.
+     * update it before the page composes; other screens hold null and filter nothing. Pin changes made
+     * in Shows reorder Home's show row when the owner returns.
      */
-    internal val library: StateFlow<LibraryListing?> = libraryListings(podcasts, episodes, filter, player, backStack.map { it.lastOrNull() })
-        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+    internal val library: StateFlow<LibraryListing?> = libraryListings(podcasts, episodes, filter, player, backStack.map { it.lastOrNull() },
+        pinnedShows.filterNotNull()).stateIn(viewModelScope, SharingStarted.Eagerly, null)
+    /**
+     * Keys of Library refresh warnings the owner swiped away (#264); see [undismissedFeedProblems]. Null until
+     * settings load, so a dismissed warning does not flash on launch; an unreadable store dismisses nothing.
+     */
+    internal val dismissedFeedProblems: StateFlow<Set<String>?> = graph.settings.dismissedFeedProblems
+        .catch { emit(emptySet()) }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
+    /** Hides the Library warning for these failing shows until one of them refreshes, or another show fails. */
+    internal fun dismissFeedProblems(problems: List<PodcastEntity>) = action("dismiss-feed-problems") {
+        graph.settings.dismissFeedProblems(problems.mapTo(HashSet(), ::feedProblemKey))
+    }
     /** The same rows from current values, for a page composed before [library] reflects it. */
     internal fun currentLibraryListing(podcastId: String?): LibraryListing =
-        libraryListing(podcasts.value, episodes.value, filter.value, podcastId, player.value.episodeId)
+        libraryListing(podcasts.value, episodes.value, filter.value, podcastId, player.value.episodeId, pinnedShows.value.orEmpty())
     private val directorySearch = PodcastSearch(viewModelScope, graph.podcasts::search, graph.settings::rememberSearch,
         graph.podcasts.searchProviderNames, graph.podcasts::searchProviders)
     val search = directorySearch.state
@@ -96,12 +118,85 @@ class AppViewModel(val graph: AppGraph, private val saved: SavedStateHandle) : V
         finished = { state -> messages.trySend(audioCleanupSummary(state.result, state.cancelled,
             state.phase == AudioCleanupPhase.FAILED)) })
     val loaded = MutableStateFlow(false)
+    private val firstRun = MutableStateFlow<FirstRunSetup?>(null)
+    internal val onboarding = firstRun.asStateFlow()
     val backupDocuments = BackupDocuments(graph.context, graph.backup, graph.settings, viewModelScope) { graph.playback.synchronizeRestoredQueue() }
-    val managedBackups = ManagedBackups(graph.context, graph.backup, graph.settings, viewModelScope, backupDocuments::review)
-    init { viewModelScope.launch { dao.observeEpisodes().first(); loaded.value = true } }
-    fun root(route: String) { saved["backStack"] = arrayListOf(route) }
-    fun open(route: String) { if (backStack.value.lastOrNull() != route) saved["backStack"] = ArrayList(backStack.value + route) }
-    fun back() { if (backStack.value.size > 1) saved["backStack"] = ArrayList(backStack.value.dropLast(1)) }
+    val managedBackups get() = graph.managedBackups
+    init {
+        viewModelScope.launch {
+            val setup = graph.loadFirstRunSetup()
+            dao.observeEpisodes().first()
+            val launchRoutes = saved.remove<ArrayList<String>>(LAUNCH_ROUTES).orEmpty()
+            updateFirstRun(setup, launchRoutes)
+            saved.remove<String>(SETUP_DESTINATION)
+            loaded.value = true
+            if (!FirstRunTestAccess.bypass) {
+                // Another task may have completed setup or dismissed the card while this one was in the background.
+                graph.settings.firstRunSetup.filterNotNull()
+                    .catch { /* Retain the known state if the store fails after it was read. */ }
+                    .collect { updateFirstRun(it) }
+            }
+        }
+        // Managed backups outlive this screen; their restore previews open in this one's review dialog.
+        viewModelScope.launch { graph.managedBackups.previews.collect(backupDocuments::review) }
+    }
+    fun root(route: String) {
+        if (!loaded.value) saved.remove<ArrayList<String>>(LAUNCH_ROUTES)
+        saved[BACK_STACK] = ArrayList(replaceProductRoot(backStack.value, route))
+    }
+    fun open(route: String) {
+        if (!loaded.value) {
+            val launchRoutes = saved.get<ArrayList<String>>(LAUNCH_ROUTES).orEmpty()
+            saved[LAUNCH_ROUTES] = ArrayList(appendProductRoute(launchRoutes, route))
+            return
+        }
+        val stack = backStack.value
+        if (stack.lastOrNull() != route) saved[BACK_STACK] = ArrayList(stack + route)
+    }
+    fun back() { if (backStack.value.size > 1) saved[BACK_STACK] = ArrayList(backStack.value.dropLast(1)) }
+
+    internal fun playFromMediaSearch(query: String) {
+        viewModelScope.launch {
+            graph.ready.await()
+            val id = withContext(Dispatchers.IO) { AutoPlayback(graph.db).voice(query) } ?: return@launch
+            try {
+                graph.playback.play(id)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                return@launch
+            }
+            loaded.first { it }
+            if (firstRun.value?.status == FirstRunStatus.PENDING) open("player")
+        }
+    }
+
+    internal fun finishSetup(destination: String) {
+        require(destination == "search" || destination == "library")
+        if (firstRun.value?.status != FirstRunStatus.PENDING || backStack.value.lastOrNull()?.isOnboardingRoute() != true) return
+        action("finish-setup") {
+            // A saved task can be restored between the DataStore write and the navigation update.
+            saved[SETUP_DESTINATION] = destination
+            try {
+                updateFirstRun(graph.settings.completeFirstRunSetup())
+            } finally {
+                saved.remove<String>(SETUP_DESTINATION)
+            }
+        }
+    }
+
+    internal fun dismissSetupCard() {
+        if (firstRun.value != FirstRunSetup(FirstRunStatus.DONE, cardDismissed = false)) return
+        action("dismiss-setup-card") { updateFirstRun(graph.settings.dismissSetupCard()) }
+    }
+
+    private fun updateFirstRun(setup: FirstRunSetup, launchRoutes: List<String> = emptyList()) {
+        if (setup.status == FirstRunStatus.PENDING && firstRun.value?.status == FirstRunStatus.DONE) return
+        val stack = backStack.value
+        val updated = firstRunBackStack(stack, launchRoutes, setup.status, saved[SETUP_DESTINATION])
+        if (updated != stack) saved[BACK_STACK] = ArrayList(updated)
+        firstRun.value = setup
+    }
     fun query(value: String) {
         val bounded = value.take(if (isFeedAddress(value)) 2048 else 200)
         if (bounded != query.value) { saved["query"] = bounded; directorySearch.clear() }
@@ -129,8 +224,14 @@ class AppViewModel(val graph: AppGraph, private val saved: SavedStateHandle) : V
     }
     fun retrySearch(provider: String) = directorySearch.retry(provider)
     fun subscribe(url: String) = action("subscribe:$url") {
-        val candidate = search.value.results.firstOrNull { it.feedUrl == url }
+        // The show page uses its final URL after a redirect. Retain directory-follow approval for its listed source.
+        val originalUrl = podcasts.value.firstOrNull { it.feedUrl == url }?.originalFeedUrl
+        val candidate = search.value.results.firstOrNull { it.feedUrl == url || it.feedUrl == originalUrl }
         val id = if (candidate != null) graph.podcasts.follow(candidate) else graph.podcasts.subscribe(url); messages.send("Subscribed"); open("podcast:$id")
+    }
+    internal fun browsePodcast(url: String) = action("browse-podcast") {
+        val id = graph.podcasts.browse(url)
+        open("podcast:$id")
     }
     val episodeDetails = graph.podcasts.episodeDetails
     /** Quiet background check; the episode page shows checking, unavailable and retry states. */
@@ -207,6 +308,8 @@ class AppViewModel(val graph: AppGraph, private val saved: SavedStateHandle) : V
         else graph.updateChecker.announce(update)
     }
     fun text(key: String, value: String) = action("settings") { graph.settings.text(key, value) }
+    /** Waiting transcripts without saved chunks go on when the newly selected model is already downloaded (#225). */
+    fun selectModel(id: String) = action("settings") { graph.settings.text("model", id); graph.transcription.resumeSelectedModel() }
     fun createPost(momentId: String) = action("create-post:$momentId") {
         open("post:${graph.socialResults.create(momentId)}")
     }
@@ -220,17 +323,18 @@ class AppViewModel(val graph: AppGraph, private val saved: SavedStateHandle) : V
         graph.diagnostics.event("capture.requested",source="phone")
         val (id, position, file) = graph.playback.captureSource()
         val ep = dao.episode(id) ?: error("Episode is unavailable")
-        val saved = graph.captures.capture(id, position, file != null && file == ep.localFile)
+        val saved = graph.captures.capture(id, position, dev.distillpod.android.data.capturedFromOwnSource(ep, file))
         graph.diagnostics.event("capture.accepted",saved,source="phone")
         messages.send("Moment saved at ${timestamp(position)}")
         if (openSaved) open("capture:$saved")
     }
     fun generateCapture(id: String, confirm: Boolean = false) = action("capture:$id") { graph.diagnostics.usage("distillation");graph.captures.generate(id, confirm) }
-    fun improveCapture(id: String, expanded: Boolean = false) = action("capture:$id") { graph.captures.improve(id, expanded) }
+    fun improveCapture(id: String) = action("capture:$id") { graph.captures.improve(id) }
+    fun expandCapture(id: String, window: dev.distillpod.core.ContextWindow) = action("capture:$id") { graph.captures.expand(id, window) }
     fun retranscribeCapture(id: String) = action("capture:$id") {
         val moment=dao.distillation(id) ?: return@action
         graph.transcription.prepare(moment.episodeId, forceLocal=true)
-        graph.captures.improve(id, expanded=true)
+        graph.captures.improve(id, dev.distillpod.core.ContextWindow.EARLIER)
     }
     fun restoreCapture(id: String, version: String) = action("capture:$id") { graph.captures.restoreVersion(id, version) }
     fun cancelCapture(id: String) = action("capture:$id") { graph.jobs.cancelCapture(id); graph.captures.cancel(id) }
@@ -252,13 +356,13 @@ class AppViewModel(val graph: AppGraph, private val saved: SavedStateHandle) : V
     fun analyze(id: String) = action("analysis:$id") { graph.understanding.analyze(id) }
     fun pauseAnalysis(id: String) = action("analysis:$id") {
         graph.jobs.cancelAnalysis(id)
-        dao.analysis(id)?.let { dao.putAnalysis(it.copy(state = "failed", error = "Analysis paused. Completed parts are saved.")) }
+        graph.understanding.pauseAnalysis(id)
     }
     fun approveAd(id: String, index: Int, approved: Boolean) = action("ad:$id:$index") { graph.understanding.approveAd(id, index, approved) }
     fun ask(id: String) = action("ask:$id") { graph.understanding.ask(id, chatDraft.value); saved["chatDraft"] = "" }
     fun retryReply(id: String) = action("reply:$id") { graph.understanding.retryReply(id) }
     fun pauseReply(id: String) = action("reply:$id") {
-        graph.jobs.cancelReply(id); dao.message(id)?.let { dao.putMessage(it.copy(state = "failed", error = "This reply is incomplete. Retry when ready.")) }
+        graph.jobs.cancelReply(id); graph.understanding.pauseReply(id)
     }
     fun undoAdSkip() = action("seek") {
         val skipped = graph.playbackEvents.lastSkipped.value ?: return@action
@@ -267,7 +371,7 @@ class AppViewModel(val graph: AppGraph, private val saved: SavedStateHandle) : V
     }
     fun explain(id: String) = action("explain:$id") { open("research:${graph.explanations.create(id)}") }
     fun pauseExplanation(id: String) = action("explain:$id") {
-        graph.jobs.cancelExplanation(id); dao.research(id)?.let { dao.putResearch(it.copy(state = "failed", error = "Explanation paused. Your source is saved.")) }
+        graph.jobs.cancelExplanation(id); graph.explanations.pause(id)
     }
     suspend fun explanationText(id: String): String {
         val report = dao.research(id) ?: error("Explanation is unavailable")

@@ -174,6 +174,7 @@ internal enum class PlayerSheetTab(val label: String) { UP_NEXT("Up next"), TRAN
     // TranscriptToolState.canRedoLocally, without collecting live transcription progress in the top bar.
     val canTranscribeAgain = effective.firstOrNull { it.episodeId == ep.id }?.source == "online" ||
         local.firstOrNull { it.episodeId == ep.id }?.state in listOf("ready", "partial", "failed")
+    val transcribeAgain = rememberTranscribeAgain(vm, ep)
     Box {
         IconButton(onClick = { expanded = true }) { Icon(Icons.Default.MoreVert, "More player actions") }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
@@ -184,7 +185,7 @@ internal enum class PlayerSheetTab(val label: String) { UP_NEXT("Up next"), TRAN
             DropdownMenuItem(text = { Text("Open queue") }, leadingIcon = { Icon(Icons.AutoMirrored.Filled.QueueMusic, null) },
                 onClick = { expanded = false; vm.root("queue") })
             if (canTranscribeAgain) DropdownMenuItem(text = { Text("Transcribe locally again") }, leadingIcon = { Icon(Icons.Default.GraphicEq, null) },
-                onClick = { expanded = false; vm.prepareTranscript(ep.id, true) })
+                onClick = { expanded = false; transcribeAgain() })
         }
     }
 }

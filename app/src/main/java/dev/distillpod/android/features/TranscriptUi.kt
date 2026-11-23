@@ -55,6 +55,7 @@ import dev.distillpod.android.data.EpisodeEntity
 import dev.distillpod.android.data.SegmentEntity
 import dev.distillpod.android.data.TranscriptEntity
 import dev.distillpod.android.data.TranscriptStage
+import dev.distillpod.android.data.whisperModels
 import dev.distillpod.android.ui.theme.DistillSpacing
 import dev.distillpod.android.ui.theme.DistillType
 import dev.distillpod.android.ui.theme.Button
@@ -69,14 +70,21 @@ import dev.distillpod.android.ui.theme.TextButton
     val row: TranscriptEntity?, val effective: TranscriptEntity?, val running: Boolean, val duration: Long, val saved: Long,
     val worked: Long, val fraction: Float, val stage: TranscriptStage?, val statusText: String,
     val shortStatus: String, val chunk: String?, val busy: Boolean,
+    val waiting: WaitingModelChoice? = null, val replacing: Boolean = false,
 ) {
     val canRead: Boolean get() = (effective?.processedMs ?: 0) > 0
     val canPause: Boolean get() = row?.state in listOf("processing", "queued")
-    val needsModel: Boolean get() = row?.state == "waiting_model"
+    /** Waiting for a model that has to be downloaded first. */
+    val needsModel: Boolean get() = waiting != null && waiting.prepareWith == null
     val canRedoLocally: Boolean get() = effective?.source == "online" || row?.state in listOf("ready", "partial", "failed")
-    /** "Prepare transcript" or "Resume transcript" when preparation can start, else null. */
+    /** "Prepare transcript", "Resume transcript" or "Prepare with <model>" when preparation can start, else null. */
     val prepareLabel: String? get() = when (row?.state) {
-        "processing", "queued", "waiting_model", "ready" -> null
+        "waiting_model" -> waiting?.prepareWith?.let { model -> when {
+            model != row.model -> "Prepare with ${modelName(model)}"
+            row.processedMs > 0 -> "Resume transcript"
+            else -> "Prepare transcript"
+        } }
+        "processing", "queued", "ready" -> null
         null, "stale" -> "Prepare transcript"
         else -> "Resume transcript"
     }
@@ -109,13 +117,91 @@ internal fun transcriptShortStatus(state: String?, source: String?, stage: Trans
     }
 }
 
+/** A transcription model's short name: "Tiny", "Base". */
+internal fun modelName(id: String) = whisperModels.firstOrNull { it.id == id }?.title?.substringBefore(" ·") ?: id
+
+/**
+ * How a transcript waiting for a model can go on (#225). Its own model resumes it whenever that model
+ * is ready. Without saved chunks it may use the selected model once that one is ready. Saved chunks
+ * keep their model (#228): download it, or explicitly start over with the selected one.
+ */
+internal data class WaitingModelChoice(val prepareWith: String? = null, val download: String? = null, val startOverWith: String? = null)
+
+internal fun waitingModelChoice(row: TranscriptEntity?, selected: String, ready: Set<String>): WaitingModelChoice? {
+    if (row?.state != "waiting_model") return null
+    val saved = row.processedMs > 0
+    return when {
+        row.model in ready -> WaitingModelChoice(prepareWith = row.model)
+        !saved && selected in ready -> WaitingModelChoice(prepareWith = selected)
+        !saved -> WaitingModelChoice()
+        else -> WaitingModelChoice(download = row.model, startOverWith = selected.takeIf { it != row.model && it in ready })
+    }
+}
+
+/** The text of a dialog that confirms replacing transcript text (#229). */
+internal data class ReplaceConfirmation(val title: String, val body: String, val confirm: String)
+
+private fun languageName(language: String) = when (language) { "en" -> "English"; "pt" -> "Português"; else -> "automatic language detection" }
+
+internal fun transcribeAgainConfirmation(model: String, language: String, modelReady: Boolean) = ReplaceConfirmation(
+    "Transcribe locally again?",
+    "A new transcript made on this phone with ${modelName(model)} and ${languageName(language)} replaces the current one. " +
+        "The current transcript stays readable and searchable until the new one is ready." +
+        if (modelReady) "" else " ${modelName(model)} isn't downloaded yet, so the new transcript waits for it.",
+    "Transcribe again")
+
+internal fun startOverConfirmation(row: TranscriptEntity, model: String) = ReplaceConfirmation(
+    "Start over with ${modelName(model)}?",
+    "${timestamp(row.processedMs)} of this episode was transcribed with ${modelName(row.model)}. A new transcript made with " +
+        "${modelName(model)} replaces it. The saved text stays readable until the new transcript is ready.",
+    "Start over")
+
+@Composable internal fun ReplaceTranscriptDialog(confirmation: ReplaceConfirmation, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(onDismissRequest = onDismiss, title = { Text(confirmation.title) }, text = { Text(confirmation.body) },
+        confirmButton = { TextButton(onClick = onConfirm) { Text(confirmation.confirm) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } })
+}
+
+/** Asks before "Transcribe locally again" replaces an episode's transcript (#229); returns the request action. */
+@Composable internal fun rememberTranscribeAgain(vm: AppViewModel, ep: EpisodeEntity): () -> Unit {
+    var asking by remember(ep.id) { mutableStateOf(false) }
+    if (asking) {
+        val prefs by vm.graph.preferences.collectAsStateWithLifecycle()
+        val models by vm.models.collectAsStateWithLifecycle()
+        ReplaceTranscriptDialog(transcribeAgainConfirmation(prefs.model, prefs.language, models.any { it.id == prefs.model && it.state == "ready" }),
+            onConfirm = { asking = false; vm.prepareTranscript(ep.id, true) }, onDismiss = { asking = false })
+    }
+    return { asking = true }
+}
+
+/** Asks before a waiting transcript's saved chunks give way to a transcript with the selected model (#225). */
+@Composable private fun rememberStartOver(vm: AppViewModel, ep: EpisodeEntity, state: TranscriptToolState): () -> Unit {
+    var asking by remember(ep.id) { mutableStateOf(false) }
+    val row = state.row
+    val model = state.waiting?.startOverWith
+    if (asking && row != null && model != null) ReplaceTranscriptDialog(startOverConfirmation(row, model),
+        onConfirm = { asking = false; vm.prepareTranscript(ep.id, true) }, onDismiss = { asking = false })
+    return { asking = true }
+}
+
+/** The waiting transcript's download action: its own model directly, or the model list in Settings. */
+private fun downloadForWaiting(vm: AppViewModel, state: TranscriptToolState) {
+    state.waiting?.download?.let { vm.downloadModel(it) }
+    vm.open("settings:transcription")
+}
+private fun downloadLabel(state: TranscriptToolState) = state.waiting?.download?.let { "Download ${modelName(it)}" } ?: "Download a model"
+
 @Composable internal fun rememberTranscriptToolState(vm: AppViewModel, ep: EpisodeEntity): TranscriptToolState {
     val transcripts by vm.localTranscripts.collectAsStateWithLifecycle()
+    val previous by vm.previousTranscripts.collectAsStateWithLifecycle()
+    val models by vm.models.collectAsStateWithLifecycle()
     val effectiveTranscripts by vm.transcripts.collectAsStateWithLifecycle()
     val effective = effectiveTranscripts.firstOrNull { it.episodeId == ep.id }
     val row = transcripts.firstOrNull { it.episodeId == ep.id }
     val busy by vm.busy.collectAsStateWithLifecycle()
     val prefs by vm.graph.preferences.collectAsStateWithLifecycle()
+    val waiting = waitingModelChoice(row, prefs.model, models.filter { it.state == "ready" }.map { it.id }.toSet())
+    val replacing = row?.state != "ready" && previous.any { it.episodeId == ep.id && it.matches(ep) }
     val progress by vm.graph.transcription.progress.collectAsStateWithLifecycle()
     val live = progress[ep.id]?.takeIf { it.revision == row?.revision }
     val running = row?.state in listOf("queued", "processing")
@@ -147,7 +233,13 @@ internal fun transcriptShortStatus(state: String?, source: String?, stage: Trans
         }
         "queued" -> "Queued · waiting for power, network or an Android processing slot"
         "processing" -> "Preparing on this phone · ${timestamp(row.processedMs)} completed"
-        "waiting_model" -> if (prefs.transcribeOnPlayback) "Download a model to enable automatic transcription" else "Download the selected model in Settings to continue"
+        "waiting_model" -> when {
+            waiting?.prepareWith != null && waiting.prepareWith != row.model -> "${modelName(waiting.prepareWith)} is ready · prepare the transcript with it"
+            waiting?.prepareWith != null -> "${modelName(row.model)} is ready · continue preparing the transcript"
+            waiting?.download != null -> "Needs the ${modelName(row.model)} model · ${timestamp(row.processedMs)} transcribed with it is saved"
+            prefs.transcribeOnPlayback -> "Download a model to enable automatic transcription"
+            else -> "Download the selected model in Settings to continue"
+        }
         "paused" -> "Paused · completed chunks are saved"
         "partial" -> "Publisher transcript has partial coverage"
         "stale" -> "Audio changed · prepare a new transcript"
@@ -157,7 +249,7 @@ internal fun transcriptShortStatus(state: String?, source: String?, stage: Trans
     val shortStatus = transcriptShortStatus(row?.state, row?.source, stage, (fraction * 100).toInt(), downloadPercent, prefs.transcribeOnPlayback)
     val chunk = if (running) "${timestamp(saved)} saved${if (live != null && live.chunkEndMs > live.chunkStartMs) " · current chunk ${timestamp(live.chunkStartMs)}–${timestamp(live.chunkEndMs)}" else ""}" else null
     return TranscriptToolState(row, effective, running, duration, saved, worked, fraction, stage, statusText, shortStatus, chunk,
-        "transcript:${ep.id}" in busy)
+        "transcript:${ep.id}" in busy, waiting, replacing)
 }
 
 /** The full transcript preparation card: status, progress and every preparation action. The player and insight pages use it. */
@@ -166,6 +258,8 @@ internal fun transcriptShortStatus(state: String?, source: String?, stage: Trans
     val state = rememberTranscriptToolState(vm, ep)
     val row = state.row
     val animated by animateFloatAsState(state.fraction, tween(650), label = "Transcript progress")
+    val transcribeAgain = rememberTranscribeAgain(vm, ep)
+    val startOver = rememberStartOver(vm, ep, state)
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("Transcript", style = MaterialTheme.typography.titleMedium)
         Text(state.statusText, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
@@ -175,16 +269,19 @@ internal fun transcriptShortStatus(state: String?, source: String?, stage: Trans
             state.chunk?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
         if (state.effective?.source == "online") Text("Online timings may differ from your audio. Saved moments and ad skipping use a publisher or local transcript.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        row?.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+        if (state.replacing) Text("Your current transcript stays readable until the new one is ready.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        // The status explains a missing model; the stored message names only the selected one.
+        row?.error?.takeIf { row.state != "waiting_model" }?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             when {
                 state.canPause -> OutlinedButton(onClick = { vm.pauseTranscript(ep.id) }) { Text("Pause transcript") }
-                state.needsModel -> Button(onClick = { vm.open("settings:transcription") }) { Text("Download a model") }
+                state.needsModel -> Button(onClick = { downloadForWaiting(vm, state) }) { Text(downloadLabel(state)) }
                 else -> state.prepareLabel?.let { label -> Button(onClick = { vm.prepareTranscript(ep.id) }, enabled = !state.busy) { Text(label) } }
             }
             if (state.canRead) OutlinedButton(onClick = { vm.open("transcript:${ep.id}") }) { Text("Read transcript") }
         }
-        if (state.canRedoLocally) TextButton(onClick = { vm.prepareTranscript(ep.id, true) }) { Text("Transcribe locally again") }
+        state.waiting?.startOverWith?.let { model -> TextButton(onClick = startOver, enabled = !state.busy) { Text("Start over with ${modelName(model)}") } }
+        if (state.canRedoLocally) TextButton(onClick = transcribeAgain) { Text("Transcribe locally again") }
     }
 }
 
@@ -197,10 +294,12 @@ internal fun transcriptShortStatus(state: String?, source: String?, stage: Trans
     val animated by animateFloatAsState(state.fraction, tween(650), label = "Transcript progress")
     val read = { vm.open(transcriptRoute(ep.id)) }
     val prepare = state.prepareLabel
+    val transcribeAgain = rememberTranscribeAgain(vm, ep)
+    val startOver = rememberStartOver(vm, ep, state)
     val reading = state.canRead || state.running || (prepare == null && !state.needsModel)
-    val label = when { reading -> "Read transcript"; state.needsModel -> "Download a model"; else -> prepare!! }
+    val label = when { reading -> "Read transcript"; state.needsModel -> downloadLabel(state); else -> prepare!! }
     EpisodeToolRow(title = "Transcript", supporting = state.shortStatus, icon = Icons.Default.Subtitles, onClickLabel = label,
-        onClick = { when { reading -> read(); state.needsModel -> vm.open("settings:transcription"); else -> vm.prepareTranscript(ep.id) } },
+        onClick = { when { reading -> read(); state.needsModel -> downloadForWaiting(vm, state); else -> vm.prepareTranscript(ep.id) } },
         enabled = reading || state.needsModel || !state.busy,
         modifier = Modifier.testTag("episode-transcript"),
         extra = {
@@ -209,7 +308,7 @@ internal fun transcriptShortStatus(state: String?, source: String?, stage: Trans
                 val bar = Modifier.fillMaxWidth().padding(top = 6.dp).semantics { contentDescription = "Transcript preparation progress" }
                 if (state.indeterminate || state.duration <= 0) LinearProgressIndicator(bar) else LinearProgressIndicator(progress = { animated }, modifier = bar)
             }
-            row?.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, maxLines = 2) }
+            row?.error?.takeIf { row.state != "waiting_model" }?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, maxLines = 2) }
         },
         trailing = {
             var open by remember { mutableStateOf(false) }
@@ -220,12 +319,14 @@ internal fun transcriptShortStatus(state: String?, source: String?, stage: Trans
                         onClick = { open = false; read() })
                     if (state.canPause) DropdownMenuItem(text = { Text("Pause transcript") }, leadingIcon = { Icon(Icons.Default.PauseCircleOutline, null) },
                         onClick = { open = false; vm.pauseTranscript(ep.id) })
-                    if (state.needsModel) DropdownMenuItem(text = { Text("Download a model") }, leadingIcon = { Icon(Icons.Default.Download, null) },
-                        onClick = { open = false; vm.open("settings:transcription") })
+                    if (state.needsModel) DropdownMenuItem(text = { Text(downloadLabel(state)) }, leadingIcon = { Icon(Icons.Default.Download, null) },
+                        onClick = { open = false; downloadForWaiting(vm, state) })
                     prepare?.let { DropdownMenuItem(text = { Text(it) }, enabled = !state.busy, leadingIcon = { Icon(Icons.Default.PlayCircleOutline, null) },
                         onClick = { open = false; vm.prepareTranscript(ep.id) }) }
+                    state.waiting?.startOverWith?.let { model -> DropdownMenuItem(text = { Text("Start over with ${modelName(model)}") }, enabled = !state.busy,
+                        leadingIcon = { Icon(Icons.Default.Refresh, null) }, onClick = { open = false; startOver() }) }
                     if (state.canRedoLocally) DropdownMenuItem(text = { Text("Transcribe locally again") }, leadingIcon = { Icon(Icons.Default.Refresh, null) },
-                        onClick = { open = false; vm.prepareTranscript(ep.id, true) })
+                        onClick = { open = false; transcribeAgain() })
                 }
             }
         })
@@ -260,6 +361,7 @@ internal fun transcriptFocusIndex(segments: List<SegmentEntity>, atMs: Long): In
     LaunchedEffect(ep.id, row?.revision, row?.processedMs) { segments = row?.let { dev.distillpod.android.data.EpisodeTextResolver(vm.graph.db).segments(ep.id, it.revision) } ?: emptyList() }
     val paragraphs = remember(segments) { transcriptParagraphs(segments) }
     val tools = rememberTranscriptToolState(vm, ep)
+    val transcribeAgain = rememberTranscribeAgain(vm, ep)
     val captures by vm.captures.collectAsStateWithLifecycle()
     val moments = remember(captures, ep.id) { captures.filter { it.episodeId == ep.id }.map { Triple(it.id, it.startMs, it.endMs) } }
     var query by rememberSaveable(ep.id) { mutableStateOf("") }
@@ -310,7 +412,7 @@ internal fun transcriptFocusIndex(segments: List<SegmentEntity>, atMs: Long): In
         else TranscriptToolbar(
             status = listOfNotNull(transcriptSourceLabel(tools.effective), paragraphs.size.takeIf { it > 0 }?.let { if (it == 1) "1 paragraph" else "$it paragraphs" }).joinToString(" · "),
             source = tools.statusText, canRedoLocally = tools.canRedoLocally && !showTools,
-            onSearch = { searching = true }, onOptions = { optionsSheet = true }, onRedoLocally = { vm.prepareTranscript(ep.id, true) })
+            onSearch = { searching = true }, onOptions = { optionsSheet = true }, onRedoLocally = transcribeAgain)
         Box(Modifier.weight(1f)) {
             val needle = if (searching) query.trim() else ""
             val accent = MaterialTheme.colorScheme.primary

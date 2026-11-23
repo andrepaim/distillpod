@@ -62,7 +62,7 @@ internal fun SavedMomentItem.matches(query: String): Boolean = query.isBlank() |
 internal fun captureState(state: String) = when (state) {
     "waiting_transcript" -> "Waiting for transcript"; "waiting_auth" -> "Connect ChatGPT to continue"
     "waiting_quota" -> "Plan allowance unavailable"; "queued", "running" -> "Finding the idea"; "reviewing" -> "Checking the source"
-    "needs_context" -> "Needs more context"; "unclear_source" -> "Review the transcript"; "failed" -> "Needs retry"
+    "needs_context" -> "Needs more context"; "incomplete_passage" -> "Passage is incomplete"; "unclear_source" -> "Review the transcript"; "failed" -> "Needs retry"
     "review_source" -> "Review source"; "no_speech" -> "No speech in this window"; "saved" -> "No insight yet"; "imported" -> "Imported"; else -> "Saved"
 }
 
@@ -168,7 +168,7 @@ private fun countLabel(count: Int) = "$count ${if (count == 1) "moment" else "mo
 internal class MomentActions(
     val replay: () -> Unit = {}, val share: () -> Unit = {}, val copy: () -> Unit = {},
     val createPost: () -> Unit = {}, val openPosts: () -> Unit = {}, val explain: () -> Unit = {},
-    val improve: () -> Unit = {}, val expandContext: () -> Unit = {}, val retranscribe: () -> Unit = {},
+    val improve: () -> Unit = {}, val includeEarlier: () -> Unit = {}, val includeLater: () -> Unit = {}, val retranscribe: () -> Unit = {},
     val generate: () -> Unit = {}, val prepare: () -> Unit = {}, val pause: () -> Unit = {},
     val connectAccount: () -> Unit = {}, val restore: (String) -> Unit = {}, val delete: () -> Unit = {},
 )
@@ -199,7 +199,8 @@ internal fun momentShareText(moment: DistillationEntity, episodeTitle: String?) 
         openPosts = { vm.open("posts:${capture.id}") },
         explain = { if (latest == null) vm.explain(capture.id) else vm.open("research:${latest.id}") },
         improve = { vm.improveCapture(capture.id) },
-        expandContext = { vm.improveCapture(capture.id, true) },
+        includeEarlier = { vm.expandCapture(capture.id, dev.distillpod.core.ContextWindow.EARLIER) },
+        includeLater = { vm.expandCapture(capture.id, dev.distillpod.core.ContextWindow.LATER) },
         retranscribe = { vm.retranscribeCapture(capture.id) },
         generate = { vm.generateCapture(capture.id, true) },
         prepare = { vm.generateCapture(capture.id) },
@@ -248,7 +249,11 @@ private val contextStates = setOf("needs_context", "unclear_source")
             if (capture.sourceJson.isNotBlank()) {
                 Text("Saved at ${timestamp(capture.endMs)} · Passage ${timestamp(capture.sourceStartMs)}–${timestamp(capture.sourceEndMs)}",
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                if (capture.sourceEndMs > capture.endMs) Text("The passage includes a few seconds after your tap to finish the thought.", style = MaterialTheme.typography.bodySmall)
+                if (capture.sourceEndMs > capture.endMs + MomentGeneration.LEGACY_SYNC_FORWARD_MS) {
+                    Text("The passage continues after your tap to finish the thought.", style = MaterialTheme.typography.bodySmall)
+                    Text("Sync can’t carry a passage this far past the tap yet, so this result stays on this phone and in its backups.",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                } else if (capture.sourceEndMs > capture.endMs) Text("The passage includes a few seconds after your tap to finish the thought.", style = MaterialTheme.typography.bodySmall)
                 runCatching { JSONObject(capture.sourceJson).optString("originalExcerpt") }.getOrNull()?.takeIf { it.isNotBlank() }?.let {
                     Text("Original capture", style = MaterialTheme.typography.titleSmall)
                     SelectionContainer { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant) }
@@ -350,10 +355,18 @@ private val contextStates = setOf("needs_context", "unclear_source")
                 }
                 Text("Retrying a request can use more of your ChatGPT allowance.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+            // The transcript was faithful; the passage just stops before the idea ends (#124).
+            if (!working && ep != null && capture.state == "incomplete_passage") {
+                Button(onClick = actions.includeLater) { Text("Include what comes next") }
+                OutlinedButton(onClick = actions.includeEarlier) { Text("Include earlier context") }
+                Text("Including what comes next adds the following minute of the episode so the passage can finish the thought. Generation and source review use two AI requests, and nothing is sent if no new transcript is found. Your current saved result is kept while a replacement is prepared.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
             if (!working && ep != null && capture.state in contextStates) {
-                OutlinedButton(onClick = actions.expandContext) { Text("Expand context and retry") }
+                OutlinedButton(onClick = actions.includeEarlier) { Text("Include earlier context") }
+                OutlinedButton(onClick = actions.includeLater) { Text("Include what comes next") }
                 OutlinedButton(onClick = actions.retranscribe) { Text("Transcribe and retry") }
-                Text("For clearer speech recognition, select Base in Settings before transcribing again. Generation and source review use two AI requests; your current saved result is kept while a replacement is prepared.",
+                Text("For clearer speech recognition, select Base in Settings before transcribing again. Generation and source review use two AI requests, and an expansion that finds no new transcript sends nothing. Your current saved result is kept while a replacement is prepared.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             capture.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
