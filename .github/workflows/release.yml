@@ -16,6 +16,7 @@ jobs:
   source:
     name: Verify tagged source
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -101,5 +102,20 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          gh release create "$GITHUB_REF_NAME" --verify-tag --title "DistillPod $GITHUB_REF_NAME" --notes-file docs/releases/current.md --prerelease --draft dist/*.apk dist/*.tar.gz dist/SHA256SUMS dist/build-info.json dist/THIRD_PARTY_NOTICES.md dist/source-manifest.json
+          assets=(dist/*.apk dist/*.tar.gz dist/SHA256SUMS dist/build-info.json dist/THIRD_PARTY_NOTICES.md dist/source-manifest.json)
+          # Fails, changing nothing, if the tag's release is published or the lookup fails.
+          action="$(python3 scripts/release_publication.py --repo "$GH_REPO" --tag "$GITHUB_REF_NAME" "${assets[@]}")"
+          case "$action" in
+            create)
+              gh release create "$GITHUB_REF_NAME" --verify-tag --title "DistillPod $GITHUB_REF_NAME" --notes-file docs/releases/current.md --prerelease --draft "${assets[@]}"
+              ;;
+            resume)
+              echo "Replacing the assets of the existing draft release $GITHUB_REF_NAME"
+              gh release upload "$GITHUB_REF_NAME" --clobber "${assets[@]}"
+              ;;
+            *)
+              echo "Unexpected publication decision" >&2
+              exit 1
+              ;;
+          esac
           gh release edit "$GITHUB_REF_NAME" --draft=false
