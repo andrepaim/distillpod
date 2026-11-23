@@ -22,12 +22,20 @@ import java.util.concurrent.ConcurrentHashMap
 class AutoArtwork(private val context:Context,private val http:OkHttpClient,private val scope:CoroutineScope,
     private val changed:()->Unit={}) {
     companion object {
+        private const val RETRY_NANOS=5L*60*1_000_000_000
         fun fileFor(context:Context,key:String):File? {
             if(key!="placeholder.jpg" && !key.matches(Regex("[a-f0-9]{64}\\.jpg")))return null
             return File(context.cacheDir,"auto-art/$key").takeIf {it.isFile && it.length()>0}
         }
     }
     private val active=ConcurrentHashMap.newKeySet<String>()
+    /**
+     * Every browse list build asks for each row's cover. Without a pause a cover that cannot be cached (too large,
+     * unavailable) was downloaded again on every rebuild, holding one of the two download permits that the rest of a
+     * scrolled list's covers wait for, so covers kept arriving and lists kept refreshing for longer (#277).
+     */
+    private val failedAt=ConcurrentHashMap<String,Long>()
+    private fun recentlyFailed(url:String)=failedAt[url]?.let {System.nanoTime()-it<RETRY_NANOS}==true
     private val permits=Semaphore(2)
     private val directory get()=File(context.cacheDir,"auto-art").apply {mkdirs()}
     private fun key(url:String)=MessageDigest.getInstance("SHA-256").digest(url.toByteArray()).joinToString(""){"%02x".format(it)}+".jpg"
@@ -65,9 +73,10 @@ class AutoArtwork(private val context:Context,private val http:OkHttpClient,priv
     }
     fun uri(url:String?):Uri {
         val cache=url?.takeIf {it.startsWith("https://")||it.startsWith("http://")}?.let {file(key(it))}
-        if(url!=null && cache==null && active.add(url))scope.launch(Dispatchers.IO) {
-            try {warm(url)}catch(cancelled:CancellationException){throw cancelled}catch(_:Exception){/* Placeholder stays usable. */}
-            finally {active.remove(url)}
+        if(url!=null && cache==null && !recentlyFailed(url) && active.add(url))scope.launch(Dispatchers.IO) {
+            var cached=false
+            try {warm(url);cached=file(key(url))!=null}catch(cancelled:CancellationException){throw cancelled}catch(_:Exception){/* Placeholder stays usable. */}
+            finally {if(cached)failedAt.remove(url) else failedAt[url]=System.nanoTime();active.remove(url)}
         }
         val chosen=cache?:placeholder()
         for(reader in readers)grant(reader,chosen.name)
