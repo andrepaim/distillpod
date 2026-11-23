@@ -115,6 +115,36 @@ class LibraryListingTest {
         assertEquals(listOf("p2"), undismissedFeedProblems(listOf(a, b, c), dismissed).map { it.id })
     }
 
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test fun `Home's shows follow pin changes and new publications but not empty refreshes (#276)`() = runTest {
+        val a = PodcastEntity("a", "https://example.test/a", "Alpha")
+        val b = PodcastEntity("b", "https://example.test/b", "Bravo")
+        val c = PodcastEntity("c", "https://example.test/c", "Charlie")
+        val shows = MutableStateFlow(listOf(a, b, c))
+        val library = MutableStateFlow(listOf(
+            EpisodeEntity("a1", "a", "a1", "A1", "https://example.test/a1", publishedAt = 100),
+            EpisodeEntity("b1", "b", "b1", "B1", "https://example.test/b1", publishedAt = 300),
+            EpisodeEntity("c1", "c", "c1", "C1", "https://example.test/c1", publishedAt = 200)))
+        val pins = MutableStateFlow(emptySet<String>())
+        val state = libraryListings(shows, library, MutableStateFlow("all"), MutableStateFlow(PlaybackState()),
+            MutableStateFlow("library"), pins).stateIn(backgroundScope + UnconfinedTestDispatcher(testScheduler), SharingStarted.Eagerly, null)
+        fun order() = state.value!!.subscribed.map { it.id }
+        assertEquals(listOf("b", "c", "a"), order())
+        // Pinning in Shows moves the show ahead on Home; unpinning returns it.
+        pins.value = setOf(a.feedUrl); advanceUntilIdle()
+        assertEquals(listOf("a", "b", "c"), order())
+        pins.value = emptySet(); advanceUntilIdle()
+        assertEquals(listOf("b", "c", "a"), order())
+        // A refresh that stores no new publication (only refreshedAt changes) does not promote the show.
+        shows.value = listOf(a.copy(refreshedAt = 9_000), b, c); advanceUntilIdle()
+        assertEquals(listOf("b", "c", "a"), order())
+        // A refresh that adds a newer episode moves it to its place.
+        library.value = library.value + EpisodeEntity("a2", "a", "a2", "A2", "https://example.test/a2", publishedAt = 250); advanceUntilIdle()
+        assertEquals(listOf("b", "a", "c"), order())
+        // A show page keeps the stored order: only Home shows the row.
+        assertEquals(listOf("a", "b", "c"), libraryListing(shows.value, library.value, "all", "a", null, setOf(c.feedUrl)).subscribed.map { it.id })
+    }
+
     @Test fun `show page lists only that show and keeps source order for video channels`() {
         val show = libraryListing(podcasts, episodes, "all", "p2", null)
         assertEquals(other, show.selected)

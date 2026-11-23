@@ -342,12 +342,7 @@ private val LIBRARY_FILTERS = listOf(Triple("all", "Latest", "Latest"), Triple("
                             Icon(Icons.Default.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
-                } else androidx.compose.foundation.lazy.LazyRow(Modifier.padding(top = 6.dp), contentPadding = PaddingValues(horizontal = DistillSpacing.gutter),
-                    horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                    items(subscribed, key = { it.id }) { p -> Column(Modifier.width(76.dp).clickable { vm.open("podcast:${p.id}") }) {
-                        Cover(p.imageUrl, Modifier.size(76.dp)); Text(p.title, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 6.dp))
-                    } }
-                }
+                } else HomeShowRail(subscribed, { vm.open("podcast:${it.id}") }, Modifier.padding(top = 6.dp))
             }
         }
         if (feedProblems.isNotEmpty()) item(key = "feed-problems") {
