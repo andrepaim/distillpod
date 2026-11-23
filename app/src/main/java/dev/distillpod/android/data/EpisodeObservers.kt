@@ -16,3 +16,8 @@ internal fun LibraryDao.observeAdSourceRows(): Flow<List<AdSourceRow>> = observe
 /** Media-browser rows; last-played time changes them at most once a minute. */
 internal fun LibraryDao.observeBrowseSummary(): Flow<List<BrowseRow>> =
     observeBrowseRows().map { rows -> rows.map { it.copy(lastPlayedAt = it.lastPlayedAt / 60_000) } }.distinctUntilChanged()
+
+/** What browse lists show of each show. Feed-refresh bookkeeping (refreshedAt, ETag, errors) does not re-emit (#277). */
+internal data class BrowsePodcast(val id: String, val title: String, val imageUrl: String?, val subscribed: Boolean)
+internal fun LibraryDao.observeBrowsePodcasts(): Flow<List<BrowsePodcast>> =
+    observePodcasts().map { rows -> rows.map { BrowsePodcast(it.id, it.title, it.imageUrl, it.subscribed) } }.distinctUntilChanged()
