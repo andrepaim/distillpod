@@ -360,7 +360,7 @@ or diff generation times out. See
 A full-diff gate job would avoid the file limit but would itself run on every
 push, including documentation-only pushes.
 
-Actions are pinned to reviewed commit SHAs; Dependabot checks those pins and Gradle dependencies weekly.
+Actions are pinned to reviewed commit SHAs; Dependabot checks those pins, Gradle dependencies and the npm dependencies in `/firebase` weekly.
 
 `release.yml` accepts version tags from main history, requests the additional unsigned release build/lint, and signs only after all validation jobs pass. Signing secrets are available only in the protected alpha-release environment. The publishing job has repository-content write permission; test jobs have read permission. See [releases](releases.md).
 
