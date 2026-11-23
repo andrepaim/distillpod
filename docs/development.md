@@ -273,6 +273,13 @@ the same repository and PR workflow, its latest matching run and successful
 latest attempt and every
 expected successful job. Only full direct PR validation emits the bounded
 `ci-validation-proof-ATTEMPT` artifact; docs, drafts and reused runs never do.
+When `main` has moved past the base recorded in the PR event, GitHub tests the
+merge against the newer `main`, so no proof can bind the event's parents. If full
+validation passed, the gate then succeeds, writes no proof, uploads no artifact
+and prints a notice that the merge will be validated in full on main. This
+applies only when the checkout is the event revision, a clean two-parent merge
+whose second parent is the event head and whose first parent descends from the
+event base; every other proof mismatch fails the gate.
 Artifacts expire after seven days; the shorter 24-hour run freshness limit also
 applies. Fork results, squash/rebase merges, batched pushes and ambiguous or
 missing evidence conservatively run the full suite.
