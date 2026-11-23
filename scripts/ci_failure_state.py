@@ -8,6 +8,8 @@ import subprocess
 
 MEMORY_KEYS = {'MemTotal', 'MemAvailable', 'SwapTotal', 'SwapFree'}
 EMULATOR_NAMES = {'emulator', 'qemu-system-x86', 'qemu-system-aar'}
+# Hosted acceptance phases; ordinary-part2 is the second emulator job's share (#281).
+PHASES = ('startup', 'ordinary', 'ordinary-part2', 'cloud', 'voice')
 
 
 def diagnostics_enabled(env):
@@ -48,7 +50,7 @@ def collect_failure_state(phase, env=None, proc=Path('/proc'), transport=probe_a
     env = os.environ if env is None else env
     if not diagnostics_enabled(env):
         return None
-    if phase not in {'startup', 'ordinary', 'cloud', 'voice'}:
+    if phase not in PHASES:
         raise ValueError('Unknown CI phase')
     proc = Path(proc)
     data = {'phase': phase, 'memory_kib': {}, 'process_counts': {

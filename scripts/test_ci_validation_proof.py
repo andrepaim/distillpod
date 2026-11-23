@@ -30,8 +30,10 @@ class ProofTests(unittest.TestCase):
                     'repository':{'full_name':'owner/repo'},'head_repository':{'full_name':'owner/repo'}}
         self.jobs = [{'name':n,'conclusion':'success','steps':[{'name':'Verify validation source','conclusion':'success'}]} for n in [
             'Select validation and check documentation','Repository security / Secrets and personal data guard',
-            'Android build validation','Firebase protocol and security rules','Native bridge validation',
-            'Isolated Android acceptance','Kotlin, lint and APK']]
+            'Android build validation','Opt-in voice build validation','Firebase protocol and security rules',
+            'Native bridge validation','Isolated Android acceptance','Isolated Android acceptance, part 2',
+            'Kotlin, lint and APK']]
+        self.jobs.append({'name':'Unsigned release build','conclusion':'skipped','steps':[]})
 
     def test_clean_but_wrong_checkout_cannot_pass_job_source_guard(self):
         self.assertIsNone(check_source(self.repo.root,self.checkout))
@@ -76,6 +78,28 @@ class ProofTests(unittest.TestCase):
         self.assertFalse(verify_evidence(self.repo.root,self.proof,self.run,missing_guard,'owner/repo'))
         self.assertFalse(verify_evidence(self.repo.root,self.proof,self.run,self.jobs[:-1],'owner/repo'))
         self.assertFalse(verify_evidence(self.repo.root,self.proof,self.run,self.jobs+self.jobs,'owner/repo'))
+
+    def test_every_parallel_build_job_needs_success_and_its_source_guard(self):
+        for name in ['Opt-in voice build validation','Isolated Android acceptance, part 2',
+                     'Android build validation','Isolated Android acceptance']:
+            index=[j['name'] for j in self.jobs].index(name)
+            for change in [dict(conclusion='failure'),dict(conclusion='cancelled'),dict(conclusion='skipped'),
+                           dict(steps=[]),dict(steps=[{'name':'Verify validation source','conclusion':'failure'}])]:
+                j=copy.deepcopy(self.jobs);j[index].update(change)
+                with self.subTest(name=name,change=change):
+                    self.assertFalse(verify_evidence(self.repo.root,self.proof,self.run,j,'owner/repo'))
+            with self.subTest(name=name,missing=True):
+                self.assertFalse(verify_evidence(self.repo.root,self.proof,self.run,
+                                                 [j for j in self.jobs if j['name']!=name],'owner/repo'))
+
+    def test_release_candidate_job_must_be_present_and_skipped_in_reused_pr_evidence(self):
+        index=[j['name'] for j in self.jobs].index('Unsigned release build')
+        for conclusion in ['success','failure','cancelled',None]:
+            j=copy.deepcopy(self.jobs);j[index]['conclusion']=conclusion
+            with self.subTest(conclusion=conclusion):
+                self.assertFalse(verify_evidence(self.repo.root,self.proof,self.run,j,'owner/repo'))
+        self.assertFalse(verify_evidence(self.repo.root,self.proof,self.run,
+                                         [j for j in self.jobs if j['name']!='Unsigned release build'],'owner/repo'))
 
     def test_cache_refresh_is_required_when_recent_main_has_only_reused_jobs(self):
         run=dict(self.run,id=789,event='push',head_branch='main')
@@ -175,6 +199,6 @@ class LookupTests(unittest.TestCase):
         for event,inputs,verified in [('push',{},''),('pull_request',{},'123'),
                                       ('push',{'build_release':False},'123')]:
             with self.assertRaises(ValueError):validate_gate(data,event,inputs,SHA,verified)
-        for job in ['android_build','firebase','native','emulator']:
+        for job in ['android_build','voice_build','firebase','native','emulator','emulator_part2','release_build']:
             changed=copy.deepcopy(data);changed[job]['result']='failure'
             with self.assertRaises(ValueError):validate_gate(changed,'push',{},SHA,'123')

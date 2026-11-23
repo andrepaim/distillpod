@@ -8,7 +8,11 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from docs_validation import check_links
 
-FULL_JOBS = {'android_build', 'firebase', 'native', 'emulator'}
+# Every full run executes these; documentation, draft and reused routes skip them all.
+FULL_JOBS = {'android_build', 'voice_build', 'firebase', 'native', 'emulator', 'emulator_part2'}
+# Only a reusable release call (build_release: true) in full mode builds the candidate.
+RELEASE_JOB = 'release_build'
+GATE_NEEDS = FULL_JOBS | {RELEASE_JOB, 'plan', 'security'}
 ROOT_DOCS = {'README.md', 'AGENTS.md', 'THIRD_PARTY_NOTICES.md',
              'CONTRIBUTING.md', 'SECURITY.md', 'LICENSE.md'}
 OTHER_DOCS = {'firebase/README.md', 'scripts/fixtures/investigation/README.md',
@@ -35,6 +39,10 @@ def direct_pr(event, inputs):
     # Reusable calls inherit their caller's event; even default false inputs
     # identify the workflow_call contract. Unknown contexts never enable docs.
     return event == 'pull_request' and isinstance(inputs, dict) and not inputs
+
+
+def release_requested(inputs):
+    return isinstance(inputs, dict) and inputs.get('build_release') is True
 
 
 def doc_path(path):
@@ -103,7 +111,7 @@ def choose_route(root, event, inputs, base, head, checkout_sha=None, draft=False
 
 
 def validate_gate(needs, event, inputs, expected_sha, reuse_verified_run=''):
-    if not isinstance(needs, dict) or set(needs) != FULL_JOBS | {'plan', 'security'}:
+    if not isinstance(needs, dict) or set(needs) != GATE_NEEDS:
         raise ValueError('Required dependency evidence is missing or unexpected')
     plan = needs['plan']
     if plan.get('result') != 'success':
@@ -140,6 +148,9 @@ def validate_gate(needs, event, inputs, expected_sha, reuse_verified_run=''):
     for job in sorted(FULL_JOBS):
         if needs[job].get('result') != expected:
             raise ValueError(f'{job} did not report the expected {expected} result')
+    release = 'success' if expected == 'success' and release_requested(inputs) else 'skipped'
+    if needs[RELEASE_JOB].get('result') != release:
+        raise ValueError(f'{RELEASE_JOB} did not report the expected {release} result')
 
 
 def main():
