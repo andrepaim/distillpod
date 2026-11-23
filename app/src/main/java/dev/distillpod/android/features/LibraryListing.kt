@@ -2,10 +2,12 @@ package dev.distillpod.android.features
 
 import dev.distillpod.android.data.EpisodeEntity
 import dev.distillpod.android.data.PodcastEntity
+import dev.distillpod.android.data.homeShows
 import dev.distillpod.android.playback.PlaybackState
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 
 /** Rows of the Library tab or one show page, for the filter they were selected with. */
@@ -19,11 +21,14 @@ internal data class LibraryListing(val podcastId: String?, val filter: String, v
  * removes it there while its retained media stays under Downloaded and In progress (#266). The episode loaded in the player resumes first, otherwise the most recently played
  * unfinished one. [LibraryListing.continueListening] follows it with the other unfinished episodes, most
  * recently played first, up to [CONTINUE_LISTENING_LIMIT]. [LibraryListing.feedProblems] are followed shows
- * (or the open show) whose refresh failed.
+ * (or the open show) whose refresh failed. On the Library tab, [LibraryListing.subscribed] is in the order of
+ * Home's "Your shows" row (#276, [homeShows]) for the Shows screen's [pinnedFeeds]; a show page, which has no
+ * such row, keeps the stored order.
  */
 internal fun libraryListing(podcasts: List<PodcastEntity>, episodes: List<EpisodeEntity>, filter: String,
-    podcastId: String?, currentEpisodeId: String?): LibraryListing {
-    val subscribed = podcasts.filter { it.subscribed }
+    podcastId: String?, currentEpisodeId: String?, pinnedFeeds: Set<String> = emptySet()): LibraryListing {
+    val stored = podcasts.filter { it.subscribed }
+    val subscribed = if (podcastId == null) homeShows(stored, episodes, pinnedFeeds) else stored
     val followed = subscribed.mapTo(HashSet()) { it.id }
     val selected = podcasts.firstOrNull { it.id == podcastId }
     val library = episodes.filter { ep ->
@@ -72,12 +77,12 @@ internal fun libraryRoute(route: String?): LibraryRoute? = when {
 }
 
 /**
- * Rows of the library page on top of [route], recomputed for library, filter, route or
+ * Rows of the library page on top of [route], recomputed for library, filter, route, pin or
  * current-episode changes; live player position ticks do not recompute them (#141).
  */
 internal fun libraryListings(podcasts: Flow<List<PodcastEntity>>, episodes: Flow<List<EpisodeEntity>>, filter: Flow<String>,
-    player: Flow<PlaybackState>, route: Flow<String?>): Flow<LibraryListing?> =
-    combine(podcasts, episodes, filter, player.map { it.episodeId }.distinctUntilChanged(),
-        route.map(::libraryRoute).distinctUntilChanged()) { p, e, f, current, page ->
-        page?.let { libraryListing(p, e, f, it.podcastId, current) }
+    player: Flow<PlaybackState>, route: Flow<String?>, pinnedFeeds: Flow<Set<String>> = flowOf(emptySet())): Flow<LibraryListing?> =
+    combine(podcasts, episodes, combine(filter, pinnedFeeds.distinctUntilChanged(), ::Pair), player.map { it.episodeId }.distinctUntilChanged(),
+        route.map(::libraryRoute).distinctUntilChanged()) { p, e, (f, pins), current, page ->
+        page?.let { libraryListing(p, e, f, it.podcastId, current, pins) }
     }.distinctUntilChanged()

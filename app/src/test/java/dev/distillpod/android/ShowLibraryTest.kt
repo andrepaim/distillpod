@@ -80,6 +80,27 @@ class ShowLibraryTest {
         } finally { Locale.setDefault(before) }
     }
 
+    @Test fun `Home orders pins, then Audio-filter shows, then newest latest episode (#276)`() {
+        val shows = listOf(show("today", "Audio today"), show("pinned-video", "Pinned video"), show("mixed", "Mixed"),
+            show("old", "Audio old"), show("undated", "Undated"), show("empty", "Empty"), show("video", "Video"),
+            show("youtube", "Channel").copy(feedUrl = "https://www.youtube.com/@example/videos"), show("hidden").copy(subscribed = false))
+        val episodes = listOf(episode("t", "today", published = 10_000), episode("pv", "pinned-video", "video/mp4", published = 5),
+            episode("m1", "mixed", "video/mp4", published = 9_000), episode("m2", "mixed", published = 1),
+            episode("o", "old", published = 100), episode("u", "undated"), episode("v", "video", "video/mp4", published = 20_000),
+            episode("y", "youtube", null, published = 30_000).copy(audioUrl = "https://youtu.be/abcdefghijk"))
+        val pinned = setOf(show("pinned-video").feedUrl, show("old").feedUrl)
+        val home = homeShows(shows.filter { it.subscribed }, episodes, pinned).map { it.id }
+        // A pinned video-only show precedes an unpinned audio show that published today; a mixed show counts as audio.
+        assertEquals(listOf("old", "pinned-video", "today", "mixed", "undated", "youtube", "video", "empty"), home)
+        // Audio membership is exactly the Shows screen's Audio filter.
+        val audioFilter = ids(summarizeShows(shows, episodes), ShowPreferences(format = ShowFormat.AUDIO)).toSet()
+        assertEquals(setOf("today", "mixed", "old", "undated"), audioFilter)
+        // Pins follow the show's original feed, as in Shows.
+        val restored = show("restored", "Restored").copy(originalFeedUrl = show("today").feedUrl, feedUrl = "https://example.test/moved")
+        assertEquals(listOf("restored", "old"), homeShows(listOf(show("old"), restored),
+            listOf(episode("r", "restored", published = 1), episode("o", "old", published = 100)), setOf(show("today").feedUrl)).map { it.id })
+    }
+
     private fun ids(rows: List<ShowSummary>, preferences: ShowPreferences = ShowPreferences()) =
         selectShows(rows, "", preferences).map { it.show.id }
 }
