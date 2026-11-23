@@ -27,7 +27,39 @@ def snapshot():
                 jobs=[job(3, start='2026-11-12T00:05:10Z', end='2026-11-12T00:06:00Z',attempt=2)])]}
 
 
+def cancelled_before_start(ident, name):
+    # Real shape (run 43907602054): cancelled with no runner or steps, and
+    # completed one second before its recorded start.
+    return dict(job(ident, name, start='2026-11-12T00:02:21Z', end='2026-11-12T00:02:20Z',
+                    conclusion='cancelled'), created_at='2026-11-12T00:02:21Z',
+                runner_id=None, runner_name=None, steps=[])
+
+
 class AccountingTest(unittest.TestCase):
+    def test_jobs_cancelled_before_start_are_not_executions(self):
+        data=snapshot()
+        data['attempts'][0]['jobs'].append(cancelled_before_start(4,'Native bridge validation'))
+        data['attempts'][0]['jobs'].append(cancelled_before_start(5,'Android build validation'))
+        result=analyze(data)
+        self.assertEqual(2,result['cancelled_before_start_jobs'])
+        self.assertEqual(3,result['executed_job_count'])
+        self.assertAlmostEqual(290/60,result['runner_minutes'])
+        self.assertEqual(170,result['attempt_wall_seconds']['maximum'])
+        self.assertEqual(0,result['jobs_without_execution_time'])
+
+    def test_other_negative_execution_intervals_still_fail(self):
+        for change in [dict(conclusion='success'), dict(conclusion='failure'),
+                       dict(runner_id=7), dict(steps=[{'name':'Set up job'}])]:
+            data=snapshot()
+            data['attempts'][0]['jobs'].append(dict(cancelled_before_start(4,'Native bridge validation'),**change))
+            with self.subTest(change=change), self.assertRaisesRegex(ValueError,'negative'):
+                analyze(data)
+        for missing in ['runner_id','steps']:
+            data=snapshot(); shape=cancelled_before_start(4,'Native bridge validation'); del shape[missing]
+            data['attempts'][0]['jobs'].append(shape)
+            with self.subTest(missing=missing), self.assertRaisesRegex(ValueError,'negative'):
+                analyze(data)
+
     def test_parallel_jobs_sum_execution_but_not_wall_time_and_deduplicate(self):
         data=snapshot(); data['attempts'][0]['jobs'].append(copy.deepcopy(data['attempts'][0]['jobs'][0]))
         result=analyze(data)
