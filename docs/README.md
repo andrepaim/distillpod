@@ -39,6 +39,7 @@ none substitutes for the others.
 | [Firebase harness](../firebase/README.md) | Demo-project rule/protocol tests and deployment boundaries |
 | [App Check rollout](android/app-check-rollout.md) | Planned client integration and staged enforcement; not enabled |
 | [Implementation status](android/implementation-status.md) | Delivered behavior, current distribution and evidence gaps |
+| [Feature map and test coverage](qa/feature-map.md) | Every user-facing feature with its risk, tests, real-device needs, gaps and suspected bugs (beta readiness) |
 | [Documentation review](documentation-review.md) | Coverage, corrections, media provenance and maintenance checklist |
 | [Agent instructions](../AGENTS.md) | Worktree, integration, release and device-authorization rules |
 | [Repository orientation](../CLAUDE.md) | Short architecture and development constraints |
