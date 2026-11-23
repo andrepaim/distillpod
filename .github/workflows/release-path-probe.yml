@@ -1,0 +1,20 @@
+name: Release path probe (temporary, #281)
+
+# Temporary: exercises ci.yml's build_release path on PR #281 with dummy, never-issued
+# configuration literals. It references no repository secret. Delete before final validation.
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  validation:
+    uses: ./.github/workflows/ci.yml
+    with:
+      build_release: true
+    secrets:
+      FIREBASE_CONFIG_JSON: '{"project_info":{"project_id":"demo-distillpod-probe","storage_bucket":"demo-distillpod-probe.example"},"client":[{"client_info":{"mobilesdk_app_id":"1:1:android:1","android_client_info":{"package_name":"dev.distillpod.android"}},"api_key":[{"current_key":"dummy"}],"oauth_client":[{"client_id":"dummy.example","client_type":3}]}]}'
+      SENTRY_DSN: 'https://dummy@example.invalid/1'
