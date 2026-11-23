@@ -21,7 +21,6 @@ import java.io.File
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOn
@@ -102,9 +101,10 @@ class PlaybackService : MediaLibraryService() {
             graph.settings.flow.map { it.headphoneDistill }.distinctUntilChanged().collect { headphoneDistill = it }
         }
         lateinit var libraryCallback:AutoLibraryCallback
-        val artwork=dev.distillpod.android.auto.AutoArtwork(this,graph.http,scope) {
-            scope.launch {session?.let {libraryCallback.libraryChanged(it)}}
-        }
+        // Feed refreshes write each show separately and covers arrive one by one; coalesce them so browse
+        // lists are re-sent to the car at most once a second, and only when their rows changed (#277).
+        val libraryChanges=dev.distillpod.android.auto.LibraryChangeThrottle(scope,1000) {session?.let {libraryCallback.libraryChanged(it)}}
+        val artwork=dev.distillpod.android.auto.AutoArtwork(this,graph.http,scope,libraryChanges::signal)
         libraryCallback=AutoLibraryCallback(packageName,graph.db,graph.ready,scope,playbackReady,
             saveMoment={id,position,file->
                 val ep=dao.episode(id)?:error("Episode is unavailable")
@@ -183,9 +183,9 @@ class PlaybackService : MediaLibraryService() {
         widget = dev.distillpod.android.widget.NowPlayingWidgetUpdater.attach(this, player)
         scope.launch {
             graph.ready.await()
-            combine(dao.observePodcasts(),dao.observeBrowseSummary(),dao.observeQueue(),browseCurrent) {pods,episodes,queue,current->
+            combine(dao.observeBrowsePodcasts(),dao.observeBrowseSummary(),dao.observeQueue(),browseCurrent) {pods,episodes,queue,current->
                 listOf(pods,episodes,queue,current)
-            }.distinctUntilChanged().collectLatest {delay(500);session?.let {libraryCallback.libraryChanged(it)}}
+            }.distinctUntilChanged().collect {libraryChanges.signal()}
         }
         fun snapshot(complete: Boolean = false, boundary: Boolean = false, queueBoundary:Boolean=false, queueRestored:Boolean=false) {
             if (restoring) return
