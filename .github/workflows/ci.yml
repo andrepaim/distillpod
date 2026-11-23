@@ -482,6 +482,7 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
       - name: Require successful selected validation
+        id: gate
         env:
           WORKFLOW_INPUTS_CONTEXT: ${{ toJSON(inputs) }}
           VALIDATION_NEEDS: ${{ toJSON(needs) }}
@@ -492,7 +493,8 @@ jobs:
           CI_PROOF_OUTPUT: ${{ runner.temp }}/distillpod-ci-proof/proof.json
         run: python3 scripts/ci_validation.py gate
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: needs.plan.outputs.mode == 'full' && github.event_name == 'pull_request' && toJSON(inputs) == '{}'
+        # The gate writes no proof when the PR base is behind main; see docs/development.md.
+        if: steps.gate.outputs.proof_written == 'true' && needs.plan.outputs.mode == 'full' && github.event_name == 'pull_request' && toJSON(inputs) == '{}'
         with:
           name: ci-validation-proof-${{ github.run_attempt }}
           path: ${{ runner.temp }}/distillpod-ci-proof/proof.json

@@ -43,12 +43,24 @@ def check_source(root, expected_sha=None):
         raise ValueError('Validation source differs from its committed tree')
 
 
+class StaleBase(ValueError):
+    """A verified PR merge tested against a main newer than the event's base."""
+
+
 def make_proof(root, env):
     check_source(root)
     s = source(root)
     if (env.get('GITHUB_EVENT_NAME') != 'pull_request' or len(s['parents']) != 2 or
-            s['parents'] != [env.get('PR_BASE_SHA'), env.get('PR_HEAD_SHA')] or
-            s['checkout_sha'] != env.get('GITHUB_SHA')):
+            s['parents'][1] != env.get('PR_HEAD_SHA') or s['checkout_sha'] != env.get('GITHUB_SHA')):
+        raise ValueError('Only a verified PR merge checkout can emit full validation proof')
+    base = env.get('PR_BASE_SHA')
+    if s['parents'][0] != base:
+        # GitHub merges with current main, which can be newer than the event's base.
+        if (isinstance(base, str) and re.fullmatch('[a-f0-9]{40}', base) and subprocess.run(
+                ['git', 'merge-base', '--is-ancestor', base, s['parents'][0]], cwd=root,
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0):
+            raise StaleBase('PR base is behind main; no reusable proof was produced, '
+                            'so the merge will be validated in full on main')
         raise ValueError('Only a verified PR merge checkout can emit full validation proof')
     return {'schema': 1, 'mode': 'full', 'repository': env['GITHUB_REPOSITORY'],
             'run_id': int(env['GITHUB_RUN_ID']), 'run_attempt': int(env['GITHUB_RUN_ATTEMPT']),

@@ -53,6 +53,13 @@ class RoutingTests(unittest.TestCase):
             self.assertEqual('docs', result.mode)
             self.assertEqual(7, len(result.paths))
 
+    def test_agent_instruction_files_select_docs(self):
+        for path in ['AGENTS.md', 'CLAUDE.md']:
+            with self.subTest(path=path), Repository() as repo:
+                repo.write(path, 'Working rules\n')
+                repo.commit('agent instructions')
+                self.assertEqual('docs', repo.select().mode)
+
     def test_code_config_resources_and_unknown_paths_always_select_full(self):
         for path in ['app/src/main/res/raw/prompt.md', 'app/src/main/K.kt',
                      'docs/example.py', 'docs/config.yml', '.github/workflows/ci.yml',
