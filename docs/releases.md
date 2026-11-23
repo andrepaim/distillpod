@@ -52,8 +52,13 @@ One designated release owner coordinates the entire checklist below, including v
   git merge-base --is-ancestor "$release_sha" origin/main
   ```
 
-- Wait for the **Android CI main-push run on that exact SHA** to pass. A green PR run or an earlier main run does not satisfy this gate. Review failures instead of bypassing them.
-- Confirm required signing secrets and Firebase configuration are available to the release workflow without exposing their values. Publish APK independently reruns validation and adds release lint/assembly before signing.
+- Wait for the **Android CI main-push run on that exact SHA** to pass. A green PR run or an earlier main run does not satisfy this gate. Review failures instead of bypassing them. That run can look different from a full run, or be absent:
+  - **Reused route.** A direct single-merge push whose tree is identical to a recent successful full PR run can take the `reused` route: the plan job logs `Validation route: reused` with the proof run, the build, Firebase, native and emulator jobs are skipped, and the `Kotlin, lint and APK` gate passes only after verifying that proof again. See [identical merged-tree validation](development.md#identical-merged-tree-validation). This is code-equivalence evidence from the PR run, not a new execution of the tests.
+  - **No run.** The Android CI push trigger ignores documentation-only paths (`paths-ignore` in `.github/workflows/ci.yml`; see [workflows](development.md#workflows)). If the push that put the SHA on `main` changed only those paths, no Android CI main-push run exists for that SHA.
+  - **Cancelled run.** Android CI runs on `main` share one concurrency group with `cancel-in-progress: true`, so a later push to `main` or a manual Android CI dispatch on `main` cancels a main-push run that is still in progress. GitHub does not restart the cancelled run.
+
+  In the last two cases no passing main-push run exists for that SHA. Publish APK runs full validation for the tag whichever route the main-push run took.
+- Confirm the required signing secrets, the Firebase client configuration (`FIREBASE_CONFIG_JSON`) and the Sentry client DSN (`SENTRY_DSN`) are available to the release workflow without exposing their values. Publish APK independently reruns validation and adds release lint/assembly before signing; its distribution build fails when `FIREBASE_CONFIG_JSON` or `SENTRY_DSN` is missing.
 
 ### 5. Tag and publish
 
@@ -64,14 +69,21 @@ One designated release owner coordinates the entire checklist below, including v
   git push origin "refs/tags/$release_tag"
   ```
 
-- Follow the **Publish APK** run for that tag through completion. It verifies the source version and main ancestry, reruns validation, builds an unsigned non-debuggable candidate, then signs and publishes a prerelease with APK, `SHA256SUMS`, and `build-info.json`.
+- Follow the **Publish APK** run for that tag through completion. It verifies the source version and main ancestry, reruns validation, builds an unsigned non-debuggable candidate, then signs and publishes a prerelease with six assets: the signed APK (`distillpod-<version>.apk`), the corresponding source tarball (`distillpod-<version>-source.tar.gz`), `SHA256SUMS`, `build-info.json`, `THIRD_PARTY_NOTICES.md` and `source-manifest.json`. `SHA256SUMS` lists the other five.
 - If a run fails, inspect its failure and any draft/assets before retrying. Retry the same tag only for the same immutable source when the workflow can safely resume. If source/version changes are needed, prepare a new version/code and tag through this checklist. Do not replace published assets or move a published tag to conceal a failed release.
 
 ### 6. Verify publication and report
 
 - Open the resulting GitHub Release and confirm it is published as a prerelease, its notes match the tagged source, and all expected assets are downloadable. A green build or a draft alone is not publication.
-- Download the APK, `SHA256SUMS`, and `build-info.json` into a dedicated directory. Run `sha256sum --check SHA256SUMS` there. Confirm the build-info commit and workflow URL identify the validated source and successful publication run.
-- Inspect the downloaded APK with the tagged source's release guard, using the Android Build Tools directory for `build_tools`:
+- Download all six assets into a new, empty directory and check them there. Without `--pattern`, `gh release download` fetches every asset (the source tarball is the largest). Set `release_dir` to that directory:
+
+  ```sh
+  gh release download "$release_tag" --repo andrepaim/distillpod --dir "$release_dir"
+  (cd "$release_dir" && sha256sum --check SHA256SUMS)
+  ```
+
+  The check must print `OK` for all five listed files. It fails if any of them is missing, so a partial download does not pass. Confirm the build-info commit and workflow URL identify the validated source and successful publication run.
+- Inspect the downloaded APK (`downloaded_apk="$release_dir/distillpod-${release_tag#v}.apk"`) with the tagged source's release guard, using the Android Build Tools directory for `build_tools`:
 
   ```sh
   python3 scripts/release_metadata.py --tag "$release_tag" --apk "$downloaded_apk" --build-tools "$build_tools" --verify-signature
@@ -97,6 +109,8 @@ The `alpha-release` GitHub environment stores `ALPHA_KEYSTORE_BASE64`, `ALPHA_KE
 
 Distribution builds receive the `FIREBASE_CONFIG_JSON` repository secret through the reusable validation workflow. It contains the retained Android Firebase client configuration; a missing value fails the release build instead of silently disabling sync. It is written only to a private runner-temporary file and removed afterward. Ordinary PR/debug/emulator builds remain unconfigured and receive no production Firebase configuration.
 
+Distribution builds also receive the `SENTRY_DSN` repository secret, the public client DSN for [cloud diagnostics](android/cloud-diagnostics.md), through the same reusable validation workflow. It reaches the release Gradle build as an environment variable; a missing value fails the release build. Ordinary PR/debug/emulator builds receive no DSN.
+
 The 0.16.0 personal-alpha publishing configuration enables the voice preview explicitly with `-PdistillpodVoiceEnabled=true` during release lint/assembly. Source/debug defaults remain disabled. This is a distribution choice, not a stored user preference: headphones still require explicit setup and opt-in. Verify the downloaded APK's voice resource and car-service enablement alongside its metadata when publishing this configuration.
 
 The release job checks APK application ID, version name/code, non-debuggable state, 16 KB native-library alignment and the actual signing certificate. It publishes a build-info record with commit and workflow URL. Fork pull requests and ordinary CI do not receive signing secrets.
@@ -108,8 +122,8 @@ The release job checks APK application ID, version name/code, non-debuggable sta
 python3 scripts/release_metadata.py
 ```
 
-The local candidate is `app/build/outputs/apk/release/app-release-unsigned.apk`. It must be signed before installation. The repository has no signing password or keystore configuration in Gradle. This local command omits Firebase configuration; add `-PdistillpodFirebaseConfig=/absolute/path/google-services.json` for a configured candidate. The publishing workflow requires that configuration even though local builds can omit it.
+The local candidate is `app/build/outputs/apk/release/app-release-unsigned.apk`. It must be signed before installation. The repository has no signing password or keystore configuration in Gradle. This local command omits Firebase and Sentry configuration; for a configured candidate, add `-PdistillpodFirebaseConfig=/absolute/path/google-services.json` and provide `SENTRY_DSN` in the build environment without printing it. The publishing workflow requires both even though local builds can omit them.
 
-Verify a downloaded release with `sha256sum --check SHA256SUMS`, then inspect it with Android Build Tools `apksigner verify --verbose --print-certs <apk>`. The workflow runs the same metadata guard used by `scripts/release_metadata.py` before and after signing.
+Verify a downloaded release by running `sha256sum --check SHA256SUMS` in a directory that holds all six assets, as in step 6. To check only the APK, keep its published file name, place it next to `SHA256SUMS` and run `sha256sum --ignore-missing --check SHA256SUMS` (GNU coreutils): it checks the listed files that are present, and fails on a mismatch or when none of them is present. Then inspect the APK with Android Build Tools `apksigner verify --verbose --print-certs <apk>`. The workflow runs the same metadata guard used by `scripts/release_metadata.py` before and after signing.
 
 CI debug artifacts are temporary test builds. They are not distributed as phone updates because their signing certificates differ across runners. The release APK is the upgrade artifact.
