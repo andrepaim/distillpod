@@ -140,6 +140,10 @@ sdkmanager 'platforms;android-35' 'build-tools;35.0.0' 'ndk;27.2.12479018' 'cmak
 python3 -m unittest discover -s scripts -p 'test_*.py'
 ```
 
+Unit tests run Robolectric offline. The `android-all-instrumented` jar for each SDK level the tests use is an ordinary Gradle dependency of `app` (one `robolectricAndroidAll<level>` configuration per level), resolved through Gradle's cache and copied to `app/build/robolectric/android-all`; Robolectric reads only that directory and downloads nothing while tests run. A test that requests a level missing from the table fails with `Unable to locate dependency`. When adding a `@Config(sdk)` level or upgrading Robolectric, take the versions from that release's `DefaultSdkProvider`; `scripts/test_robolectric_offline.py` checks that the table in `app/build.gradle.kts` matches the levels the tests request (classes without a class-level `sdk` run on `targetSdk`).
+
+`gradle.properties` gives the Gradle daemon a 4 GB heap with at most four workers; the Kotlin daemon inherits the same limit. At 2 GB, release packaging and a cold debug build (dex merging alongside lint) ran out of heap.
+
 Debug APK: `app/build/outputs/apk/debug/app-debug.apk`. Each developer/CI runner normally has its own debug key. Use signed release assets for upgrades to the personal-alpha installation.
 
 ## Native bridge checks
