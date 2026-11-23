@@ -32,6 +32,15 @@ def seconds(start, end):
     return duration
 
 
+def cancelled_before_start(job):
+    # Actions can record a job cancelled before any runner was assigned as
+    # completing one second before its start. It never executed; any other
+    # negative interval remains invalid evidence.
+    return (job.get('conclusion') == 'cancelled' and 'runner_id' in job and job['runner_id'] is None and
+            job.get('steps') == [] and bool(job.get('started_at') and job.get('completed_at')) and
+            instant(job['completed_at']) < instant(job['started_at']))
+
+
 def stats(values):
     ordered = sorted(v for v in values if v is not None)
     if not ordered:
@@ -240,6 +249,9 @@ def analyze(data):
         for job in entry['jobs']:
             if job.get('conclusion') == 'skipped':
                 continue
+            if cancelled_before_start(job):
+                totals['cancelled_before_start_jobs'] += 1
+                continue
             # Failed-only reruns clone prior successes with NEW job IDs and the
             # ORIGINAL runner/timestamps. These are results, not new execution.
             identity = (entry['run_id'], job['name'], job.get('started_at'),
@@ -320,6 +332,7 @@ def analyze(data):
             'run_count': len(runs), 'attempt_count': len(seen_attempts), 'job_count': len(seen_jobs),
             'executed_job_count': totals['executed_job_count'],
             'carried_forward_jobs': totals['carried_forward_jobs'],
+            'cancelled_before_start_jobs': totals['cancelled_before_start_jobs'],
             'inconsistent_job_queue_timestamps': totals['inconsistent_job_queue_timestamps'],
             'runner_minutes': totals['runner_seconds'] / 60, 'billed_minutes': None,
             'cancelled_attempt_runner_minutes': totals['cancelled_seconds'] / 60,

@@ -9,7 +9,7 @@ from pathlib import Path, PurePosixPath
 from docs_validation import check_links
 
 FULL_JOBS = {'android_build', 'firebase', 'native', 'emulator'}
-ROOT_DOCS = {'README.md', 'AGENTS.md', 'THIRD_PARTY_NOTICES.md',
+ROOT_DOCS = {'README.md', 'AGENTS.md', 'CLAUDE.md', 'THIRD_PARTY_NOTICES.md',
              'CONTRIBUTING.md', 'SECURITY.md', 'LICENSE.md'}
 OTHER_DOCS = {'firebase/README.md', 'scripts/fixtures/investigation/README.md',
               'design/icon-proposal/assets/Manrope-OFL.txt'}
@@ -166,13 +166,18 @@ def main():
             print(f'Validation route: {route.mode}; paths: {len(route.paths)}; {route.reason}; proof run: {reused or "none"}')
         else:
             needs = json.loads(os.environ['VALIDATION_NEEDS'])
-            from ci_validation_proof import find_reusable, emit
+            from ci_validation_proof import find_reusable, emit, StaleBase
             selected = needs.get('plan', {}).get('outputs', {})
             reused = (find_reusable(Path.cwd(), os.environ, inputs, selected.get('reuse_run_id'))
                       if selected.get('mode') == 'reused' else '')
             validate_gate(needs, event, inputs, expected, reused)
             if selected.get('mode') == 'full' and direct_pr(event, inputs):
-                emit(Path.cwd(), os.environ, os.environ['CI_PROOF_OUTPUT'])
+                try:
+                    emit(Path.cwd(), os.environ, os.environ['CI_PROOF_OUTPUT'])
+                    with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+                        output.write('proof_written=true\n')
+                except StaleBase as stale:
+                    print(f'::notice title=No reusable validation proof::{stale}')
             print('Selected validation succeeded; omissions require verified documentation or merge proof')
     except (ValueError, KeyError, OSError) as error:
         print(f'Validation failed: {error}')
