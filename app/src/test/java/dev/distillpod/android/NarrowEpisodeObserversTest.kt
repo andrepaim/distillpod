@@ -51,4 +51,37 @@ class NarrowEpisodeObserversTest {
             jobs.forEach { it.cancel() }
         } finally { db.close() }
     }
+
+    /** #277: a feed refresh writes each show's bookkeeping; the car's browse lists must not reload for it. */
+    @Test fun `feed refresh bookkeeping does not re-emit the browse podcast observer`() = runBlocking {
+        val db = Room.inMemoryDatabaseBuilder(ApplicationProvider.getApplicationContext<android.content.Context>(), AppDatabase::class.java).build()
+        val dao = db.library()
+        try {
+            val show = PodcastEntity("p", "https://example.test/feed", "Show", imageUrl = "https://example.test/p.png")
+            dao.putPodcast(show)
+            val raw = Collections.synchronizedList(mutableListOf<Any>())
+            val browse = Collections.synchronizedList(mutableListOf<List<BrowsePodcast>>())
+            val jobs = listOf(
+                launch(Dispatchers.IO) { dao.observePodcasts().collect { raw.add(it) } },
+                launch(Dispatchers.IO) { dao.observeBrowsePodcasts().collect { browse.add(it) } },
+            )
+            suspend fun settle(rawCount: Int) {
+                withTimeout(10_000) { while (raw.size < rawCount || browse.isEmpty()) delay(20) }
+                delay(300)
+            }
+            settle(1)
+            dao.markPodcastRefreshed("p", 1_000)
+            settle(2)
+            dao.setPodcastError("p", "offline")
+            settle(3)
+            dao.putPodcast(dao.podcast("p")!!.copy(etag = "v2", lastModified = "yesterday", refreshedAt = 2_000, error = null))
+            settle(4)
+            assertEquals(1, browse.size)
+            dao.putPodcast(dao.podcast("p")!!.copy(imageUrl = "https://example.test/p2.png"))
+            settle(5)
+            withTimeout(10_000) { while (browse.size < 2) delay(20) }
+            assertEquals("https://example.test/p2.png", browse.last().single().imageUrl)
+            jobs.forEach { it.cancel() }
+        } finally { db.close() }
+    }
 }

@@ -83,4 +83,20 @@ class AutoArtworkTest {
             assertEquals("android.auto.test" to laterUri,grants.last())
         } finally {scope.cancel()}
     }
+    /** #277: every browse list build asks for each cover; a failed one must not be fetched again each time. */
+    @Test fun `a cover that cannot be cached is not downloaded again on every list build`()=runBlocking {
+        val context=ApplicationProvider.getApplicationContext<Context>()
+        val job=SupervisorJob();val scope=CoroutineScope(job+Dispatchers.IO)
+        val server=MockWebServer();server.start()
+        try {
+            // Robolectric has no launcher icon drawable for the generated placeholder.
+            File(File(context.cacheDir,"auto-art").apply {mkdirs()},"placeholder.jpg").takeUnless {it.isFile}?.writeBytes(byteArrayOf(0))
+            repeat(3) {server.enqueue(MockResponse().setResponseCode(404))}
+            val art=AutoArtwork(context,OkHttpClient(),scope)
+            val url=server.url("/missing-${System.nanoTime()}.png").toString()
+            val placeholder=art.uri(url);job.children.toList().joinAll()
+            repeat(3) {assertEquals(placeholder,art.uri(url))};job.children.toList().joinAll()
+            assertEquals(1,server.requestCount)
+        } finally {scope.cancel();server.shutdown()}
+    }
 }
