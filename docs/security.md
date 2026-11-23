@@ -6,8 +6,12 @@ remove already tracked files or historical commits.
 
 ## Repository checks
 
-The **Repository security** workflow runs on main pushes, pull requests, manual
-dispatch and weekly. It uses read-only repository permissions and no account or
+The **Repository security** workflow runs on its own for main pushes (including
+documentation-only pushes), manual dispatch and weekly. Pull requests do not
+start it directly: Android CI calls it as its `security` job, so the required
+`Kotlin, lint and APK` gate verifies the result. Manual Android CI dispatches
+and the validation inside Publish APK runs call it the same way. It uses
+read-only repository permissions and no account or
 signing secrets. Gitleaks is version/checksum pinned and scans all fetched Git
 history, with encoded-content/archive inspection and fully redacted output.
 Scanner reports and source snapshots are not uploaded as artifacts. GitHub
