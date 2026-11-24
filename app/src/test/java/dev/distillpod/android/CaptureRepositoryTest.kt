@@ -189,6 +189,7 @@ class CaptureRepositoryTest {
                 while(!old.isCompleted) {dispatcher.scheduler.runCurrent();delay(5)}
             }
             assertEquals(1,generations)
+            diagnostics.awaitIdle() // Transitions are applied on the diagnostics executor (#293).
             assertEquals(resumed,diagnostics.journal.latest().single {it.kind=="distillation" && it.operation==id}.correlation!!.executionId)
             assertEquals("running",diagnostics.journal.latest().single {it.kind=="distillation" && it.operation==id}.state)
             release.complete(Unit);current.join()

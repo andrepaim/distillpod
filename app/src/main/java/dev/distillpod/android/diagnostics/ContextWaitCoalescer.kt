@@ -40,7 +40,12 @@ internal class ContextWaitCoalescer(private val maxEntries:Int=DiagnosticBudget.
     fun clear() {waits.clear();scope=null}
 
     fun record(operation:String,evidence:ContextPreparationEvidence,correlation:DiagnosticCorrelation?,
-        epoch:String?,day:Long,write:()->Boolean) {
+        epoch:String?,day:Long,write:()->Boolean) =
+        record(operation,evidence.outcome,evidence.waitInput,evidence.fields(0),correlation,epoch,day,write)
+
+    /** The same decision from values read when the preparation finished (Diagnostics defers the write). */
+    fun record(operation:String,outcome:String,input:ContextWaitInput?,fields:Map<String,Any>,
+        correlation:DiagnosticCorrelation?,epoch:String?,day:Long,write:()->Boolean) {
         val current=epoch to day
         if(scope!=current) {waits.clear();scope=current}
         val key=correlation?.let {
@@ -49,9 +54,8 @@ internal class ContextWaitCoalescer(private val maxEntries:Int=DiagnosticBudget.
             else Key(operation,it.generationAttemptId,it.executionId)
         }
         if(key==null) {write();return}
-        val input=evidence.waitInput
-        val snapshot=if(evidence.outcome=="transcript_required" && input!=null)
-            Snapshot(input,evidence.fields(0)+correlation?.fields().orEmpty()) else null
+        val snapshot=if(outcome=="transcript_required" && input!=null)
+            Snapshot(input,fields+correlation?.fields().orEmpty()) else null
         if(snapshot!=null && waits[key]==snapshot)return
         // A changed/terminal observation invalidates old evidence even if its own write fails.
         waits.remove(key)

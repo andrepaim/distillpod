@@ -25,11 +25,14 @@ internal class OperationJournal private constructor(private val file: File, priv
             if(input.available()>=4)nextSequence=maxOf(nextSequence,input.readInt())
         } } catch(_:Exception) { rows.clear();dropped++ }
     }
-    @Synchronized fun transition(kind:String, operation:String, state:String, reason:String="none", source:String="background", attempt:String?=null, correlation:DiagnosticCorrelation?=null, observedAt:Long=now()) {
-        transitionRecord(kind,operation,state,reason,source,attempt,correlation?.copy(collectionEpoch=null),observedAt)
+    /** The monotonic clock behind elapsed times, read without the journal monitor (see [transition]). */
+    fun tick():Long=monotonic()
+    /** [observedTick] is the [tick] at observation, so a deferred write keeps the observed elapsed time. */
+    @Synchronized fun transition(kind:String, operation:String, state:String, reason:String="none", source:String="background", attempt:String?=null, correlation:DiagnosticCorrelation?=null, observedAt:Long=now(), observedTick:Long=monotonic()) {
+        transitionRecord(kind,operation,state,reason,source,attempt,correlation?.copy(collectionEpoch=null),observedAt,observedTick)
     }
     private fun transitionRecord(kind:String,operation:String,state:String,reason:String,source:String,attempt:String?,
-        correlation:DiagnosticCorrelation?,observedAt:Long) {
+        correlation:DiagnosticCorrelation?,observedAt:Long,observedTick:Long) {
         require(kind in KINDS && state in STATES && source in SOURCES && reason.matches(Regex("[a-z_]{1,40}")))
         UUID.fromString(operation);attempt?.let {UUID.fromString(it)}
         val old=rows.lastOrNull {it.kind==kind && it.operation==operation}
@@ -49,8 +52,8 @@ internal class OperationJournal private constructor(private val file: File, priv
         val newAttempt=old==null || changedExecution || changedAttempt || state=="running" && (old.state in TERMINAL || attempt!=null && attempt!=old.attempt)
         val attemptId=if(newAttempt) correlation?.executionId ?: attempt ?: UUID.randomUUID().toString() else old!!.attempt
         val key="$kind:$operation:$attemptId"
-        val elapsed=clocks[key]?.let {(monotonic()-it).coerceAtLeast(0)} ?: -1L
-        if(newAttempt)clocks[key]=monotonic()
+        val elapsed=clocks[key]?.let {(observedTick-it).coerceAtLeast(0)} ?: -1L
+        if(newAttempt)clocks[key]=observedTick
         rows+=Row(UUID.randomUUID().toString(),kind,operation,attemptId,state,reason,old?.source?.takeUnless {it=="background"} ?: source,
             old?.started ?: observedAt,observedAt,if(newAttempt)0 else elapsed,Math.incrementExact(nextSequence).also {nextSequence=it},release,correlation=correlation)
         prune();save()

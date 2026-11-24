@@ -177,12 +177,13 @@ class DiagnosticsTest {
         assertFalse(payload.contains("private podcast title"));assertTrue(d.journal.latest().isEmpty())
         d.usageConsent(false);assertTrue(d.queue.files().isEmpty())
     }
-    @Test fun `durable summaries persist before executor and synthetic retries have stable identifiers`() {
+    @Test fun `durable summaries persist on the executor and synthetic retries have stable identifiers`() {
         val d=Diagnostics(context,"https://abc123@o1.ingest.sentry.io/1",RecordingDiagnosticFileForce())
         val barrier=DiagnosticBarrierProbe(d)
         d.consent(true)
         val job=java.util.UUID.randomUUID().toString()
-        d.event("transcription.started",job)
+        // Since #293 the transition is written by the executor, not the caller (see DiagnosticsCallerThreadTest).
+        d.event("transcription.started",job);barrier.awaitIdle()
         assertEquals("running",d.journal.latest().single {it.operation==job}.state)
         d.event("transcription.completed",job);barrier.awaitIdle()
         assertEquals("completed",d.journal.latest().single {it.operation==job}.state)
@@ -222,9 +223,11 @@ class DiagnosticsTest {
         d.event("transcription.started",job)
         d.event("transcription.queued",job,reason="wifi_required")
         d.event("transcription.stage",job,reason="queued")
+        // Transitions are applied on the diagnostics executor (#293).
+        d.awaitIdle()
         assertEquals("waiting",d.journal.latest().single().state)
         assertEquals("wifi_required",d.journal.latest().single().reason)
-        d.event("transcription.partial",job,reason="partial")
+        d.event("transcription.partial",job,reason="partial");d.awaitIdle()
         assertEquals("partial",d.journal.latest().single().state)
         d.consent(false)
     }
