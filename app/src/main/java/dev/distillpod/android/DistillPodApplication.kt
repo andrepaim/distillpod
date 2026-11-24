@@ -85,7 +85,8 @@ class AppGraph internal constructor(val context: Context, val scope: CoroutineSc
         dev.distillpod.android.playback.DistillConfirmationSound(scope,settings.flow.map {it.distillSound},
             dev.distillpod.android.playback.SoundPoolConfirmationAudio(context))
     }
-    val captures by lazy { CaptureRepository(db, ai, { account.state.value.connected }, { transcription.prepare(it, allowOnline = false) }, jobs::capture,{syncAccount.kick()},onSaved={confirmationSound.saved()}, diagnostics=diagnostics) }
+    // A saved moment waiting for its transcript is a request the user is waiting on, like Transcribe (#299).
+    val captures by lazy { CaptureRepository(db, ai, { account.state.value.connected }, { transcription.prepare(it, allowOnline = false, requested = true) }, jobs::capture,{syncAccount.kick()},onSaved={confirmationSound.saved()}, diagnostics=diagnostics) }
     val understanding by lazy { EpisodeUnderstanding(db, ai, jobs::analyze, jobs::reply) }
     val explanations by lazy { MomentExplanation(db, ai, jobs::explain) }
     val recommendations by lazy { Recommendations(db, settings, podcasts, http, ai, jobs::recommend, jobs::recommendationPending) }

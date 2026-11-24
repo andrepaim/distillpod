@@ -315,7 +315,7 @@ class AppViewModel(val graph: AppGraph, private val saved: SavedStateHandle) : V
     }
     fun deletePost(id: String) = action("post:$id") { graph.posts.delete(id) }
     fun deleteCapture(id: String) = action("capture:$id") { graph.portableSync.deleteMoment(id) }
-    fun prepareTranscript(id: String, local: Boolean = false) = action("transcript:$id") { graph.diagnostics.usage("transcription");graph.transcription.prepare(id, local); notificationPrompt.workStarted(); messages.send("Transcript preparation queued") }
+    fun prepareTranscript(id: String, local: Boolean = false) = action("transcript:$id") { graph.diagnostics.usage("transcription");graph.transcription.prepare(id, local, requested = true); notificationPrompt.workStarted(); messages.send("Transcript preparation queued") }
     fun pauseTranscript(id: String) = action("transcript:$id") { graph.transcription.pause(id) }
     fun captureMoment() = captureMoment(openSaved = true)
     fun captureMomentInPlayer() = captureMoment(openSaved = false)
@@ -333,7 +333,7 @@ class AppViewModel(val graph: AppGraph, private val saved: SavedStateHandle) : V
     fun expandCapture(id: String, window: dev.distillpod.core.ContextWindow) = action("capture:$id") { graph.captures.expand(id, window) }
     fun retranscribeCapture(id: String) = action("capture:$id") {
         val moment=dao.distillation(id) ?: return@action
-        graph.transcription.prepare(moment.episodeId, forceLocal=true)
+        graph.transcription.prepare(moment.episodeId, forceLocal=true, requested=true)
         graph.captures.improve(id, dev.distillpod.core.ContextWindow.EARLIER)
     }
     fun restoreCapture(id: String, version: String) = action("capture:$id") { graph.captures.restoreVersion(id, version) }
