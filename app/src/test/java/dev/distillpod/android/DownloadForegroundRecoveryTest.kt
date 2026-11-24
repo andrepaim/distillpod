@@ -13,6 +13,7 @@ import dev.distillpod.android.work.DOWNLOAD_BLOCKED_MESSAGE
 import dev.distillpod.android.work.LibraryWorker
 import dev.distillpod.android.work.MODEL_BLOCKED_MESSAGE
 import kotlinx.coroutines.*
+import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.Assert.*
@@ -23,7 +24,10 @@ import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import java.util.concurrent.TimeUnit
 
-/** Android can refuse the download foreground service when a job starts in the background (#138). */
+/**
+ * Android can refuse the download foreground service when a job starts in the background (#138).
+ * The transfer then continues as ordinary work and never waits for the user (#292).
+ */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
 class DownloadForegroundRecoveryTest {
@@ -89,43 +93,174 @@ class DownloadForegroundRecoveryTest {
         while (!check()) { shadowOf(Looper.getMainLooper()).idle(); delay(10) }
     }
 
-    @Test fun `rejected episode foreground start retries, then pauses with an actionable message`() = runBlocking {
+    /** Serves every transfer, including a model's fixed URL, from the loopback server. */
+    private fun transfersFrom(graph: AppGraph, server: MockWebServer) {
+        val client = OkHttpClient.Builder().addInterceptor { chain ->
+            chain.proceed(chain.request().newBuilder().url(server.url(chain.request().url.encodedPath)).build())
+        }.build()
+        org.robolectric.util.ReflectionHelpers.setField(graph, "media",
+            MediaRepository(context, graph.db, graph.settings, ResumableDownloader(client), graph.activeFiles))
+    }
+    private fun throttled(body: String) = MockResponse().setBody(body).setHeader("ETag", "\"v1\"")
+        .throttleBody(1024, 50, TimeUnit.MILLISECONDS)
+
+    @Test fun `a rejected episode foreground start continues as ordinary work and completes`() = runBlocking {
         fixture { graph ->
             val dao = graph.db.library()
-            graph.jobs.download(episode.id)
-            assertEquals("queued", dao.episode(episode.id)!!.downloadState)
-            for (attempt in 0..3) {
-                assertEquals(ListenableWorker.Result.retry(), worker("download", episode.id, attempt, rejected()).doWork())
-                // WorkManager still owns the retried request, so the row stays queued without an error.
-                assertEquals("queued", dao.episode(episode.id)!!.downloadState)
-                assertNull(dao.episode(episode.id)!!.error)
+            MockWebServer().use { server ->
+                val audio = "a".repeat(5000)
+                dao.putEpisode(episode.copy(audioUrl = server.url("/audio.mp3").toString()))
+                // The attempt count that used to pause the row (#138) no longer matters (#292).
+                for (attempt in listOf(0, 4)) {
+                    server.enqueue(MockResponse().setBody(audio).setHeader("ETag", "\"v1\""))
+                    if (attempt == 4) graph.media.deleteDownload(episode.id)
+                    graph.jobs.download(episode.id)
+                    assertEquals(ListenableWorker.Result.success(), worker("download", episode.id, attempt, rejected()).doWork())
+                    val row = dao.episode(episode.id)!!
+                    assertEquals("downloaded", row.downloadState)
+                    assertNull(row.error)
+                    assertEquals(audio, java.io.File(row.localFile!!).readText())
+                }
+                assertEquals(2, server.requestCount)
             }
-            assertEquals(ListenableWorker.Result.failure(), worker("download", episode.id, 4, rejected()).doWork())
-            assertEquals("paused", dao.episode(episode.id)!!.downloadState)
-            assertEquals(DOWNLOAD_BLOCKED_MESSAGE, dao.episode(episode.id)!!.error)
-            assertTrue(DOWNLOAD_BLOCKED_MESSAGE.contains("Open DistillPod"))
-            // Resume clears the message and schedules a fresh attempt.
-            graph.jobs.download(episode.id)
-            assertEquals("queued", dao.episode(episode.id)!!.downloadState)
-            assertNull(dao.episode(episode.id)!!.error)
-            assertEquals(1, unfinished("download:${episode.id}").size)
         }
     }
 
-    @Test fun `rejected model foreground start retries, then pauses with an actionable message`() = runBlocking {
+    @Test fun `after a rejected start a stop at the time limit is rescheduled and resumes from the saved bytes`() = runBlocking {
         fixture { graph ->
             val dao = graph.db.library()
-            graph.jobs.model("tiny")
-            assertEquals("queued", dao.model("tiny")!!.state)
-            assertEquals(ListenableWorker.Result.retry(), worker("model", "tiny", 0, rejected()).doWork())
+            MockWebServer().use { server ->
+                val audio = "b".repeat(200000)
+                server.enqueue(throttled(audio))
+                dao.putEpisode(episode.copy(audioUrl = server.url("/audio.mp3").toString()))
+                graph.jobs.download(episode.id)
+                val worker = worker("download", episode.id, 4, rejected())
+                val run = launch(Dispatchers.IO) { worker.doWork() }
+                settle { dao.episode(episode.id)?.let { it.downloadState == "downloading" && it.downloadedBytes > 0 } == true }
+                worker.stop(WorkInfo.STOP_REASON_TIMEOUT)
+                run.cancelAndJoin()
+                val stopped = dao.episode(episode.id)!!
+                assertEquals("queued", stopped.downloadState)
+                assertNull(stopped.error)
+                assertTrue(stopped.downloadedBytes in 1 until audio.length)
+                assertEquals(1, unfinished("download:${episode.id}").size)
+
+                // WorkManager reruns the request; Android refuses the foreground start again.
+                val saved = stopped.downloadedBytes
+                server.enqueue(MockResponse().setResponseCode(206).setBody(audio.substring(saved.toInt())).setHeader("ETag", "\"v1\"")
+                    .setHeader("Content-Range", "bytes $saved-${audio.length - 1}/${audio.length}"))
+                assertEquals(ListenableWorker.Result.success(), worker("download", episode.id, 5, rejected()).doWork())
+                server.takeRequest()
+                val resumed = server.takeRequest()
+                assertEquals("bytes=$saved-", resumed.getHeader("Range"))
+                assertEquals("\"v1\"", resumed.getHeader("If-Range"))
+                val row = dao.episode(episode.id)!!
+                assertEquals("downloaded", row.downloadState)
+                assertEquals(audio, java.io.File(row.localFile!!).readText())
+            }
+        }
+    }
+
+    @Test fun `a pause during a transfer whose foreground start was rejected stays paused`() = runBlocking {
+        fixture { graph ->
+            val dao = graph.db.library()
+            MockWebServer().use { server ->
+                server.enqueue(throttled("c".repeat(200000)))
+                dao.putEpisode(episode.copy(audioUrl = server.url("/audio.mp3").toString()))
+                graph.jobs.download(episode.id)
+                val worker = worker("download", episode.id, 0, rejected())
+                val run = launch(Dispatchers.IO) { worker.doWork() }
+                settle { dao.episode(episode.id)?.let { it.downloadState == "downloading" && it.downloadedBytes > 0 } == true }
+                // Pause cancels the request; WorkManager then stops the worker as an app cancellation.
+                graph.jobs.pauseDownload(episode.id)
+                worker.stop(WorkInfo.STOP_REASON_CANCELLED_BY_APP)
+                run.cancelAndJoin()
+                assertEquals("paused", dao.episode(episode.id)!!.downloadState)
+                assertNull(dao.episode(episode.id)!!.error)
+                graph.jobs.recoverDownloads()
+                assertEquals("paused", dao.episode(episode.id)!!.downloadState)
+                assertTrue(unfinished("download:${episode.id}").isEmpty())
+                assertEquals(1, server.requestCount)
+            }
+        }
+    }
+
+    @Test fun `concurrent rejected attempts for one episode make a single transfer`() = runBlocking {
+        fixture { graph ->
+            val dao = graph.db.library()
+            MockWebServer().use { server ->
+                val audio = "d".repeat(20000)
+                server.enqueue(throttled(audio))
+                dao.putEpisode(episode.copy(audioUrl = server.url("/audio.mp3").toString()))
+                graph.jobs.download(episode.id)
+                val results = (0..1).map { async(Dispatchers.IO) { worker("download", episode.id, it, rejected()).doWork() } }.awaitAll()
+                assertEquals(listOf(ListenableWorker.Result.success(), ListenableWorker.Result.success()), results)
+                assertEquals(1, server.requestCount)
+                assertEquals(audio, java.io.File(dao.episode(episode.id)!!.localFile!!).readText())
+            }
+        }
+    }
+
+    @Test fun `a rejected model foreground start continues, and a stop at the time limit resumes from the saved bytes`() = runBlocking {
+        fixture { graph ->
+            val dao = graph.db.library()
+            MockWebServer().use { server ->
+                transfersFrom(graph, server)
+                graph.jobs.model("tiny")
+                // A chunked body has no length to compare with the model's size.
+                server.enqueue(MockResponse().setChunkedBody("m".repeat(200000), 4096).setHeader("ETag", "\"m1\"")
+                    .throttleBody(1024, 50, TimeUnit.MILLISECONDS))
+                val worker = worker("model", "tiny", 4, rejected())
+                val run = launch(Dispatchers.IO) { worker.doWork() }
+                settle { dao.model("tiny")?.let { it.state == "downloading" && it.bytes > 0 } == true }
+                worker.stop(WorkInfo.STOP_REASON_TIMEOUT)
+                run.cancelAndJoin()
+                val stopped = dao.model("tiny")!!
+                assertEquals("queued", stopped.state)
+                assertNull(stopped.error)
+                assertTrue(stopped.bytes > 0)
+                assertEquals(1, unfinished("model:tiny").size)
+
+                val total = whisperModels.single { it.id == "tiny" }.bytes
+                server.enqueue(MockResponse().setResponseCode(206).setChunkedBody("m".repeat(200000), 4096).setHeader("ETag", "\"m1\"")
+                    .setHeader("Content-Range", "bytes ${stopped.bytes}-${total - 1}/$total").throttleBody(1024, 50, TimeUnit.MILLISECONDS))
+                val next = worker("model", "tiny", 5, rejected())
+                val resumed = launch(Dispatchers.IO) { next.doWork() }
+                settle { dao.model("tiny")?.let { it.state == "downloading" && it.bytes > stopped.bytes } == true }
+                next.stop(WorkInfo.STOP_REASON_TIMEOUT)
+                resumed.cancelAndJoin()
+                server.takeRequest()
+                assertEquals("bytes=${stopped.bytes}-", server.takeRequest().getHeader("Range"))
+                assertEquals("queued", dao.model("tiny")!!.state)
+            }
+        }
+    }
+
+    @Test fun `startup resumes rows an earlier version paused because Android refused the foreground start`() = runBlocking {
+        fixture { graph ->
+            val dao = graph.db.library()
+            dao.putEpisode(episode.copy(downloadState = "paused", downloadedBytes = 10, error = DOWNLOAD_BLOCKED_MESSAGE))
+            val userPaused = episode.copy(id = "user-paused", guid = "user-paused", downloadState = "paused", downloadedBytes = 10)
+            val failed = episode.copy(id = "failed", guid = "failed", downloadState = "failed", error = "The transfer was interrupted.")
+            dao.putEpisode(userPaused); dao.putEpisode(failed)
+            dao.putModel(ModelEntity("tiny", "paused", 10, "\"m1\"", MODEL_BLOCKED_MESSAGE))
+            dao.putModel(ModelEntity("base", "paused", 10))
+            graph.jobs.recoverDownloads()
+            assertEquals("queued", dao.episode(episode.id)!!.downloadState)
+            assertNull(dao.episode(episode.id)!!.error)
+            assertEquals(10, dao.episode(episode.id)!!.downloadedBytes)
+            assertEquals(1, unfinished("download:${episode.id}").size)
             assertEquals("queued", dao.model("tiny")!!.state)
             assertNull(dao.model("tiny")!!.error)
-            assertEquals(ListenableWorker.Result.failure(), worker("model", "tiny", 4, rejected()).doWork())
-            assertEquals("paused", dao.model("tiny")!!.state)
-            assertEquals(MODEL_BLOCKED_MESSAGE, dao.model("tiny")!!.error)
-            graph.jobs.model("tiny")
-            assertEquals("queued", dao.model("tiny")!!.state)
-            assertNull(dao.model("tiny")!!.error)
+            assertEquals("\"m1\"", dao.model("tiny")!!.etag)
+            assertEquals(1, unfinished("model:tiny").size)
+            // A user's pause and a failure still wait for the user.
+            assertEquals("paused", dao.episode(userPaused.id)!!.downloadState)
+            assertEquals("failed", dao.episode(failed.id)!!.downloadState)
+            assertEquals("paused", dao.model("base")!!.state)
+            assertTrue(unfinished("download:${userPaused.id}").isEmpty())
+            assertTrue(unfinished("download:${failed.id}").isEmpty())
+            assertTrue(unfinished("model:base").isEmpty())
         }
     }
 
@@ -144,13 +279,14 @@ class DownloadForegroundRecoveryTest {
         }
     }
 
-    @Test fun `a rejection cannot overwrite a pause or completed download`() = runBlocking {
+    @Test fun `a rejected start never rewrites a completed download`() = runBlocking {
         fixture { graph ->
             val dao = graph.db.library()
-            graph.jobs.download(episode.id)
-            graph.jobs.pauseDownload(episode.id)
-            assertEquals(ListenableWorker.Result.failure(), worker("download", episode.id, 4, rejected()).doWork())
-            assertEquals("paused", dao.episode(episode.id)!!.downloadState)
+            val file = java.io.File(graph.media.directory, "${episode.id}-done.audio").apply { writeText("done") }
+            dao.putEpisode(episode.copy(downloadState = "downloaded", localFile = file.path, downloadedBytes = 4, totalBytes = 4))
+            assertEquals(ListenableWorker.Result.success(), worker("download", episode.id, 4, rejected()).doWork())
+            assertEquals("downloaded", dao.episode(episode.id)!!.downloadState)
+            assertEquals(file.path, dao.episode(episode.id)!!.localFile)
             assertNull(dao.episode(episode.id)!!.error)
         }
     }
