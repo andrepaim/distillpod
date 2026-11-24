@@ -96,8 +96,8 @@ Persistence and upgrade risks are covered explicitly, not waived because this is
 reporting: journal v1 compatibility, v2 restart/replay and bounded retention,
 portable export/import stripping, disabled-consent captures, revocation across
 in-flight callbacks, and immutable claim/cancel/resume ownership have automated
-regressions. Synchronous journal persistence can add claim latency; no phone
-performance claim is made. A claim observation before transaction commit remains
+regressions. Journal persistence runs on the diagnostics executor, not the
+claiming caller (#293); no phone performance claim is made. A claim observation before transaction commit remains
 attempted/unknown evidence if that commit fails.
 
 Full combined unit tests, lint/APK assembly, repository guards, review and
