@@ -102,6 +102,7 @@ class TranscriptionRepository internal constructor(private val graph: AppGraph,
     /**
      * Revisions the user asked for, with their request sequence (#299). Kept in memory, not in Room: the
      * session that takes them in order runs in this process. After a restart they run oldest first.
+     * Deferred WorkManager chunks (the session refused) run in the order Android schedules them.
      */
     private val requested = ConcurrentHashMap<String, Long>()
     private val requests = java.util.concurrent.atomic.AtomicLong()
@@ -246,12 +247,12 @@ class TranscriptionRepository internal constructor(private val graph: AppGraph,
     suspend fun resumeQueued() { pending().firstOrNull()?.let { dispatch(it) } }
     private suspend fun pending() = transcriptQueueOrder(dao.transcripts().filter { it.state in listOf("queued", "processing") }, requested)
     private suspend fun dispatch(row: TranscriptEntity) {
-        if (!TranscriptionService.start(graph.context)) enqueue(row, nextStart(row) ?: 0, refused = true)
+        if (!TranscriptionService.start(graph.context)) { enqueue(row, nextStart(row) ?: 0, refused = true); return }
+        val reason = transcriptionWaitReason(graph.context, graph.settings.flow.first(), transcriptionNeedsNetwork(dao.episode(row.episodeId), row))
         // Another transcript's chunk is in progress: this one waits for at least that chunk.
-        else if (running.keys.any { it != row.episodeId }) {
-            val reason = transcriptionWaitReason(graph.context, graph.settings.flow.first(), transcriptionNeedsNetwork(dao.episode(row.episodeId), row))
-            lifecycle("transcription.queued", row.revision, reason = reason ?: QUEUED_BEHIND, correlation = correlation(row.revision))
-        }
+        val behind = running.keys.any { it != row.episodeId }
+        if (reason != null || behind) lifecycle("transcription.queued", row.revision, reason = reason ?: QUEUED_BEHIND, correlation = correlation(row.revision))
+        else shownWaits.update { it - row.revision } // An earlier wait no longer applies: the session takes it next.
     }
     /** The next revision the foreground session prepares, in queue order; every other one records why it waits. */
     internal suspend fun nextForeground(): TranscriptEntity? {

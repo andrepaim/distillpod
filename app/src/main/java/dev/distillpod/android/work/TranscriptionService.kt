@@ -50,6 +50,8 @@ class TranscriptionService : Service() {
     private var startId = 0
     private var recoveryNeeded = false
     private var unavailable = false
+    /** Android refused startForeground: the queued rows wait for a start Android allows (#299). */
+    private var refused = false
     @Volatile private var stopping = false
     private var wake: PowerManager.WakeLock? = null
     private val graph get() = applicationContext.appGraph
@@ -71,6 +73,7 @@ class TranscriptionService : Service() {
         } catch (error: RuntimeException) {
             Log.w("TranscriptionService", "Foreground session could not start; keeping queued checkpoints", error)
             unavailable = true
+            refused = true
             recoveryNeeded = true
             stopping = true
             stopSelf() // Durable queued rows remain recoverable if Android refuses a service start.
@@ -146,7 +149,7 @@ class TranscriptionService : Service() {
         scope.cancel()
         wake?.let { if (it.isHeld) it.release() }
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
-        val refused = unavailable
+        val refused = refused
         if (recoveryNeeded) graph.scope.launch(Dispatchers.IO) {
             graph.ready.await()
             graph.transcription.recover(refused)

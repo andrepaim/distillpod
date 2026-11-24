@@ -133,10 +133,17 @@ class TranscriptionQueueOrderTest {
             assertEquals(TranscriptOutcome.DEFERRED_START, transcription.process(episode(1).id, revision,
                 TranscriptExecution({ false }, { throw android.app.ForegroundServiceStartNotAllowedException("Synthetic") }, true, 0)))
             assertEquals("restricted", transcription.waitReasons.value[revision])
-            // The session may take it again; leaving the queue clears the wait.
-            assertEquals(episode(1).id, transcription.nextForeground()?.episodeId)
-            transcription.pause(episode(1).id)
+            // A start Android allows, with nothing else running, no longer waits for anything.
+            transcription.prepare(episode(1).id, requested = true)
+            assertEquals(revision, revision(graph, 1))
             assertNull(transcription.waitReasons.value[revision])
+            // Leaving the queue clears a wait too.
+            assertEquals(episode(1).id, transcription.nextForeground()?.episodeId)
+            transcription.prepare(episode(2).id)
+            assertEquals(episode(1).id, transcription.nextForeground()?.episodeId)
+            assertEquals("queued_behind", transcription.waitReasons.value[revision(graph, 2)])
+            transcription.pause(episode(2).id)
+            assertNull(transcription.waitReasons.value[revision(graph, 2)])
         }
     }
 
