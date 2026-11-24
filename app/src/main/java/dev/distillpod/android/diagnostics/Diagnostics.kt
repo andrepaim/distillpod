@@ -25,6 +25,7 @@ class Diagnostics internal constructor(private val context: Context, private val
     internal val queue=DiagnosticQueue.withFileForce(java.io.File(context.noBackupFilesDir,"diagnostics"),fileForce,onDrop={prefs.edit().putLong("dropped",prefs.getLong("dropped",0)+1).commit()})
     private val lock=Any()
     private val budget=DiagnosticBudget(prefs)
+    internal val uploadState=DiagnosticUploadState(prefs)
     private val contextWaits=ContextWaitCoalescer()
     private val admissionLane=ThreadLocal<DiagnosticBudget.Lane>()
     internal val journal=OperationJournal.withFileForce(java.io.File(context.noBackupFilesDir,"reliability/journal"),fileForce,release=context.packageManager.getPackageInfo(context.packageName,0).versionName ?: "unknown")
@@ -72,7 +73,10 @@ class Diagnostics internal constructor(private val context: Context, private val
     internal fun acceptsCorrelation(correlation:DiagnosticCorrelation?):Boolean =
         correlation?.collectionEpoch?.let {it==correlationEpoch} ?: true
     /** Lists the outbox, which can wait on an executor file force; read it off the main thread. */
-    val reportingHealth get()="${queue.files().size} pending envelopes · ${prefs.getLong("dropped",0)+journal.dropped} collection warnings · last acknowledgement: ${prefs.getString("last_upload","none")}"
+    val reportingHealth get()=queue.files().let {files->
+        "${files.size} pending envelopes · ${prefs.getLong("dropped",0)+journal.dropped} collection warnings · last acknowledgement: ${prefs.getString("last_upload","none")}"+
+            uploadState.summary(files).let {if(it.isEmpty()) "" else " · $it"}
+    }
     val configured get()=dsn.isNotBlank()
     val reference get()="${context.packageManager.getPackageInfo(context.packageName,0).versionName} / installation $installation / session $session"
     init {
@@ -94,8 +98,9 @@ class Diagnostics internal constructor(private val context: Context, private val
         contextWaits.clear()
         if(!allow){journal.clear();prefs.edit().remove("suppressed_summaries").commit()}
         if(collecting && configured) safeInitialize() else {
-            WorkManager.getInstance(context).cancelUniqueWork("diagnostics-upload")
-            WorkManager.getInstance(context).cancelUniqueWork("diagnostics-recovery")
+            WorkManager.getInstance(context).cancelUniqueWork(UPLOAD_WORK)
+            WorkManager.getInstance(context).cancelUniqueWork(RECOVERY_WORK)
+            uploadState.clear()
             queue.clear(); java.io.File(context.noBackupFilesDir,"sentry").deleteRecursively()
             status.value=if(allow) "Cloud reporting is not configured in this build" else "Disabled"
         }
@@ -105,8 +110,9 @@ class Diagnostics internal constructor(private val context: Context, private val
         generation++;prefs.edit().putBoolean("usage_enabled",allow).commit();Sentry.close()
         queue.clear();contextWaits.clear();java.io.File(context.noBackupFilesDir,"sentry").deleteRecursively()
         if(collecting && configured)safeInitialize() else {
-            WorkManager.getInstance(context).cancelUniqueWork("diagnostics-upload")
-            WorkManager.getInstance(context).cancelUniqueWork("diagnostics-recovery")
+            WorkManager.getInstance(context).cancelUniqueWork(UPLOAD_WORK)
+            WorkManager.getInstance(context).cancelUniqueWork(RECOVERY_WORK)
+            uploadState.clear()
             status.value="Disabled"
         }
     }
@@ -164,8 +170,18 @@ class Diagnostics internal constructor(private val context: Context, private val
                 val healthFields=budget.fields()
                 val exhaustion=budget.exhaustion()
                 val last=prefs.getLong("last_health",0)
-                if((System.currentTimeMillis()-last>6*60*60*1000 || exhaustion!=prefs.getString("health_exhaustion","")) && log("diagnostics.health",mapOf("stream" to "diagnostics",
-                    "pending_envelopes" to queue.files().size,"dropped_reports" to (prefs.getLong("dropped",0)+journal.dropped),"test_traffic" to false)+healthFields))prefs.edit().putLong("last_health",System.currentTimeMillis()).putString("health_exhaustion",exhaustion).apply()
+                // A resumed upload stall is reported once, with how long reports waited (#300). It
+                // does not retry a denied admission on every flush; the stall waits for the allowance.
+                val stall=uploadState.pendingStallReport()
+                val reportStall=stall!=null && budget.available(DiagnosticBudget.Lane.HEALTH)
+                if(System.currentTimeMillis()-last>6*60*60*1000 || exhaustion!=prefs.getString("health_exhaustion","") || reportStall) {
+                    val files=queue.files()
+                    if(log("diagnostics.health",mapOf("stream" to "diagnostics","pending_envelopes" to files.size,
+                            "dropped_reports" to (prefs.getLong("dropped",0)+journal.dropped),"test_traffic" to false)+healthFields+uploadState.fields(files))) {
+                        prefs.edit().putLong("last_health",System.currentTimeMillis()).putString("health_exhaustion",exhaustion).apply()
+                        if(stall!=null)uploadState.stallReported()
+                    }
+                }
             }
         }
         val pending=runCatching {journal.pending()}.getOrElse {return}
@@ -305,12 +321,18 @@ class Diagnostics internal constructor(private val context: Context, private val
                 override fun close(isRestarting:Boolean) {}
             } }
         }
-        WorkManager.getInstance(context).enqueueUniquePeriodicWork("diagnostics-recovery",ExistingPeriodicWorkPolicy.KEEP,
-            PeriodicWorkRequestBuilder<DiagnosticsUploadWorker>(15,TimeUnit.MINUTES).setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()).build())
+        // Requests enqueued by an older version may be backed off for up to five hours (#300):
+        // replace them once, after which the worker never returns a retry.
+        val migrate=prefs.getInt(UPLOAD_SCHEDULE_KEY,0)<UPLOAD_SCHEDULE_VERSION
+        WorkManager.getInstance(context).enqueueUniquePeriodicWork(RECOVERY_WORK,
+            if(migrate)ExistingPeriodicWorkPolicy.CANCEL_AND_REENQUEUE else ExistingPeriodicWorkPolicy.KEEP,
+            PeriodicWorkRequestBuilder<DiagnosticsUploadWorker>(15,TimeUnit.MINUTES).setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+                .addTag(RECOVERY_TAG).build())
         status.value="Enabled"
         // The event executor flushes recovered summaries off the startup thread.
         event("app.started")
-        schedule()
+        schedule(if(migrate)ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP)
+        if(migrate)prefs.edit().putInt(UPLOAD_SCHEDULE_KEY,UPLOAD_SCHEDULE_VERSION).apply()
     }
     private fun persist(envelope:SentryEnvelope,options:SentryOptions,epoch:Long,logLane:DiagnosticBudget.Lane=DiagnosticBudget.Lane.ROUTINE) {
         try { synchronized(lock) {
@@ -324,14 +346,22 @@ class Diagnostics internal constructor(private val context: Context, private val
             persisted.set(queue.append(bytes,priority=lane!=DiagnosticBudget.Lane.ROUTINE));status.value="Pending upload"
         };schedule() } catch(_:Exception) { /* Diagnostics must never break the app. */ }
     }
-    private fun schedule() {
+    private fun schedule(policy:ExistingWorkPolicy=ExistingWorkPolicy.KEEP,delayMs:Long=DiagnosticUploader.CONTINUE_DELAY_MS) {
         try {
             val request=OneTimeWorkRequestBuilder<DiagnosticsUploadWorker>()
                 .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
-                .setInitialDelay(10,TimeUnit.SECONDS).setBackoffCriteria(BackoffPolicy.EXPONENTIAL,30,TimeUnit.SECONDS).build()
-            WorkManager.getInstance(context).enqueueUniqueWork("diagnostics-upload",ExistingWorkPolicy.KEEP,request)
+                .setInitialDelay(delayMs,TimeUnit.MILLISECONDS).addTag(UPLOAD_TAG).build()
+            WorkManager.getInstance(context).enqueueUniqueWork(UPLOAD_WORK,policy,request)
         }catch(_:Exception) {}
     }
+    /**
+     * Continues delivery after a worker run. The one-time request appends its successor (it is still
+     * running, so KEEP would do nothing); the periodic request keeps a pending one-time request,
+     * whose delay is bounded.
+     */
+    internal fun scheduleUpload(delayMs:Long,continuation:Boolean) =
+        schedule(if(continuation)ExistingWorkPolicy.APPEND_OR_REPLACE else ExistingWorkPolicy.KEEP,delayMs.coerceAtLeast(DiagnosticUploader.CONTINUE_DELAY_MS))
+    internal fun uploader(send:(ByteArray)->DiagnosticDelivery.Receipt)=DiagnosticUploader(queue,uploadState,send)
     /**
      * Safe on the main thread (#293): reads in-memory state and enqueues. The journal transition,
      * raw log and summary flush run on the executor, in call order, with this call's time and context.
@@ -442,10 +472,33 @@ class Diagnostics internal constructor(private val context: Context, private val
             }
         }
     }
-    internal fun uploaded() { prefs.edit().putString("last_upload",java.time.Instant.now().toString()).apply();status.value="Last upload: ${java.text.DateFormat.getDateTimeInstance().format(java.util.Date())}" }
+    /** Updates the Settings status after a worker run and reports a resumed stall promptly. */
+    internal fun uploadFinished(next:DiagnosticUploader.Next) {
+        // Before the status: persisting the health report sets "Pending upload".
+        if(uploadState.pendingStallReport()!=null)flushSummaries()
+        val last=uploadState.lastUpload
+        if(last>0)prefs.edit().putString("last_upload",java.time.Instant.ofEpochMilli(last).toString()).apply()
+        val failures=uploadState.consecutiveFailures
+        status.value=when {
+            uploadState.pausedForMs()>0 -> "Sentry asked to pause uploads; retrying automatically"
+            failures>=STALLED_FAILURES -> "Uploads are failing ($failures attempts in a row); retrying automatically"
+            failures>0 -> "Waiting to upload"
+            last>0 -> "Last upload: ${java.text.DateFormat.getDateTimeInstance().format(java.util.Date(last))}"
+            next==DiagnosticUploader.Next.Done -> "Enabled"
+            else -> status.value
+        }
+    }
     companion object {
         /** Deferred items awaiting the executor; only a stalled executor fills it (twice the journal's rows). */
         private const val ORDERED_CAPACITY=1000
+        internal const val UPLOAD_WORK="diagnostics-upload"
+        internal const val RECOVERY_WORK="diagnostics-recovery"
+        internal const val UPLOAD_TAG="diagnostics-upload-once"
+        internal const val RECOVERY_TAG="diagnostics-recovery-periodic"
+        /** Version 2 (#300) replaces requests left in WorkManager's retry backoff by version 1. */
+        internal const val UPLOAD_SCHEDULE_VERSION=2
+        private const val UPLOAD_SCHEDULE_KEY="upload_schedule_version"
+        private const val STALLED_FAILURES=3
         /**
          * Which component Android refused or timed out, read before the message is redacted.
          * A framework start timeout carries a cause only when this process recorded the
