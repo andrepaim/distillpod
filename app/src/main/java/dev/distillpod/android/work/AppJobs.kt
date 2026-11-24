@@ -194,7 +194,10 @@ class LibraryWorker(context: Context, params: WorkerParameters) : CoroutineWorke
             throw cancelled
         }
         catch (error: Exception) {
-            graph.diagnostics.failure("worker", error)
+            // The Library already names a feed's HTTP, parse or connection failure: not an app failure (#294).
+            val feedReason = if (kind == "refresh") feedRefreshDiagnosticReason(error) else null
+            if (feedReason != null) graph.diagnostics.event("worker.failed", reason = feedReason)
+            else graph.diagnostics.failure("worker", error)
             if (kind == "download" && error is java.io.IOException && runAttemptCount < 3) Result.retry()
             else {
                 // A failure before the transfer starts must not leave the row queued without work.
