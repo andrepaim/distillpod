@@ -228,7 +228,7 @@ class Diagnostics internal constructor(private val context: Context, private val
             "capture.completed"->"completed"
             "capture.prepared"->when(reason) {"queued"->"queued";"waiting_auth","waiting_quota","waiting_transcript","review_source"->"waiting";else->"failed"}
             "distillation.queued"->if(reason=="queued")"queued" else "waiting"
-            "transcription.queued"->if(reason in setOf("scheduled","queued"))"queued" else "waiting"
+            "transcription.queued"->if(reason in setOf("scheduled","queued","queued_behind"))"queued" else "waiting"
             "transcription.started","distillation.started","voice.started","playback.service_started"->"running"
             "transcription.stage"->if(reason=="queued")return else "running"
             "transcription.partial"->"partial"
@@ -466,7 +466,7 @@ class Diagnostics internal constructor(private val context: Context, private val
             "voice.started","voice.finished","voice.failed","sync.finished","sync.failed","worker.failed","startup.failed")
         private val REASONS=setOf("voice_no_episode","voice_missing_transcript","voice_stale_audio","voice_online_only","voice_empty_selection","voice_coverage_gap","restricted","throttled","formats","busy","partial","superseded","reconciled","process_interrupted","buffering","ended","resume_succeeded","resume_failed","none","created","deduplicated","transcript_required","waiting","waiting_auth","waiting_quota","waiting_transcript","queued","unknown",
             "no_speech","needs_context","incomplete_passage","review_source","unclear_source","succeeded","failed","ready","rejected","disabled","accepted","duplicate","cancelled","repeat","untrusted",
-            "charging_required","battery_low","offline","wifi_required","scheduled","online","publisher","downloading","checking_model","decoding","starting","transcribing","saving",
+            "charging_required","battery_low","offline","wifi_required","scheduled","queued_behind","online","publisher","downloading","checking_model","decoding","starting","transcribing","saving",
             "playing","paused","phone","car","headphones","resume_requested","resume_cancelled","dns","timeout","permission","auth_expired","quota","network_or_storage","invalid_data","internal")
         fun reason(error:Throwable):String=when(error) {
             is kotlinx.coroutines.CancellationException -> "cancelled"

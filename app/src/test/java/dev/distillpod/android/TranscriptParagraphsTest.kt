@@ -104,4 +104,31 @@ class TranscriptParagraphsTest {
         assertEquals("Not prepared yet", status(null))
         assertEquals("Prepared when you play", status(null, onPlay = true))
     }
+
+    /** #299: a queued transcript says what it is waiting for, not "waiting for power or network" for every reason. */
+    @Test fun `a queued transcript shows its actual wait on the row and in Transcript tools`() {
+        val expected = mapOf(
+            "queued_behind" to ("Queued · after another transcript" to
+                "Queued · another transcript is being prepared first. Transcripts are prepared one at a time."),
+            "charging_required" to ("Queued · waiting for a charger" to
+                "Queued · waiting for a charger because \"Only transcribe while charging\" is on"),
+            "battery_low" to ("Queued · battery low" to
+                "Queued · battery low. Continues when the phone is charging or the battery recovers."),
+            "wifi_required" to ("Queued · waiting for Wi-Fi" to
+                "Queued · waiting for Wi-Fi because \"Wi-Fi / unmetered downloads only\" is on"),
+            "offline" to ("Queued · offline" to
+                "Queued · offline. This transcript needs internet to get its audio or text."),
+            "restricted" to ("Queued · Android blocked the start" to
+                "Queued · Android didn't allow transcription to start in the background. It tries again automatically."),
+            "scheduled" to ("Queued · waiting to start" to "Queued · waiting for Android to start transcription"),
+            null to ("Queued · waiting to start" to "Queued · waiting for Android to start transcription"),
+        )
+        for ((wait, text) in expected) {
+            assertEquals(text.first, transcriptShortStatus("queued", "whisper", TranscriptStage.QUEUED, 30, null, false, wait))
+            assertEquals(text.first, transcriptShortStatus("queued", "whisper", null, 0, null, false, wait))
+            assertEquals(text.second, queuedStatus(wait))
+        }
+        // A wait never replaces a stage in progress.
+        assertEquals("Transcribing · 42%", transcriptShortStatus("processing", "whisper", TranscriptStage.TRANSCRIBING, 42, null, false, "queued_behind"))
+    }
 }

@@ -146,9 +146,10 @@ class TranscriptionService : Service() {
         scope.cancel()
         wake?.let { if (it.isHeld) it.release() }
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+        val refused = unavailable
         if (recoveryNeeded) graph.scope.launch(Dispatchers.IO) {
             graph.ready.await()
-            graph.transcription.recover()
+            graph.transcription.recover(refused)
         }
         super.onDestroy()
     }
