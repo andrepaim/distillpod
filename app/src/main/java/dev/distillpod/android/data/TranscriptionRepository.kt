@@ -249,11 +249,17 @@ class TranscriptionRepository internal constructor(private val graph: AppGraph,
      * by the user, or one whose audio changed since (resuming it would start a new revision), stays put.
      */
     suspend fun resumeBlocked() {
-        for (blocked in dao.transcripts().filter { it.state == "paused" && it.error == LEGACY_TRANSCRIPTION_BLOCKED_MESSAGE }) controls.withLock {
-            val row = dao.transcript(blocked.episodeId)?.takeIf { it.revision == blocked.revision && it.state == "paused" &&
-                it.error == LEGACY_TRANSCRIPTION_BLOCKED_MESSAGE && it.source in listOf("whisper", "publisher") } ?: return@withLock
-            if (dao.episode(row.episodeId)?.mediaFingerprint != row.fingerprint) return@withLock
-            prepareInternal(row.episodeId, forceLocal = false, allowOnline = true, requested = false)
+        for (blocked in dao.transcripts().filter { it.state == "paused" && it.error == LEGACY_TRANSCRIPTION_BLOCKED_MESSAGE }) try {
+            controls.withLock {
+                val row = dao.transcript(blocked.episodeId)?.takeIf { it.revision == blocked.revision && it.state == "paused" &&
+                    it.error == LEGACY_TRANSCRIPTION_BLOCKED_MESSAGE && it.source in listOf("whisper", "publisher") } ?: return@withLock
+                if (dao.episode(row.episodeId)?.mediaFingerprint != row.fingerprint) return@withLock
+                prepareInternal(row.episodeId, forceLocal = false, allowOnline = true, requested = false)
+            }
+        } catch (error: Exception) {
+            // One row's failure leaves it paused for the user; the others still resume.
+            if (error is CancellationException) throw error
+            graph.diagnostics.failure("startup", error)
         }
     }
     suspend fun resumeQueued() { pending().firstOrNull()?.let { dispatch(it) } }
@@ -539,7 +545,8 @@ class TranscriptionRepository internal constructor(private val graph: AppGraph,
                         when {
                             // Use the original Job, not this NonCancellable cleanup context.
                             // Pause/Resume can win while this catch waits for the control lock.
-                            // A stop (time limit, lost constraint, process shutdown) is rescheduled by WorkManager.
+                            // A stop WorkManager reruns returns the row to queued. After a refused start WorkManager
+                            // 2.10 ignores the scheduler's own stops (#301); a killed process never reaches this.
                             error is CancellationException || !executionJob.isActive ->
                                 dao.transitionTranscriptState(id, revision, listOf("queued", "processing"), "queued", null)
                             else -> {

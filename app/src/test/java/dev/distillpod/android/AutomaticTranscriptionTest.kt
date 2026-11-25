@@ -360,7 +360,12 @@ class AutomaticTranscriptionTest {
     }
 
     @Test fun `startup resumes transcripts an earlier version paused for a refused start and keeps other pauses`() = runBlocking<Unit> {
-        val graph = isolatedGraph()
+        // Startup usually runs in the background, where Android refuses the direct session too.
+        val rejected = object : ContextWrapper(context) {
+            override fun startForegroundService(service: Intent): ComponentName? =
+                throw android.app.ForegroundServiceStartNotAllowedException("Synthetic startup rejection")
+        }
+        val graph = isolatedGraph(rejected)
         try {
             val dao = graph.db.library()
             val others = listOf(
@@ -389,8 +394,15 @@ class AutomaticTranscriptionTest {
             assertEquals(blocked.revision, resumed.revision)
             assertEquals(5000L, resumed.processedMs)
             assertEquals("Saved text", dao.segments(episode.id, blocked.revision).single().text)
-            // Its next chunk has work waiting (the direct session, or WorkManager if Android refuses it).
-            for (row in kept) assertEquals(row, dao.transcript(row.episodeId)!!.copy(localCreatedAt = row.localCreatedAt))
+            // Never queued without work: its next chunk waits as one constrained WorkManager request.
+            val work = WorkManager.getInstance(context).getWorkInfosByTag("transcript-revision:${episode.id}:${blocked.revision}")
+                .get(5, TimeUnit.SECONDS).filter { !it.state.isFinished }
+            assertEquals(1, work.size)
+            assertTrue(work.single().constraints.requiresBatteryNotLow())
+            for (row in kept) {
+                assertEquals(row, dao.transcript(row.episodeId)!!.copy(localCreatedAt = row.localCreatedAt))
+                assertTrue(WorkManager.getInstance(context).getWorkInfosByTag("transcript:${row.episodeId}").get(5, TimeUnit.SECONDS).isEmpty())
+            }
         } finally { graph.db.close() }
     }
 
