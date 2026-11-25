@@ -233,7 +233,15 @@ class AutomaticTranscriptionTest {
         } finally { graph.db.close() }
     }
 
-    @Test fun `worker foreground rejection preserves checkpoints and stays retryable`() = runBlocking<Unit> {
+    /** The chunk's own work: an online lookup that completes the revision, standing in for inference. */
+    private fun completingRepository(graph: AppGraph, calls: java.util.concurrent.atomic.AtomicInteger = java.util.concurrent.atomic.AtomicInteger()) =
+        TranscriptionRepository(graph, onlineLookup = { _, current ->
+            calls.incrementAndGet()
+            graph.db.library().putTranscript(current.copy(state = "ready"))
+            true
+        })
+
+    @Test fun `a refused foreground start continues the chunk as ordinary work and keeps checkpoints`() = runBlocking<Unit> {
         val graph = isolatedGraph()
         try {
             val dao = graph.db.library()
@@ -246,9 +254,10 @@ class AutomaticTranscriptionTest {
             val outcome = graph.transcription.process(episode.id, row.revision, TranscriptExecution({ false }, {
                 throw android.app.ForegroundServiceStartNotAllowedException("Synthetic startup rejection")
             }, true))
-            assertEquals(TranscriptOutcome.DEFERRED_START, outcome)
-            assertEquals(androidx.work.ListenableWorker.Result.retry(), outcome.workerResult())
-            assertEquals("queued", dao.transcript(episode.id)!!.state)
+            // The pass went on past the refused start: it reached the model check (no model is installed here).
+            assertEquals(TranscriptOutcome.COMPLETED, outcome)
+            assertEquals(androidx.work.ListenableWorker.Result.success(), outcome.workerResult())
+            assertEquals("waiting_model", dao.transcript(episode.id)!!.state)
             assertEquals(row.revision, dao.transcript(episode.id)!!.revision)
             assertEquals(5000L, dao.transcript(episode.id)!!.processedMs)
             assertEquals(listOf(segment), dao.segments(episode.id, row.revision))
@@ -256,30 +265,132 @@ class AutomaticTranscriptionTest {
         } finally { graph.db.close() }
     }
 
-    @Test fun `repeated wrapped rejection exhausts budget and explicit resume keeps the revision`() = runBlocking<Unit> {
+    @Test fun `repeated wrapped rejections never pause and each run completes its work`() = runBlocking<Unit> {
         val graph = isolatedGraph()
         try {
             val dao = graph.db.library()
-            val row = TranscriptEntity(episode.id, "bounded-start", episode.mediaFingerprint, "tiny", "auto")
-            dao.putTranscript(row)
-            for (attempt in 0..4) {
-                val outcome = graph.transcription.process(episode.id, row.revision, TranscriptExecution({ false }, {
+            val calls = java.util.concurrent.atomic.AtomicInteger()
+            val repository = completingRepository(graph, calls)
+            val row = TranscriptEntity(episode.id, "bounded-start", episode.mediaFingerprint, "tiny", "auto", lookupOnline = true)
+            // Earlier versions paused on the fifth refused attempt; attempts beyond it make no difference now.
+            for (attempt in 0..6) {
+                dao.putTranscript(row)
+                val outcome = repository.process(episode.id, row.revision, TranscriptExecution({ false }, {
                     throw java.util.concurrent.ExecutionException(android.app.ForegroundServiceStartNotAllowedException("Synthetic"))
-                }, true, attempt))
-                assertEquals(if (attempt < 4) TranscriptOutcome.DEFERRED_START else TranscriptOutcome.RESUME_REQUIRED, outcome)
-                assertEquals(if (attempt < 4) "queued" else "paused", dao.transcript(episode.id)!!.state)
+                }, true))
+                assertEquals(TranscriptOutcome.COMPLETED, outcome)
+                assertEquals("ready", dao.transcript(episode.id)!!.state)
+                assertNull(dao.transcript(episode.id)!!.error)
+                assertEquals(row.revision, dao.transcript(episode.id)!!.revision)
+                assertEquals(attempt + 1, calls.get())
             }
-            assertTrue(dao.transcript(episode.id)!!.error!!.contains("Resume"))
-            graph.transcription.prepareAutomatically(episode.id)
-            assertEquals("paused", dao.transcript(episode.id)!!.state)
+        } finally { graph.db.close() }
+    }
+
+    @Test fun `a stop after a refused start keeps the revision queued and the next run resumes it`() = runBlocking<Unit> {
+        val graph = isolatedGraph()
+        try {
+            val dao = graph.db.library()
+            val row = TranscriptEntity(episode.id, "stopped-after-refusal", episode.mediaFingerprint, "tiny", "auto",
+                processedMs = 5000, durationMs = 10000, lookupOnline = true)
+            dao.putTranscript(row)
+            val segment = SegmentEntity(episode.id, row.revision, 0, 5000, "Saved text", 0)
+            val coverage = CoverageEntity(episode.id, row.revision, 0, 5000)
+            dao.putSegments(listOf(segment)); dao.putCoverage(coverage)
             graph.transcription.recover()
-            assertEquals("paused", dao.transcript(episode.id)!!.state)
-            graph.transcription.prepare(episode.id)
+            val manager = WorkManager.getInstance(context)
+            val name = "transcript:${episode.id}:${row.revision}:0"
+            val request = manager.getWorkInfosForUniqueWork(name).get(5, TimeUnit.SECONDS).single { !it.state.isFinished }
+            val entered = CompletableDeferred<Unit>()
+            val repository = TranscriptionRepository(graph, onlineLookup = { _, _ ->
+                entered.complete(Unit)
+                awaitCancellation() // Work still in progress when Android ends the job at its time limit.
+            })
+            val refused = TranscriptExecution({ false }, { throw android.app.ForegroundServiceStartNotAllowedException("Synthetic") }, true)
+            val run = launch { repository.process(episode.id, row.revision, refused) }
+            withTimeout(5000) { entered.await() }
+            assertEquals("processing", dao.transcript(episode.id)!!.state)
+            run.cancel() // CoroutineWorker.onStopped cancels doWork.
+            withTimeout(5000) { run.join() }
+            val stopped = dao.transcript(episode.id)!!
+            assertEquals("queued", stopped.state)
+            assertNull(stopped.error)
+            assertEquals(row.revision, stopped.revision)
+            assertEquals(5000L, stopped.processedMs)
+            assertEquals(listOf(segment), dao.segments(episode.id, row.revision))
+            assertEquals(listOf(coverage), dao.coverage(episode.id, row.revision))
+            // Nothing cancelled the request: WorkManager reruns it, and recovery keeps that same request.
+            graph.transcription.recover()
+            assertEquals(request.id, manager.getWorkInfosForUniqueWork(name).get(5, TimeUnit.SECONDS).single { !it.state.isFinished }.id)
+            // The rerun is refused again and finishes the revision from its saved chunks.
+            assertEquals(TranscriptOutcome.COMPLETED, completingRepository(graph).process(episode.id, row.revision, refused))
+            assertEquals("ready", dao.transcript(episode.id)!!.state)
             assertEquals(row.revision, dao.transcript(episode.id)!!.revision)
-            assertEquals("queued", dao.transcript(episode.id)!!.state)
+            assertEquals(listOf(segment), dao.segments(episode.id, row.revision))
+        } finally { graph.db.close() }
+    }
+
+    @Test fun `a pause during a chunk whose start was refused stays paused`() = runBlocking<Unit> {
+        val graph = isolatedGraph()
+        try {
+            val dao = graph.db.library()
+            val row = TranscriptEntity(episode.id, "paused-after-refusal", episode.mediaFingerprint, "tiny", "auto",
+                processedMs = 5000, durationMs = 10000, lookupOnline = true)
+            dao.putTranscript(row)
+            dao.putCoverage(CoverageEntity(episode.id, row.revision, 0, 5000))
+            val entered = CompletableDeferred<Unit>()
+            val repository = TranscriptionRepository(graph, onlineLookup = { _, _ -> entered.complete(Unit); awaitCancellation() })
+            val run = launch { repository.process(episode.id, row.revision, TranscriptExecution({ false }, {
+                throw android.app.ForegroundServiceStartNotAllowedException("Synthetic")
+            }, true)) }
+            withTimeout(5000) { entered.await() }
+            repository.pause(episode.id)
+            withTimeout(5000) { run.join() }
+            assertTrue(run.isCancelled)
+            assertEquals("paused", dao.transcript(episode.id)!!.state)
             assertNull(dao.transcript(episode.id)!!.error)
-            assertEquals(TranscriptOutcome.DEFERRED_START, graph.transcription.process(episode.id, row.revision,
-                TranscriptExecution({ false }, { throw android.app.ForegroundServiceStartNotAllowedException("Synthetic") }, true, 0)))
+            repository.recover()
+            repository.prepareAutomatically(episode.id)
+            repository.resumeBlocked()
+            assertEquals("paused", dao.transcript(episode.id)!!.state)
+            assertEquals(5000L, dao.coverage(episode.id, row.revision).single().endMs)
+            assertTrue(WorkManager.getInstance(context).getWorkInfosByTag("transcript:${episode.id}").get(5, TimeUnit.SECONDS)
+                .all { it.state.isFinished })
+        } finally { graph.db.close() }
+    }
+
+    @Test fun `startup resumes transcripts an earlier version paused for a refused start and keeps other pauses`() = runBlocking<Unit> {
+        val graph = isolatedGraph()
+        try {
+            val dao = graph.db.library()
+            val others = listOf(
+                EpisodeEntity("user-paused", episode.podcastId, "g2", "Paused by the user", "https://example.test/2.mp3", mediaFingerprint = "a2", durationMs = 10000),
+                EpisodeEntity("time-limit", episode.podcastId, "g3", "Paused at the time limit", "https://example.test/3.mp3", mediaFingerprint = "a3", durationMs = 10000),
+                EpisodeEntity("audio-changed", episode.podcastId, "g4", "Audio changed since", "https://example.test/4.mp3", mediaFingerprint = "a4-new", durationMs = 10000),
+                EpisodeEntity("failed", episode.podcastId, "g5", "Failed", "https://example.test/5.mp3", mediaFingerprint = "a5", durationMs = 10000))
+            others.forEach { dao.putEpisode(it) }
+            val blocked = TranscriptEntity(episode.id, "blocked", episode.mediaFingerprint, "tiny", "auto", state = "paused",
+                error = LEGACY_TRANSCRIPTION_BLOCKED_MESSAGE, processedMs = 5000, durationMs = 10000)
+            val kept = listOf(
+                TranscriptEntity("user-paused", "user", "a2", "tiny", "auto", state = "paused", processedMs = 5000),
+                TranscriptEntity("time-limit", "limit", "a3", "tiny", "auto", state = "paused",
+                    error = "Android's processing time limit was reached. Resume to continue from the saved chunks.", processedMs = 5000),
+                TranscriptEntity("audio-changed", "changed", "a4-old", "tiny", "auto", state = "paused",
+                    error = LEGACY_TRANSCRIPTION_BLOCKED_MESSAGE, processedMs = 5000),
+                TranscriptEntity("failed", "failed", "a5", "tiny", "auto", state = "failed", error = LEGACY_TRANSCRIPTION_BLOCKED_MESSAGE))
+            dao.putTranscript(blocked)
+            dao.putCoverage(CoverageEntity(episode.id, blocked.revision, 0, 5000))
+            dao.putSegments(listOf(SegmentEntity(episode.id, blocked.revision, 0, 5000, "Saved text", 0)))
+            kept.forEach { dao.putTranscript(it) }
+            graph.transcription.resumeBlocked()
+            val resumed = dao.transcript(episode.id)!!
+            assertEquals("queued", resumed.state)
+            assertNull(resumed.error)
+            assertEquals(blocked.revision, resumed.revision)
+            assertEquals(5000L, resumed.processedMs)
+            assertEquals("Saved text", dao.segments(episode.id, blocked.revision).single().text)
+            // Its next chunk has work waiting (the direct session, or WorkManager if Android refuses it).
+            for (row in kept) assertEquals(row, dao.transcript(row.episodeId)!!.copy(localCreatedAt = row.localCreatedAt))
         } finally { graph.db.close() }
     }
 
@@ -287,11 +398,13 @@ class AutomaticTranscriptionTest {
         val graph = isolatedGraph()
         try {
             val dao = graph.db.library()
-            val row = TranscriptEntity(episode.id, "guarded-start", episode.mediaFingerprint, "tiny", "auto", localCreatedAt = 1000)
+            val row = TranscriptEntity(episode.id, "guarded-start", episode.mediaFingerprint, "tiny", "auto", localCreatedAt = 1000, lookupOnline = true)
+            // The refused start runs on only for the row it started with: the lookup must never run.
+            val repository = TranscriptionRepository(graph, onlineLookup = { _, _ -> throw AssertionError("The pass continued") })
             for (replacement in listOf(row.copy(state = "paused"), row.copy(state = "ready"),
                 row.copy(state = "partial"), row.copy(state = "stale"), row.copy(revision = "new"))) {
                 dao.putTranscript(row, createdAt = 1000)
-                val outcome = graph.transcription.process(episode.id, row.revision, TranscriptExecution({ false }, {
+                val outcome = repository.process(episode.id, row.revision, TranscriptExecution({ false }, {
                     dao.putTranscript(replacement, createdAt = 1000)
                     throw android.app.ForegroundServiceStartNotAllowedException("Synthetic")
                 }, true))
@@ -324,27 +437,7 @@ class AutomaticTranscriptionTest {
         } finally { graph.db.close() }
     }
 
-    @Test fun `deferred startup can recover and complete without replacing checkpoints`() = runBlocking<Unit> {
-        val graph = isolatedGraph()
-        try {
-            val dao = graph.db.library()
-            val row = TranscriptEntity(episode.id, "recovered-start", episode.mediaFingerprint, "tiny", "auto", lookupOnline = true)
-            dao.putTranscript(row)
-            val repository = TranscriptionRepository(graph, onlineLookup = { _, current ->
-                dao.putTranscript(current.copy(state = "ready"))
-                true
-            })
-            assertEquals(TranscriptOutcome.DEFERRED_START, repository.process(episode.id, row.revision,
-                TranscriptExecution({ false }, { throw android.app.ForegroundServiceStartNotAllowedException("Synthetic") }, true)))
-            val outcome = repository.process(episode.id, row.revision, TranscriptExecution({ false }, {}, true, 1))
-            assertEquals(TranscriptOutcome.COMPLETED, outcome)
-            assertEquals(androidx.work.ListenableWorker.Result.success(), outcome.workerResult())
-            assertEquals("ready", dao.transcript(episode.id)!!.state)
-            assertEquals(row.revision, dao.transcript(episode.id)!!.revision)
-        } finally { graph.db.close() }
-    }
-
-    @Test fun `actual worker retries rejected foreground future and fails after its budget`() = runBlocking<Unit> {
+    @Test fun `actual worker continues past a rejected foreground future at every attempt`() = runBlocking<Unit> {
         WorkManagerTestInitHelper.initializeTestWorkManager(context,
             Configuration.Builder().setExecutor(SynchronousExecutor()).build())
         val graph = context.appGraph
@@ -375,15 +468,17 @@ class AutomaticTranscriptionTest {
                         "foreground rejection"
                     }
                 }.build()
-            assertEquals(androidx.work.ListenableWorker.Result.retry(), worker(0).doWork())
-            assertEquals("queued", dao.transcript(episode.id)!!.state)
-            assertEquals(androidx.work.ListenableWorker.Result.failure(), worker(4).doWork())
-            assertEquals("paused", dao.transcript(episode.id)!!.state)
-            assertEquals(5000L, dao.transcript(episode.id)!!.processedMs)
-            assertEquals(5000L, dao.coverage(episode.id, row.revision).single().endMs)
-            graph.transcription.prepare(episode.id)
-            assertEquals(row.revision, dao.transcript(episode.id)!!.revision)
-            assertEquals(androidx.work.ListenableWorker.Result.retry(), worker(0).doWork())
+            // The worker carries on without the notification. No model is installed here, so the
+            // pass ends at the model check: proof that it ran, not a retry of the refused start.
+            for (attempt in listOf(0, 4, 7)) {
+                dao.putTranscript(row)
+                assertEquals(androidx.work.ListenableWorker.Result.success(), worker(attempt).doWork())
+                assertEquals("waiting_model", dao.transcript(episode.id)!!.state)
+                assertEquals(row.revision, dao.transcript(episode.id)!!.revision)
+                assertEquals(5000L, dao.transcript(episode.id)!!.processedMs)
+                assertEquals(5000L, dao.coverage(episode.id, row.revision).single().endMs)
+            }
+            dao.putTranscript(row)
             graph.transcription.pause(episode.id)
             assertEquals(androidx.work.ListenableWorker.Result.success(), worker(1).doWork())
             assertEquals("paused", dao.transcript(episode.id)!!.state)
@@ -451,7 +546,7 @@ class AutomaticTranscriptionTest {
                 graph.transcription.process(episode.id, row.revision, TranscriptExecution({ false }, {
                     withContext(NonCancellable) { entered.complete(Unit); release.await() }
                     throw android.app.ForegroundServiceStartNotAllowedException("Late failure")
-                }, true, 4))
+                }, true))
             }
             try {
                 withTimeout(5000) { entered.await() }
@@ -466,14 +561,15 @@ class AutomaticTranscriptionTest {
         } finally { graph.db.close() }
     }
 
-    @Test fun `cancellation while recovery waits for controls cannot exhaust resumed work`() = runBlocking<Unit> {
+    @Test fun `cancellation after a refused start while controls are held keeps resumed work queued`() = runBlocking<Unit> {
         val graph = isolatedGraph()
         try {
             val dao = graph.db.library()
             val row = TranscriptEntity(episode.id, "locked-recovery", episode.mediaFingerprint, "tiny", "auto")
             dao.putTranscript(row)
             val repository = graph.transcription
-            // Hold the real control mutex to stage cancellation after classification but before mutation.
+            // Hold the real control mutex so the pass, continuing past the refused start, is cancelled
+            // while it waits for controls (the model check or its cleanup) and before any mutation.
             val field = TranscriptionRepository::class.java.getDeclaredField("controls").apply { isAccessible = true }
             val controls = field.get(repository) as kotlinx.coroutines.sync.Mutex
             val entered = CompletableDeferred<Unit>()
@@ -483,14 +579,12 @@ class AutomaticTranscriptionTest {
                     entered.complete(Unit)
                     reject.await()
                     throw android.app.ForegroundServiceStartNotAllowedException("Synthetic")
-                }, true, 4))
+                }, true))
             }
             withTimeout(5000) { entered.await() }
             controls.lock()
             try {
                 reject.complete(Unit)
-                // Same runBlocking event loop: child runs synchronously through classification
-                // until it suspends on the held control mutex in NonCancellable cleanup.
                 yield()
                 assertTrue(old.isActive)
                 old.cancel()

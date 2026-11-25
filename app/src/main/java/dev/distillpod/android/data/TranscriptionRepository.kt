@@ -29,19 +29,19 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 private const val CHUNK_MS = 120_000L
+/** Refused foreground starts `LibraryWorker` retries before pausing a download (#138). Transcription no longer retries (#301). */
 internal const val MAX_FOREGROUND_START_ATTEMPTS = 5
+/** Earlier versions paused a transcript with this after five refused background starts (#56); startup resumes it (#301). */
+internal const val LEGACY_TRANSCRIPTION_BLOCKED_MESSAGE = "Android could not start transcription. Tap Resume to continue from saved chunks."
 /** Settled transcript states whose text a local replacement keeps readable (#229); never stale audio or running work. */
 private val KEPT_STATES = listOf("ready", "partial", "failed", "paused", "waiting_model")
 enum class TranscriptStage { ONLINE, PUBLISHER, DOWNLOADING, CHECKING_MODEL, DECODING, STARTING, TRANSCRIBING, SAVING, QUEUED }
 data class TranscriptProgress(val revision: String, val run: String, val stage: TranscriptStage,
     val workedMs: Long, val durationMs: Long, val chunkStartMs: Long = 0, val chunkEndMs: Long = 0)
 
-internal class TranscriptExecution(val stopped: () -> Boolean, val foreground: suspend () -> Unit, val reschedule: Boolean, val runAttemptCount: Int = 0)
+internal class TranscriptExecution(val stopped: () -> Boolean, val foreground: suspend () -> Unit, val reschedule: Boolean)
 
-enum class TranscriptOutcome { COMPLETED, DEFERRED_START, RESUME_REQUIRED, FAILED }
-
-/** Only a rejection of foreground startup is transient, not arbitrary processing errors. */
-private class DeferredForegroundStart(cause: Exception) : Exception(cause)
+enum class TranscriptOutcome { COMPLETED, FAILED }
 
 /**
  * The wait each queued revision last logged (#294). Every rescheduling pass enqueues all waiting
@@ -76,8 +76,7 @@ internal fun Exception.isForegroundStartRejected(): Boolean {
 
 internal fun TranscriptOutcome.workerResult(): ListenableWorker.Result = when (this) {
     TranscriptOutcome.COMPLETED -> ListenableWorker.Result.success()
-    TranscriptOutcome.DEFERRED_START -> ListenableWorker.Result.retry()
-    TranscriptOutcome.RESUME_REQUIRED, TranscriptOutcome.FAILED -> ListenableWorker.Result.failure()
+    TranscriptOutcome.FAILED -> ListenableWorker.Result.failure()
 }
 
 class TranscriptionRepository internal constructor(private val graph: AppGraph,
@@ -244,6 +243,19 @@ class TranscriptionRepository internal constructor(private val graph: AppGraph,
     suspend fun recover(refused: Boolean = false) {
         if (!TranscriptionService.isRunning) pending().forEach { enqueue(it, nextStart(it) ?: 0, refused) }
     }
+    /**
+     * Earlier versions paused a transcript after five refused background starts (#56). That pause was not
+     * the user's, so startup queues it again from its saved chunks (#301), as Resume would. A row paused
+     * by the user, or one whose audio changed since (resuming it would start a new revision), stays put.
+     */
+    suspend fun resumeBlocked() {
+        for (blocked in dao.transcripts().filter { it.state == "paused" && it.error == LEGACY_TRANSCRIPTION_BLOCKED_MESSAGE }) controls.withLock {
+            val row = dao.transcript(blocked.episodeId)?.takeIf { it.revision == blocked.revision && it.state == "paused" &&
+                it.error == LEGACY_TRANSCRIPTION_BLOCKED_MESSAGE && it.source in listOf("whisper", "publisher") } ?: return@withLock
+            if (dao.episode(row.episodeId)?.mediaFingerprint != row.fingerprint) return@withLock
+            prepareInternal(row.episodeId, forceLocal = false, allowOnline = true, requested = false)
+        }
+    }
     suspend fun resumeQueued() { pending().firstOrNull()?.let { dispatch(it) } }
     private suspend fun pending() = transcriptQueueOrder(dao.transcripts().filter { it.state in listOf("queued", "processing") }, requested)
     private suspend fun dispatch(row: TranscriptEntity) {
@@ -278,6 +290,10 @@ class TranscriptionRepository internal constructor(private val graph: AppGraph,
         }
     }
 
+    /**
+     * Queued requests follow the current network and "Only transcribe while charging" settings (#301), in
+     * place: the request keeps its id, delay and tags. A chunk already running finishes first.
+     */
     internal suspend fun configureNetworkPolicy() {
         val hasLegacy = withContext(Dispatchers.IO) {
             manager.getWorkInfosByTag(TranscriptWorker::class.java.name).get().any { isLegacy(it) }
@@ -308,10 +324,11 @@ class TranscriptionRepository internal constructor(private val graph: AppGraph,
             val current = infos.filter { !it.state.isFinished && revisionTag in it.tags }
             if (legacy.isNotEmpty() && current.isEmpty()) enqueueLocked(row, nextStart(row) ?: 0)
             for (info in current) {
-                if (info.state.isFinished || info.constraints.requiredNetworkType == network) continue
+                if (info.state.isFinished || info.constraints.requiredNetworkType == network &&
+                    info.constraints.requiresCharging() == prefs.chargingOnly) continue
                 val request = OneTimeWorkRequestBuilder<TranscriptWorker>().setId(info.id)
                     .setInputData(workDataOf("episode" to row.episodeId, "revision" to row.revision))
-                    .setConstraints(info.constraints.withNetworkType(network))
+                    .setConstraints(info.constraints.withNetworkType(network, charging = prefs.chargingOnly))
                     .setInitialDelay(info.initialDelayMillis, java.util.concurrent.TimeUnit.MILLISECONDS)
                     .apply { info.tags.forEach { addTag(it) } }.build()
                 manager.updateWork(request).get()
@@ -355,7 +372,7 @@ class TranscriptionRepository internal constructor(private val graph: AppGraph,
     }
 
     suspend fun process(id: String, revision: String, worker: CoroutineWorker) = process(id, revision, TranscriptExecution(
-        { worker.isStopped }, { worker.setForeground(workForeground(graph.context, worker.id, "Preparing transcript", true)) }, true, worker.runAttemptCount))
+        { worker.isStopped }, { worker.setForeground(workForeground(graph.context, worker.id, "Preparing transcript", true)) }, true))
 
     internal suspend fun process(id: String, revision: String, execution: TranscriptExecution) = processing.withLock {
         val job = currentCoroutineContext().job
@@ -395,11 +412,17 @@ class TranscriptionRepository internal constructor(private val graph: AppGraph,
             try { execution.foreground() }
             catch (error: Exception) {
                 if (error is CancellationException) throw error
-                // A late failed foreground future must not exhaust a newly resumed revision.
+                // A late failed foreground future must not touch a newly resumed revision.
                 currentCoroutineContext().ensureActive()
-                if (error.isForegroundStartRejected()) throw DeferredForegroundStart(error)
-                throw error
+                if (!error.isForegroundStartRejected()) throw error
+                // Android 12+ refuses the service when WorkManager starts this job in the background, and a
+                // retry would be refused the same way. Like an analysis (#84) or a download (#292), this
+                // chunk runs as ordinary work without the notification (#301). A stop before it is saved
+                // leaves the revision queued and WorkManager reruns the request from the saved chunks.
+                graph.diagnostics.event("transcription.stage",revision,reason="restricted",correlation=correlation(revision,run))
             }
+            // A pause, replacement or completion while the start was pending ends this pass.
+            dao.transcript(id)?.takeIf { it.revision == revision && it.state in listOf("queued", "processing") } ?: return TranscriptOutcome.COMPLETED
             val initialEp = dao.episode(id) ?: return TranscriptOutcome.COMPLETED
             if (row.source == "publisher") {
                 report(TranscriptStage.PUBLISHER)
@@ -510,24 +533,15 @@ class TranscriptionRepository internal constructor(private val graph: AppGraph,
                 controls.withLock {
                     val current = dao.transcript(id)
                     if (current?.revision == revision && current.state in listOf("ready", "partial") &&
-                        error !is CancellationException && error !is DeferredForegroundStart) graph.diagnostics.failure("worker", error)
+                        error !is CancellationException) graph.diagnostics.failure("worker", error)
                     // Never restore the worker snapshot after pause, replacement or completion.
                     if (current?.revision == revision && current.state in listOf("queued", "processing")) {
                         when {
                             // Use the original Job, not this NonCancellable cleanup context.
                             // Pause/Resume can win while this catch waits for the control lock.
+                            // A stop (time limit, lost constraint, process shutdown) is rescheduled by WorkManager.
                             error is CancellationException || !executionJob.isActive ->
                                 dao.transitionTranscriptState(id, revision, listOf("queued", "processing"), "queued", null)
-                            error is DeferredForegroundStart -> {
-                                val exhausted = execution.runAttemptCount >= MAX_FOREGROUND_START_ATTEMPTS - 1
-                                if (dao.transitionTranscriptState(id, revision, listOf("queued", "processing"),
-                                        if (exhausted) "paused" else "queued",
-                                        if (exhausted) "Android could not start transcription. Tap Resume to continue from saved chunks." else null) == 1) {
-                                    outcome = if (exhausted) TranscriptOutcome.RESUME_REQUIRED else TranscriptOutcome.DEFERRED_START
-                                    lifecycle(if (exhausted) "transcription.paused" else "transcription.queued", revision, reason = "restricted",
-                                        correlation = correlation(revision, run))
-                                }
-                            }
                             else -> {
                                 if (dao.transitionTranscriptState(id, revision, listOf("queued", "processing"), "failed", safeFailure(error)) == 1) {
                                     outcome = TranscriptOutcome.FAILED
@@ -557,7 +571,7 @@ class TranscriptionRepository internal constructor(private val graph: AppGraph,
                 if (current?.revision == revision && current.state == "queued") {
                     val ep=dao.episode(id)
                     val needsNetwork=transcriptionNeedsNetwork(ep,current)
-                    lifecycle("transcription.queued",revision,reason=if (outcome == TranscriptOutcome.DEFERRED_START) "restricted" else transcriptionWaitReason(graph.context,graph.settings.flow.first(),needsNetwork) ?: "scheduled",correlation=correlation(revision,run))
+                    lifecycle("transcription.queued",revision,reason=transcriptionWaitReason(graph.context,graph.settings.flow.first(),needsNetwork) ?: "scheduled",correlation=correlation(revision,run))
                     report(TranscriptStage.QUEUED,current.processedMs,current.durationMs)
                 }
                 else live.update { if (it[id]?.run == run) it - id else it }

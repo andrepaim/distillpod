@@ -52,43 +52,40 @@ class TranscriptionStartupDeviceTest {
         }
     }
 
-    @Test fun rejectedStartupRetriesThenCompletesWithSavedRevision() = runBlocking<Unit> {
+    /** #301: a refused start no longer retries; the chunk runs on as ordinary work and completes. */
+    @Test fun rejectedStartupContinuesAndCompletesWithSavedRevision() = runBlocking<Unit> {
         fixture { graph, row ->
             val dao = graph.db.library()
             val repository = TranscriptionRepository(graph, onlineLookup = { _, current ->
                 dao.putTranscript(current.copy(state = "ready"))
                 true
             })
-            val rejected = repository.process(row.episodeId, row.revision, TranscriptExecution({ false }, {
+            val outcome = repository.process(row.episodeId, row.revision, TranscriptExecution({ false }, {
                 throw ForegroundServiceStartNotAllowedException("Synthetic startup rejection")
             }, true))
-            assertEquals(TranscriptOutcome.DEFERRED_START, rejected)
-            assertEquals(androidx.work.ListenableWorker.Result.retry(), rejected.workerResult())
-            assertEquals("queued", dao.transcript(row.episodeId)!!.state)
-            assertEquals(5000L, dao.transcript(row.episodeId)!!.processedMs)
-            assertEquals("Synthetic checkpoint", dao.segments(row.episodeId, row.revision).single().text)
-            assertEquals(5000L, dao.coverage(row.episodeId, row.revision).single().endMs)
-            val completed = repository.process(row.episodeId, row.revision, TranscriptExecution({ false }, {}, true, 1))
-            assertEquals(TranscriptOutcome.COMPLETED, completed)
+            assertEquals(TranscriptOutcome.COMPLETED, outcome)
+            assertEquals(androidx.work.ListenableWorker.Result.success(), outcome.workerResult())
             assertEquals("ready", dao.transcript(row.episodeId)!!.state)
             assertEquals(row.revision, dao.transcript(row.episodeId)!!.revision)
+            assertEquals("Synthetic checkpoint", dao.segments(row.episodeId, row.revision).single().text)
+            assertEquals(5000L, dao.coverage(row.episodeId, row.revision).single().endMs)
         }
     }
 
-    @Test fun repeatedRejectionRequiresExplicitResumeWithoutLosingCheckpoints() = runBlocking<Unit> {
+    @Test fun repeatedRejectionNeverPausesAndKeepsCheckpoints() = runBlocking<Unit> {
         fixture { graph, row ->
             val dao = graph.db.library()
-            repeat(5) { attempt ->
-                val outcome = graph.transcription.process(row.episodeId, row.revision, TranscriptExecution({ false }, {
+            // No lookup result and no model: each pass reaches the model check, proving it ran.
+            val repository = TranscriptionRepository(graph, onlineLookup = { _, _ -> false })
+            repeat(6) {
+                dao.putTranscript(row, createdAt = 1000)
+                val outcome = repository.process(row.episodeId, row.revision, TranscriptExecution({ false }, {
                     throw java.util.concurrent.ExecutionException(ForegroundServiceStartNotAllowedException("Synthetic"))
-                }, true, attempt))
-                assertEquals(if (attempt < 4) TranscriptOutcome.DEFERRED_START else TranscriptOutcome.RESUME_REQUIRED, outcome)
+                }, true))
+                assertEquals(TranscriptOutcome.COMPLETED, outcome)
+                assertEquals("waiting_model", dao.transcript(row.episodeId)!!.state)
             }
-            assertEquals("paused", dao.transcript(row.episodeId)!!.state)
-            assertTrue(dao.transcript(row.episodeId)!!.error!!.contains("Resume"))
-            graph.transcription.prepareAutomatically(row.episodeId)
-            graph.transcription.recover()
-            assertEquals("paused", dao.transcript(row.episodeId)!!.state)
+            assertEquals(row.revision, dao.transcript(row.episodeId)!!.revision)
             assertEquals(5000L, dao.coverage(row.episodeId, row.revision).single().endMs)
         }
     }
@@ -99,7 +96,9 @@ class TranscriptionStartupDeviceTest {
             for (replacement in listOf(row.copy(state = "paused"), row.copy(revision = "new"),
                 row.copy(state = "ready"), row.copy(state = "stale"), row.copy(state = "partial"))) {
                 dao.putTranscript(row, createdAt = 1000)
-                val result = graph.transcription.process(row.episodeId, row.revision, TranscriptExecution({ false }, {
+                // A refused start continues only for the row it started with; the lookup never runs here.
+                val repository = TranscriptionRepository(graph, onlineLookup = { _, _ -> throw AssertionError("The pass continued") })
+                val result = repository.process(row.episodeId, row.revision, TranscriptExecution({ false }, {
                     dao.putTranscript(replacement, createdAt = 1000)
                     throw ForegroundServiceStartNotAllowedException("Synthetic")
                 }, true))
@@ -111,9 +110,8 @@ class TranscriptionStartupDeviceTest {
     @Test fun activityResumeStartsRealForegroundSessionAndKeepsUserPause() = runBlocking<Unit> {
         fixture { graph, row ->
             val dao = graph.db.library()
+            // Queued, as a refused background start leaves it; the visible activity starts the session.
             dao.putTranscript(row.copy(lookupOnline = false))
-            assertEquals(TranscriptOutcome.DEFERRED_START, graph.transcription.process(row.episodeId, row.revision,
-                TranscriptExecution({ false }, { throw ForegroundServiceStartNotAllowedException("Synthetic") }, true)))
             androidx.test.core.app.ActivityScenario.launch(MainActivity::class.java).use { activity ->
                 // MainActivity.onResume starts the real service; missing model prevents network or inference.
                 try {

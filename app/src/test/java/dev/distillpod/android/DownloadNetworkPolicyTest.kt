@@ -54,6 +54,7 @@ class DownloadNetworkPolicyTest {
         graph.ready.complete(Unit)
         graph.settings.flag("refresh", false)
         graph.settings.flag("wifi", true)
+        graph.settings.flag("charging", false)
         graph.db.library().putPodcast(PodcastEntity("policy-show", "https://example.test/feed", "Fixture"))
         graph.db.library().putEpisode(episode("policy-audio"))
         shadowOf(context as android.app.Application).declareComponentUnbindable(ComponentName(context, PlaybackService::class.java))
@@ -396,6 +397,7 @@ class DownloadNetworkPolicyTest {
 
     @Test fun `queued transcription changes network constraints while preserving charging checkpoints and local work`() = runBlocking {
         fixture { graph, vm ->
+            graph.settings.flag("charging", true) // The charging constraint follows its own setting (#301).
             val local = File(graph.context.filesDir, "policy-local.audio").apply { writeText("downloaded") }
             val revisions = mutableMapOf<String, java.util.UUID>()
             for (kind in listOf("remote", "publisher", "lookup", "local")) {
@@ -423,6 +425,45 @@ class DownloadNetworkPolicyTest {
                     assertEquals(120000L, graph.db.library().transcript(kind)!!.processedMs)
                     assertEquals("saved-revision", graph.db.library().transcript(kind)!!.revision)
                 }
+            }
+        }
+    }
+
+    /** #301 (feature map finding 4): the charging setting used to apply only to transcripts queued after it changed. */
+    @Test fun `only transcribe while charging updates queued transcripts in place in both directions`() = runBlocking {
+        fixture { graph, vm ->
+            val dao = graph.db.library()
+            val local = File(graph.context.filesDir, "charging-local.audio").apply { writeText("downloaded") }
+            dao.putEpisode(episode("charging-local").copy(localFile = local.path))
+            dao.putEpisode(episode("charging-remote"))
+            dao.putEpisode(episode("charging-paused"))
+            dao.putTranscript(TranscriptEntity("charging-local", "local-revision", "fixture-audio", "tiny", "en", processedMs = 120000, durationMs = 600000))
+            dao.putCoverage(CoverageEntity("charging-local", "local-revision", 0, 120000))
+            dao.putTranscript(TranscriptEntity("charging-remote", "remote-revision", "fixture-audio", "tiny", "en"))
+            dao.putTranscript(TranscriptEntity("charging-paused", "paused-revision", "fixture-audio", "tiny", "en"))
+            graph.transcription.recover()
+            graph.transcription.pause("charging-paused")
+            val names = mapOf("charging-local" to "transcript:charging-local:local-revision:120000",
+                "charging-remote" to "transcript:charging-remote:remote-revision:0")
+            val ids = names.mapValues { active(it.value).id }
+            for (name in names.values) assertFalse(active(name).constraints.requiresCharging())
+            for (enabled in listOf(true, false, true)) {
+                vm.flag("charging", enabled)
+                settle { "settings" !in vm.busy.value }
+                assertEquals(enabled, graph.settings.flow.first().chargingOnly)
+                for ((episode, name) in names) {
+                    val info = active(name)
+                    assertEquals(ids.getValue(episode), info.id)
+                    assertEquals(enabled, info.constraints.requiresCharging())
+                    assertTrue(info.constraints.requiresBatteryNotLow())
+                    assertEquals(if (episode == "charging-local") NetworkType.NOT_REQUIRED else NetworkType.UNMETERED,
+                        info.constraints.requiredNetworkType)
+                }
+                assertEquals(120000L, dao.transcript("charging-local")!!.processedMs)
+                assertEquals("local-revision", dao.transcript("charging-local")!!.revision)
+                // A pause stays put: its cancelled request is never revived.
+                assertEquals("paused", dao.transcript("charging-paused")!!.state)
+                assertTrue(manager.getWorkInfosByTag("transcript:charging-paused").get().all { it.state.isFinished })
             }
         }
     }

@@ -4,10 +4,10 @@ import androidx.work.Constraints
 import androidx.work.NetworkType
 import java.util.concurrent.TimeUnit
 
-/** Copy non-network restrictions using the public WorkManager API. */
-internal fun Constraints.withNetworkType(network: NetworkType): Constraints = Constraints.Builder()
+/** Copy the other restrictions using the public WorkManager API; [charging] replaces the charging requirement. */
+internal fun Constraints.withNetworkType(network: NetworkType, charging: Boolean = requiresCharging()): Constraints = Constraints.Builder()
     .setRequiredNetworkType(network)
-    .setRequiresCharging(requiresCharging())
+    .setRequiresCharging(charging)
     .setRequiresDeviceIdle(requiresDeviceIdle())
     .setRequiresBatteryNotLow(requiresBatteryNotLow())
     .setRequiresStorageNotLow(requiresStorageNotLow())
