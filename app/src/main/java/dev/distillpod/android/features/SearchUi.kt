@@ -210,7 +210,7 @@ private val topics = listOf(SearchTopic("Technology", Icons.Default.Memory), Sea
         val followed = existing(candidate)
         ModalBottomSheet(onDismissRequest = { preview = null }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = MaterialTheme.colorScheme.surface) {
             Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                SearchArtwork(candidate, Modifier.size(140.dp).align(Alignment.CenterHorizontally))
+                SearchArtwork(candidate.title, candidate.imageUrl, Modifier.size(140.dp).align(Alignment.CenterHorizontally))
                 Text(candidate.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
                 if (candidate.author.isNotBlank()) Text(candidate.author, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (candidate.category.isNotBlank()) StatusLabel(candidate.category)
@@ -255,12 +255,13 @@ private val topics = listOf(SearchTopic("Technology", Icons.Default.Memory), Sea
     }
 }
 
-@Composable private fun SearchArtwork(candidate: PodcastCandidate, modifier: Modifier) {
-    Surface(modifier.testTag("Search artwork ${candidate.title}"), shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.primaryContainer) {
+/** Directory artwork over the show's initials, which remain while it loads or when it is missing; suggested podcasts use it too. */
+@Composable internal fun SearchArtwork(title: String, imageUrl: String?, modifier: Modifier) {
+    Surface(modifier.testTag("Search artwork $title"), shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.primaryContainer) {
         Box(contentAlignment = Alignment.Center) {
-            val initials = candidate.title.split(' ').filter { it.isNotBlank() }.take(2).joinToString("") { it.take(1) }.uppercase()
+            val initials = title.split(' ').filter { it.isNotBlank() }.take(2).joinToString("") { it.take(1) }.uppercase()
             Text(initials.ifBlank { "DP" }, style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.primary)
-            if (!candidate.imageUrl.isNullOrBlank()) AsyncImage(candidate.imageUrl, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+            if (!imageUrl.isNullOrBlank()) AsyncImage(imageUrl, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
         }
     }
 }
@@ -272,7 +273,7 @@ private val topics = listOf(SearchTopic("Technology", Icons.Default.Memory), Sea
         modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Preview ${candidate.title}" }) {
         Column(Modifier.padding(if (featured) 16.dp else 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                SearchArtwork(candidate, Modifier.size(if (featured) 88.dp else 64.dp))
+                SearchArtwork(candidate.title, candidate.imageUrl, Modifier.size(if (featured) 88.dp else 64.dp))
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                     Text(candidate.title, maxLines = if (featured) 3 else 2, overflow = TextOverflow.Ellipsis, style = if (featured) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                     if (candidate.author.isNotBlank()) Text(candidate.author, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
