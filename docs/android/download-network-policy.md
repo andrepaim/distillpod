@@ -48,14 +48,44 @@ production configuration changes are needed.
 Audio and model downloads run as foreground work with a progress notification.
 Android 12+ can refuse to start that foreground service when the job begins
 while DistillPod is in the background, for example after a Wi-Fi constraint is
-met, after a retry backoff, from show automation or from startup recovery. As
-with transcription, the refusal is treated as a transient start delay. The row
-stays **Queued** and WorkManager retries the same request. After five refused
-attempts the row becomes **Paused**, showing "Android blocked the background
-download. Open DistillPod and tap Resume." (the model message is similar).
-Resuming keeps the partial file and its HTTP validators. Other errors raised
-before the transfer begins mark the row **Failed** instead of leaving it queued
-without work.
+met, after a retry backoff, from show automation or from startup recovery. A
+later attempt would be refused the same way, so the transfer continues at once
+as ordinary background work, without the notification (#292). Progress still
+shows on the episode or model row. The row never waits for the user because of
+a refused start.
+
+Without the foreground service, only a running job keeps DistillPod's process
+active. WorkManager 2.10 records the worker as foreground work before Android
+refuses the service, so the job scheduler's own stop (for example at its
+10-minute limit) does not interrupt the worker, and a later start of the same
+job joins the running worker instead of starting a second transfer. Once the
+job has ended, though, Android 15+ puts the process in the cached state and
+blocks the app's network about five seconds later (the job also ends this way
+when WorkManager reschedules it after a process restart). The connection breaks
+and every new request fails immediately. WorkManager's own retry would run in
+the same cached process from its in-app timer and fail too, using up the retry
+budget and failing the row.
+
+So when a transfer whose foreground start was refused fails and Android reports
+the default network as blocked for DistillPod (`DownloadNetwork`, from the
+default network callback's blocked status), the transfer does not return to
+WorkManager. The row goes back to **Queued** with its partial file and HTTP
+validators, and the same worker run waits until the network is usable: present,
+not blocked, and allowed by the Wi-Fi / unmetered setting. Meanwhile WorkManager
+keeps the request's pending job. When Android starts that job (minutes later in
+the background, longer in a restricted standby bucket) it joins the waiting
+worker and binds the process, which lifts the block. Opening DistillPod lifts it
+too. The transfer then resumes with a Range request. This wait does not count as
+a retry. A failure with no reported block (a real outage or server error), or
+one during a transfer whose foreground service did start, keeps the normal
+retry budget. If the process is killed while waiting, the row stays **Queued**
+and the next run resumes from the partial file. Pause still cancels the wait.
+
+Earlier versions retried a refused start five times and then paused the row
+with "Android blocked the background download. Open DistillPod and tap Resume."
+(the model message was similar). The next app start resumes rows left with that
+message; other paused rows stay paused. Other errors raised before the transfer
+begins mark the row **Failed** instead of leaving it queued without work.
 
 **Pause** in the app cancels the request and records the pause, even when the
 request was still waiting for its network constraint or backoff, so a later
@@ -66,10 +96,19 @@ pause. WorkManager reschedules the request, so the row returns to **Queued** and
 the transfer resumes from its partial file.
 
 `DownloadForegroundRecoveryTest` drives the real `LibraryWorker` with an
-injected foreground updater that rejects, fails or never starts. It covers
-bounded retries before the pause message, Resume, pausing before start with
-startup recovery, and a system stop compared with an app cancellation during a
-loopback transfer.
+injected foreground updater that rejects, fails or never starts. It covers a
+refused start completing as ordinary work, a time-limit stop after a refusal
+resuming with a Range request (episode and model), a pause during such a
+transfer, a single transfer for concurrent attempts, startup resuming rows an
+earlier version paused, pausing before start with startup recovery, and a system
+stop compared with an app cancellation during a loopback transfer. A simulated
+firewall breaks the connection and fails new requests while a fake network
+status reports the block: transfers cut mid-way or started while blocked wait
+as queued and resume in the same run (episode with the exact bytes, model with
+a Range request), a pause during the wait sticks, a block lifted on a metered
+network under Wi-Fi-only keeps waiting, and failures without a reported block or
+with a foreground service keep the retry budget. `DownloadNetworkTest` covers
+the wait itself, including a status change that never arrives.
 
 ## Regression checks
 

@@ -1,0 +1,13 @@
+// Separately installed background download probe (#292). Never use for production.
+// The owner's dev.distillpod.android installation is never touched: this build has its own package.
+allprojects {
+    afterEvaluate {
+        if (path == ':app') {
+            if (System.getenv('SENTRY_DSN')) throw new GradleException('Validation requires empty SENTRY_DSN')
+            if (project.hasProperty('distillpodFirebaseConfig')) throw new GradleException('Validation forbids Firebase configuration')
+            android.buildTypes.debug.applicationIdSuffix = '.validation.download292'
+            android.sourceSets.debug.java.srcDir('src/validationDownload292/java')
+            android.sourceSets.debug.manifest.srcFile('src/validationDownload292/AndroidManifest.xml')
+        }
+    }
+}
