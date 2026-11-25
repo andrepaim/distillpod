@@ -2,6 +2,11 @@
 
 Plan recorded before implementation at base 9528abf.
 
+> Superseded by #301: a refused foreground start now runs the chunk as ordinary
+> background work instead of retrying, and there is no attempt budget or pause.
+> See [background starts Android refuses](background-transcription.md#background-starts-android-refuses-301-november-2026).
+> The device probe's cases were updated to match.
+
 - Classify only Android foreground-start rejection at the foreground boundary as recoverable. Return typed outcomes to the worker, preserving permanent failure and cancellation semantics.
 - Under the control lock, retain the current revision, segments, coverage, progress and source. Do not overwrite pause, replacement, or terminal states.
 - Retry the existing constrained unique request with explicit exponential backoff (30 seconds minimum), at most five attempts. Exhaustion pauses with an actionable Resume message, using existing resume UI rather than an unknown persisted state. An explicit resume starts a fresh bounded attempt series.

@@ -50,9 +50,9 @@ class TranscriptionQueuedDiagnosticsTest {
     }
 
     /** The reasons of the `transcription.queued` logs queued for upload, per revision. */
-    private fun queued(diagnostics: Diagnostics, barrier: DiagnosticBarrierProbe): Map<String, List<String>> {
+    private fun queued(diagnostics: Diagnostics, barrier: DiagnosticBarrierProbe, name: String = "transcription.queued"): Map<String, List<String>> {
         barrier.awaitIdle()
-        val event = Regex(""""body"\s*:\s*"transcription\.queued"""")
+        val event = Regex(""""body"\s*:\s*"${Regex.escape(name)}"""")
         return diagnostics.queue.files().map { it.readText() }.filter { event.containsMatchIn(it) }.map { payload ->
             fun attribute(name: String) = Regex(""""$name"\s*:\s*\{[^}]*"value"\s*:\s*"([^"]+)"""").find(payload)!!.groupValues[1]
             attribute("operation_id") to attribute("reason")
@@ -102,17 +102,17 @@ class TranscriptionQueuedDiagnosticsTest {
         }
     }
 
-    @Test fun `a deferred foreground start logs its wait once`() = runBlocking<Unit> {
+    @Test fun `a refused foreground start runs on and is logged as a stage, not a wait`() = runBlocking<Unit> {
         fixture { graph, diagnostics, barrier ->
             val dao = graph.db.library()
             val row = TranscriptEntity(episode(1).id, java.util.UUID.randomUUID().toString(), episode(1).mediaFingerprint, "tiny", "auto")
             dao.putTranscript(row)
-            for (attempt in 0..1) {
-                assertEquals(TranscriptOutcome.DEFERRED_START, graph.transcription.process(row.episodeId, row.revision,
-                    TranscriptExecution({ false }, { throw android.app.ForegroundServiceStartNotAllowedException("Synthetic") }, true, attempt)))
-            }
-            // Each attempt starts and returns to the queue: one wait per attempt, not two.
-            assertEquals(mapOf(row.revision to listOf("restricted", "restricted")), queued(diagnostics, barrier))
+            assertEquals(TranscriptOutcome.COMPLETED, graph.transcription.process(row.episodeId, row.revision,
+                TranscriptExecution({ false }, { throw android.app.ForegroundServiceStartNotAllowedException("Synthetic") }, true)))
+            // The chunk went on to the model check (none is installed), so it waits for that, not for Android (#301).
+            assertEquals(mapOf(row.revision to listOf("checking_model")), queued(diagnostics, barrier))
+            assertEquals("restricted", queued(diagnostics, barrier, "transcription.stage").getValue(row.revision).first())
+            assertNotEquals("restricted", graph.transcription.waitReasons.value[row.revision])
         }
     }
 }

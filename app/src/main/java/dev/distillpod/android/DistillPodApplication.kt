@@ -122,6 +122,7 @@ class AppGraph internal constructor(val context: Context, val scope: CoroutineSc
                     StartupStep("refresh") { jobs.configureRefresh() },
                     StartupStep("backups") { dev.distillpod.android.work.BackupJobs.configure(context, managedBackups.connected.first()) },
                     StartupStep("update_checks") { dev.distillpod.android.work.UpdateJobs.configure(context, settings.updates.first().enabled) },
+                    StartupStep("blocked_transcripts") { transcription.resumeBlocked() },
                     StartupStep("transcription") { transcription.recover() }),
                 afterReady = listOf(
                     StartupStep("automation") { automation.observe() },

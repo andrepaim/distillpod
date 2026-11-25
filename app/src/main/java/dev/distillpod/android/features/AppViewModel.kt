@@ -291,7 +291,8 @@ class AppViewModel(val graph: AppGraph, private val saved: SavedStateHandle) : V
     fun flag(key: String, value: Boolean) = action("settings") {
         graph.settings.flag(key, value)
         when (key) {
-            "wifi" -> graph.jobs.configureNetworkPolicy()
+            // Queued transcripts take the new charging requirement too, not only those queued later (#301).
+            "wifi", "charging" -> graph.jobs.configureNetworkPolicy()
             "updateChecks" -> dev.distillpod.android.work.UpdateJobs.configure(graph.context, value)
             else -> graph.jobs.configureRefresh()
         }

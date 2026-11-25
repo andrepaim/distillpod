@@ -119,7 +119,7 @@ class TranscriptParagraphsTest {
             "offline" to ("Queued · offline" to
                 "Queued · offline. This transcript needs internet to get its audio or text."),
             "restricted" to ("Queued · Android blocked the start" to
-                "Queued · Android didn't allow transcription to start in the background. It tries again automatically."),
+                "Queued · Android didn't allow transcription to start in the background. It continues without its notification when Android runs it."),
             "scheduled" to ("Queued · waiting to start" to "Queued · waiting for Android to start transcription"),
             null to ("Queued · waiting to start" to "Queued · waiting for Android to start transcription"),
         )

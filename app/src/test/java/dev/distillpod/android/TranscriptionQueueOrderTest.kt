@@ -125,14 +125,16 @@ class TranscriptionQueueOrderTest {
         }
     }
 
-    @Test fun `a refused foreground start is the recorded wait`() = runBlocking<Unit> {
+    @Test fun `a refused foreground start runs the chunk instead of waiting`() = runBlocking<Unit> {
         fixture { graph, _, _ ->
             val transcription = graph.transcription
             transcription.prepare(episode(1).id)
             val revision = revision(graph, 1)
-            assertEquals(TranscriptOutcome.DEFERRED_START, transcription.process(episode(1).id, revision,
-                TranscriptExecution({ false }, { throw android.app.ForegroundServiceStartNotAllowedException("Synthetic") }, true, 0)))
-            assertEquals("restricted", transcription.waitReasons.value[revision])
+            assertEquals(TranscriptOutcome.COMPLETED, transcription.process(episode(1).id, revision,
+                TranscriptExecution({ false }, { throw android.app.ForegroundServiceStartNotAllowedException("Synthetic") }, true)))
+            // It ran on to the model check (#301); the row never sits on "Android blocked the start".
+            assertEquals("waiting_model", graph.db.library().transcript(episode(1).id)!!.state)
+            assertNotEquals("restricted", transcription.waitReasons.value[revision])
             // A start Android allows, with nothing else running, no longer waits for anything.
             transcription.prepare(episode(1).id, requested = true)
             assertEquals(revision, revision(graph, 1))

@@ -58,6 +58,8 @@ class DownloadNetworkPolicyDeviceTest {
             graph.settings.flag("refresh", false)
             manager.cancelUniqueWork("refresh-periodic").result.get()
             graph.settings.flag("wifi", true)
+            // Queued transcripts follow "Only transcribe while charging" too (#301): start with it on.
+            graph.settings.flag("charging", true)
             dao.putPodcast(PodcastEntity(prefix, "https://example.test/$prefix", "Network fixture"))
             val audioPartial = File(graph.media.directory, "$prefix.partial").apply { writeText("saved audio prefix"); files += this }
             val modelPartial = File(graph.media.modelsDirectory, "tiny.partial").apply { writeText("saved model prefix"); files += this }
@@ -107,6 +109,19 @@ class DownloadNetworkPolicyDeviceTest {
                     }
                 }
             }
+            // The charging setting changes queued transcripts in place, both ways; downloads never require it.
+            for (charging in listOf(false, true)) {
+                compose.runOnUiThread { vm.flag("charging", charging) }
+                await { graph.settings.flow.first().chargingOnly == charging && "settings" !in vm.busy.value }
+                for (name in names) {
+                    val info = active(name)
+                    assertEquals(ids[name], info.id)
+                    assertEquals(TimeUnit.DAYS.toMillis(1), info.initialDelayMillis)
+                    assertEquals(name.startsWith("transcript:") && charging, info.constraints.requiresCharging())
+                    assertEquals(if (name.contains("-local:")) NetworkType.NOT_REQUIRED else NetworkType.UNMETERED, info.constraints.requiredNetworkType)
+                    if (name.startsWith("transcript:")) assertTrue(info.constraints.requiresBatteryNotLow())
+                }
+            }
             assertEquals("saved audio prefix", audioPartial.readText())
             assertEquals("saved model prefix", modelPartial.readText())
             assertEquals("audio-validator", dao.episode(prefix)!!.etag)
@@ -119,6 +134,7 @@ class DownloadNetworkPolicyDeviceTest {
             dao.deletePodcast(prefix); dao.putModel(ModelEntity("tiny"))
             files.forEach { it.delete() }
             graph.settings.flag("wifi", prefs.wifiOnly); graph.settings.flag("refresh", prefs.refresh)
+            graph.settings.flag("charging", prefs.chargingOnly)
             graph.jobs.configureNetworkPolicy()
         }
     }

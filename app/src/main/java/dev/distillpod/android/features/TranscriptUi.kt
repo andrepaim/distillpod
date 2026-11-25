@@ -136,7 +136,7 @@ internal fun queuedStatus(wait: String?): String = when (wait) {
     "battery_low" -> "Queued · battery low. Continues when the phone is charging or the battery recovers."
     "wifi_required" -> "Queued · waiting for Wi-Fi because \"Wi-Fi / unmetered downloads only\" is on"
     "offline" -> "Queued · offline. This transcript needs internet to get its audio or text."
-    "restricted" -> "Queued · Android didn't allow transcription to start in the background. It tries again automatically."
+    "restricted" -> "Queued · Android didn't allow transcription to start in the background. It continues without its notification when Android runs it."
     else -> "Queued · waiting for Android to start transcription"
 }
 
