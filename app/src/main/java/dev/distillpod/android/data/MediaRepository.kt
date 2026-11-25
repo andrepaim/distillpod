@@ -111,12 +111,17 @@ class MediaRepository(context: Context, private val db: AppDatabase, private val
             ?: throw AudioDeletionBlocked(AudioDeletionBlockReason.ACTIVE)
 
 
-    suspend fun ensureDownloaded(id: String, notify: (DownloadProgress) -> Unit = {}): File = episodeTransfers.withLock { downloadEpisode(id, notify) }
+    /**
+     * [blocked] decides whether a connection failure came from Android's network block (#292). The row
+     * then waits as queued with its partial file and validators, and [TransferBlocked] is thrown.
+     */
+    suspend fun ensureDownloaded(id: String, blocked: suspend (IOException) -> Boolean = { false },
+        notify: (DownloadProgress) -> Unit = {}): File = episodeTransfers.withLock { downloadEpisode(id, blocked, notify) }
 
     internal suspend fun <T> withDownloadedAudio(id: String, read: suspend (File) -> T): T {
         // Select and mark the same copy before deletion can take the transfer lock.
         val (file, lease) = episodeTransfers.withLock {
-            val selected = downloadEpisode(id) {}
+            val selected = downloadEpisode(id, { false }) {}
             // Resolve on IO before acquiring resources; cancellation at the dispatcher boundary
             // cannot strand a lease which has not yet been exposed to the finally below.
             val path = withContext(Dispatchers.IO) { selected.canonicalPath }
@@ -133,7 +138,8 @@ class MediaRepository(context: Context, private val db: AppDatabase, private val
         }
     }
 
-    private suspend fun downloadEpisode(id: String, notify: (DownloadProgress) -> Unit): File = locks.getOrPut("episode:$id") { Mutex() }.withLock {
+    private suspend fun downloadEpisode(id: String, blocked: suspend (IOException) -> Boolean,
+        notify: (DownloadProgress) -> Unit): File = locks.getOrPut("episode:$id") { Mutex() }.withLock {
         val ep = dao.episode(id) ?: error("Episode is no longer available")
         ep.localFile?.let(::File)?.takeIf { it.isFile && it.length() == ep.downloadedBytes && ep.downloadState == "downloaded" }?.let { return@withLock it }
         val prefs = settings.flow.first()
@@ -143,14 +149,16 @@ class MediaRepository(context: Context, private val db: AppDatabase, private val
         return@withLock withAudioPartialReservation(partial) {
         try {
             val youtube = dev.distillpod.core.YouTubeUrl.videoId(ep.audioUrl) != null
-            val resolved = runInterruptible(Dispatchers.IO) { resolveAudio(ep.audioUrl) }
-            // A fresh extraction can select a different representation; never append old bytes.
-            if (youtube) withContext(Dispatchers.IO) { partial.delete() }
-            val result = downloader.download(resolved, partial, target, if (youtube) null else ep.etag, if (youtube) null else ep.lastModified,
-                maximumBytes = (prefs.storageLimitBytes - otherBytes).coerceAtLeast(0),
-                rangeChunkBytes = if (youtube) dev.distillpod.android.video.YOUTUBE_RANGE_BYTES else null) { progress ->
-                runBlocking { dao.downloadProgress(id, "downloading", progress.bytes, progress.total, progress.etag, progress.lastModified, null) }
-                notify(progress)
+            val result = whenBlocked(blocked) {
+                val resolved = runInterruptible(Dispatchers.IO) { resolveAudio(ep.audioUrl) }
+                // A fresh extraction can select a different representation; never append old bytes.
+                if (youtube) withContext(Dispatchers.IO) { partial.delete() }
+                downloader.download(resolved, partial, target, if (youtube) null else ep.etag, if (youtube) null else ep.lastModified,
+                    maximumBytes = (prefs.storageLimitBytes - otherBytes).coerceAtLeast(0),
+                    rangeChunkBytes = if (youtube) dev.distillpod.android.video.YOUTUBE_RANGE_BYTES else null) { progress ->
+                    runBlocking { dao.downloadProgress(id, "downloading", progress.bytes, progress.total, progress.etag, progress.lastModified, null) }
+                    notify(progress)
+                }
             }
             if (youtube) withContext(Dispatchers.IO) {
                 val extractor = android.media.MediaExtractor()
@@ -178,8 +186,9 @@ class MediaRepository(context: Context, private val db: AppDatabase, private val
                     }
                 }
                 val latest = dao.episode(id)
-                if (latest != null) dao.downloadProgress(id, if (error is CancellationException) "paused" else "failed", partial.length(), latest.totalBytes,
-                    latest.etag, latest.lastModified, if (error is CancellationException) null else safeFailure(error))
+                val state = interruptedState(error)
+                if (latest != null) dao.downloadProgress(id, state, partial.length(), latest.totalBytes,
+                    latest.etag, latest.lastModified, if (state == "failed") safeFailure(error) else null)
             }
             throw error
         }
@@ -287,20 +296,25 @@ class MediaRepository(context: Context, private val db: AppDatabase, private val
         bytes
     } }
 
-    suspend fun downloadModel(id: String, notify: (DownloadProgress) -> Unit = {}): File = locks.getOrPut("model:$id") { Mutex() }.withLock {
+    /** [blocked] as for [ensureDownloaded]: a blocked transfer waits as queued, keeping its partial file. */
+    suspend fun downloadModel(id: String, blocked: suspend (IOException) -> Boolean = { false },
+        notify: (DownloadProgress) -> Unit = {}): File = locks.getOrPut("model:$id") { Mutex() }.withLock {
         val spec = whisperModels.firstOrNull { it.id == id } ?: error("Unknown transcription model")
         val existing = dao.model(id)
         val partial = File(modelsDirectory, "$id.partial")
         val target = File(modelsDirectory, "$id.bin")
         try {
-            downloader.download(spec.url, partial, target, etag = existing?.etag, expectedSha256 = spec.sha256, expectedBytes = spec.bytes, maximumBytes = spec.bytes) { progress ->
-                runBlocking { dao.putModel(ModelEntity(id, "downloading", progress.bytes, progress.etag)) }
-                notify(progress)
+            whenBlocked(blocked) {
+                downloader.download(spec.url, partial, target, etag = existing?.etag, expectedSha256 = spec.sha256, expectedBytes = spec.bytes, maximumBytes = spec.bytes) { progress ->
+                    runBlocking { dao.putModel(ModelEntity(id, "downloading", progress.bytes, progress.etag)) }
+                    notify(progress)
+                }
             }
             dao.putModel(ModelEntity(id, "ready", spec.bytes))
             target
         } catch (error: Exception) {
-            withContext(NonCancellable) { dao.putModel(ModelEntity(id, if (error is CancellationException) "paused" else "failed", partial.length(), dao.model(id)?.etag, safeFailure(error))) }
+            val state = interruptedState(error)
+            withContext(NonCancellable) { dao.putModel(ModelEntity(id, state, partial.length(), dao.model(id)?.etag, if (state == "queued") null else safeFailure(error))) }
             throw error
         }
     }
@@ -323,6 +337,19 @@ class MediaRepository(context: Context, private val db: AppDatabase, private val
             File(modelsDirectory, "$id.partial").delete(); dao.putModel(ModelEntity(id))
         }
     }
+}
+
+/** Android blocked the app's network during the transfer (#292); the row waits as queued. */
+class TransferBlocked(override val cause: IOException) : IOException(cause.message, cause)
+
+private suspend inline fun <T> whenBlocked(blocked: suspend (IOException) -> Boolean, transfer: () -> T): T =
+    try { transfer() } catch (error: IOException) { throw if (blocked(error)) TransferBlocked(error) else error }
+
+/** A paused transfer keeps its partial file; a blocked one waits as queued; anything else failed. */
+private fun interruptedState(error: Exception) = when (error) {
+    is CancellationException -> "paused"
+    is TransferBlocked -> "queued"
+    else -> "failed"
 }
 
 fun safeFailure(error: Throwable): String = when (error) {

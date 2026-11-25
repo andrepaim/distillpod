@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.work.*
 import dev.distillpod.android.AppGraph
@@ -116,11 +117,17 @@ class AppJobs(private val context: Context) {
             "model" -> dao.transitionModel(id, from, state, error)
         }
     }
-    /** Startup restores interrupted transfers; paused and failed rows wait for the user. */
+    /**
+     * Startup restores interrupted transfers; paused and failed rows wait for the user. An earlier version
+     * paused a transfer when Android refused its foreground start (#138). That pause was not the user's,
+     * so those rows resume too, keeping their partial file and validators (#292).
+     */
     suspend fun recoverDownloads() {
         val dao = context.appGraph.db.library()
-        dao.episodes().filter { it.downloadState in listOf("queued", "downloading") }.forEach { download(it.id) }
-        dao.observeModels().first().filter { it.state in listOf("queued", "downloading") }.forEach { model(it.id) }
+        dao.episodes().filter { it.downloadState in listOf("queued", "downloading") ||
+            it.downloadState == "paused" && it.error == DOWNLOAD_BLOCKED_MESSAGE }.forEach { download(it.id) }
+        dao.observeModels().first().filter { it.state in listOf("queued", "downloading") ||
+            it.state == "paused" && it.error == MODEL_BLOCKED_MESSAGE }.forEach { model(it.id) }
     }
     fun capture(id: String) { manager.enqueueUniqueWork("capture:$id", ExistingWorkPolicy.APPEND_OR_REPLACE,
         OneTimeWorkRequestBuilder<CaptureWorker>().setInputData(workDataOf("capture" to id))
@@ -159,6 +166,7 @@ enum class WorkStop { PAUSED, RESCHEDULED, ENDED }
 private val ACTIVE_TRANSFER_STATES = listOf("queued", "downloading")
 /** The transfer records its own cancellation as paused before the worker classifies the stop. */
 private val PAUSABLE_TRANSFER_STATES = ACTIVE_TRANSFER_STATES + "paused"
+/** Earlier versions paused a transfer with these when Android refused its foreground start; startup resumes it. */
 const val DOWNLOAD_BLOCKED_MESSAGE = "Android blocked the background download. Open DistillPod and tap Resume."
 const val MODEL_BLOCKED_MESSAGE = "Android blocked the background model download. Open DistillPod and tap Resume model download."
 
@@ -171,15 +179,19 @@ class LibraryWorker(context: Context, params: WorkerParameters) : CoroutineWorke
         return try {
             when (kind) {
                 "download" -> {
-                    startForeground("Downloading episode")?.let { return deferStart(graph, kind, target, it) }
-                    graph.media.ensureDownloaded(target) { progress ->
-                        runBlocking { setProgress(workDataOf("bytes" to progress.bytes, "total" to progress.total)) }
+                    val foreground = startForeground("Downloading episode")
+                    transfer(graph, foreground) { blocked ->
+                        graph.media.ensureDownloaded(target, blocked) { progress ->
+                            runBlocking { setProgress(workDataOf("bytes" to progress.bytes, "total" to progress.total)) }
+                        }
                     }
                 }
                 "model" -> {
-                    startForeground("Downloading transcription model")?.let { return deferStart(graph, kind, target, it) }
-                    graph.media.downloadModel(target) { progress ->
-                        runBlocking { setProgress(workDataOf("bytes" to progress.bytes, "total" to progress.total)) }
+                    val foreground = startForeground("Downloading transcription model")
+                    transfer(graph, foreground) { blocked ->
+                        graph.media.downloadModel(target, blocked) { progress ->
+                            runBlocking { setProgress(workDataOf("bytes" to progress.bytes, "total" to progress.total)) }
+                        }
                     }
                     graph.transcription.resumeModel(target)
                 }
@@ -207,23 +219,45 @@ class LibraryWorker(context: Context, params: WorkerParameters) : CoroutineWorke
         }
     }
 
-    /** Returns Android's refusal of a background foreground-service start; other errors propagate. */
-    private suspend fun startForeground(title: String): Exception? = try {
-        setForeground(workForeground(applicationContext, id, title))
-        null
-    } catch (error: Exception) {
-        if (error is CancellationException) throw error
-        currentCoroutineContext().ensureActive()
-        if (error.isForegroundStartRejected()) error else throw error
+    /**
+     * Android 12+ refuses the foreground service when the job starts while DistillPod is in the
+     * background, and a later attempt would be refused the same way. Like an analysis (#84), the
+     * transfer then continues as ordinary work, without the notification (#292), and this returns
+     * false. When the process ends first, WorkManager reruns the request and the transfer resumes from
+     * its partial file and validators. Other foreground errors propagate.
+     */
+    private suspend fun startForeground(title: String): Boolean {
+        try { setForeground(workForeground(applicationContext, id, title)); return true }
+        catch (error: Exception) {
+            if (error is CancellationException) throw error
+            currentCoroutineContext().ensureActive()
+            if (!error.isForegroundStartRejected()) throw error
+            return false
+        }
     }
 
-    /** Like transcription (#56): retry while the row stays queued, then pause with an actionable message. */
-    private suspend fun deferStart(graph: AppGraph, kind: String, target: String, error: Exception): Result {
-        if (runAttemptCount < MAX_FOREGROUND_START_ATTEMPTS - 1) return Result.retry()
-        graph.diagnostics.failure("worker", error)
-        graph.jobs.settle(kind, target, "paused", if (kind == "model") MODEL_BLOCKED_MESSAGE else DOWNLOAD_BLOCKED_MESSAGE)
-        return Result.failure()
+    /**
+     * Without the foreground service nothing keeps DistillPod's process out of the cached state once
+     * the job that runs this worker ends (its time limit, or a reschedule after a process restart), and
+     * Android 15+ then blocks the app's network (#292). WorkManager's retry would run in this process
+     * while the block lasts and fail at once, so a blocked transfer does not return to WorkManager: its
+     * row waits as queued and this run resumes it from the partial file once the network is usable.
+     * Meanwhile WorkManager keeps the request's pending job; when Android starts it, the job joins this
+     * run and binds the process again, which lifts the block (as does opening the app). A pause still
+     * cancels the wait. A failure without a reported block keeps the retry budget below.
+     */
+    private suspend fun <T> transfer(graph: AppGraph, foreground: Boolean, run: suspend (suspend (java.io.IOException) -> Boolean) -> T): T {
+        while (true) {
+            try { return run { !foreground && graph.downloadNetwork.blockedAfterFailure() } }
+            catch (_: TransferBlocked) {
+                Log.i(TAG, "Transfer waits for Android to allow network access")
+                graph.downloadNetwork.awaitUsable { graph.settings.flow.first().wifiOnly }
+                Log.i(TAG, "Network access allowed; resuming the transfer")
+            }
+        }
     }
+
+    private companion object { const val TAG = "LibraryWorker" }
 }
 
 class UnderstandingWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
