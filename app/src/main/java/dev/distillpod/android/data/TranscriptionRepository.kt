@@ -29,8 +29,6 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 private const val CHUNK_MS = 120_000L
-/** Refused foreground starts `LibraryWorker` retries before pausing a download (#138). Transcription no longer retries (#301). */
-internal const val MAX_FOREGROUND_START_ATTEMPTS = 5
 /** Earlier versions paused a transcript with this after five refused background starts (#56); startup resumes it (#301). */
 internal const val LEGACY_TRANSCRIPTION_BLOCKED_MESSAGE = "Android could not start transcription. Tap Resume to continue from saved chunks."
 /** Settled transcript states whose text a local replacement keeps readable (#229); never stale audio or running work. */
