@@ -13,6 +13,8 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -49,11 +51,25 @@ class PodcastRepository(private val db: AppDatabase, private val http: OkHttpCli
     private val directory: HttpUrl = "https://itunes.apple.com/search".toHttpUrl(),
     private val onSubscriptionChanged: () -> Unit = {},
     private val onFeedNeeded: (String) -> Unit = {},
-    private val youtube: YouTubeSource? = null) {
+    private val youtube: YouTubeSource? = null,
+    private val upgradeOnce: suspend (String, suspend () -> Unit) -> Unit = { _, _ -> }) {
     private val dao = db.library()
     private val subscriptionSync = dev.distillpod.android.sync.SubscriptionSyncStore(db)
     private val details = MutableStateFlow<Map<String, EpisodeDetailsState>>(emptyMap())
     val episodeDetails: StateFlow<Map<String, EpisodeDetailsState>> = details.asStateFlow()
+    private val revalidation = Mutex()
+    @Volatile private var revalidated = false
+
+    /**
+     * Descriptions stored before show-note links were kept (#308) have only their labels. One full download
+     * per feed replaces them; with the old validators an unchanged feed would answer 304 and keep that text.
+     */
+    private suspend fun revalidateOnce() {
+        if (revalidated) return
+        // A settings failure must not stop the refresh itself; the step is tried again next time.
+        revalidation.withLock { if (!revalidated) revalidated = runCatching { upgradeOnce("showNoteLinks") { dao.forgetFeedValidators() } }
+            .onFailure { if (it is CancellationException) throw it }.isSuccess }
+    }
 
     /**
      * Fetch a YouTube video's own publication time and description when a refresh could not supply them,
@@ -220,6 +236,7 @@ class PodcastRepository(private val db: AppDatabase, private val http: OkHttpCli
     }
 
     suspend fun refresh(id: String) = withContext(Dispatchers.IO) {
+        revalidateOnce()
         val podcast = dao.podcast(id) ?: return@withContext
         try {
             YouTubeUrl.source(podcast.feedUrl)?.let { url ->

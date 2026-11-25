@@ -1,6 +1,7 @@
 package dev.distillpod.android.features
 
 import dev.distillpod.android.data.*
+import dev.distillpod.core.ShowNotes
 import dev.distillpod.core.YouTubeUrl
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -71,7 +72,7 @@ internal fun libraryMatches(terms: List<String>, podcasts: List<PodcastEntity>, 
                 ep.title.contains(phrase, true) -> 3
                 ep.title.hasAll(terms) -> 2
                 allIn(terms, ep.title, show) -> 1
-                allIn(terms, ep.title, show, ep.description) -> 0
+                allIn(terms, ep.title, show, ShowNotes.text(ep.description)) -> 0
                 else -> return@mapNotNull null
             }
             score to ep

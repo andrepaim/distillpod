@@ -278,6 +278,8 @@ class AppViewModel(val graph: AppGraph, private val saved: SavedStateHandle) : V
     fun deleteDownload(id: String) = action("delete:$id") { graph.media.deleteDownload(id) }
     fun clearUnusedAudio() = action("storage") { messages.send("Cleared ${fileSize(graph.media.clearUnusedAudio())} of unused audio. Queued and active files were kept.") }
     fun markCompleted(id: String, complete: Boolean) = action("completed:$id") { graph.portableSync.markCompleted(id, complete) }
+    /** A show-note link (#308); without an app that can open it the user gets a message instead of a crash. */
+    fun openLink(url: String) { if (!openExternalLink(graph.context, url)) messages.trySend("No app on this phone can open this link.") }
     fun unsubscribe(id: String) = queueActions.submit {
         if (graph.db.library().podcast(id)?.subscribed != true) return@submit
         graph.playback.removeShowFromQueue(id)
