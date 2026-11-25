@@ -25,9 +25,11 @@ fail; retries are deliberate. [Source and review behavior](android/contextual-di
 A download that starts while DistillPod is in the background may run without its
 notification: Android can refuse the notification's service then, and the
 download continues without it. Its progress still shows on the episode or model.
-If Android stops it before it finishes, it waits as **Queued** and continues
-later from the partial file. A **Queued** download also waits for its network
-setting (Wi-Fi / unmetered only). Older versions sometimes showed "Android
+On Android 15 and later, Android also cuts the network of a background app once
+its scheduled job ends. The download then waits as **Queued** and continues from
+the partial file when Android runs the job again, which can take several minutes
+or longer, or as soon as you open DistillPod. A **Queued** download also waits
+for its network setting (Wi-Fi / unmetered only). Older versions sometimes showed "Android
 blocked the background download"; the next app start resumes those downloads.
 A download you pause stays paused after the app restarts.
 [Download behavior](android/download-network-policy.md#background-starts-pauses-and-system-stops).

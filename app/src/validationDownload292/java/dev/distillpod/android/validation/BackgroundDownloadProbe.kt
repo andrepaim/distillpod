@@ -8,9 +8,12 @@ import androidx.work.WorkManager
 import dev.distillpod.android.appGraph
 import dev.distillpod.android.data.*
 import dev.distillpod.android.work.DOWNLOAD_BLOCKED_MESSAGE
+import dev.distillpod.android.work.NetworkAccess
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 
 /**
@@ -21,7 +24,11 @@ import java.io.File
  * - `download` and `pause` call the app's own Download and Pause.
  * - `legacy` leaves the row paused the way an earlier version did after refused starts (#138).
  * - `delete` removes the downloaded copy so the next scenario starts from zero.
- * - `dump` logs the row, the partial file and the WorkManager request.
+ * - `dump` logs the row, the partial file, the WorkManager request and the network as Android
+ *   reports it to the app (`network=blocked|usable|none|unknown`).
+ * - `watch` keeps logging a dump on every change of that network state until the process ends, so
+ *   the log shows when Android blocks and lifts the app's network. LibraryWorker itself logs when a
+ *   transfer starts waiting for network access and when it resumes.
  */
 class BackgroundDownloadProbe : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -43,6 +50,9 @@ class BackgroundDownloadProbe : BroadcastReceiver() {
                     "legacy" -> dao.episode(EPISODE)?.let { dao.putEpisode(it.copy(downloadState = "paused", error = DOWNLOAD_BLOCKED_MESSAGE)) }
                     "delete" -> graph.media.deleteDownload(EPISODE)
                     "dump" -> {}
+                    "watch" -> if (watching.compareAndSet(false, true)) graph.scope.launch {
+                        graph.downloadNetwork.states().collect { Log.i(TAG, "network changed: ${describe(it)}"); dump(context, dao) }
+                    }
                     else -> Log.w(TAG, "unknown action $action")
                 }
                 dump(context, dao)
@@ -51,18 +61,27 @@ class BackgroundDownloadProbe : BroadcastReceiver() {
         }
     }
 
+    private fun describe(access: NetworkAccess?) = when {
+        access == null -> "none"
+        access.blocked -> "blocked"
+        else -> "usable"
+    } + (access?.let { if (it.metered) " metered" else " unmetered" } ?: "")
+
     private suspend fun dump(context: Context, dao: LibraryDao) = withContext(Dispatchers.IO) {
+        val network = withTimeoutOrNull(2000) { context.applicationContext.appGraph.downloadNetwork.states().first() }
+            ?.let(::describe) ?: "unknown"
         val row = dao.episode(EPISODE)
         val partial = File(context.filesDir, "media/$EPISODE.partial")
         val work = WorkManager.getInstance(context).getWorkInfosForUniqueWork("download:$EPISODE").get()
             .joinToString { "${it.state}/attempt=${it.runAttemptCount}/stop=${it.stopReason}" }
         Log.i(TAG, "row=${row?.downloadState} bytes=${row?.downloadedBytes} total=${row?.totalBytes} error=${row?.error} " +
-            "partial=${partial.takeIf { it.isFile }?.length()} file=${row?.localFile?.let(::File)?.takeIf { it.isFile }?.length()} work=[$work]")
+            "partial=${partial.takeIf { it.isFile }?.length()} file=${row?.localFile?.let(::File)?.takeIf { it.isFile }?.length()} work=[$work] network=$network")
     }
 
     private companion object {
         const val TAG = "Download292"
         const val SHOW = "v292-show"
         const val EPISODE = "v292-episode"
+        val watching = java.util.concurrent.atomic.AtomicBoolean(false)
     }
 }

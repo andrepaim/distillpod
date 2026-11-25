@@ -37,6 +37,8 @@ class AppGraph internal constructor(val context: Context, val scope: CoroutineSc
         onValidated = { diagnostics.event("videocast.download_validated", reason = "succeeded") })
     val account = AccountRepository(context, scope)
     val jobs = AppJobs(context)
+    /** Tells Android's background network block apart from a missing network for downloads (#292). */
+    val downloadNetwork = dev.distillpod.android.work.DownloadNetwork.system(context)
     /** The installed build's version code; a private phone build can be ahead of the newest release. */
     val installedVersionCode: Long get() = context.packageManager.getPackageInfo(context.packageName, 0).longVersionCode
     val updateChecker by lazy { UpdateChecker(ReleaseFeed(http)::newest, settings, installedVersionCode) }

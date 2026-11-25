@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.work.*
 import dev.distillpod.android.AppGraph
@@ -178,15 +179,19 @@ class LibraryWorker(context: Context, params: WorkerParameters) : CoroutineWorke
         return try {
             when (kind) {
                 "download" -> {
-                    startForeground("Downloading episode")
-                    graph.media.ensureDownloaded(target) { progress ->
-                        runBlocking { setProgress(workDataOf("bytes" to progress.bytes, "total" to progress.total)) }
+                    val foreground = startForeground("Downloading episode")
+                    transfer(graph, foreground) { blocked ->
+                        graph.media.ensureDownloaded(target, blocked) { progress ->
+                            runBlocking { setProgress(workDataOf("bytes" to progress.bytes, "total" to progress.total)) }
+                        }
                     }
                 }
                 "model" -> {
-                    startForeground("Downloading transcription model")
-                    graph.media.downloadModel(target) { progress ->
-                        runBlocking { setProgress(workDataOf("bytes" to progress.bytes, "total" to progress.total)) }
+                    val foreground = startForeground("Downloading transcription model")
+                    transfer(graph, foreground) { blocked ->
+                        graph.media.downloadModel(target, blocked) { progress ->
+                            runBlocking { setProgress(workDataOf("bytes" to progress.bytes, "total" to progress.total)) }
+                        }
                     }
                     graph.transcription.resumeModel(target)
                 }
@@ -217,18 +222,42 @@ class LibraryWorker(context: Context, params: WorkerParameters) : CoroutineWorke
     /**
      * Android 12+ refuses the foreground service when the job starts while DistillPod is in the
      * background, and a later attempt would be refused the same way. Like an analysis (#84), the
-     * transfer then continues as ordinary work, without the notification (#292). When the job or the
-     * process ends first, WorkManager reruns the request and the transfer resumes from its partial file
-     * and validators. Other foreground errors propagate.
+     * transfer then continues as ordinary work, without the notification (#292), and this returns
+     * false. When the process ends first, WorkManager reruns the request and the transfer resumes from
+     * its partial file and validators. Other foreground errors propagate.
      */
-    private suspend fun startForeground(title: String) {
-        try { setForeground(workForeground(applicationContext, id, title)) }
+    private suspend fun startForeground(title: String): Boolean {
+        try { setForeground(workForeground(applicationContext, id, title)); return true }
         catch (error: Exception) {
             if (error is CancellationException) throw error
             currentCoroutineContext().ensureActive()
             if (!error.isForegroundStartRejected()) throw error
+            return false
         }
     }
+
+    /**
+     * Without the foreground service nothing keeps DistillPod's process out of the cached state once
+     * the job that runs this worker ends (its time limit, or a reschedule after a process restart), and
+     * Android 15+ then blocks the app's network (#292). WorkManager's retry would run in this process
+     * while the block lasts and fail at once, so a blocked transfer does not return to WorkManager: its
+     * row waits as queued and this run resumes it from the partial file once the network is usable.
+     * Meanwhile WorkManager keeps the request's pending job; when Android starts it, the job joins this
+     * run and binds the process again, which lifts the block (as does opening the app). A pause still
+     * cancels the wait. A failure without a reported block keeps the retry budget below.
+     */
+    private suspend fun <T> transfer(graph: AppGraph, foreground: Boolean, run: suspend (suspend (java.io.IOException) -> Boolean) -> T): T {
+        while (true) {
+            try { return run { !foreground && graph.downloadNetwork.blockedAfterFailure() } }
+            catch (_: TransferBlocked) {
+                Log.i(TAG, "Transfer waits for Android to allow network access")
+                graph.downloadNetwork.awaitUsable { graph.settings.flow.first().wifiOnly }
+                Log.i(TAG, "Network access allowed; resuming the transfer")
+            }
+        }
+    }
+
+    private companion object { const val TAG = "LibraryWorker" }
 }
 
 class UnderstandingWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {

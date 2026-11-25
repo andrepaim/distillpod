@@ -51,15 +51,35 @@ while DistillPod is in the background, for example after a Wi-Fi constraint is
 met, after a retry backoff, from show automation or from startup recovery. A
 later attempt would be refused the same way, so the transfer continues at once
 as ordinary background work, without the notification (#292). Progress still
-shows on the episode or model row. If Android ends that work before the transfer
-finishes (a job time limit or the process being stopped), WorkManager reruns the
-request and the transfer resumes from its partial file and HTTP validators. The
-row never waits for the user because of a refused start. WorkManager 2.10
-records the worker as foreground work before Android refuses the service, so the
-job scheduler's own stop (for example at its time limit) does not interrupt the
-transfer: it keeps running while the process does, and a rerun of the job joins
-it rather than starting a second transfer. If Android kills the process, the
-next run resumes the transfer. Pause still cancels it.
+shows on the episode or model row. The row never waits for the user because of
+a refused start.
+
+Without the foreground service, only a running job keeps DistillPod's process
+active. WorkManager 2.10 records the worker as foreground work before Android
+refuses the service, so the job scheduler's own stop (for example at its
+10-minute limit) does not interrupt the worker, and a later start of the same
+job joins the running worker instead of starting a second transfer. Once the
+job has ended, though, Android 15+ puts the process in the cached state and
+blocks the app's network about five seconds later (the job also ends this way
+when WorkManager reschedules it after a process restart). The connection breaks
+and every new request fails immediately. WorkManager's own retry would run in
+the same cached process from its in-app timer and fail too, using up the retry
+budget and failing the row.
+
+So when a transfer whose foreground start was refused fails and Android reports
+the default network as blocked for DistillPod (`DownloadNetwork`, from the
+default network callback's blocked status), the transfer does not return to
+WorkManager. The row goes back to **Queued** with its partial file and HTTP
+validators, and the same worker run waits until the network is usable: present,
+not blocked, and allowed by the Wi-Fi / unmetered setting. Meanwhile WorkManager
+keeps the request's pending job. When Android starts that job (minutes later in
+the background, longer in a restricted standby bucket) it joins the waiting
+worker and binds the process, which lifts the block. Opening DistillPod lifts it
+too. The transfer then resumes with a Range request. This wait does not count as
+a retry. A failure with no reported block (a real outage or server error), or
+one during a transfer whose foreground service did start, keeps the normal
+retry budget. If the process is killed while waiting, the row stays **Queued**
+and the next run resumes from the partial file. Pause still cancels the wait.
 
 Earlier versions retried a refused start five times and then paused the row
 with "Android blocked the background download. Open DistillPod and tap Resume."
@@ -81,7 +101,14 @@ refused start completing as ordinary work, a time-limit stop after a refusal
 resuming with a Range request (episode and model), a pause during such a
 transfer, a single transfer for concurrent attempts, startup resuming rows an
 earlier version paused, pausing before start with startup recovery, and a system
-stop compared with an app cancellation during a loopback transfer.
+stop compared with an app cancellation during a loopback transfer. A simulated
+firewall breaks the connection and fails new requests while a fake network
+status reports the block: transfers cut mid-way or started while blocked wait
+as queued and resume in the same run (episode with the exact bytes, model with
+a Range request), a pause during the wait sticks, a block lifted on a metered
+network under Wi-Fi-only keeps waiting, and failures without a reported block or
+with a foreground service keep the retry budget. `DownloadNetworkTest` covers
+the wait itself, including a status change that never arrives.
 
 ## Regression checks
 
