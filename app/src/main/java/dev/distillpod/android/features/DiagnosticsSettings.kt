@@ -18,7 +18,8 @@ import dev.distillpod.android.ui.theme.OutlinedButton
     val diagnostics=vm.graph.diagnostics
     var enabled by remember {mutableStateOf(diagnostics.enabled)}
     var usage by remember {mutableStateOf(diagnostics.usageEnabled)}
-    var health by remember {mutableStateOf(diagnostics.reportingHealth)}
+    // Reporting health lists the outbox, which waits on its file forces: read it only on IO (#293).
+    var health by remember {mutableStateOf("")}
     var busy by remember {mutableStateOf(false)}
     val status by diagnostics.status.collectAsState()
     LaunchedEffect(status) { while(true) {health=withContext(Dispatchers.IO){diagnostics.reportingHealth};kotlinx.coroutines.delay(10000)} }

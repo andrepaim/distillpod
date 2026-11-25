@@ -23,7 +23,8 @@ class ContextObservationTimeTest {
         File(context.noBackupFilesDir,"reliability").deleteRecursively()
         WorkManagerTestInitHelper.initializeTestWorkManager(context)
         val d=Diagnostics(context,"https://abc123@o1.ingest.sentry.io/1")
-        fun records()=d.queue.files().map {it.readText()}.filter {it.contains("capture.context_summary")}.also {payloads->
+        // Summaries persist on the diagnostics executor (#293); wait for it before reading the outbox.
+        fun records()=d.also {it.awaitIdle()}.queue.files().map {it.readText()}.filter {it.contains("capture.context_summary")}.also {payloads->
             val directory=File("build/test-context-time-fixtures").also {it.mkdirs()}
             payloads.forEachIndexed {index,payload->File(directory,"record-$index.jsonl").writeText(payload)}
         }.map {payload->

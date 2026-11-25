@@ -1,5 +1,6 @@
 package dev.distillpod.android.data
 
+import dev.distillpod.android.diagnostics.Diagnostics
 import java.io.IOException
 import org.xml.sax.SAXException
 
@@ -20,6 +21,18 @@ fun feedRefreshError(error: Throwable): String = when (error) {
     is SAXException -> "The feed couldn't be read. It may not be a valid podcast feed."
     is IOException -> "Couldn't reach the feed. Check your connection and try again."
     else -> FEED_REFRESH_FAILED
+}
+
+/**
+ * The diagnostic reason for a refresh failure the Library already explains (#294): the feed server's
+ * status, an unreadable feed or no connection. These describe the publisher or the network, not an app
+ * failure. Null for anything else, which remains a reported worker failure.
+ */
+fun feedRefreshDiagnosticReason(error: Throwable): String? = when (error) {
+    is FeedHttpException -> "publisher"
+    is SAXException -> "invalid_data"
+    is IOException -> Diagnostics.reason(error)
+    else -> null
 }
 
 private const val FEED_REFRESH_FAILED = "The feed couldn't be refreshed."

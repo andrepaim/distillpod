@@ -213,6 +213,7 @@ class MomentQualityTest {
             repo=CaptureRepository(db,gateway { prompt,_ -> if(prompt==MomentGeneration.generatePrompt)ready else {repo.cancel(id);accepted} },{true},{},{},diagnostics=diagnostics)
             id=repo.capture("e",60000,true);repo.run(id)
             assertNull(db.library().distillation(id)!!.insight);assertEquals("failed",db.library().distillation(id)!!.state)
+            diagnostics.awaitIdle() // Transitions are applied on the diagnostics executor (#293).
             assertEquals("cancelled",diagnostics.journal.latest().single {it.kind=="distillation" && it.operation==id}.state)
         } finally {diagnostics.consent(false);io.sentry.Sentry.close()}
     }

@@ -8,7 +8,8 @@ import okhttp3.MediaType.Companion.toMediaType
 /** HTTP acknowledgement, rather than SDK capture, determines outbox removal. */
 internal class DiagnosticDelivery(private val client:OkHttpClient) {
     enum class Outcome { ACCEPTED, RETRY, REJECTED }
-    data class Receipt(val outcome:Outcome,val retrySeconds:Long?=null)
+    /** [code] is the HTTP status, kept only to tell authorization failures from others. */
+    data class Receipt(val outcome:Outcome,val retrySeconds:Long?=null,val code:Int=0)
     fun send(endpoint:String,key:String,bytes:ByteArray):Receipt {
         val request=Request.Builder().url(endpoint)
             .header("X-Sentry-Auth","Sentry sentry_version=7,sentry_key=$key,sentry_client=distillpod/1")
@@ -22,7 +23,7 @@ internal class DiagnosticDelivery(private val client:OkHttpClient) {
                 response.isSuccessful -> Outcome.ACCEPTED
                 response.code==429 || response.code>=500 || response.code in listOf(401,403,408) -> Outcome.RETRY
                 else -> Outcome.REJECTED
-            },pause)
+            },pause,response.code)
         }
     }
 }

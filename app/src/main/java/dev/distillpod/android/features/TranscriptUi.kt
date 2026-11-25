@@ -52,6 +52,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalDensity
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.distillpod.android.data.EpisodeEntity
+import dev.distillpod.android.data.QUEUED_BEHIND
 import dev.distillpod.android.data.SegmentEntity
 import dev.distillpod.android.data.TranscriptEntity
 import dev.distillpod.android.data.TranscriptStage
@@ -93,9 +94,12 @@ import dev.distillpod.android.ui.theme.TextButton
         stage == TranscriptStage.TRANSCRIBING && worked <= saved)
 }
 
-/** The transcript row's short status on the episode page (proposal 5.2): [TranscriptTools]' phase text, shortened. */
+/**
+ * The transcript row's short status on the episode page (proposal 5.2): [TranscriptTools]' phase text, shortened.
+ * [wait] is a queued transcript's recorded wait reason (#299).
+ */
 internal fun transcriptShortStatus(state: String?, source: String?, stage: TranscriptStage?, percent: Int, downloadPercent: Int?,
-    preparesOnPlay: Boolean): String = when (stage) {
+    preparesOnPlay: Boolean, wait: String? = null): String = when (stage) {
     TranscriptStage.ONLINE -> "Looking for an online transcript"
     TranscriptStage.PUBLISHER -> "Loading publisher transcript"
     TranscriptStage.DOWNLOADING -> downloadPercent?.let { "Downloading audio · $it%" } ?: "Downloading audio"
@@ -106,7 +110,15 @@ internal fun transcriptShortStatus(state: String?, source: String?, stage: Trans
     TranscriptStage.SAVING -> "Saving transcript"
     else -> when (state) {
         "ready" -> when (source) { "publisher" -> "Ready · publisher"; "online" -> "Ready · online"; else -> "Ready · on this phone" }
-        "queued" -> "Queued · waiting for power or network"
+        "queued" -> when (wait) {
+            QUEUED_BEHIND -> "Queued · after another transcript"
+            "charging_required" -> "Queued · waiting for a charger"
+            "battery_low" -> "Queued · battery low"
+            "wifi_required" -> "Queued · waiting for Wi-Fi"
+            "offline" -> "Queued · offline"
+            "restricted" -> "Queued · Android blocked the start"
+            else -> "Queued · waiting to start"
+        }
         "processing" -> "Preparing on this phone"
         "waiting_model" -> "Needs a transcription model"
         "paused" -> "Paused · progress saved"
@@ -115,6 +127,17 @@ internal fun transcriptShortStatus(state: String?, source: String?, stage: Trans
         "failed" -> "Couldn't finish · progress saved"
         else -> if (preparesOnPlay) "Prepared when you play" else "Not prepared yet"
     }
+}
+
+/** Transcript tools' status for a queued transcript: what it waits for, from its recorded wait reason (#299). */
+internal fun queuedStatus(wait: String?): String = when (wait) {
+    QUEUED_BEHIND -> "Queued · another transcript is being prepared first. Transcripts are prepared one at a time."
+    "charging_required" -> "Queued · waiting for a charger because \"Only transcribe while charging\" is on"
+    "battery_low" -> "Queued · battery low. Continues when the phone is charging or the battery recovers."
+    "wifi_required" -> "Queued · waiting for Wi-Fi because \"Wi-Fi / unmetered downloads only\" is on"
+    "offline" -> "Queued · offline. This transcript needs internet to get its audio or text."
+    "restricted" -> "Queued · Android didn't allow transcription to start in the background. It tries again automatically."
+    else -> "Queued · waiting for Android to start transcription"
 }
 
 /** A transcription model's short name: "Tiny", "Base". */
@@ -204,6 +227,8 @@ private fun downloadLabel(state: TranscriptToolState) = state.waiting?.download?
     val replacing = row?.state != "ready" && previous.any { it.episodeId == ep.id && it.matches(ep) }
     val progress by vm.graph.transcription.progress.collectAsStateWithLifecycle()
     val live = progress[ep.id]?.takeIf { it.revision == row?.revision }
+    val waits by vm.graph.transcription.waitReasons.collectAsStateWithLifecycle()
+    val wait = row?.takeIf { it.state == "queued" }?.let { waits[it.revision] }
     val running = row?.state in listOf("queued", "processing")
     val duration = live?.durationMs?.takeIf { it > 0 } ?: row?.durationMs ?: 0
     val saved = row?.processedMs ?: 0
@@ -231,7 +256,7 @@ private fun downloadLabel(state: TranscriptToolState) = state.waiting?.download?
             "online" -> "Online transcript · PodcastTranscript.ai · segment timings"
             else -> "On-device transcript · ${row.model} · segment timings"
         }
-        "queued" -> "Queued · waiting for power, network or an Android processing slot"
+        "queued" -> queuedStatus(wait)
         "processing" -> "Preparing on this phone · ${timestamp(row.processedMs)} completed"
         "waiting_model" -> when {
             waiting?.prepareWith != null && waiting.prepareWith != row.model -> "${modelName(waiting.prepareWith)} is ready · prepare the transcript with it"
@@ -246,7 +271,7 @@ private fun downloadLabel(state: TranscriptToolState) = state.waiting?.download?
         "failed" -> "Preparation could not finish · completed chunks are saved"
         else -> if (prefs.transcribeOnPlayback) "A transcript will be prepared when you play this episode. Audio stays on your phone." else "Prepare a transcript to browse text and capture insights. Audio stays on your phone."
     }
-    val shortStatus = transcriptShortStatus(row?.state, row?.source, stage, (fraction * 100).toInt(), downloadPercent, prefs.transcribeOnPlayback)
+    val shortStatus = transcriptShortStatus(row?.state, row?.source, stage, (fraction * 100).toInt(), downloadPercent, prefs.transcribeOnPlayback, wait)
     val chunk = if (running) "${timestamp(saved)} saved${if (live != null && live.chunkEndMs > live.chunkStartMs) " · current chunk ${timestamp(live.chunkStartMs)}–${timestamp(live.chunkEndMs)}" else ""}" else null
     return TranscriptToolState(row, effective, running, duration, saved, worked, fraction, stage, statusText, shortStatus, chunk,
         "transcript:${ep.id}" in busy, waiting, replacing)

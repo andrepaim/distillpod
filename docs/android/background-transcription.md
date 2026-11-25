@@ -16,6 +16,10 @@ Battery, charging-only and network policies still apply. Downloaded audio can be
 
 Android 15+ local inference uses `mediaProcessing` alone, avoiding consumption of the unrelated `dataSync` allowance. Older Android versions use the existing `dataSync` declaration. This does not use a playback or microphone service type for computation. The platform `startForeground` overload is used directly: the AndroidX Core version currently resolved by this project filters out the API 35 media-processing bit. The first emulator trial exposed that incompatibility; an API 35 unit regression now verifies the actual foreground-service type.
 
+### Queue order and wait reasons (#299, November 2026)
+
+Later change, not part of the validation below. The session still prepares one transcript at a time, choosing the next one between chunks. Transcripts the user asked for (Prepare or Resume transcript, Transcribe locally again, or a saved moment that needs the transcript) go first, in the order asked; automatic ones (Transcribe when playing, show automation, a newly downloaded model) follow, oldest revision first. The chunk in progress is never interrupted. The request order is kept in memory only. After the process dies, saved moments that still need a transcript request it again at startup and everything else runs oldest first. The order applies to the foreground session; when Android refuses that session, deferred WorkManager chunks run in the order Android schedules them (#301 covers that path). Each queued row shows its last recorded wait: behind another transcript (`queued_behind`), charger, low battery, Wi-Fi, offline, or a refused background start (`restricted`); the same value is logged as `transcription.queued`.
+
 ## Comparison with existing projects
 
 Reviewed primary source on November 4, 2026. Repository stars are only an indication of public adoption, not proof of reliability. No external implementation was copied.
