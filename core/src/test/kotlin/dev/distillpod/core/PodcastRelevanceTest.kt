@@ -27,7 +27,19 @@ class PodcastRelevanceTest {
     @Test fun `each reason names what that podcast's own metadata mentions`() {
         val searches = listOf("dog breed traits and care")
         assertEquals("Title mentions “dog” and “breeds”.", PodcastRelevance.match("dog breeds", searches, dogBreeds).reason)
-        assertEquals("Title and description mention “dog”; description mentions “care”.", PodcastRelevance.match("dog breeds", searches, dogTalk).reason)
+        assertEquals("Title and description mention “dog”.", PodcastRelevance.match("dog breeds", searches, dogTalk).reason)
+    }
+
+    @Test fun `the reason uses the user's own matched words and leaves out words only a generated search added`() {
+        // "care" (search only) still raises Dog Talk's score, but the user never typed it.
+        val match = PodcastRelevance.match("dog breeds", listOf("dog breed traits and care"), dogTalk)
+        assertEquals("Title and description mention “dog”.", match.reason)
+        assertTrue(match.score > PodcastRelevance.match("dog breeds", emptyList(), dogTalk).score)
+    }
+
+    @Test fun `generated search words explain a match only when none of the user's own words matched`() {
+        val english = PodcastMetadata("Dog Breeds", description = "History and personality of German Shepherds")
+        assertEquals("Title mentions “dog” and “breeds”.", PodcastRelevance.match("raças de cachorro", listOf("dog breeds"), english).reason)
     }
 
     @Test fun `a podcast with no grounded match has no reason and no score`() {

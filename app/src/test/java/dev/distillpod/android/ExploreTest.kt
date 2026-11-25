@@ -116,7 +116,7 @@ class ExploreTest {
             assertEquals(repo.error.first(), "succeeded", repo.state.first())
             val shown = db.library().observeSuggestions().first()
             assertEquals(listOf("Dog Breeds", "Dog Talk", "Never A Dull Moment With Audiobooks"), shown.map { it.title })
-            assertEquals(listOf("Title mentions “dog” and “breeds”.", "Title and description mention “dog”; description mentions “care”.", ""), shown.map { it.reason })
+            assertEquals(listOf("Title mentions “dog” and “breeds”.", "Title and description mention “dog”.", ""), shown.map { it.reason })
             assertEquals(listOf("https://images.example.test/breeds.jpg", "https://images.example.test/feed-talk.jpg", "https://images.example.test/audiobooks.jpg"), shown.map { it.imageUrl })
         } } finally { db.close() }
     }

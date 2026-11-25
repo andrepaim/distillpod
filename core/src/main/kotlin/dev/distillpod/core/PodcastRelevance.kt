@@ -6,7 +6,10 @@ import java.util.Locale
 /** A suggested podcast's own channel metadata, from its verified feed or directory entry (#307). */
 data class PodcastMetadata(val title: String, val author: String = "", val description: String = "", val category: String = "")
 
-/** [reason] names the words this podcast's own metadata shares with the request, or is empty when it shares none. */
+/**
+ * [reason] names the words this podcast's own metadata shares with the user's interests; only when it shares none of
+ * those does it name words from the generated searches instead. It is empty when the podcast shares no word at all.
+ */
 data class PodcastMatch(val score: Int, val reason: String)
 
 /**
@@ -40,7 +43,9 @@ object PodcastRelevance {
         val matched = terms.mapNotNull { (key, shown) -> fields.filter { key in present.getValue(it) }.takeIf { it.isNotEmpty() }?.let { Triple(key, shown, it) } }
         val strength = { key: String, places: List<String> -> if (own.any { it.first == key }) 1000 * places.maxOf { weight.getValue(it) } else places.maxOf { weight.getValue(it) } }
         val score = matched.sumOf { (key, _, places) -> strength(key, places) }
-        val reason = matched.take(4).groupBy({ it.third }, { "“${it.second}”" }).entries.joinToString("; ") { (places, shown) ->
+        // Explain with the user's own words; words only a generated search added explain a match only when none of theirs did.
+        val explained = matched.filter { (key) -> own.any { it.first == key } }.ifEmpty { matched }
+        val reason = explained.take(4).groupBy({ it.third }, { "“${it.second}”" }).entries.joinToString("; ") { (places, shown) ->
             "${list(places)} ${if (places.size == 1) "mentions" else "mention"} ${list(shown)}"
         }.replaceFirstChar { it.titlecase(Locale.ROOT) }
         return PodcastMatch(score, if (reason.isEmpty()) "" else "$reason.")
