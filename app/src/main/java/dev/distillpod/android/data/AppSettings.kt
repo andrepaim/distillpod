@@ -6,6 +6,7 @@ import androidx.datastore.preferences.preferencesDataStore
 import dev.distillpod.core.FirstRunSetup
 import dev.distillpod.core.FirstRunStatus
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.withContext
@@ -134,6 +135,12 @@ class AppSettings(context: Context, private val store: androidx.datastore.core.D
         }
         store.edit { it[stringPreferencesKey(key)] = value } }
     suspend fun flag(key: String, value: Boolean) { store.edit { it[booleanPreferencesKey(key)] = value } }
+    /** Runs a device-local upgrade [step] until it has completed once; it is recorded afterwards, so an interrupted step repeats. */
+    suspend fun once(key: String, step: suspend () -> Unit) {
+        val done = booleanPreferencesKey("once_$key")
+        if (store.data.first()[done] == true) return
+        step(); store.edit { it[done] = true }
+    }
     suspend fun refreshHours(hours: Int) {
         require(hours in 1..168) { "Choose an interval from 1 to 168 hours" }
         store.edit { it[intPreferencesKey("refreshHours")] = hours }

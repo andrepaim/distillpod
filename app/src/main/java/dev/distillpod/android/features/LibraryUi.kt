@@ -59,12 +59,13 @@ internal class EpisodeActions(
     val download: (String) -> Unit = {},
     val pauseDownload: (String) -> Unit = {},
     val deleteDownload: (String) -> Unit = {},
+    val openLink: (String) -> Unit = {},
 )
 
 internal fun AppViewModel.episodeActions(openPlayer: Boolean = false) = EpisodeActions(
     open = { open("episode:$it") }, play = { play(it); if (openPlayer) open("player") }, toggle = ::toggle,
     enqueue = ::enqueue, markPlayed = ::markCompleted, download = ::download, pauseDownload = ::pauseDownload,
-    deleteDownload = ::deleteDownload)
+    deleteDownload = ::deleteDownload, openLink = ::openLink)
 
 /** Whether a feed refresh runs, without recomposing the Library for every other busy action. */
 internal fun AppViewModel.feedRefreshing() = busy.map { "refresh" in it }.distinctUntilChanged()
@@ -297,7 +298,7 @@ internal fun episodeLengthLabel(durationMs: Long): String {
             Box(Modifier.padding(top = DistillSpacing.sm)) { tools() }
             Column(Modifier.padding(top = DistillSpacing.sm), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text("About", Modifier.semantics { heading() }, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                metadata.description?.let { EpisodeDescription(it) }
+                metadata.description?.let { EpisodeDescription(it, actions.openLink) }
                 metadata.note?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium) }
                 if (metadata.retry) TextButton(onClick = onRetryDetails) { Text("Retry") }
             }
@@ -373,12 +374,11 @@ internal fun episodeLengthLabel(durationMs: Long): String {
     }
 }
 
-@Composable private fun EpisodeDescription(text: String) {
+@Composable private fun EpisodeDescription(text: String, onLink: (String) -> Unit) {
     var expanded by rememberSaveable(text) { mutableStateOf(false) }
     var overflows by remember(text) { mutableStateOf(false) }
     SelectionContainer {
-        Text(text, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyLarge,
-            maxLines = if (expanded) Int.MAX_VALUE else 6, overflow = TextOverflow.Ellipsis,
+        ShowNotesText(text, onLink, style = MaterialTheme.typography.bodyLarge, maxLines = if (expanded) Int.MAX_VALUE else 6,
             onTextLayout = { if (!expanded) overflows = it.hasVisualOverflow })
     }
     if (expanded || overflows) TextButton(onClick = { expanded = !expanded }, contentPadding = ButtonDefaults.TextButtonContentPadding) {
