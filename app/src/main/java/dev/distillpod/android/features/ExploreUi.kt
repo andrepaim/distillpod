@@ -1,5 +1,6 @@
 package dev.distillpod.android.features
 
+import dev.distillpod.android.data.SuggestionEntity
 import dev.distillpod.android.data.explanationMoment
 import dev.distillpod.android.data.explanationMatches
 import dev.distillpod.android.data.sourceStartMs
@@ -89,16 +90,25 @@ import dev.distillpod.android.ui.theme.TextButton
             else Button(onClick = { vm.recommend(history) }, enabled = topics.trim().length >= 2, modifier = Modifier.fillMaxWidth()) { Text("Find suggestions") }
             if (error.isNotBlank()) Text(error, color = MaterialTheme.colorScheme.error)
         }
-        items(visible, key = { it.feedUrl }) { suggestion ->
-            Card { Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(suggestion.title, style = MaterialTheme.typography.titleMedium)
-                Text(suggestion.author, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(suggestion.reason, style = MaterialTheme.typography.bodySmall)
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = { vm.subscribe(suggestion.feedUrl) }) { Text("Follow") }
-                    TextButton(onClick = { vm.dismissSuggestion(suggestion.feedUrl) }) { Text("Dismiss") }
-                }
-            } }
-        }
+        items(visible, key = { it.feedUrl }) { suggestion -> SuggestionCard(suggestion, { vm.subscribe(suggestion.feedUrl) }, { vm.dismissSuggestion(suggestion.feedUrl) }) }
     }
+}
+
+/** A verified suggested feed with search's artwork and placeholder; its reason appears only when grounded in the feed (#307). */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable internal fun SuggestionCard(suggestion: SuggestionEntity, onFollow: () -> Unit, onDismiss: () -> Unit) {
+    Card { Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            SearchArtwork(suggestion.title, suggestion.imageUrl, Modifier.size(64.dp))
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(suggestion.title, style = MaterialTheme.typography.titleMedium)
+                if (suggestion.author.isNotBlank()) Text(suggestion.author, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        if (suggestion.reason.isNotBlank()) Text(suggestion.reason, style = MaterialTheme.typography.bodySmall)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(onClick = onFollow) { Text("Follow") }
+            TextButton(onClick = onDismiss) { Text("Dismiss") }
+        }
+    } }
 }
