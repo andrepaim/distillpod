@@ -47,6 +47,10 @@ internal class OperationJournal private constructor(private val file: File, priv
         if(old?.state==state && state in TERMINAL && correlation==old.correlation)return
         // A repeated callback is not another attempt. Explicit starts after failure are retries.
         if(old?.state==state && old.reason==reason && (attempt==null || old.attempt==attempt) && correlation==old.correlation)return
+        // A wait restated without the execution that last observed it (a process start re-queuing it,
+        // say) is the same wait, not another revision (#313).
+        if(old?.state==state && state in WAITS && old.reason==reason && attempt==null && correlation?.executionId==null &&
+            old.correlation?.copy(executionId=null)==correlation)return
         if(old?.state=="cancelled" && state in setOf("completed","failed","interrupted"))return
         if(old?.state=="completed" && !(state !in TERMINAL && (changedExecution || changedAttempt) || state=="running" && attempt!=null && attempt!=old.attempt))return
         val newAttempt=old==null || changedExecution || changedAttempt || state=="running" && (old.state in TERMINAL || attempt!=null && attempt!=old.attempt)
@@ -67,6 +71,9 @@ internal class OperationJournal private constructor(private val file: File, priv
         latest().filter {it.state !in TERMINAL}.forEach {
             val state=resolve(it.kind,it.operation) ?: "unknown"
             if(it.state=="running" && state=="queued")transition(it.kind,it.operation,"interrupted","process_interrupted",it.source,correlation=it.correlation)
+            // Room stores a wait (for a charger, say) as queued; only the journal knows its reason.
+            // The wait is unchanged and was not interrupted, so a process start reports nothing (#313).
+            if(it.state=="waiting" && state=="queued")return@forEach
             val reason=if(state==it.state)it.reason else if(state=="completed")"reconciled" else if(state=="partial")"partial" else "process_interrupted"
             transition(it.kind,it.operation,state,reason,it.source,correlation=it.correlation)
         }
@@ -96,7 +103,8 @@ internal class OperationJournal private constructor(private val file: File, priv
             OperationJournal(file, now, monotonic, release, fileForce)
         val KINDS=setOf("capture","transcription","distillation","playback","voice")
         val TERMINAL=setOf("partial","completed","failed","cancelled","interrupted","unknown")
-        val STATES=TERMINAL+setOf("queued","running","waiting","paused")
+        val WAITS=setOf("queued","waiting")
+        val STATES=TERMINAL+WAITS+setOf("running","paused")
         val SOURCES=setOf("background","phone","headphones","car")
     }
 }

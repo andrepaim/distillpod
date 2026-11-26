@@ -341,7 +341,7 @@ log attributes and error tags are not interchangeable API representations.
 
 Useful log messages include `capture.started`, `capture.completed`,
 `capture.transcript_link`, `capture.context_summary`, `transcription.dependency`,
-`transcription.stage`, `transcription.completed`, `distillation.started`,
+`transcription.stage` (only `restricted` since #313), `transcription.completed`, `distillation.started`,
 `distillation.attempt_summary`, `operation.summary`, and `diagnostics.health`.
 Read the producer allowlist before assuming a particular event exists. Search by
 event name and categorical reason, not transcript text or full exception messages.

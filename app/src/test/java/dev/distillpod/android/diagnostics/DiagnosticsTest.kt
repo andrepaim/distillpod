@@ -35,7 +35,7 @@ class DiagnosticsTest {
         val d=Diagnostics(context,"https://abc123@o1.ingest.sentry.io/1",RecordingDiagnosticFileForce())
         val barrier=DiagnosticBarrierProbe(d)
         d.consent(true);barrier.awaitIdle()
-        repeat(1005) { d.event("transcription.stage",reason="transcribing");barrier.awaitIdle() }
+        repeat(1005) { d.event("playback.focus",reason="paused");barrier.awaitIdle() }
         val job=java.util.UUID.randomUUID().toString()
         d.event("transcription.started",job);barrier.awaitIdle()
         d.event("transcription.completed",job);barrier.awaitIdle()

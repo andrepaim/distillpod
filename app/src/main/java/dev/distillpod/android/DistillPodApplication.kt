@@ -132,7 +132,8 @@ class AppGraph internal constructor(val context: Context, val scope: CoroutineSc
         }
     }
 
-    private suspend fun reconcileJournal() {
+    /** The startup "journal" step; internal so tests can replay a process start (#313). */
+    internal suspend fun reconcileJournal() {
         val reliabilityStates=mutableMapOf<Pair<String,String>,String>()
         db.library().transcripts().forEach {row->reliabilityStates["transcription" to row.revision]=when(row.state){
             "ready"->"completed";"partial"->"partial";"waiting_model"->"waiting";"stale"->"cancelled";"failed"->"failed";"paused"->"paused";"queued","processing"->"queued";else->"unknown"}}

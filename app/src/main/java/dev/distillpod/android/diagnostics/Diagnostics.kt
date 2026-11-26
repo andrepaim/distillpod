@@ -246,7 +246,8 @@ class Diagnostics internal constructor(private val context: Context, private val
             "distillation.queued"->if(reason=="queued")"queued" else "waiting"
             "transcription.queued"->if(reason in setOf("scheduled","queued","queued_behind"))"queued" else "waiting"
             "transcription.started","distillation.started","voice.started","playback.service_started"->"running"
-            "transcription.stage"->if(reason=="queued")return else "running"
+            // A stage is progress within a running window, not a new state of the transcript (#313).
+            "transcription.stage"->return
             "transcription.partial"->"partial"
             "transcription.completed"->"completed"
             "transcription.paused"->"paused"
@@ -408,7 +409,7 @@ class Diagnostics internal constructor(private val context: Context, private val
             if(!enabled || !configured || generation!=expectedGeneration || !acceptsCorrelation(correlation))return
             try {
                 // Categorical fields only. IDs must be random UUIDs, never hashes of content or URLs.
-                if(name !in EVENT_NAMES)return
+                if(name !in EVENT_NAMES || !hasRawLog(name,reason))return
                 if(reason !in REASONS || source !in setOf("background","phone","headphones","car"))return
                 val attributes=mutableMapOf<String,Any>("event_id" to UUID.randomUUID().toString(),"session_id" to session,"installation_id" to installation,"schema_version" to 1,"test_traffic" to (name.startsWith("diagnostics.") || dev.distillpod.android.sync.SubscriptionCloudAccess.instrumentation),"reason" to reason,"source" to source,"android_api" to Build.VERSION.SDK_INT)
                 attributes.putAll((correlation ?: DiagnosticCorrelation()).fields())
@@ -511,6 +512,17 @@ class Diagnostics internal constructor(private val context: Context, private val
             if(failure.type?.endsWith("ForegroundServiceDidNotStartInTimeException")==true)
                 tags["fgs_start_site"]=if(exceptions.any {it.type=="StackTrace" && it.module=="android.app"}) "recorded" else "none"
             return tags
+        }
+        /**
+         * Background transcription logged every stage of every two-minute window twice, as its raw event
+         * and as its `operation.summary` (#313). A transcript's start and waits are now reported only by
+         * their summary, which carries the window's attempt, the outcome and the reason; the other stages
+         * are not reported. A refused foreground start (`restricted`, #301) stays a raw stage log.
+         */
+        internal fun hasRawLog(name:String,reason:String):Boolean = when(name) {
+            "transcription.started","transcription.queued"->false
+            "transcription.stage"->reason=="restricted"
+            else->true
         }
         private val EVENT_NAMES=setOf("capture.context_summary","distillation.attempt_summary","youtube.extraction_started","youtube.extraction_completed","youtube.extraction_failed","youtube.extraction_retry","youtube.stream_refreshed","videocast.video_requested","videocast.audio_restored","videocast.first_frame","videocast.failed","videocast.download_validated","transcription.quality","diagnostics.health","operation.summary","usage.feature","transcription.partial","transcription.paused","transcription.cancelled","distillation.cancelled","voice.recording","voice.text","voice.audio","voice.resumed","voice.resume_failed","playback.buffering","playback.ready","playback.focus","playback.route","app.started","diagnostics.test","diagnostics.failed","headphone.received","headphone.rejected","headphone.previous","headphone.next",
             "capture.started","capture.completed","capture.requested","capture.accepted","capture.saved","capture.waiting","capture.transcript_link","capture.prepared","capture.failed",
