@@ -117,6 +117,20 @@ class TranscriptionNetworkBlockTest {
     private fun rejected(): ForegroundUpdater = ForegroundUpdater { _, _, _ ->
         CallbackToFutureAdapter.getFuture<Void> { it.setException(android.app.ForegroundServiceStartNotAllowedException("Synthetic background start")); "rejected" }
     }
+    /**
+     * As WorkManager 2.10.1 refuses a background worker (S22, #312): the first call fails to start the
+     * foreground service, and WorkManager then counts the worker as foreground, so a later call only
+     * sends a notification update to its service, which Android refuses as a background service start.
+     */
+    private fun refusedEachTime(): ForegroundUpdater {
+        val calls = java.util.concurrent.atomic.AtomicInteger()
+        return ForegroundUpdater { _, _, _ ->
+            CallbackToFutureAdapter.getFuture<Void> {
+                it.setException(if (calls.getAndIncrement() == 0) android.app.ForegroundServiceStartNotAllowedException("Synthetic background start")
+                    else android.app.BackgroundServiceStartNotAllowedException("Synthetic notification update")); "refused"
+            }
+        }
+    }
     private fun allowed(): ForegroundUpdater = ForegroundUpdater { _, _, _ ->
         CallbackToFutureAdapter.getFuture<Void> { it.set(null); "allowed" }
     }
@@ -146,7 +160,8 @@ class TranscriptionNetworkBlockTest {
             val dao = graph.db.library()
             val revision = queue(graph, remote)
             firewall.block()
-            val run = async(Dispatchers.IO) { worker(remote, revision, rejected()).doWork() }
+            // The run after the wait asks for its notification again, in the same worker.
+            val run = async(Dispatchers.IO) { worker(remote, revision, refusedEachTime()).doWork() }
             // Longer than a recheck: the worker keeps waiting instead of failing or returning to WorkManager.
             delay(1500)
             assertTrue(run.isActive)

@@ -70,6 +70,11 @@ internal fun Exception.isForegroundStartRejected(): Boolean {
     while (current != null && visited.add(current)) {
         if (android.os.Build.VERSION.SDK_INT >= 31 &&
             current is android.app.ForegroundServiceStartNotAllowedException) return true
+        // After a refused start WorkManager 2.10.1 counts the worker as foreground, so asking again in the
+        // same worker (a transcript run after a network wait, #312) only sends a notification update to its
+        // service, which Android refuses as a background service start.
+        if (android.os.Build.VERSION.SDK_INT >= 31 &&
+            current is android.app.BackgroundServiceStartNotAllowedException) return true
         current = current.cause
     }
     return false
