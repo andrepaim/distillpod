@@ -80,6 +80,9 @@ a retry. A failure with no reported block (a real outage or server error), or
 one during a transfer whose foreground service did start, keeps the normal
 retry budget. If the process is killed while waiting, the row stays **Queued**
 and the next run resumes from the partial file. Pause still cancels the wait.
+A background transcript that downloads its own episode audio uses the same check
+and waits queued instead of failing (#312, see
+[background transcription](background-transcription.md)).
 
 Earlier versions retried a refused start five times and then paused the row
 with "Android blocked the background download. Open DistillPod and tap Resume."

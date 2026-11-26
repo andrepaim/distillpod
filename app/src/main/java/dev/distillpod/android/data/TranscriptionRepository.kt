@@ -39,7 +39,8 @@ data class TranscriptProgress(val revision: String, val run: String, val stage: 
 
 internal class TranscriptExecution(val stopped: () -> Boolean, val foreground: suspend () -> Unit, val reschedule: Boolean)
 
-enum class TranscriptOutcome { COMPLETED, FAILED }
+/** [NETWORK_BLOCKED]: the run stopped before its audio download because Android blocks the app's network (#312). */
+enum class TranscriptOutcome { COMPLETED, FAILED, NETWORK_BLOCKED }
 
 /**
  * The wait each queued revision last logged (#294). Every rescheduling pass enqueues all waiting
@@ -54,6 +55,8 @@ private class QueuedWaits {
 
 /** A queued revision waits its turn behind another transcript (#299): transcripts are prepared one at a time. */
 internal const val QUEUED_BEHIND = "queued_behind"
+/** A queued revision waits for Android to lift its background network block before fetching its audio (#312). */
+internal const val NETWORK_BLOCKED = "network_blocked"
 
 /**
  * The order one transcription session takes queued revisions in (#299): revisions the user asked for
@@ -75,6 +78,7 @@ internal fun Exception.isForegroundStartRejected(): Boolean {
 internal fun TranscriptOutcome.workerResult(): ListenableWorker.Result = when (this) {
     TranscriptOutcome.COMPLETED -> ListenableWorker.Result.success()
     TranscriptOutcome.FAILED -> ListenableWorker.Result.failure()
+    TranscriptOutcome.NETWORK_BLOCKED -> ListenableWorker.Result.retry()
 }
 
 class TranscriptionRepository internal constructor(private val graph: AppGraph,
@@ -410,6 +414,8 @@ class TranscriptionRepository internal constructor(private val graph: AppGraph,
             }
         }
         var onlineCompleted=false
+        // Android refused the notification: this chunk runs as ordinary background work (#301).
+        var restricted = false
         try {
             currentCoroutineContext().ensureActive()
             if (execution.stopped()) throw CancellationException("Transcription execution stopped")
@@ -419,6 +425,7 @@ class TranscriptionRepository internal constructor(private val graph: AppGraph,
                 // A late failed foreground future must not touch a newly resumed revision.
                 currentCoroutineContext().ensureActive()
                 if (!error.isForegroundStartRejected()) throw error
+                restricted = true
                 // Android 12+ refuses the service when WorkManager starts this job in the background, and a
                 // retry would be refused the same way. Like an analysis (#84) or a download (#292), this
                 // chunk runs as ordinary work without the notification (#301). A stop before it is saved
@@ -462,7 +469,9 @@ class TranscriptionRepository internal constructor(private val graph: AppGraph,
                 return TranscriptOutcome.COMPLETED
             }
             report(TranscriptStage.DOWNLOADING)
-            return graph.media.withDownloadedAudio(id) audio@{ source ->
+            // Without its notification the process can be cached between jobs, and Android 15+ then blocks its
+            // network (#292). A download that fails because of that block waits instead of failing (#312).
+            return graph.media.withDownloadedAudio(id, { restricted && graph.downloadNetwork.blockedAfterFailure() }) audio@{ source ->
                 val ep = dao.episode(id) ?: return@audio TranscriptOutcome.COMPLETED
                 if (row.fingerprint != ep.mediaFingerprint) { row = row.copy(fingerprint = ep.mediaFingerprint); dao.putTranscriptAt(row, TranscriptWriteSite.AUDIO_FINGERPRINT) }
                 graph.activeFiles.acquire(modelPath)
@@ -547,6 +556,11 @@ class TranscriptionRepository internal constructor(private val graph: AppGraph,
                             // 2.10 ignores the scheduler's own stops (#301); a killed process never reaches this.
                             error is CancellationException || !executionJob.isActive ->
                                 dao.transitionTranscriptState(id, revision, listOf("queued", "processing"), "queued", null)
+                            // The audio waits for the network like a background download (#292). The worker waits outside
+                            // the processing lock, so transcripts whose audio is on the phone go on meanwhile.
+                            error is TransferBlocked ->
+                                if (dao.transitionTranscriptState(id, revision, listOf("queued", "processing"), "queued", null) == 1)
+                                    outcome = TranscriptOutcome.NETWORK_BLOCKED
                             else -> {
                                 if (dao.transitionTranscriptState(id, revision, listOf("queued", "processing"), "failed", safeFailure(error)) == 1) {
                                     outcome = TranscriptOutcome.FAILED
@@ -576,7 +590,9 @@ class TranscriptionRepository internal constructor(private val graph: AppGraph,
                 if (current?.revision == revision && current.state == "queued") {
                     val ep=dao.episode(id)
                     val needsNetwork=transcriptionNeedsNetwork(ep,current)
-                    lifecycle("transcription.queued",revision,reason=transcriptionWaitReason(graph.context,graph.settings.flow.first(),needsNetwork) ?: "scheduled",correlation=correlation(revision,run))
+                    val reason=if(outcome==TranscriptOutcome.NETWORK_BLOCKED)NETWORK_BLOCKED
+                        else transcriptionWaitReason(graph.context,graph.settings.flow.first(),needsNetwork) ?: "scheduled"
+                    lifecycle("transcription.queued",revision,reason=reason,correlation=correlation(revision,run))
                     report(TranscriptStage.QUEUED,current.processedMs,current.durationMs)
                 }
                 else live.update { if (it[id]?.run == run) it - id else it }
@@ -645,17 +661,25 @@ class TranscriptWorker(context: android.content.Context, params: WorkerParameter
         applicationContext.appGraph.ready.await()
         val episode = inputData.getString("episode") ?: return Result.failure()
         val revision = inputData.getString("revision") ?: return Result.failure()
-        // A direct foreground session owns all its chunks. Do not spend job quota
-        // waiting for its native-inference mutex or create another foreground service.
-        if (TranscriptionService.isRunning) {
-            TranscriptionService.start(applicationContext)
-            val row = applicationContext.appGraph.db.library().transcript(episode)
-            // Retain the constrained recovery request until the foreground owner
-            // finishes. Otherwise a constraint change during service shutdown can
-            // lose its replacement to ExistingWorkPolicy.KEEP while this job exits.
-            return if (row?.revision == revision && row.state in listOf("queued", "processing")) Result.retry() else Result.success()
+        val graph = applicationContext.appGraph
+        while (true) {
+            // A direct foreground session owns all its chunks. Do not spend job quota
+            // waiting for its native-inference mutex or create another foreground service.
+            if (TranscriptionService.isRunning) {
+                TranscriptionService.start(applicationContext)
+                val row = graph.db.library().transcript(episode)
+                // Retain the constrained recovery request until the foreground owner
+                // finishes. Otherwise a constraint change during service shutdown can
+                // lose its replacement to ExistingWorkPolicy.KEEP while this job exits.
+                return if (row?.revision == revision && row.state in listOf("queued", "processing")) Result.retry() else Result.success()
+            }
+            val outcome = graph.transcription.process(episode, revision, this)
+            if (outcome != TranscriptOutcome.NETWORK_BLOCKED) return outcome.workerResult()
+            // As for a blocked download (#292): WorkManager would rerun the request in this process while the
+            // block lasts, so the row waits queued and this run goes on once the network is usable. The request's
+            // pending job, or opening the app, lifts the block. A pause cancels the wait.
+            graph.downloadNetwork.awaitUsable { graph.settings.flow.first().wifiOnly }
         }
-        return applicationContext.appGraph.transcription.process(episode, revision, this).workerResult()
     }
 }
 class CaptureWorker(context: android.content.Context, params: WorkerParameters) : CoroutineWorker(context, params) {

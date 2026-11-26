@@ -120,6 +120,8 @@ class TranscriptParagraphsTest {
                 "Queued · offline. This transcript needs internet to get its audio or text."),
             "restricted" to ("Queued · Android blocked the start" to
                 "Queued · Android didn't allow transcription to start in the background. It continues without its notification when Android runs it."),
+            "network_blocked" to ("Queued · waiting for network access" to
+                "Queued · Android is blocking DistillPod's network in the background. The audio download continues when Android allows it, or when you open DistillPod."),
             "scheduled" to ("Queued · waiting to start" to "Queued · waiting for Android to start transcription"),
             null to ("Queued · waiting to start" to "Queued · waiting for Android to start transcription"),
         )

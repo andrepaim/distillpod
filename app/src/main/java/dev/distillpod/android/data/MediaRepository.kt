@@ -118,10 +118,12 @@ class MediaRepository(context: Context, private val db: AppDatabase, private val
     suspend fun ensureDownloaded(id: String, blocked: suspend (IOException) -> Boolean = { false },
         notify: (DownloadProgress) -> Unit = {}): File = episodeTransfers.withLock { downloadEpisode(id, blocked, notify) }
 
-    internal suspend fun <T> withDownloadedAudio(id: String, read: suspend (File) -> T): T {
+    /** [blocked] as for [ensureDownloaded]: a transcript's audio download Android blocks throws [TransferBlocked] (#312). */
+    internal suspend fun <T> withDownloadedAudio(id: String, blocked: suspend (IOException) -> Boolean = { false },
+        read: suspend (File) -> T): T {
         // Select and mark the same copy before deletion can take the transfer lock.
         val (file, lease) = episodeTransfers.withLock {
-            val selected = downloadEpisode(id, { false }) {}
+            val selected = downloadEpisode(id, blocked) {}
             // Resolve on IO before acquiring resources; cancellation at the dispatcher boundary
             // cannot strand a lease which has not yet been exposed to the finally below.
             val path = withContext(Dispatchers.IO) { selected.canonicalPath }
