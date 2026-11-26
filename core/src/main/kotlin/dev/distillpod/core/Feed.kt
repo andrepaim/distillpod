@@ -68,10 +68,10 @@ internal fun feedFromDocument(feedUrl: String, document: Document, baseUrl: Stri
         FeedEpisode(episodeId(feedUrl, guid), guid, plainDescription(item.text("title") ?: "Untitled"), audio,
             duration(item.text("duration")), url(timed?.getAttribute("url")),
             date(item.text(if (atom) "published" else "pubDate") ?: item.text("updated")),
-            plainDescription(item.text("description") ?: item.text("summary") ?: item.text("encoded") ?: item.text("content") ?: ""),
+            ShowNotes.fromHtml(item.text("description") ?: item.text("summary") ?: item.text("encoded") ?: item.text("content") ?: ""),
             item.image() ?: showImage, enclosure?.getAttribute("type")?.takeIf(String::isNotBlank), timed?.getAttribute("type")?.takeIf(String::isNotBlank), item.webpage())
     }.distinctBy { it.id }
     val author = channel.children("author").firstOrNull()?.let { it.text("name") ?: it.textContent.trim() } ?: channel.text("managingEditor") ?: ""
     return Feed(plainDescription(channel.text("title") ?: "Untitled"), episodes, plainDescription(author),
-        plainDescription(channel.text("description") ?: channel.text("subtitle") ?: ""), showImage, channel.webpage())
+        ShowNotes.fromHtml(channel.text("description") ?: channel.text("subtitle") ?: ""), showImage, channel.webpage())
 }

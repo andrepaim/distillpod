@@ -307,7 +307,7 @@ private val LIBRARY_FILTERS = listOf(Triple("all", "Latest", "Latest"), Triple("
                 }
                 if (selected.description.isNotBlank()) {
                     TextButton(onClick = { aboutExpanded = !aboutExpanded }) { Text(if (aboutExpanded) "Hide about this show" else "About this show") }
-                    if (aboutExpanded) Text(selected.description, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (aboutExpanded) ShowNotesText(selected.description, vm::openLink)
                 }
             }
         }

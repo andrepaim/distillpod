@@ -141,6 +141,8 @@ interface LibraryDao {
     @Upsert suspend fun putPodcast(value: PodcastEntity)
     /** Refresh bookkeeping only (#226): never rewrite the subscription or metadata from a row read before the request. */
     @Query("UPDATE podcasts SET refreshedAt=:at, error=NULL WHERE id=:id") suspend fun markPodcastRefreshed(id: String, at: Long)
+    /** The next refresh of every feed downloads it in full; listening, download and subscription state are untouched. */
+    @Query("UPDATE podcasts SET etag=NULL, lastModified=NULL") suspend fun forgetFeedValidators()
     @Query("UPDATE podcasts SET error=:error WHERE id=:id") suspend fun setPodcastError(id: String, error: String)
     @Query("DELETE FROM podcasts WHERE id=:id") suspend fun deletePodcast(id: String)
     @Query("SELECT * FROM episodes ORDER BY publishedAt DESC, COALESCE(sourceOrder, 2147483647), title, id") fun observeEpisodes(): Flow<List<EpisodeEntity>>
