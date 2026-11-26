@@ -4,6 +4,7 @@ import androidx.room.withTransaction
 import dev.distillpod.android.ai.AiGateway
 import dev.distillpod.core.PodcastMetadata
 import dev.distillpod.core.PodcastRelevance
+import dev.distillpod.core.ShowNotes
 import dev.distillpod.core.parseFeedStream
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
@@ -11,6 +12,9 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
 import java.util.UUID
+
+/** A feed description without link addresses: only what the podcast says about itself may ground a match (#307, #308). */
+private fun prose(description: String) = ShowNotes.parts(description).joinToString(" ") { if (it.text == it.url) "" else it.text }
 
 class Recommendations(private val db: AppDatabase, private val settings: AppSettings, private val directory: PodcastRepository,
     private val http: OkHttpClient, private val ai: AiGateway, private val enqueue: (String, String, Boolean) -> Unit,
@@ -54,7 +58,7 @@ class Recommendations(private val db: AppDatabase, private val settings: AppSett
                             val feed = response.body!!.byteStream().use { parseFeedStream("recommendation", it, canonical, 1) }
                             require(feed.episodes.isNotEmpty() && canonical !in excluded)
                             val author = feed.author.ifBlank { candidate.author }
-                            SuggestionEntity(canonical, feed.title, author, feed.imageUrl ?: candidate.imageUrl, "") to PodcastMetadata(feed.title, author, feed.description, candidate.category)
+                            SuggestionEntity(canonical, feed.title, author, feed.imageUrl ?: candidate.imageUrl, "") to PodcastMetadata(feed.title, author, prose(feed.description), candidate.category)
                         }
                     } } catch (error: Exception) { if (error is CancellationException) throw error; null }
                     if (suggestion != null && verified.none { it.first.feedUrl == suggestion.first.feedUrl }) verified.add(suggestion)

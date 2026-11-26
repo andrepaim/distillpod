@@ -102,7 +102,9 @@ class ExploreTest {
                     MockResponse().setBody(JSONObject().put("results", JSONArray(listOf(entry("/talk", "Dog Talk", "Heather Parsons", "Animais"),
                         entry("/audiobooks", "Never A Dull Moment With Audiobooks", "Book Buzz", "Educação para crianças")))).toString())
                 request.path!!.startsWith("/search") -> MockResponse().setBody(JSONObject().put("results", JSONArray(listOf(entry("/breeds", "Dog Breeds", "Melany Benavides Porras", "Animais")))).toString())
-                request.path == "/audiobooks" -> MockResponse().setBody(rss("Never A Dull Moment With Audiobooks", "Listen to full audiobooks for free with Audible standard. Bestsellers and new releases."))
+                request.path == "/audiobooks" -> MockResponse().setBody(rss("Never A Dull Moment With Audiobooks",
+                    // A link's address is not what the podcast says about itself: neither one here may ground a match (#308).
+                    "Listen to full audiobooks for free with Audible standard. Bestsellers and new releases. &lt;a href=\"https://ads.example.test/dog-breeds\"&gt;Our sponsor&lt;/a&gt; https://ads.example.test/dog"))
                 request.path == "/talk" -> MockResponse().setBody(rss("Dog Talk", "Join me on our adventures and we will talk about pet care, dog food, travel and everything dogs.", "<image><url>https://images.example.test/feed-talk.jpg</url></image>"))
                 request.path == "/breeds" -> MockResponse().setBody(rss("Dog Breeds", "History, characteristics and personality of German Shepherds"))
                 else -> MockResponse().setResponseCode(404)
