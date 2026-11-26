@@ -52,6 +52,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalDensity
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.distillpod.android.data.EpisodeEntity
+import dev.distillpod.android.data.NETWORK_BLOCKED
 import dev.distillpod.android.data.QUEUED_BEHIND
 import dev.distillpod.android.data.SegmentEntity
 import dev.distillpod.android.data.TranscriptEntity
@@ -117,6 +118,7 @@ internal fun transcriptShortStatus(state: String?, source: String?, stage: Trans
             "wifi_required" -> "Queued · waiting for Wi-Fi"
             "offline" -> "Queued · offline"
             "restricted" -> "Queued · Android blocked the start"
+            NETWORK_BLOCKED -> "Queued · waiting for network access"
             else -> "Queued · waiting to start"
         }
         "processing" -> "Preparing on this phone"
@@ -137,6 +139,7 @@ internal fun queuedStatus(wait: String?): String = when (wait) {
     "wifi_required" -> "Queued · waiting for Wi-Fi because \"Wi-Fi / unmetered downloads only\" is on"
     "offline" -> "Queued · offline. This transcript needs internet to get its audio or text."
     "restricted" -> "Queued · Android didn't allow transcription to start in the background. It continues without its notification when Android runs it."
+    NETWORK_BLOCKED -> "Queued · Android is blocking DistillPod's network in the background. The audio download continues when Android allows it, or when you open DistillPod."
     else -> "Queued · waiting for Android to start transcription"
 }
 
