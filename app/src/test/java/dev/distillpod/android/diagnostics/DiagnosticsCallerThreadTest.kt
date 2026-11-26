@@ -221,7 +221,7 @@ class DiagnosticsCallerThreadTest {
             // As before #293: the transitions were observed under diagnostic consent and are retained,
             // while executor work queued before the generation change is discarded.
             assertEquals("failed", journal(context).latest().single { it.operation == job }.state)
-            assertFalse(diagnostics.queue.files().any { it.readText().contains("transcription.started") })
+            assertFalse(diagnostics.queue.files().any { it.readText().contains("transcription.failed") })
             assertFalse(payload(diagnostics).contains("Diagnostic failure"))
             // A later flush still reports the retained transition.
             diagnostics.event("transcription.completed", job)

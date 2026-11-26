@@ -91,6 +91,34 @@ class OperationJournalTest {
         assertEquals("queued",recovered.latest().single {it.operation==run}.state)
         assertTrue(recovered.pending().any {it.operation==run && it.state=="interrupted"})
     }
+    @Test fun `recovery leaves a wait unchanged when the repository only knows it is queued`() {
+        // #313: Room stores a transcript waiting for a charger as queued; the journal knows why it waits.
+        val file=File(folder.root,"journal");val wait=id();val moved=id()
+        OperationJournal(file).apply {
+            transition("transcription",wait,"waiting","charging_required")
+            transition("transcription",moved,"queued","scheduled")
+            pending().forEach {acknowledge(it.id)}
+        }
+        val recovered=OperationJournal(file)
+        recovered.recover {_,operation->if(operation==wait)"queued" else "waiting"}
+        assertEquals(listOf(moved),recovered.pending().map {it.operation})
+        assertEquals("waiting" to "charging_required",recovered.latest().single {it.operation==wait}.let {it.state to it.reason})
+        // A wait the repository settled meanwhile is still reconciled.
+        assertEquals("process_interrupted",recovered.pending().single().reason)
+    }
+    @Test fun `a wait restated without the execution that last observed it is not a new revision`() {
+        val journal=OperationJournal(File(folder.root,"journal"));val revision=id();val run=id()
+        val observed=DiagnosticCorrelation(transcriptRevisionId=revision,executionId=run)
+        journal.transition("transcription",revision,"running",attempt=run,correlation=observed)
+        journal.transition("transcription",revision,"waiting","charging_required",correlation=observed)
+        journal.pending().forEach {journal.acknowledge(it.id)}
+        journal.transition("transcription",revision,"waiting","charging_required",correlation=DiagnosticCorrelation(transcriptRevisionId=revision))
+        assertTrue(journal.pending().isEmpty())
+        // Another reason, or another execution, is a change.
+        journal.transition("transcription",revision,"waiting","wifi_required",correlation=DiagnosticCorrelation(transcriptRevisionId=revision))
+        journal.transition("transcription",revision,"waiting","wifi_required",correlation=DiagnosticCorrelation(transcriptRevisionId=revision,executionId=id()))
+        assertEquals(2,journal.pending().size)
+    }
     @Test(expected=IllegalArgumentException::class) fun `content cannot be an identifier`() {
         OperationJournal(File(folder.root,"journal")).transition("voice","private content","running")
     }

@@ -57,13 +57,14 @@ class TranscriptionQueueOrderTest {
 
     private suspend fun revision(graph: AppGraph, n: Int) = graph.db.library().transcript(episode(n).id)!!.revision
 
-    /** The reasons of the `transcription.queued` logs queued for upload, per revision. */
+    /** The waits queued for upload, per revision: their `operation.summary` since #313. */
     private fun queued(diagnostics: Diagnostics, barrier: DiagnosticBarrierProbe): Map<String, List<String>> {
         barrier.awaitIdle()
-        val event = Regex(""""body"\s*:\s*"transcription\.queued"""")
-        return diagnostics.queue.files().map { it.readText() }.filter { event.containsMatchIn(it) }.map { payload ->
+        val event = Regex(""""body"\s*:\s*"operation\.summary"""")
+        return diagnostics.queue.files().map { it.readText() }.filter { event.containsMatchIn(it) }.mapNotNull { payload ->
             fun attribute(name: String) = Regex(""""$name"\s*:\s*\{[^}]*"value"\s*:\s*"([^"]+)"""").find(payload)!!.groupValues[1]
-            attribute("operation_id") to attribute("reason")
+            if (attribute("feature") != "transcription" || attribute("outcome") !in setOf("queued", "waiting")) null
+            else attribute("operation_id") to attribute("reason")
         }.groupBy({ it.first }, { it.second })
     }
 

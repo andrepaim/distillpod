@@ -9,6 +9,7 @@ import dev.distillpod.android.data.*
 import dev.distillpod.android.diagnostics.DiagnosticBarrierProbe
 import dev.distillpod.android.diagnostics.Diagnostics
 import dev.distillpod.android.diagnostics.RecordingDiagnosticFileForce
+import io.sentry.Sentry
 import kotlinx.coroutines.*
 import org.junit.Assert.*
 import org.junit.Test
@@ -49,15 +50,24 @@ class TranscriptionQueuedDiagnosticsTest {
         } finally { diagnostics.consent(false); graph.db.close() }
     }
 
-    /** The reasons of the `transcription.queued` logs queued for upload, per revision. */
-    private fun queued(diagnostics: Diagnostics, barrier: DiagnosticBarrierProbe, name: String = "transcription.queued"): Map<String, List<String>> {
+    private fun attribute(payload: String, name: String) =
+        Regex(""""$name"\s*:\s*\{[^}]*"value"\s*:\s*"([^"]+)"""").find(payload)?.groupValues?.get(1)
+    private fun logs(diagnostics: Diagnostics, barrier: DiagnosticBarrierProbe, name: String): List<String> {
         barrier.awaitIdle()
         val event = Regex(""""body"\s*:\s*"${Regex.escape(name)}"""")
-        return diagnostics.queue.files().map { it.readText() }.filter { event.containsMatchIn(it) }.map { payload ->
-            fun attribute(name: String) = Regex(""""$name"\s*:\s*\{[^}]*"value"\s*:\s*"([^"]+)"""").find(payload)!!.groupValues[1]
-            attribute("operation_id") to attribute("reason")
-        }.groupBy({ it.first }, { it.second })
+        return diagnostics.queue.files().map { it.readText() }.filter { event.containsMatchIn(it) }
     }
+    /** The reasons of the raw [name] logs queued for upload, per revision. */
+    private fun raw(diagnostics: Diagnostics, barrier: DiagnosticBarrierProbe, name: String): Map<String, List<String>> =
+        logs(diagnostics, barrier, name).groupBy({ attribute(it, "operation_id")!! }, { attribute(it, "reason")!! })
+    /**
+     * The waits queued for upload, per revision. Since #313 a wait is reported by its `operation.summary`
+     * (outcome queued or waiting) only; the raw `transcription.queued` log repeated it.
+     */
+    private fun queued(diagnostics: Diagnostics, barrier: DiagnosticBarrierProbe): Map<String, List<String>> =
+        logs(diagnostics, barrier, "operation.summary").filter { attribute(it, "feature") == "transcription" &&
+            attribute(it, "outcome") in setOf("queued", "waiting") }
+            .groupBy({ attribute(it, "operation_id")!! }, { attribute(it, "reason")!! })
 
     /** One foreground-session pass: the waiting rows are rescheduled, then its stop recovers them again. */
     private suspend fun sessionPass(graph: AppGraph) {
@@ -77,6 +87,27 @@ class TranscriptionQueuedDiagnosticsTest {
             sessionPass(graph)
             val revisions = (1..3).map { dao.transcript(episode(it).id)!!.revision }
             assertEquals(revisions.associateWith { listOf("charging_required") }, queued(diagnostics, barrier))
+        }
+    }
+
+    @Test fun `a process start logs nothing for transcripts still waiting for the same reason`() = runBlocking<Unit> {
+        fixture { graph, diagnostics, barrier ->
+            for (n in 1..3) graph.transcription.prepare(episode(n).id)
+            sessionPass(graph)
+            barrier.awaitIdle()
+            val before = diagnostics.queue.files().map { it.name }.toSet()
+            // #313: a new process has a new diagnostics instance and repository over the same Room
+            // database, journal and outbox. Startup reconciles the journal, then recovers the queue.
+            Sentry.close()
+            val restarted = Diagnostics(context, "https://abc123@o1.ingest.sentry.io/1", RecordingDiagnosticFileForce())
+            ReflectionHelpers.setField(graph, "diagnostics", restarted)
+            val restartedBarrier = DiagnosticBarrierProbe(restarted)
+            graph.reconcileJournal()
+            TranscriptionRepository(graph).recover()
+            restartedBarrier.awaitIdle()
+            val added = restarted.queue.files().filter { it.name !in before }.map { it.readText() }
+                .filterNot { Regex(""""body"\s*:\s*"(app.started|diagnostics.health)"""").containsMatchIn(it) }
+            assertEquals(emptyList<String>(), added.map { "${Regex(""""body"\s*:\s*"([^"]+)"""").find(it)?.groupValues?.get(1)} ${attribute(it, "reason")}" })
         }
     }
 
@@ -111,7 +142,8 @@ class TranscriptionQueuedDiagnosticsTest {
                 TranscriptExecution({ false }, { throw android.app.ForegroundServiceStartNotAllowedException("Synthetic") }, true)))
             // The chunk went on to the model check (none is installed), so it waits for that, not for Android (#301).
             assertEquals(mapOf(row.revision to listOf("checking_model")), queued(diagnostics, barrier))
-            assertEquals("restricted", queued(diagnostics, barrier, "transcription.stage").getValue(row.revision).first())
+            assertEquals(listOf("restricted"), raw(diagnostics, barrier, "transcription.stage").getValue(row.revision))
+            assertEquals(emptyMap<String, List<String>>(), raw(diagnostics, barrier, "transcription.queued"))
             assertNotEquals("restricted", graph.transcription.waitReasons.value[row.revision])
         }
     }
