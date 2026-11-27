@@ -10,67 +10,108 @@ import java.net.SocketTimeoutException
 import java.util.concurrent.CancellationException
 import java.util.concurrent.TimeUnit
 
-/** One sign-in attempt, allowing browser preconnections and unrelated requests. */
+/**
+ * One sign-in attempt, allowing browser preconnections and unrelated requests.
+ *
+ * After the first valid callback the listener keeps answering exact repeats of that callback with the same
+ * success page, so a browser that requests the redirect more than once does not end on a refused connection.
+ * It does so for at most [repeatGraceMs], never past the attempt deadline, and stops at [close]. Nothing else
+ * is accepted in that window, and handing the first callback to the caller never waits for it.
+ */
 class LoopbackCallbackServer(
     private val timeoutMs: Long = 600_000,
     private val readTimeoutMs: Int = 2000,
     port: Int = 0,
+    private val repeatGraceMs: Long = REPEAT_GRACE_MS,
 ) : Closeable {
-    init { require(timeoutMs in 1..600_000 && readTimeoutMs in 1..10_000) }
+    init { require(timeoutMs in 1..600_000 && readTimeoutMs in 1..10_000 && repeatGraceMs in 0..REPEAT_GRACE_MS) }
     private val listener = ServerSocket(port, 5, InetAddress.getByName("127.0.0.1"))
-    val redirectUri = "http://127.0.0.1:${listener.localPort}/auth/callback"
+    private val origin = "http://127.0.0.1:${listener.localPort}"
+    val redirectUri = "$origin/auth/callback"
     private val lock = Any()
     @Volatile private var closed = false
+    private var started = false
     private var active: Socket? = null
 
     fun awaitCallback(attempt: OAuthAttempt): String {
         require(attempt.redirectUri == redirectUri) { "Callback listener does not match the pending attempt" }
+        synchronized(lock) { check(!started) { "A callback listener serves one attempt" }; started = true }
         val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMs)
-        fun remainingMs(): Int = TimeUnit.NANOSECONDS.toMillis(deadline - System.nanoTime()).coerceIn(1, Int.MAX_VALUE.toLong()).toInt()
         try {
-            while (System.nanoTime() < deadline) {
-                checkActive()
-                listener.soTimeout = remainingMs()
-                val socket = try { listener.accept() } catch (_: SocketTimeoutException) { break }
-                synchronized(lock) {
-                    if (closed) { socket.close(); checkActive() }
-                    active = socket
-                }
-                try {
-                    socket.soTimeout = minOf(readTimeoutMs, remainingMs())
-                    val callback = socket.use { receive(it, attempt, deadline) }
-                    // Close the browser socket before the potentially slow token exchange.
-                    if (callback != null) return callback
-                } finally {
-                    synchronized(lock) { if (active === socket) active = null }
-                }
-            }
+            // The browser socket is closed before returning, i.e. before the potentially slow token exchange.
+            val callback = serve(deadline) { receive(it, attempt, deadline) }
             checkActive()
-            throw SocketTimeoutException("Sign-in timed out. Return to DistillPod and try again.")
+            if (callback == null) throw SocketTimeoutException("Sign-in timed out. Return to DistillPod and try again.")
+            answerRepeats(callback.removePrefix(origin), minOf(deadline, System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(repeatGraceMs)))
+            return callback
         } catch (error: SocketException) {
             checkActive()
             throw error
         }
     }
 
+    /** Serves one connection at a time until [handle] yields a result, the deadline passes (null), or [close]. */
+    private fun <T : Any> serve(deadline: Long, handle: (Socket) -> T?): T? {
+        while (true) {
+            checkActive()
+            val left = deadline - System.nanoTime()
+            if (left <= 0) return null
+            val remainingMs = TimeUnit.NANOSECONDS.toMillis(left).coerceIn(1, Int.MAX_VALUE.toLong()).toInt()
+            listener.soTimeout = remainingMs
+            val socket = try { listener.accept() } catch (_: SocketTimeoutException) { return null }
+            synchronized(lock) {
+                if (closed) { socket.close(); checkActive() }
+                active = socket
+            }
+            try {
+                socket.soTimeout = minOf(readTimeoutMs, remainingMs)
+                socket.use { handle(it) }?.let { return it }
+            } finally {
+                synchronized(lock) { if (active === socket) active = null }
+            }
+        }
+    }
+
+    /** Answers exact repeats of the accepted callback on a short-lived thread, then closes the listener. */
+    private fun answerRepeats(target: String, deadline: Long) {
+        val worker = Thread({
+            try {
+                serve<Unit>(deadline) { socket ->
+                    val requested = try { readTarget(socket, deadline) } catch (_: IOException) { null }
+                    when {
+                        requested == null -> Unit
+                        requested == target -> respond(socket, 200, RECEIVED)
+                        !requested.startsWith("/auth/callback?") -> respond(socket, 404, UNKNOWN_PATH)
+                        else -> respond(socket, 400, INVALID_CALLBACK)
+                    }
+                    null
+                }
+            } catch (_: Exception) {
+                // Closed or cancelled: nothing is waiting on this thread.
+            } finally { close() }
+        }, "loopback-callback-repeats-${listener.localPort}")
+        worker.isDaemon = true
+        synchronized(lock) { if (closed) return; worker.start() }
+    }
+
     private fun receive(socket: Socket, attempt: OAuthAttempt, deadline: Long): String? {
         val target = try { readTarget(socket, deadline) } catch (_: IOException) { return null }
         if (!target.startsWith("/auth/callback?")) {
-            respond(socket, 404, "Unknown callback path.")
+            respond(socket, 404, UNKNOWN_PATH)
             return null
         }
-        val callback = "http://127.0.0.1:${listener.localPort}$target"
+        val callback = "$origin$target"
         try {
             attempt.callback(callback)
         } catch (denied: ConsentDenied) {
             respond(socket, 200, "Authorization declined. Return to DistillPod.")
             throw denied
         } catch (_: IllegalArgumentException) {
-            respond(socket, 400, "Invalid callback. Return to the active sign-in attempt.")
+            respond(socket, 400, INVALID_CALLBACK)
             return null
         }
         checkActive()
-        respond(socket, 200, "Connection received. Return to DistillPod for the final result.")
+        respond(socket, 200, RECEIVED)
         return callback
     }
 
@@ -114,5 +155,13 @@ class LoopbackCallbackServer(
             closed = true
             try { active?.close() } finally { listener.close() }
         }
+    }
+
+    companion object {
+        /** Long enough for a browser preload, retry or reload; short enough that the port is soon released. */
+        const val REPEAT_GRACE_MS = 60_000L
+        const val RECEIVED = "Connection received. Return to DistillPod now to finish signing in. You can close this page."
+        private const val UNKNOWN_PATH = "Unknown callback path."
+        private const val INVALID_CALLBACK = "Invalid callback. Return to the active sign-in attempt."
     }
 }

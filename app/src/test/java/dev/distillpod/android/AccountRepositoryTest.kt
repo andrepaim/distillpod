@@ -68,4 +68,71 @@ class AccountRepositoryTest {
             } finally { scope.cancel() }
         }
     }
+
+    private class Started(val repo: AccountRepository, val callback: okhttp3.HttpUrl)
+    private suspend fun start(context: Context, scope: CoroutineScope, server: MockWebServer, foreground: Boolean): Started {
+        val repo = AccountRepository(context, scope, Store(null), Store(null), server.url("/"), { listOf("gpt-test") })
+        repo.foreground(foreground)
+        repo.connect()
+        val authorize = withTimeout(10_000) { repo.browser.filterNotNull().first() }.toHttpUrl()
+        val callback = authorize.queryParameter("redirect_uri")!!.toHttpUrl().newBuilder()
+            .addQueryParameter("state", authorize.queryParameter("state")).addQueryParameter("code", "code").addQueryParameter("client_id", "issued").build()
+        return Started(repo, callback)
+    }
+    private fun browserGet(url: okhttp3.HttpUrl): Pair<Int, String> =
+        OkHttpClient.Builder().retryOnConnectionFailure(false).build().newCall(Request.Builder().url(url).build()).execute().use { it.code to it.body!!.string() }
+    private fun assertPortClosed(url: okhttp3.HttpUrl) {
+        val until = System.nanoTime() + 2_000_000_000L
+        while (System.nanoTime() < until) {
+            try { java.net.Socket("127.0.0.1", url.port).close(); Thread.sleep(20) } catch (_: java.net.ConnectException) { return }
+        }
+        fail("The callback listener is still open")
+    }
+
+    @Test fun `the browser can request the callback again while the app waits to finish`() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        MockWebServer().use { server ->
+            try {
+                val started = start(context, scope, server, foreground = false)
+                val first = browserGet(started.callback)
+                assertEquals(200, first.first)
+                withTimeout(10_000) { started.repo.state.first { it.message.startsWith("Callback received") } }
+                // A browser preload or retry of the same redirect must see the same page, not a refused connection.
+                assertEquals(first, browserGet(started.callback))
+                started.repo.cancel()
+                assertPortClosed(started.callback)
+            } finally { scope.cancel() }
+        }
+    }
+
+    @Test fun `an expired or rejected authorization code asks for a fresh attempt`() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        MockWebServer().use { server ->
+            try {
+                server.enqueue(MockResponse().setResponseCode(400).setBody("""{"error":"invalid_grant","error_description":"Authorization code expired"}"""))
+                val started = start(context, scope, server, foreground = true)
+                assertEquals(200, browserGet(started.callback).first)
+                val done = withTimeout(10_000) { started.repo.state.first { !it.busy } }
+                assertEquals("Sign-in expired. Start a fresh attempt.", done.message)
+                assertFalse(done.retry); assertFalse(done.connected)
+                assertPortClosed(started.callback)
+            } finally { scope.cancel() }
+        }
+    }
+
+    @Test fun `a token server failure keeps the connection message`() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        MockWebServer().use { server ->
+            try {
+                server.enqueue(MockResponse().setResponseCode(503).setBody("""{"error":"temporarily_unavailable"}"""))
+                val started = start(context, scope, server, foreground = true)
+                assertEquals(200, browserGet(started.callback).first)
+                val done = withTimeout(10_000) { started.repo.state.first { !it.busy } }
+                assertEquals("Sign-in could not finish. Check the connection and try again.", done.message)
+            } finally { scope.cancel() }
+        }
+    }
 }

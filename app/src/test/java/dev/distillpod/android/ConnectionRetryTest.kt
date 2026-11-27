@@ -138,4 +138,26 @@ class ConnectionRetryTest {
             assertEquals(original, saved)
         }
     }
+
+    @Test fun `a rejected authorization code is reported as expired and is not retried`() {
+        MockWebServer().use { server ->
+            server.enqueue(MockResponse().setResponseCode(400).setBody("""{"error":"invalid_grant","error_description":"Authorization code expired"}"""))
+            var saved: String? = null
+            val auth = AuthSession({ saved }, { saved = it }, server.url("/"))
+            assertThrows(AuthorizationCodeRejected::class.java) { auth.exchange(attempt, callback) }
+            assertFalse(auth.canRetryConnection()); assertNull(saved)
+            assertEquals(1, server.requestCount)
+        }
+    }
+    @Test fun `other token errors are not reported as an expired code`() {
+        MockWebServer().use { server ->
+            server.enqueue(MockResponse().setResponseCode(400).setBody("""{"error":"invalid_request"}"""))
+            server.enqueue(MockResponse().setResponseCode(503).setBody("""{"error":"invalid_grant"}"""))
+            val auth = AuthSession({ null }, {}, server.url("/"))
+            val badRequest = assertThrows(IllegalStateException::class.java) { auth.exchange(attempt, callback) }
+            assertFalse(badRequest is AuthorizationCodeRejected)
+            val unavailable = assertThrows(IllegalStateException::class.java) { auth.exchange(attempt, callback) }
+            assertFalse(unavailable is AuthorizationCodeRejected)
+        }
+    }
 }

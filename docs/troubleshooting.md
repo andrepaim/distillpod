@@ -75,6 +75,13 @@ look in Saved before assuming a new moment was not kept.
 
 Complete the browser flow and return to DistillPod to check its final connection
 state. A provider confirmation email alone does not prove the app connected.
+After you approve, the browser shows "Connection received. Return to DistillPod
+now to finish signing in." Switch back to DistillPod straight away: the app
+finishes connecting only once it is open again, and the code from the browser
+is only valid for a short time. If you come back much later, the app says
+"Sign-in expired. Start a fresh attempt."; tap **Continue with ChatGPT** again.
+"Sign-in could not finish. Check the connection and try again." means the
+account server could not be reached or answered with an error.
 Account eligibility, model access and allowance depend on the connected account.
 Follow the app's reconnect or retry action; playback and saved source moments
 remain available without a completed AI request.
