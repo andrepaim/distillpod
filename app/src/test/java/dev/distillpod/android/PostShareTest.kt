@@ -25,7 +25,6 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
-import java.io.ByteArrayOutputStream
 
 /** Card sharing, Story export and saving, and earlier results sharing as they always did. */
 @RunWith(RobolectricTestRunner::class)
@@ -101,17 +100,25 @@ class PostShareTest {
         assertFalse(withCover.sameAs(fallback))
     }
 
+    /** The one image saved through MediaStore (Robolectric's fake media provider), once it is no longer pending. */
+    private fun savedImage(): ByteArray {
+        val images = MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+        val columns = arrayOf(MediaStore.Images.Media._ID, MediaStore.Images.Media.MIME_TYPE,
+            MediaStore.Images.Media.RELATIVE_PATH, MediaStore.Images.Media.IS_PENDING)
+        val id = context.contentResolver.query(images, columns, null, null, null)!!.use { row ->
+            assertEquals(1, row.count)
+            row.moveToFirst()
+            assertEquals("image/png", row.getString(1))
+            assertEquals("Pictures/DistillPod", row.getString(2).trimEnd('/'))
+            assertEquals(0, row.getInt(3))
+            row.getLong(0)
+        }
+        return context.contentResolver.openInputStream(ContentUris.withAppendedId(images, id))!!.use { it.readBytes() }
+    }
+
     @Test fun `save writes the feed card to Pictures DistillPod`() = runBlocking {
-        val resolver = shadowOf(context.contentResolver)
-        resolver.setNextDatabaseIdForInserts(40) // The shadow returns the next id.
-        val output = ByteArrayOutputStream()
-        resolver.registerOutputStream(ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, 41), output)
         PostShareController.saveCard(context, assets, card())
-        val insert = resolver.insertStatements.single().contentValues
-        assertEquals("image/png", insert.getAsString(MediaStore.Images.Media.MIME_TYPE))
-        assertEquals("Pictures/DistillPod", insert.getAsString(MediaStore.Images.Media.RELATIVE_PATH))
-        assertEquals(0, resolver.updateStatements.single().contentValues.getAsInteger(MediaStore.Images.Media.IS_PENDING))
-        val image = decode(output.toByteArray())
+        val image = decode(savedImage())
         assertEquals(1080, image.width); assertEquals(1350, image.height)
         assertTrue(image.sameAs(rendered(CARD)))
     }
@@ -134,11 +141,7 @@ class PostShareTest {
         assertEquals("text/plain", plain.type)
         assertEquals(text.shareText(), plain.getStringExtra(Intent.EXTRA_TEXT))
         assertNull(plain.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java))
-        val resolver = shadowOf(context.contentResolver)
-        resolver.setNextDatabaseIdForInserts(6)
-        val output = ByteArrayOutputStream()
-        resolver.registerOutputStream(ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, 7), output)
         PostShareController.saveResult(context, assets, infographic.artifact!!)
-        assertArrayEquals(assets.read(hash), output.toByteArray())
+        assertArrayEquals(assets.read(hash), savedImage())
     }
 }
