@@ -377,6 +377,8 @@ commits for personal data containers and unreviewed binary media. See
 
 `ci.yml` runs Kotlin tests, lint/APK assembly, release-tool guards, host native validation and emulator acceptance on main pushes and pull requests. Its reusable form also gates the release workflow.
 
+`play-bundle.yml` runs only by hand from a release tag: after the same reusable validation (without the GitHub APK candidate) it builds, signs with the Play upload key and verifies the Play app bundle, and keeps it as a workflow artifact. See [Google Play bundle](releases.md#google-play-bundle).
+
 ### CI job graph
 
 After `Select validation and check documentation` (`plan`) chooses full

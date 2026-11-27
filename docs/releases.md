@@ -2,6 +2,8 @@
 
 Version name and monotonically increasing version code live in `gradle.properties`. Current releases are personal-alpha prereleases, not Play Store production releases. Source versions and private phone builds can precede a published APK; `docs/releases/current.md` is the release-note input for the next matching tag, not proof that the APK has been published. See [implementation status](android/implementation-status.md) and [GitHub Releases](https://github.com/andrepaim/distillpod/releases).
 
+The Google Play build of a release tag is a separate, manually started path that produces a signed app bundle for a hand upload in Play Console; it publishes nothing. See [Google Play bundle](#google-play-bundle).
+
 ## Release policy
 
 Merge validated changes into `main` frequently; publish an APK when there is a useful build to install or distribute. One release may contain one feature or several. Merging or pushing to `main` does not trigger publication: Android CI runs on pull requests and main pushes, while Publish APK runs on version-tag pushes.
@@ -127,3 +129,110 @@ The local candidate is `app/build/outputs/apk/release/app-release-unsigned.apk`.
 Verify a downloaded release by running `sha256sum --check SHA256SUMS` in a directory that holds all six assets, as in step 6. To check only the APK, keep its published file name, place it next to `SHA256SUMS` and run `sha256sum --ignore-missing --check SHA256SUMS` (GNU coreutils): it checks the listed files that are present, and fails on a mismatch or when none of them is present. Then inspect the APK with Android Build Tools `apksigner verify --verbose --print-certs <apk>`. The workflow runs the same metadata guard used by `scripts/release_metadata.py` before and after signing.
 
 CI debug artifacts are temporary test builds. They are not distributed as phone updates because their signing certificates differ across runners. The release APK is the upgrade artifact.
+
+## Google Play bundle
+
+Google Play accepts new apps only as Android App Bundles (`.aab`) with Play App Signing. The **Play bundle** workflow (`.github/workflows/play-bundle.yml`) builds the [Play distribution](development.md#distribution-switches) of an existing release tag, signs it with a Play **upload key** and verifies it, then offers it as a workflow artifact. The owner uploads it by hand in Play Console ([listing steps](../store/play/listing.md#steps-in-the-console)). The workflow uploads nothing to Google Play and creates or changes no GitHub Release; Publish APK and its assets are unaffected. The tracking issue for the owner's Play tasks is [#326](https://github.com/andrepaim/distillpod/issues/326).
+
+### What the workflow does
+
+It runs only by hand, from the release tag, with the same tag as input. The workflow file is read from the tag, so tags created before this workflow existed cannot use it.
+
+1. **Verify tagged source:** the run's ref is the tag named in the input, the tag points to the run's commit, that commit is on `main`, and `gradle.properties` gives that tag (`python3 scripts/release_metadata.py --tag`), as Publish APK checks.
+2. **Require the Play upload key** (environment `play-upload`): fails within seconds, before validation and the build, if any of the four secrets or the fingerprint variable below is missing. It prints which names are missing, never their values.
+3. **Validation:** the reusable Android CI workflow with full validation, as Publish APK runs it, including the Play distribution job. It is called with `build_release: false`, so the GitHub APK candidate is not built and no secret is passed to it.
+4. **Unsigned Play bundle:** `:app:lintRelease :app:bundleRelease -PdistillpodDistribution=play -PdistillpodVoiceEnabled=true` with `--no-build-cache`, the Firebase client configuration from `FIREBASE_CONFIG_JSON` (a private temporary file removed afterwards) and `SENTRY_DSN`, exactly as the APK candidate gets them; a missing value fails the build. No YouTube extractor is fetched. The unsigned bundle is verified (below, with `--unsigned`) and kept as a one-day artifact.
+5. **Sign and verify Play bundle** (environment `play-upload`): the signing step decodes the keystore into a private runner-temporary file that is deleted when the step exits, and signs with `jarsigner` (bundles carry a JAR signature; `apksigner` does not apply). A later step, with no secret in its environment and the keystore gone, verifies the signed bundle in full and uploads the artifact `distillpod-play-bundle-<tag>`, kept for 7 days:
+   - `distillpod-<version>-play.aab`, the bundle to upload;
+   - `play-build-info.json`: application ID, version name and code, tag, target SDK, distribution and switch values, Gradle properties, upload certificate SHA-256, bundletool version, commit and workflow run URL;
+   - `THIRD_PARTY_NOTICES.md` and `source-manifest.json`, copied out of the bundle: the Play variant that `prepareDistributionLicenses` filters, without the YouTube components;
+   - `SHA256SUMS`, listing the other four.
+
+`scripts/verify_play_bundle.py` checks the bundle itself for its signature files, the JAR signature (`jarsigner -verify -strict`, accepting only the findings every self-signed upload certificate produces) and exactly one signer whose certificate has the expected SHA-256 fingerprint and an RSA key of at least 2048 bits. It runs `bundletool validate`, builds the universal APK with bundletool [1.18.3](https://github.com/google/bundletool/releases/tag/1.18.3) (the jar's SHA-256 is pinned in the script and the workflow) and checks that APK with the same guards as the GitHub APK: package `dev.distillpod.android`, version name and code from the tagged source, not debuggable, target SDK 36, the Play distribution switches (`scripts/verify_distribution_apk.py`: no YouTube extraction, no update check), 16 KB ELF LOAD-segment alignment of every native library, and `zipalign -c -P 16 4`. The Play variant is checked by bundletool's universal APK rather than by teaching the distribution check the bundle layout, so the same code checks both distributions on the APK form Android installs.
+
+### Before the first run
+
+These are owner tasks; the workflow fails at its first job until they are done. Keep the keystore and its password outside the repository, in a private backup.
+
+1. Create the upload key in a private directory. It is new and separate from the personal-alpha key, and is not the app signing key. `keytool` asks for the password; a PKCS12 keystore uses the same password for the store and the key.
+
+   ```sh
+   keytool -genkeypair -keystore distillpod-play-upload.p12 -storetype PKCS12 \
+     -alias distillpod-upload -keyalg RSA -keysize 4096 -sigalg SHA256withRSA \
+     -validity 10000 -dname "CN=DistillPod upload key"
+   ```
+
+2. Read its certificate fingerprint and export the public certificate, which Play Console asks for when an upload key is registered or reset:
+
+   ```sh
+   keytool -list -v -keystore distillpod-play-upload.p12 -alias distillpod-upload \
+     | sed -n 's/^[[:space:]]*SHA256: //p' | tr -d : | tr A-F a-f
+   keytool -exportcert -rfc -keystore distillpod-play-upload.p12 -alias distillpod-upload \
+     -file distillpod-play-upload-certificate.pem
+   ```
+
+3. Create the GitHub environment `play-upload` (Settings → Environments). Under deployment branches and tags choose selected branches and tags and add the tag rule `v*`. A required reviewer is optional; with one, each run waits for approval twice (the key check and the signing job).
+4. Add the secrets to that environment and the fingerprint as an environment variable. `gh secret set` without `--body` prompts for the value without echoing it, so passwords stay out of shell history; `base64 -w0` is GNU coreutils.
+
+   ```sh
+   repo=andrepaim/distillpod
+   base64 -w0 distillpod-play-upload.p12 | gh secret set PLAY_UPLOAD_KEYSTORE_BASE64 --env play-upload --repo "$repo"
+   gh secret set PLAY_UPLOAD_KEYSTORE_PASSWORD --env play-upload --repo "$repo"
+   gh secret set PLAY_UPLOAD_KEY_PASSWORD --env play-upload --repo "$repo"   # same password for PKCS12
+   gh secret set PLAY_UPLOAD_KEY_ALIAS --env play-upload --repo "$repo" --body distillpod-upload
+   gh variable set PLAY_UPLOAD_CERT_SHA256 --env play-upload --repo "$repo" --body "<fingerprint from step 2>"
+   ```
+
+   The fingerprint is public, so it is a variable, not a secret; the build record and the log show it. A repository variable of the same name also works, because only jobs in `play-upload` read it, but keeping it in the environment keeps it next to the key it describes. Colons and upper case are accepted.
+
+`FIREBASE_CONFIG_JSON` and `SENTRY_DSN` are the repository secrets Publish APK already uses; nothing new is needed for them.
+
+### Build a bundle for a tag
+
+After the tag exists (step 5 of the [publishing checklist](#5-tag-and-publish)), start the workflow from that tag. It does not depend on Publish APK and can run before, after or without it.
+
+```sh
+gh workflow run play-bundle.yml --repo andrepaim/distillpod --ref "$release_tag" -f tag="$release_tag"
+```
+
+In the web interface: Actions → Play bundle → Run workflow, choose the tag under **Use workflow from**, and enter the same tag. A run takes about as long as full Android CI. A rerun builds the same tag again and changes nothing outside its own artifacts. The unsigned bundle is kept for one day, so after that rerun all jobs rather than only the failed ones.
+
+### Verify the downloaded bundle
+
+Download the artifact into a new, empty directory and check the checksums there (`run_id` is the workflow run's number):
+
+```sh
+gh run download "$run_id" --repo andrepaim/distillpod --name "distillpod-play-bundle-$release_tag" --dir "$bundle_dir"
+(cd "$bundle_dir" && sha256sum --check SHA256SUMS)
+```
+
+Then, from a checkout of the tag, with `JAVA_HOME` set to JDK 17, `build_tools` set to the Android Build Tools 35.0.0 directory and the pinned bundletool in a separate directory:
+
+```sh
+curl --fail --location --output "$tools_dir/bundletool.jar" \
+  https://github.com/google/bundletool/releases/download/1.18.3/bundletool-all-1.18.3.jar
+echo "a099cfa1543f55593bc2ed16a70a7c67fe54b1747bb7301f37fdfd6d91028e29  $tools_dir/bundletool.jar" | sha256sum --check
+python3 scripts/verify_play_bundle.py "$bundle_dir/distillpod-${release_tag#v}-play.aab" --tag "$release_tag" \
+  --certificate-sha256 "$upload_fingerprint" --bundletool "$tools_dir/bundletool.jar" --build-tools "$build_tools"
+```
+
+`keytool -printcert -jarfile <bundle>` shows the signer; after the first upload its SHA-256 must equal the upload certificate Play Console lists on its App signing page. Upload only a bundle that passes both checks.
+
+### Version codes
+
+GitHub APKs and Play bundles share one increasing sequence of version codes from `gradle.properties`. The bundle of a tag carries that tag's code; there is no separate Play code. Play refuses a version code it has already received for the app, on any track and even if that upload was never released, so each tag's bundle can be uploaded once. A rebuilt or corrected bundle needs a new version code and tag through the [publishing checklist](#publishing-checklist). Tags that never reach Play leave gaps in Play's sequence, which is allowed. Keeping one sequence also lets an install from either channel update from the other if Play signs with the personal-alpha identity (see below).
+
+### Play App Signing choice
+
+Play re-signs what users install with an app signing key that Play holds. Which key that is remains the owner's decision ([listing](../store/play/listing.md#before-the-first-upload), row 5, and #326), and it must be made in Play Console before any release leaves internal testing: a Google-generated key, or the existing personal-alpha key uploaded with Google's PEPK tool so that GitHub and Play installs share one identity. Either way this workflow signs only with the upload key. Never store the personal-alpha key, or a copy of the app signing key, in `play-upload`.
+
+### Rotate the upload key
+
+- **Before Play has an upload key** (no bundle uploaded yet): create a new key as above, replace the four secrets and the variable, and delete the old keystore.
+- **After the first upload**, or when the key is lost or exposed: create a new key and export its certificate as above, then request an upload key reset on Play Console's App signing page with that certificate. When Play reports the new key in effect, replace the four `play-upload` secrets and `PLAY_UPLOAD_CERT_SHA256`, run the workflow for the next tag, and check that the build record shows the new fingerprint. Delete the old keystore and its backups afterwards. Until the reset takes effect, Play rejects bundles signed with the new key.
+
+### Limits
+
+- Nothing reaches Google Play automatically; the first acceptance of the upload key and the bundle is Play Console's.
+- The signing secrets and the fingerprint check can be exercised only by a real run once the owner has added them; locally they were tested with a throwaway key.
+- The artifact has no source archive. The app is GPL-3.0; the corresponding source is the tagged commit, and Publish APK's source tarball for the same tag (`scripts/source_distribution.py`) also covers the Play build, which contains a subset of the GitHub build's components.

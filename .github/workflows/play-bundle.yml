@@ -1,0 +1,221 @@
+name: Play bundle
+
+# Builds, signs and verifies the Google Play app bundle of a release tag for a manual upload in Play
+# Console (#322). Nothing is uploaded to Google Play and no GitHub Release is created or changed.
+# Run it from the tag itself, with the same tag as input; see docs/releases.md#google-play-bundle.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag (choose the same tag under "Use workflow from")
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: play-bundle-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  source:
+    name: Verify tagged source
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Require the dispatched tag, its version and main history
+        env:
+          TAG: ${{ inputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_REF_TYPE" != tag ] || [ "$GITHUB_REF_NAME" != "$TAG" ]; then
+            echo "::error title=Run from the release tag::Choose the release tag under 'Use workflow from' and enter the same tag"
+            exit 1
+          fi
+          test "$(git rev-parse "refs/tags/$TAG^{commit}")" = "$GITHUB_SHA"
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+          python3 scripts/release_metadata.py --tag "$TAG"
+
+  upload_key:
+    name: Require the Play upload key
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    environment: play-upload
+    steps:
+      # Fails in seconds, before validation and the build, when the owner has not added the key yet.
+      - name: Require the Play upload key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.PLAY_UPLOAD_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.PLAY_UPLOAD_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.PLAY_UPLOAD_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.PLAY_UPLOAD_KEY_PASSWORD }}
+          UPLOAD_CERT_SHA256: ${{ vars.PLAY_UPLOAD_CERT_SHA256 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=()
+          [ -n "${KEYSTORE_BASE64:-}" ] || missing+=(PLAY_UPLOAD_KEYSTORE_BASE64)
+          [ -n "${KEYSTORE_PASSWORD:-}" ] || missing+=(PLAY_UPLOAD_KEYSTORE_PASSWORD)
+          [ -n "${KEY_ALIAS:-}" ] || missing+=(PLAY_UPLOAD_KEY_ALIAS)
+          [ -n "${KEY_PASSWORD:-}" ] || missing+=(PLAY_UPLOAD_KEY_PASSWORD)
+          fingerprint="${UPLOAD_CERT_SHA256:-}"
+          fingerprint="${fingerprint//:/}"
+          [[ "$fingerprint" =~ ^[0-9A-Fa-f]{64}$ ]] || missing+=(PLAY_UPLOAD_CERT_SHA256)
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error title=Play upload key not configured::Add to the play-upload environment: ${missing[*]} (secrets, and the upload certificate's SHA-256 fingerprint as a variable). See docs/releases.md#google-play-bundle"
+            exit 1
+          fi
+          echo "Upload key secrets are present; expected upload certificate SHA-256: $fingerprint"
+
+  validation:
+    needs: [source, upload_key]
+    uses: ./.github/workflows/ci.yml
+    with:
+      # Full validation, including the Play distribution job; the GitHub APK candidate is not built.
+      build_release: false
+
+  bundle:
+    name: Unsigned Play bundle
+    needs: [source, validation]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      GRADLE_OPTS: -Dorg.gradle.caching=true
+      # Restore the default build's dependencies; the candidate itself uses no build cache.
+      GRADLE_BUILD_ACTION_CACHE_KEY_JOB: android_build
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
+        with:
+          log-accepted-android-sdk-licenses: false
+      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+        with:
+          cache-read-only: true
+      - name: Install pinned native tools
+        run: scripts/sdk-install.sh 'platforms;android-36' 'build-tools;35.0.0' 'ndk;27.2.12479018' 'cmake;3.22.1'
+      # The Play preset needs no YouTube extractor: the build must not fetch or package it.
+      - name: Build unsigned Play bundle
+        env:
+          FIREBASE_CONFIG_JSON: ${{ secrets.FIREBASE_CONFIG_JSON }}
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${FIREBASE_CONFIG_JSON:?Missing Firebase client configuration for distribution}"
+          : "${SENTRY_DSN:?Missing Sentry DSN for cloud diagnostics distribution}"
+          config_file="$RUNNER_TEMP/distillpod-google-services.json"
+          trap 'rm -f "$config_file"' EXIT
+          umask 077
+          printf '%s' "$FIREBASE_CONFIG_JSON" > "$config_file"
+          ./gradlew --no-daemon --stacktrace --no-build-cache :app:lintRelease :app:bundleRelease -PdistillpodDistribution=play -PdistillpodVoiceEnabled=true "-PdistillpodFirebaseConfig=$config_file"
+      - name: Fetch pinned bundletool
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location --retry 3 --output "$RUNNER_TEMP/bundletool.jar" \
+            https://github.com/google/bundletool/releases/download/1.18.3/bundletool-all-1.18.3.jar
+          echo "a099cfa1543f55593bc2ed16a70a7c67fe54b1747bb7301f37fdfd6d91028e29  $RUNNER_TEMP/bundletool.jar" | sha256sum --check
+      - name: Verify unsigned Play bundle
+        run: python3 scripts/verify_play_bundle.py app/build/outputs/bundle/release/app-release.aab --tag "$GITHUB_REF_NAME" --unsigned --bundletool "$RUNNER_TEMP/bundletool.jar" --build-tools "$ANDROID_HOME/build-tools/35.0.0"
+      - name: Verify validation source
+        run: python3 scripts/ci_validation_proof.py check-source
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: android-play-release-reports
+          path: app/build/reports
+          retention-days: 14
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: distillpod-unsigned-play-bundle
+          path: app/build/outputs/bundle/release/app-release.aab
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
+  sign:
+    name: Sign and verify Play bundle
+    needs: [source, bundle]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: play-upload
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
+        with:
+          packages: build-tools;35.0.0
+          log-accepted-android-sdk-licenses: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: distillpod-unsigned-play-bundle
+          path: unsigned
+      - name: Sign with the upload key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.PLAY_UPLOAD_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.PLAY_UPLOAD_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.PLAY_UPLOAD_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.PLAY_UPLOAD_KEY_PASSWORD }}
+          UPLOAD_CERT_SHA256: ${{ vars.PLAY_UPLOAD_CERT_SHA256 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${KEYSTORE_BASE64:?Missing Play upload keystore}"
+          : "${KEYSTORE_PASSWORD:?Missing Play upload keystore password}"
+          : "${KEY_ALIAS:?Missing Play upload key alias}"
+          : "${KEY_PASSWORD:?Missing Play upload key password}"
+          python3 scripts/verify_play_bundle.py unsigned/app-release.aab --tag "$GITHUB_REF_NAME" --unsigned --signature-only
+          signing_file="$RUNNER_TEMP/distillpod-play-upload.keystore"
+          trap 'rm -f "$signing_file"' EXIT
+          umask 077
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$signing_file"
+          mkdir -p signed
+          bundle="signed/distillpod-${GITHUB_REF_NAME#v}-play.aab"
+          jarsigner -keystore "$signing_file" -storepass:env KEYSTORE_PASSWORD -keypass:env KEY_PASSWORD -sigalg SHA256withRSA -digestalg SHA-256 -signedjar "$bundle" unsigned/app-release.aab "$KEY_ALIAS"
+          python3 scripts/verify_play_bundle.py "$bundle" --tag "$GITHUB_REF_NAME" --certificate-sha256 "$UPLOAD_CERT_SHA256" --signature-only
+      - name: Fetch pinned bundletool
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location --retry 3 --output "$RUNNER_TEMP/bundletool.jar" \
+            https://github.com/google/bundletool/releases/download/1.18.3/bundletool-all-1.18.3.jar
+          echo "a099cfa1543f55593bc2ed16a70a7c67fe54b1747bb7301f37fdfd6d91028e29  $RUNNER_TEMP/bundletool.jar" | sha256sum --check
+      # The keystore is gone and no secret is in this step's environment.
+      - name: Verify and package the signed bundle
+        env:
+          UPLOAD_CERT_SHA256: ${{ vars.PLAY_UPLOAD_CERT_SHA256 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          name="distillpod-${GITHUB_REF_NAME#v}-play.aab"
+          mkdir -p dist
+          mv "signed/$name" "dist/$name"
+          python3 scripts/verify_play_bundle.py "dist/$name" --tag "$GITHUB_REF_NAME" --certificate-sha256 "$UPLOAD_CERT_SHA256" --bundletool "$RUNNER_TEMP/bundletool.jar" --build-tools "$ANDROID_HOME/build-tools/35.0.0" --licenses-out dist --build-info dist/play-build-info.json
+          (cd dist && sha256sum "$name" play-build-info.json THIRD_PARTY_NOTICES.md source-manifest.json > SHA256SUMS)
+          cat dist/SHA256SUMS
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: distillpod-play-bundle-${{ inputs.tag }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0

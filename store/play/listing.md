@@ -44,6 +44,8 @@ The published GitHub alpha can continue unchanged next to a Play build.
 9. **Apply for production access** (Dashboard). Google asks how testers were recruited, what they tested, what changed because of it, who the app is for and how many installs are expected in the first year. Review usually takes up to 7 days.
 10. **Production.** Create the release, choose countries, start with a staged rollout. First reviews take from hours to about a week.
 
+The bundles for steps 7 to 10 come from the **Play bundle** workflow, signed with the upload key; see [Google Play bundle](../../docs/releases.md#google-play-bundle) for the key setup, the run and the local check before uploading.
+
 Expect three to five weeks from a ready build to a public listing, most of it the 14-day test.
 
 ## Main store listing
