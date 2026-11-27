@@ -2,6 +2,8 @@
 
 DistillPod keeps its library, queue, listening position, transcripts, saved excerpts and generated text in its private Android storage. ChatGPT credentials are encrypted with a key held by Android Keystore. Optional Firebase sign-in uses Firebase's SDK-managed app-private credential storage. Android application backup is disabled; neither provider's credentials enter library exports or library sync. This is a personal-alpha implementation; the repository's validation reports are not an independent security audit.
 
+The published privacy policy, <https://andrepaim.github.io/distillpod/privacy.html>, opens in the browser from **Settings → About DistillPod → Privacy policy**. The same **Privacy policy** link sits next to each consent: connecting ChatGPT (Settings → ChatGPT), library sync (Settings → Sync) and diagnostics (Settings → Privacy & diagnostics).
+
 ## Current Spark-only deployment
 
 The selected deployment has billing disabled. Sync is optional and requires a Firebase-configured build; ordinary source/debug builds have no production Firebase configuration. Google sign-in and feed review are required before library data is shared. Queue and portable preferences can synchronize through Firestore without enabling Cloud Storage. Transcripts and other finished text remain local; their experimental Storage adapter is disabled in builds. Automatic backup to a file you choose keeps transcripts and other text.
