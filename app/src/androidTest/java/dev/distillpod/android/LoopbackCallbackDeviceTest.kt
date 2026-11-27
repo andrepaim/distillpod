@@ -52,7 +52,7 @@ class LoopbackCallbackDeviceTest {
                         val response = client.getInputStream().bufferedReader().readText()
                         assertTrue(response.startsWith("HTTP/1.1 200 OK\r\n"))
                         assertTrue(response.contains("Connection: close\r\n"))
-                        assertTrue(response.endsWith("Connection received. Return to DistillPod for the final result."))
+                        assertTrue(response.endsWith(LoopbackCallbackServer.RECEIVED))
                         assertEquals("public-http-client", attempt.callback(received.get(5, TimeUnit.SECONDS)).clientId)
                     }
                 }

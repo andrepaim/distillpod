@@ -1,6 +1,7 @@
 package dev.distillpod.android
 import com.nimbusds.jose.jwk.JWKSet
 import dev.distillpod.core.OAuthAttempt
+import dev.distillpod.core.OAuthCallback
 import okhttp3.FormBody
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
@@ -9,6 +10,9 @@ import okhttp3.Request
 import org.json.JSONObject
 import java.io.IOException
 import java.net.UnknownHostException
+
+/** The token endpoint refused the authorization code (OAuth `invalid_grant`): it expired, was used or does not match. */
+class AuthorizationCodeRejected : IllegalStateException("The sign-in code expired or was rejected")
 
 /** All credential mutation and refresh is serialized within the app process. */
 class AuthSession(private val read: () -> String?, private val write: (String?) -> Unit,
@@ -29,9 +33,7 @@ class AuthSession(private val read: () -> String?, private val write: (String?) 
             ?: PendingExchange(attempt, callbackUrl)
         pending = current
         try {
-            val response = current.tokens ?: token(FormBody.Builder().add("grant_type", "authorization_code").add("client_id", callback.clientId)
-                .add("code", callback.code).add("code_verifier", attempt.verifier).add("redirect_uri", attempt.redirectUri)
-                .add("resource", "https://api.openai.com/v1").build()).also {
+            val response = current.tokens ?: codeTokens(attempt, callback).also {
                     require(it.optString("scope").split(' ').contains("chatgpt.tokens.use.direct")) { "ChatGPT plan usage was not authorized" }
                     it.put("expires_at", clock() + it.getLong("expires_in") * 1000)
                     current.tokens = it
@@ -65,7 +67,7 @@ class AuthSession(private val read: () -> String?, private val write: (String?) 
             val renewed = try {
                 token(FormBody.Builder().add("grant_type", "refresh_token").add("client_id", saved.getString("client_id"))
                     .add("refresh_token", saved.getString("refresh_token")).add("resource", "https://api.openai.com/v1").build())
-            } catch (e: InvalidRefreshGrant) {
+            } catch (e: InvalidGrant) {
                 val current = read()?.let(::JSONObject)
                 if (current?.optString("refresh_token") == saved.getString("refresh_token")) {
                     write(null)
@@ -113,12 +115,18 @@ class AuthSession(private val read: () -> String?, private val write: (String?) 
     /** An unreadable vault (e.g. an invalidated Keystore key) needs a new sign-in, like a missing one. */
     private fun readSaved(): String? = try { read() } catch (error: Exception) { throw ReauthorizationRequired() }
     @Synchronized fun disconnect() { pending = null; write(null); onCredentialsChanged(false) }
-    private class InvalidRefreshGrant : IllegalStateException()
+    private class InvalidGrant : IllegalStateException()
+    /** An `invalid_grant` here means the code expired, was already used or does not match: only a fresh sign-in helps. */
+    private fun codeTokens(attempt: OAuthAttempt, callback: OAuthCallback): JSONObject = try {
+        token(FormBody.Builder().add("grant_type", "authorization_code").add("client_id", callback.clientId)
+            .add("code", callback.code).add("code_verifier", attempt.verifier).add("redirect_uri", attempt.redirectUri)
+            .add("resource", "https://api.openai.com/v1").build())
+    } catch (_: InvalidGrant) { throw AuthorizationCodeRejected() }
     private fun token(body: FormBody): JSONObject = http.newCall(Request.Builder().url(authBase.resolve("api/accounts/oauth/token")!!).post(body).build()).execute().use { r ->
         val response = r.body?.string().orEmpty()
         if (!r.isSuccessful) {
             val error = runCatching { JSONObject(response).optString("error") }.getOrDefault("")
-            if (r.code in 400..499 && error == "invalid_grant") throw InvalidRefreshGrant()
+            if (r.code in 400..499 && error == "invalid_grant") throw InvalidGrant()
             throw IllegalStateException("Account connection failed (${r.code})")
         }
         JSONObject(response)

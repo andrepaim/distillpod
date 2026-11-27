@@ -2,6 +2,7 @@ package dev.distillpod.android.ai
 
 import android.content.Context
 import dev.distillpod.android.AuthSession
+import dev.distillpod.android.AuthorizationCodeRejected
 import dev.distillpod.android.SubscriptionProvider
 import dev.distillpod.android.CredentialStore
 import dev.distillpod.android.TokenVault
@@ -75,8 +76,9 @@ class AccountRepository internal constructor(
                     .addQueryParameter("nonce", attempt.nonce).addQueryParameter("code_challenge_method", "S256")
                     .addQueryParameter("code_challenge", pkceChallenge(attempt.verifier)).build()
                 browser.value = url.toString()
-                val callback = listener.use { it.awaitCallback(attempt) }
-                server = null; pendingCallback = callback; savePending(attempt, callback)
+                // The listener answers browser repeats of this callback until finish() ends or the attempt is cancelled.
+                val callback = listener.awaitCallback(attempt)
+                pendingCallback = callback; savePending(attempt, callback)
                 finish(attempt, callback)
             } catch (error: Exception) { if (currentCoroutineContext().isActive) fail(error) }
             finally { owned?.close(); if (server === owned) server = null }
@@ -150,7 +152,7 @@ class AccountRepository internal constructor(
         mutable.update { it.copy(busy = false, retry = retry, message = when {
             retry -> "Could not finish connecting. Check your network, then retry."
             error is dev.distillpod.core.ConsentDenied -> "Plan access was declined. You can continue listening without AI."
-            error is java.net.SocketTimeoutException -> "Sign-in expired. Start a fresh attempt."
+            error is java.net.SocketTimeoutException || error is AuthorizationCodeRejected -> "Sign-in expired. Start a fresh attempt."
             else -> "Sign-in could not finish. Check the connection and try again."
         }) }
     }
@@ -175,8 +177,8 @@ class AccountRepository internal constructor(
                 val remaining = (600_000 - (System.currentTimeMillis() - pendingCreatedAt)).coerceAtLeast(1)
                 val listener = LoopbackCallbackServer(timeoutMs = remaining, port = URI(attempt.redirectUri).port); owned = listener; server = listener
                 check(listener.redirectUri == attempt.redirectUri)
-                val callback = listener.use { it.awaitCallback(attempt) }
-                server = null; pendingCallback = callback; savePending(attempt, callback)
+                val callback = listener.awaitCallback(attempt)
+                pendingCallback = callback; savePending(attempt, callback)
                 finish(attempt, callback)
             }
         } catch (error: Exception) { if (currentCoroutineContext().isActive) fail(error) }

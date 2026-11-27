@@ -48,3 +48,15 @@ Token expiration is anchored to the time the token response was received; delaye
 - Three focused checks pass on the S22 Ultra in **2.936 seconds**: native DNS/HTTPS access to OpenAI's public JWKS endpoint, the real Chrome callback and app reentry. [Runner evidence](evidence/s22-network-recovery-tests.txt) is saved. The public-network diagnostic uses no account credentials and is explicitly excluded from the normal emulator/CI suite.
 
 Updated APK SHA-256: `8abe72abd970238e921e6decf5b5b510bd85a0d824f40ddaf01431011aa9e91f`. It is installed on the phone. On November 2, the owner completed sign-in and the connection survived a full process restart; a further live AI request completed afterward. See [the phone validation receipt](s22-validation.md#live-account-and-restart-verification--november-2). Live refresh-token rotation remains open.
+
+## Repeated callback requests — November 27 (#331)
+
+After approval on the S22 (0.38.0-alpha.1 and a debug build of `ded8511`), Chrome showed "connection refused" for the callback address although the app had received the callback. The listener answered one valid callback and closed at once. The likely cause is that the browser requested the callback address again (a preload, retry or reload) and the user saw that refused request; the browser's requests were not captured, so this is inferred. Staying on the error page also lost the attempt: the app exchanges the code only once it is in the foreground again, and a code rejected after that delay was reported as a connection problem.
+
+Correction:
+
+- After the first valid callback, the listener hands it to the app at once and, on a separate short-lived thread, keeps answering exact repeats of the same request with the same success page for up to 60 seconds. The window never extends past the attempt deadline and ends as soon as the app finishes the exchange, fails, or the attempt is cancelled; the listener then closes. Nothing else is accepted in that window: another state, another code or a consent denial gets 400, other paths 404, as before. The listener still binds `127.0.0.1` only, read timeouts stay bounded and the browser socket is closed before the token exchange.
+- The success page reads "Connection received. Return to DistillPod now to finish signing in. You can close this page."
+- A token response with OAuth `invalid_grant` for the authorization code (expired, already used or mismatched) now shows "Sign-in expired. Start a fresh attempt." A DNS failure before the token request keeps **Retry account connection**; other server or transport failures keep "Sign-in could not finish. Check the connection and try again."
+
+What is sent to OpenAI is unchanged. JVM tests cover repeated requests, idle preconnections and different requests during the window, the bound, the attempt deadline, cancellation, and the expired-code message. A phone sign-in on Chrome is still required to confirm the page the user sees.
