@@ -216,6 +216,8 @@ The AI features (takeaways, summary and chapters, episode chat, share cards, sug
 
 To reach an AI result quickly: download the Tiny model in Settings → Transcript preparation, then Search → follow any show → open an episode → Prepare transcript → Summary & chapters.
 
+Every AI result has a Report this result action (in its menu or under the result). It shows the exact message and opens the reviewer's email app; the app itself sends nothing.
+
 The spoken-question preview additionally needs an OpenAI API key entered in Settings → Voice. Library sync (Settings → Sync) uses the reviewer's own Google account.
 ```
 
