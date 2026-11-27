@@ -1,7 +1,11 @@
 # DistillPod documentation
 
+DistillPod is a personal-alpha Android podcast player whose AI features run on
+your own ChatGPT account: you sign in with ChatGPT in the app, and requests use
+your plan's allowance. Playback and on-phone transcription work without it.
+
 Start with the [two short demos](demos/README.md) and [Getting started](getting-started.md).
-DistillPod is a personal-alpha Android app. Current guides describe `main`;
+Current guides describe `main`;
 [implementation status](android/implementation-status.md) records the source
 revision, downloadable APK and separate device evidence. A source version or
 release-note file alone does not mean an APK has been published.
