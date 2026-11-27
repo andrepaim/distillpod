@@ -31,11 +31,12 @@ class DataProtectionDeviceTest {
         compose.onNodeWithText("Set up automatic backup").performScrollTo().assertIsDisplayed()
     }
 
-    /** The binding disclosure is kept verbatim in the sync page's Learn more sheet (#203). */
+    /** The binding disclosure is kept verbatim in the sync page's Learn more sheet (#203); a build without sync has none (#323). */
     private fun assertBindingDisclosure() {
+        val disclosure = if (dev.distillpod.android.sync.SyncBuild.ENABLED) "Connecting binds this library" else "use Restore from a backup to bring back your library"
         compose.onNodeWithContentDescription("Learn more about What's covered").performScrollTo().performClick()
-        compose.onNodeWithText("Connecting binds this library", substring = true).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(disclosure, substring = true).performScrollTo().assertIsDisplayed()
         androidx.test.espresso.Espresso.pressBack()
-        compose.waitUntil(5000) { compose.onAllNodesWithText("Connecting binds this library", substring = true).fetchSemanticsNodes().isEmpty() }
+        compose.waitUntil(5000) { compose.onAllNodesWithText(disclosure, substring = true).fetchSemanticsNodes().isEmpty() }
     }
 }

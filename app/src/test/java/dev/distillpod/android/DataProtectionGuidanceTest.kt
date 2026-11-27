@@ -15,15 +15,18 @@ class DataProtectionGuidanceTest {
             if (configured && !expanded) assertTrue(text.contains("optional"))
         }
     }
-    @Test fun `without cloud sync the coverage sheet never mentions a Google account or signing in to sync`() {
-        val unavailable = DataProtectionGuidance.coverage(configured = false, contentConfigured = false, expandedScope = false)
+    @Test fun `a build without sync never mentions a Google account or signing in to sync`() {
+        val unavailable = DataProtectionGuidance.coverage(configured = false, contentConfigured = false, expandedScope = false, syncBuild = false)
         assertTrue(unavailable.first().contains("unavailable"))
         assertTrue(unavailable.any { it.contains("Restore from a backup") })
         for (text in unavailable) for (word in listOf("Google account", "sign in", "Sign-out", "Firebase", "Neither"))
             assertFalse(text, text.contains(word, ignoreCase = true))
-        val configured = DataProtectionGuidance.coverage(configured = true, contentConfigured = false, expandedScope = false)
-        assertEquals(listOf(DataProtectionGuidance.sync(true, false, false), DataProtectionGuidance.backup, DataProtectionGuidance.excluded,
-            DataProtectionGuidance.newPhone, DataProtectionGuidance.binding), configured)
+    }
+    @Test fun `a build with sync keeps every disclosure whether or not it is configured`() {
+        for (configured in listOf(false, true)) for (content in listOf(false, true)) for (expanded in listOf(false, true))
+            assertEquals(listOf(DataProtectionGuidance.sync(configured, content, expanded), DataProtectionGuidance.backup, DataProtectionGuidance.excluded,
+                DataProtectionGuidance.newPhone, DataProtectionGuidance.binding),
+                DataProtectionGuidance.coverage(configured, content, expanded, syncBuild = true))
     }
     @Test fun `backup age handles empty old recent and future timestamps honestly`() {
         val now = 10L * 86_400_000
