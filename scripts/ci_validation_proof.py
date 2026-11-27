@@ -13,7 +13,7 @@ import zlib
 
 WORKFLOW = '.github/workflows/ci.yml'
 ARTIFACT = 'ci-validation-proof-'
-BUILD_JOBS = {'Android build validation', 'Opt-in voice build validation',
+BUILD_JOBS = {'Android build validation', 'Opt-in voice build validation', 'Play distribution build validation',
               'Firebase protocol and security rules', 'Native bridge validation',
               'Isolated Android acceptance', 'Isolated Android acceptance, part 2'}
 REQUIRED = {'Select validation and check documentation',

@@ -21,7 +21,7 @@ import dev.distillpod.android.features.AppViewModel
 import dev.distillpod.android.features.FirstRunTestAccess
 import dev.distillpod.android.features.OnboardingRecoveryRoute
 import dev.distillpod.android.features.OnboardingWelcomeRoute
-import dev.distillpod.android.work.UpdateNotice
+import dev.distillpod.android.data.OPEN_ABOUT_EXTRA
 import dev.distillpod.core.FirstRunSetup
 import dev.distillpod.core.FirstRunStatus
 import java.io.File
@@ -93,7 +93,7 @@ class OnboardingNavigationDeviceTest {
             assertEquals("Only the requested destination is applied", "", vm.query.value)
             scenario.onActivity { activity ->
                 activity.startActivity(Intent(activity, MainActivity::class.java)
-                    .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP).putExtra(UpdateNotice.OPEN_ABOUT, true))
+                    .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP).putExtra(OPEN_ABOUT_EXTRA, true))
             }
             val about = welcome + listOf("player", "settings:about")
             awaitStack(scenario, about)

@@ -48,7 +48,9 @@ class ActiveFiles {
 class MediaRepository(context: Context, private val db: AppDatabase, private val settings: AppSettings,
     private val downloader: ResumableDownloader, val active: ActiveFiles,
     private val resolveAudio: (String) -> String = { it },
-    private val onValidated: () -> Unit = {}) {
+    private val onValidated: () -> Unit = {},
+    /** False in a build without YouTube sources: a YouTube episode is refused before its row or files change (#319). */
+    private val youtube: Boolean = true) {
     private val dao = db.library()
     val directory = File(context.filesDir, "media").apply { mkdirs() }
     val modelsDirectory = File(context.filesDir, "models").apply { mkdirs() }
@@ -143,6 +145,7 @@ class MediaRepository(context: Context, private val db: AppDatabase, private val
     private suspend fun downloadEpisode(id: String, blocked: suspend (IOException) -> Boolean,
         notify: (DownloadProgress) -> Unit): File = locks.getOrPut("episode:$id") { Mutex() }.withLock {
         val ep = dao.episode(id) ?: error("Episode is no longer available")
+        if (!youtube && dev.distillpod.core.YouTubeUrl.videoId(ep.audioUrl) != null) throw dev.distillpod.android.video.YouTubeUnavailableException()
         ep.localFile?.let(::File)?.takeIf { it.isFile && it.length() == ep.downloadedBytes && ep.downloadState == "downloaded" }?.let { return@withLock it }
         val prefs = settings.flow.first()
         val otherBytes = withContext(Dispatchers.IO) { audioFiles().filter { it.name != "$id.partial" }.sumOf { it.length() } }

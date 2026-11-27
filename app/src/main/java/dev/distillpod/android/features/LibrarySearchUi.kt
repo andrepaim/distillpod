@@ -113,13 +113,13 @@ private fun highlighted(text: String, terms: List<String>): AnnotatedString = bu
 }
 
 /** Typing searches only the library; this sends the words to the public podcast directory. */
-@Composable internal fun DirectorySearchPrompt(query: String, enabled: Boolean, onSearch: () -> Unit) {
+@Composable internal fun DirectorySearchPrompt(query: String, enabled: Boolean, youtube: Boolean = true, onSearch: () -> Unit) {
     OutlinedCard(onClick = onSearch, enabled = enabled, modifier = Modifier.fillMaxWidth()) {
         Row(Modifier.padding(16.dp).heightIn(min = 32.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Icon(Icons.Default.Public, null, tint = MaterialTheme.colorScheme.secondary)
             Column(Modifier.weight(1f)) {
                 Text("Search the podcast directory for “${query.trim()}”", style = MaterialTheme.typography.titleSmall)
-                Text("Find new shows and videos online", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(if (youtube) "Find new shows and videos online" else "Find new shows online", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Icon(Icons.Default.ChevronRight, null)
         }

@@ -17,7 +17,6 @@ import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.MutableCreationExtras
 import dev.distillpod.android.features.AppViewModel
 import dev.distillpod.android.features.ProductApp
-import dev.distillpod.android.work.UpdateNotice
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -75,7 +74,7 @@ class MainActivity : ComponentActivity() {
 
     private fun openRequestedScreen(request: Intent) {
         if (request.getBooleanExtra("openPlayer", false)) model.open("player")
-        if (request.getBooleanExtra(UpdateNotice.OPEN_ABOUT, false)) model.open("settings:about")
+        if (request.getBooleanExtra(dev.distillpod.android.data.OPEN_ABOUT_EXTRA, false)) model.open("settings:about")
         if (request.action == "android.media.action.MEDIA_PLAY_FROM_SEARCH") {
             val query = request.getStringExtra(SearchManager.QUERY)
                 ?: request.getStringExtra(MediaStore.EXTRA_MEDIA_TITLE)

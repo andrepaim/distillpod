@@ -28,6 +28,27 @@ fun clientString(key: String): String = when(key) {
     else -> ""
 }
 ksp { arg("room.schemaLocation", "$projectDir/schemas") }
+// Distribution switches (#319, #320): features a store's policy can refuse, chosen at build time.
+// Each switch is the property distillpod<Name>Enabled. Without one, the distribution preset decides:
+// -PdistillpodDistribution=play turns off what the Play build must not contain; the default (github)
+// keeps everything on. A switch compiles src/<name>On or src/<name>Off and the matching test<Name>On|Off
+// and androidTest<Name>On|Off directories, so a feature that is off leaves no code in the artifact; its
+// dependencies and resources are added below only when it is on. To add a switch, name it here, give the
+// presets its value and create its On and Off directories. See docs/development.md#distribution-switches.
+val distributionSwitchNames = listOf("youtube", "updateCheck")
+val distributionPresets = mapOf(
+    "github" to emptyMap(),
+    "play" to mapOf("youtube" to false, "updateCheck" to false),
+)
+val distribution = providers.gradleProperty("distillpodDistribution").getOrElse("github")
+val distributionPreset = requireNotNull(distributionPresets[distribution]) {
+    "Unknown distillpodDistribution '$distribution'; use one of ${distributionPresets.keys.joinToString()}"
+}
+val distributionSwitches = distributionSwitchNames.associateWith { name ->
+    providers.gradleProperty("distillpod${name.replaceFirstChar(Char::uppercaseChar)}Enabled").orNull?.toBooleanStrict()
+        ?: distributionPreset[name] ?: true
+}
+val youtubeEnabled = distributionSwitches.getValue("youtube")
 // Immutable build input, verified before packaging. Never update executable code on the phone.
 val youtubeExtractorSpec = JsonSlurper().parse(rootProject.file("scripts/youtube_extractor.json")) as Map<*, *>
 val youtubeExtractorVersion = youtubeExtractorSpec["version"] as String
@@ -71,7 +92,32 @@ val prepareYoutubeExtractor by tasks.registering {
         } finally { temporary.delete() }
     }
 }
-tasks.named("preBuild").configure { dependsOn(prepareYoutubeExtractor) }
+if (youtubeEnabled) tasks.named("preBuild").configure { dependsOn(prepareYoutubeExtractor) }
+// A build without YouTube sources ships notices and a source manifest without the YouTube components.
+// The filtered copies sit in the build-type source sets, which take precedence over main's assets.
+val youtubeLicenseComponents = listOf("youtubedl-android", "yt-dlp")
+val distributionLicenses = layout.buildDirectory.dir("generated/distribution/assets")
+val prepareDistributionLicenses by tasks.registering {
+    val licenses = file("src/main/assets/licenses")
+    inputs.dir(licenses)
+    inputs.property("components", youtubeLicenseComponents)
+    val output = distributionLicenses.map { it.dir("licenses") }
+    outputs.dir(output)
+    doLast {
+        val destination = output.get().asFile
+        destination.deleteRecursively(); destination.mkdirs()
+        fun youtube(text: String) = youtubeLicenseComponents.any { text.contains(it, ignoreCase = true) }
+        val notices = File(licenses, "THIRD_PARTY_NOTICES.md").readLines().filterNot { it.startsWith("- **") && youtube(it) }
+        @Suppress("UNCHECKED_CAST")
+        val manifest = JsonSlurper().parse(File(licenses, "source-manifest.json")) as Map<String, List<Map<String, Any>>>
+        val components = manifest.getValue("components").filterNot { youtube(it.getValue("repository") as String) }
+        File(destination, "THIRD_PARTY_NOTICES.md").writeText(notices.joinToString("\n", postfix = "\n"))
+        File(destination, "source-manifest.json").writeText(groovy.json.JsonOutput.prettyPrint(
+            groovy.json.JsonOutput.toJson(mapOf("components" to components))) + "\n")
+        destination.listFiles()!!.forEach { check(!youtube(it.readText())) { "${it.name} still names a YouTube component" } }
+    }
+}
+if (!youtubeEnabled) tasks.named("preBuild").configure { dependsOn(prepareDistributionLicenses) }
 // Robolectric's instrumented Android jars are ordinary Gradle dependencies (cached, retried) and
 // tests run offline against them, so nothing is downloaded while tests run. The versions are the
 // DefaultSdkProvider table of this Robolectric release; update both together. A test that asks
@@ -123,7 +169,7 @@ android {
         testInstrumentationRunner = "dev.distillpod.android.IsolatedTestRunner"
         versionCode = providers.gradleProperty("distillpodVersionCode").get().toInt()
         versionName = providers.gradleProperty("distillpodVersionName").get()
-        resValue("string", "youtube_extractor_version", youtubeExtractorVersion)
+        if (youtubeEnabled) resValue("string", "youtube_extractor_version", youtubeExtractorVersion)
         ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
     }
     buildTypes.getByName("release") { isDebuggable = false }
@@ -138,14 +184,22 @@ android {
     sourceSets.getByName("test").resources.srcDir("schemas")
     sourceSets.getByName("test").java.srcDir("src/sharedTest/java")
     sourceSets.getByName("androidTest").java.srcDir("src/sharedTest/java")
-    sourceSets.getByName("main").res.srcDir(youtubeResources)
+    for ((name, enabled) in distributionSwitches) {
+        val state = name + if (enabled) "On" else "Off"
+        val suffix = state.replaceFirstChar(Char::uppercaseChar)
+        sourceSets.getByName("main").java.srcDir("src/$state/java")
+        sourceSets.getByName("test").java.srcDir("src/test$suffix/java")
+        sourceSets.getByName("androidTest").java.srcDir("src/androidTest$suffix/java")
+    }
+    if (youtubeEnabled) sourceSets.getByName("main").res.srcDir(youtubeResources)
+    else buildTypes.forEach { sourceSets.getByName(it.name).assets.srcDir(distributionLicenses) }
     buildFeatures { compose = true }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }
     testOptions { unitTests.isIncludeAndroidResources = true }
 }
 dependencies {
-    implementation("io.github.junkfood02.youtubedl-android:library:0.18.1")
+    if (youtubeEnabled) implementation("io.github.junkfood02.youtubedl-android:library:0.18.1")
     implementation("androidx.media3:media3-ui:1.5.1")
     implementation(project(":core"))
     implementation("io.sentry:sentry-android-core:8.40.0")

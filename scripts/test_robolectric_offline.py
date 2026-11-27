@@ -15,7 +15,9 @@ def resolved_levels():
 def requested_levels():
     target = int(re.search(r"targetSdk = (\d+)", BUILD).group(1))
     levels = set()
-    for source in [*(ROOT / "app/src/test").rglob("*.kt"), *(ROOT / "app/src/sharedTest").rglob("*.kt")]:
+    # test/ plus each distribution switch's testXxxOn/testXxxOff directory (#319).
+    directories = [*(ROOT / "app/src").glob("test*"), ROOT / "app/src/sharedTest"]
+    for source in [path for directory in directories for path in directory.rglob("*.kt")]:
         text = source.read_text()
         levels.update(int(n) for group in re.findall(r"@Config\([^)]*sdk\s*=\s*\[([^\]]*)\]", text)
                       for n in re.findall(r"\d+", group))

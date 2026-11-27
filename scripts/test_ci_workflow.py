@@ -102,6 +102,17 @@ class JobGraphTest(unittest.TestCase):
         self.assertIn(':app:testDebugUnitTest :app:lintDebug :app:assembleDebug -PdistillpodVoiceEnabled=true',
                       JOBS['voice_build'])
 
+    def test_play_build_checks_both_distribution_artifacts(self):
+        self.assertNotIn('distillpodDistribution', JOBS['android_build'])
+        self.assertIn('verify_distribution_apk.py --distribution github app/build/outputs/apk/debug/app-debug.apk',
+                      JOBS['android_build'])
+        play = JOBS['play_build']
+        self.assertIn(':app:testDebugUnitTest :app:lintDebug :app:assembleDebug -PdistillpodDistribution=play', play)
+        self.assertLess(play.index(':app:assembleDebug -PdistillpodDistribution=play'),
+                        play.index('verify_distribution_apk.py --distribution play app/build/outputs/apk/debug/app-debug.apk'))
+        # Nothing YouTube is fetched for the Play build.
+        self.assertNotIn('fetch_youtube_extractor', play)
+
     def test_emulator_jobs_split_ordinary_acceptance_and_keep_every_phase(self):
         part1, part2 = JOBS['emulator'], JOBS['emulator_part2']
         self.assertIn('ci_phase.py startup -- ', part1)
@@ -143,7 +154,7 @@ class WorkflowSafetyTest(unittest.TestCase):
 
     def test_gradle_cache_writers_are_unchanged_and_other_jobs_restore_read_only(self):
         gradle = {job for job, body in JOBS.items() if 'gradle/actions/setup-gradle@' in body}
-        self.assertEqual({'android_build', 'voice_build', RELEASE_JOB, 'emulator', 'emulator_part2'}, gradle)
+        self.assertEqual({'android_build', 'voice_build', 'play_build', RELEASE_JOB, 'emulator', 'emulator_part2'}, gradle)
         for job in gradle:
             body = JOBS[job]
             with self.subTest(job=job):
@@ -179,7 +190,7 @@ class WorkflowSafetyTest(unittest.TestCase):
 
     def test_every_sdk_install_retries_and_the_system_image_precedes_the_emulator(self):
         self.assertNotRegex(TEXT, r'run: sdkmanager')
-        for job in ['android_build', 'voice_build', RELEASE_JOB, 'emulator', 'emulator_part2']:
+        for job in ['android_build', 'voice_build', 'play_build', RELEASE_JOB, 'emulator', 'emulator_part2']:
             self.assertIn("run: scripts/sdk-install.sh 'platforms;android-36' 'build-tools;35.0.0' "
                           "'ndk;27.2.12479018' 'cmake;3.22.1'", JOBS[job])
         for job in ['emulator', 'emulator_part2']:
@@ -202,7 +213,7 @@ class WorkflowSafetyTest(unittest.TestCase):
 
     def test_unit_test_jobs_provide_the_java_21_runtime_robolectric_sdk_36_needs(self):
         # Robolectric refuses SDK 36 below Java 21; the build itself stays on JDK 17 (the default JAVA_HOME).
-        for job in ['android_build', 'voice_build']:
+        for job in ['android_build', 'voice_build', 'play_build']:
             body = JOBS[job]
             self.assertIn(':app:testDebugUnitTest', body)
             self.assertIn("          java-version: |\n            21\n            17\n", body)

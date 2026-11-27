@@ -131,19 +131,17 @@ internal fun JSONObject.publishedAt(): String? = optLong("timestamp", 0).takeIf 
 private fun JSONObject.picture(): String? = optJSONArray("thumbnails")?.objects()
     ?.lastOrNull()?.optString("url")?.takeIf { it.startsWith("https://") }
 
-data class YouTubeStreams(val audio: String, val video: String?)
-
 internal data class StreamClock(val elapsedNanos: () -> Long = System::nanoTime,
     val wallMillis: () -> Long = System::currentTimeMillis)
 
 /** Network extraction is injectable; parsing and identity are shared by live and fixture tests. */
 class YouTubeSource internal constructor(private val extractor: YouTubeExtractor, private val clock: StreamClock,
-    private val metadata: YouTubeMetadataFetcher? = null) {
+    private val metadata: YouTubeMetadataFetcher? = null) : YouTubeSupport {
     constructor(extractor: YouTubeExtractor) : this(extractor, StreamClock())
     constructor(extractor: YouTubeExtractor, metadata: YouTubeMetadataFetcher) : this(extractor, StreamClock(), metadata)
     var onStreamRefresh: () -> Unit = {}
     internal fun refreshed() { runCatching { onStreamRefresh() } }
-    suspend fun search(query: String): List<PodcastCandidate> = withTimeoutOrNull(45_000) {
+    override suspend fun search(query: String): List<PodcastCandidate> = withTimeoutOrNull(45_000) {
         coroutineScope {
             val batches = listOf("EgIQAg==", "EgIQAw==").map { filter -> async {
                 try {
@@ -166,7 +164,7 @@ class YouTubeSource internal constructor(private val extractor: YouTubeExtractor
         }
     } ?: throw IOException("YouTube search timed out. Try again later.")
 
-    suspend fun feed(id: String, raw: String): Feed = withTimeout(60_000) {
+    override suspend fun feed(id: String, raw: String): Feed = withTimeout(60_000) {
         runInterruptible(Dispatchers.IO) {
             val url = requireNotNull(YouTubeUrl.source(raw)) { "Use a public YouTube channel, playlist or video link" }
             val playlist = YouTubeUrl.playlistId(url) != null || YouTubeUrl.channel(url) != null
@@ -207,7 +205,7 @@ class YouTubeSource internal constructor(private val extractor: YouTubeExtractor
     }
 
     /** Full single-video metadata for an episode outside the public feed window. */
-    fun details(raw: String): YouTubeVideoMetadata {
+    override fun details(raw: String): YouTubeVideoMetadata {
         val id = requireNotNull(YouTubeUrl.videoId(raw)) { "Invalid YouTube episode" }
         val data = extractor.extract(YouTubeUrl.watch(id), false, 1)
         return YouTubeVideoMetadata(data.publishedAt(), data.text("description").trim())
@@ -216,8 +214,10 @@ class YouTubeSource internal constructor(private val extractor: YouTubeExtractor
     // Memory-only cache, bounded by both signed URL expiry and a 30-minute cap; never sync CDN URLs.
     private val cache = linkedMapOf<String, Pair<Long, YouTubeStreams>>()
     private val inFlight = ConcurrentHashMap<String, FutureTask<YouTubeStreams>>()
+    private val media by lazy { YouTubeMediaSources(this) }
+    override fun mediaSource(item: androidx.media3.common.MediaItem) = media.create(item)
     fun invalidate(raw: String) { YouTubeUrl.videoId(raw)?.let { synchronized(cache) { cache.remove(it) } } }
-    fun streams(raw: String): YouTubeStreams {
+    override fun streams(raw: String): YouTubeStreams {
         val id = requireNotNull(YouTubeUrl.videoId(raw)) { "Invalid YouTube episode" }
         val now = clock.elapsedNanos()
         synchronized(cache) { cache[id]?.takeIf { now < it.first }?.let { return it.second } }
@@ -263,7 +263,3 @@ internal fun selectStreams(data: JSONObject): YouTubeStreams {
         .maxByOrNull { it.optInt("height") }
     return YouTubeStreams(audio.getString("url"), video?.getString("url"))
 }
-
-/** Only a YouTube episode without a playable download resolves a stream before it plays (reads the file system). */
-internal fun streamNeedsResolving(audioUrl: String, localFile: String?): Boolean =
-    YouTubeUrl.videoId(audioUrl) != null && localFile?.let { java.io.File(it).isFile } != true

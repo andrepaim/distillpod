@@ -14,6 +14,7 @@ import dev.distillpod.android.AppGraph
 import dev.distillpod.android.MainActivity
 import dev.distillpod.android.appGraph
 import dev.distillpod.android.data.*
+import dev.distillpod.android.video.cannotPlay
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
@@ -26,6 +27,7 @@ class AppJobs(private val context: Context) {
     suspend fun download(id: String) = downloadControls.withLock { withContext(Dispatchers.IO) {
         val prefs = context.appGraph.settings.flow.first()
         context.appGraph.db.library().episode(id)?.let { ep ->
+            if (context.appGraph.youtube.cannotPlay(ep.audioUrl)) throw dev.distillpod.android.video.YouTubeUnavailableException()
             if (ep.downloadState == "downloaded" && ep.localFile?.let { java.io.File(it).isFile } == true) return@withContext
             context.appGraph.db.library().downloadProgress(id, "queued", ep.downloadedBytes, ep.totalBytes, ep.etag, ep.lastModified, null)
         }

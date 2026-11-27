@@ -33,6 +33,7 @@ class OwnerVideocastDeviceTest {
     private val context get() = instrumentation.targetContext
     private val graph get() = context.appGraph
     private val dao get() = graph.db.library()
+    private val youtube get() = graph.youtube as dev.distillpod.android.video.YouTubeSource
     private val id = "validation-owner-videocast"
     private val backup get() = File(context.noBackupFilesDir, "validation/videocast-owner.json")
     private suspend fun player() = graph.playback.sessionPlayer() as MediaController
@@ -72,10 +73,10 @@ class OwnerVideocastDeviceTest {
             "live" -> {
                 unmetered(); snapshot()
                 try {
-                    val feed = graph.youtube.feed(id, playlist)
+                    val feed = youtube.feed(id, playlist)
                     val urls = feed.episodes.take(2).map { it.audioUrl } + "https://www.youtube.com/watch?v=jNQXAC9IVRw"
                     check(urls.size == 3)
-                    for (url in urls) { graph.youtube.invalidate(url); decode(url) }
+                    for (url in urls) { youtube.invalidate(url); decode(url) }
                     fixture(feed.episodes.first())
                     serviceModes()
                     receipt("live", JSONObject().put("decodedVideos", 3).put("serviceModes", true))
@@ -84,7 +85,7 @@ class OwnerVideocastDeviceTest {
             "download" -> {
                 unmetered(); snapshot()
                 try {
-                    val episode = graph.youtube.feed(id, playlist).episodes.first()
+                    val episode = youtube.feed(id, playlist).episodes.first()
                     fixture(episode)
                     val file = withTimeout(15 * 60_000L) { graph.media.ensureDownloaded(id) }
                     val extractor = android.media.MediaExtractor()
@@ -103,7 +104,7 @@ class OwnerVideocastDeviceTest {
             "queue" -> {
                 unmetered(); snapshot()
                 try {
-                    val episode = graph.youtube.feed(id, playlist).episodes.first()
+                    val episode = youtube.feed(id, playlist).episodes.first()
                     fixture(episode)
                     val next = "$id-next"
                     dao.putEpisode(EpisodeEntity(next, id, next, "Public queue acceptance", episode.audioUrl,
@@ -129,11 +130,11 @@ class OwnerVideocastDeviceTest {
                 }
                 unmetered(); snapshot()
                 try {
-                    val channel = graph.youtube.search("Porta dos Fundos").firstOrNull {
+                    val channel = youtube.search("Porta dos Fundos").firstOrNull {
                         it.title.equals("Porta dos Fundos", true) && dev.distillpod.core.YouTubeUrl.channel(it.feedUrl) != null
                     }
                     assertNotNull("Find the real channel through search", channel)
-                    val feed = graph.youtube.feed(id, channel!!.feedUrl)
+                    val feed = youtube.feed(id, channel!!.feedUrl)
                     assertEquals(0, feed.episodes.first().sourceOrder)
                     fixture(feed.episodes.first())
                     val ep = dao.episode(id)!!
@@ -223,7 +224,7 @@ class OwnerVideocastDeviceTest {
                 }
                 unmetered(); snapshot()
                 try {
-                    fixture(graph.youtube.feed(id, playlist).episodes.first())
+                    fixture(youtube.feed(id, playlist).episodes.first())
                     graph.playback.play(id, 5_000); await { it.isPlaying }
                     graph.playback.pause(); graph.playback.speed(1.25f)
                     await { !it.isPlaying && it.playbackState == Player.STATE_READY }
@@ -254,7 +255,7 @@ class OwnerVideocastDeviceTest {
                         .putExtra("openPlayer", true))
                     val nextChip = device.wait(androidx.test.uiautomator.Until.findObject(androidx.test.uiautomator.By.text("Video").enabled(true)), 15_000)
                     assertNotNull(nextChip)
-                    graph.youtube.invalidate(dao.episode(id)!!.audioUrl)
+                    youtube.invalidate(dao.episode(id)!!.audioUrl)
                     nextChip!!.click()
                     assertTrue("Exercise the loading state before backgrounding", device.wait(
                         androidx.test.uiautomator.Until.hasObject(androidx.test.uiautomator.By.text("Loading…")), 5_000))
