@@ -1,4 +1,4 @@
-"""The distribution artifact check finds every switched feature and cannot pass vacuously (#319, #320)."""
+"""The distribution artifact check finds every switched feature and cannot pass vacuously (#319, #320, #323)."""
 import contextlib
 import io
 import struct
@@ -34,11 +34,11 @@ def dex(strings):
     return bytes(header) + b''.join(struct.pack('<I', o) for o in offsets) + bytes(data)
 
 
-def apk(directory, features, extra_strings=(), manifest='{"components": []}', extra_entries=()):
+def apk(directory, features, extra_strings=(), manifest='{"components": []}', extra_entries=(), extra_notices=()):
     """An APK carrying exactly the markers of the enabled features."""
     path = Path(directory) / 'app.apk'
     strings = ['Ldev/distillpod/android/MainActivity;', *extra_strings]
-    notices = ['- **OkHttp**: upstream notices.']
+    notices = ['- **OkHttp**: upstream notices.', *extra_notices]
     with zipfile.ZipFile(path, 'w') as archive:
         archive.writestr('AndroidManifest.xml', b'')
         archive.writestr('lib/arm64-v8a/libdistillpod_whisper.so', b'')
@@ -92,6 +92,23 @@ class DistributionApkTest(unittest.TestCase):
             status, errors = run(apk(directory, [], ['Lcom/yausername/ffmpeg/FFmpeg;']), '--distribution', 'play')
             self.assertEqual(1, status)
             self.assertIn('Lcom/yausername/', errors)
+
+    def test_play_fails_on_any_firebase_sign_in_or_credential_class(self):
+        for leaked in ['Lcom/google/firebase/FirebaseApp;', 'Lcom/google/firebase/storage/FirebaseStorage;',
+                       'Landroidx/credentials/GetCredentialRequest;',
+                       'Lcom/google/android/libraries/identity/googleid/GetSignInWithGoogleOption;',
+                       'Lcom/google/android/gms/auth/api/identity/Identity;']:
+            with self.subTest(leaked=leaked), tempfile.TemporaryDirectory() as directory:
+                status, errors = run(apk(directory, [], [leaked]), '--distribution', 'play')
+                self.assertEqual(1, status)
+                self.assertIn('sync: contains', errors)
+
+    def test_play_fails_when_the_notices_name_firebase(self):
+        with tempfile.TemporaryDirectory() as directory:
+            notice = '- **Firebase Android Authentication and Firestore SDKs**: notices.'
+            status, errors = run(apk(directory, [], extra_notices=[notice]), '--distribution', 'play')
+            self.assertEqual(1, status)
+            self.assertIn('licenses name firebase', errors)
 
     def test_play_fails_when_the_notices_name_a_youtube_component(self):
         with tempfile.TemporaryDirectory() as directory:

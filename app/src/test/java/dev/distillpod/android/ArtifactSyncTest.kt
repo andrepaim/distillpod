@@ -21,7 +21,7 @@ class ArtifactSyncTest {
     class Objects:ContentObjects {
         val rows=mutableMapOf<String,ContentArtifact>();var failAfterUpload=false;var reject=false
         override suspend fun put(owner:SyncOwner,artifact:ContentArtifact) {
-            if(reject)throw SyncOperationRejected(com.google.firebase.storage.StorageException.fromExceptionAndHttpCode(null,403)!!)
+            if(reject)throw SyncOperationRejected(IllegalStateException("Synthetic storage refusal"))
             rows["${owner.uid}/${owner.generation}/${artifact.hash}"]=artifact
             if(failAfterUpload){failAfterUpload=false;throw java.io.IOException("Connection interrupted after object upload")}
         }

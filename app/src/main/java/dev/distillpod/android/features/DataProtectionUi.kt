@@ -48,8 +48,7 @@ import dev.distillpod.android.ui.theme.extras
 
 /** One line on screen; the complete sync, backup and exclusion text stays in the sheet (#203). */
 @Composable internal fun SyncCoverageInfo(configured: Boolean, contentConfigured: Boolean, expandedScope: Boolean) {
-    val full = listOf(DataProtectionGuidance.sync(configured, contentConfigured, expandedScope), DataProtectionGuidance.backup,
-        DataProtectionGuidance.excluded, DataProtectionGuidance.newPhone, DataProtectionGuidance.binding)
+    val full = DataProtectionGuidance.coverage(configured, contentConfigured, expandedScope)
     ShortExplanation(if (configured) DataProtectionGuidance.summary else DataProtectionGuidance.sync(false, false, false), "What's covered", full)
 }
 

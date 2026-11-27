@@ -7,12 +7,6 @@ import com.google.firebase.storage.StorageMetadata
 import dev.distillpod.core.sync.*
 import kotlinx.coroutines.tasks.await
 
-interface ContentObjects {
-    suspend fun probe(owner:SyncOwner) {}
-    suspend fun put(owner:SyncOwner,artifact:ContentArtifact)
-    suspend fun get(owner:SyncOwner,hash:String,expandedBytes:Long):ContentArtifact
-}
-
 /** Immutable content-addressed objects. The configured Firebase app shares the sync account. */
 class FirebaseContentObjects(private val auth:FirebaseAuth,private val storage:FirebaseStorage,private val files:ContentFiles?=null,private val sessions:UploadSessions?=null):ContentObjects {
     private fun objectRef(owner:SyncOwner,hash:String):com.google.firebase.storage.StorageReference {

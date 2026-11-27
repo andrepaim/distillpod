@@ -28,17 +28,17 @@ fun clientString(key: String): String = when(key) {
     else -> ""
 }
 ksp { arg("room.schemaLocation", "$projectDir/schemas") }
-// Distribution switches (#319, #320): features a store's policy can refuse, chosen at build time.
+// Distribution switches (#319, #320, #323): features a store's policy can refuse, chosen at build time.
 // Each switch is the property distillpod<Name>Enabled. Without one, the distribution preset decides:
 // -PdistillpodDistribution=play turns off what the Play build must not contain; the default (github)
 // keeps everything on. A switch compiles src/<name>On or src/<name>Off and the matching test<Name>On|Off
 // and androidTest<Name>On|Off directories, so a feature that is off leaves no code in the artifact; its
 // dependencies and resources are added below only when it is on. To add a switch, name it here, give the
 // presets its value and create its On and Off directories. See docs/development.md#distribution-switches.
-val distributionSwitchNames = listOf("youtube", "updateCheck")
+val distributionSwitchNames = listOf("youtube", "updateCheck", "sync")
 val distributionPresets = mapOf(
     "github" to emptyMap(),
-    "play" to mapOf("youtube" to false, "updateCheck" to false),
+    "play" to mapOf("youtube" to false, "updateCheck" to false, "sync" to false),
 )
 val distribution = providers.gradleProperty("distillpodDistribution").getOrElse("github")
 val distributionPreset = requireNotNull(distributionPresets[distribution]) {
@@ -49,6 +49,8 @@ val distributionSwitches = distributionSwitchNames.associateWith { name ->
         ?: distributionPreset[name] ?: true
 }
 val youtubeEnabled = distributionSwitches.getValue("youtube")
+// Library sync: Google sign-in, Firebase Authentication and Firestore. Off, the build creates no account.
+val syncEnabled = distributionSwitches.getValue("sync")
 // Immutable build input, verified before packaging. Never update executable code on the phone.
 val youtubeExtractorSpec = JsonSlurper().parse(rootProject.file("scripts/youtube_extractor.json")) as Map<*, *>
 val youtubeExtractorVersion = youtubeExtractorSpec["version"] as String
@@ -93,31 +95,34 @@ val prepareYoutubeExtractor by tasks.registering {
     }
 }
 if (youtubeEnabled) tasks.named("preBuild").configure { dependsOn(prepareYoutubeExtractor) }
-// A build without YouTube sources ships notices and a source manifest without the YouTube components.
+// A build without YouTube sources or sync ships notices and a source manifest without those components.
 // The filtered copies sit in the build-type source sets, which take precedence over main's assets.
 val youtubeLicenseComponents = listOf("youtubedl-android", "yt-dlp")
+val syncLicenseComponents = listOf("Firebase", "Credential Manager")
+val omittedLicenseComponents = (if (youtubeEnabled) emptyList() else youtubeLicenseComponents) +
+    (if (syncEnabled) emptyList() else syncLicenseComponents)
 val distributionLicenses = layout.buildDirectory.dir("generated/distribution/assets")
 val prepareDistributionLicenses by tasks.registering {
     val licenses = file("src/main/assets/licenses")
     inputs.dir(licenses)
-    inputs.property("components", youtubeLicenseComponents)
+    inputs.property("components", omittedLicenseComponents)
     val output = distributionLicenses.map { it.dir("licenses") }
     outputs.dir(output)
     doLast {
         val destination = output.get().asFile
         destination.deleteRecursively(); destination.mkdirs()
-        fun youtube(text: String) = youtubeLicenseComponents.any { text.contains(it, ignoreCase = true) }
-        val notices = File(licenses, "THIRD_PARTY_NOTICES.md").readLines().filterNot { it.startsWith("- **") && youtube(it) }
+        fun omitted(text: String) = omittedLicenseComponents.any { text.contains(it, ignoreCase = true) }
+        val notices = File(licenses, "THIRD_PARTY_NOTICES.md").readLines().filterNot { it.startsWith("- **") && omitted(it) }
         @Suppress("UNCHECKED_CAST")
         val manifest = JsonSlurper().parse(File(licenses, "source-manifest.json")) as Map<String, List<Map<String, Any>>>
-        val components = manifest.getValue("components").filterNot { youtube(it.getValue("repository") as String) }
+        val components = manifest.getValue("components").filterNot { omitted(it.getValue("repository") as String) }
         File(destination, "THIRD_PARTY_NOTICES.md").writeText(notices.joinToString("\n", postfix = "\n"))
         File(destination, "source-manifest.json").writeText(groovy.json.JsonOutput.prettyPrint(
             groovy.json.JsonOutput.toJson(mapOf("components" to components))) + "\n")
-        destination.listFiles()!!.forEach { check(!youtube(it.readText())) { "${it.name} still names a YouTube component" } }
+        destination.listFiles()!!.forEach { check(!omitted(it.readText())) { "${it.name} still names a component this build omits" } }
     }
 }
-if (!youtubeEnabled) tasks.named("preBuild").configure { dependsOn(prepareDistributionLicenses) }
+if (omittedLicenseComponents.isNotEmpty()) tasks.named("preBuild").configure { dependsOn(prepareDistributionLicenses) }
 // Robolectric's instrumented Android jars are ordinary Gradle dependencies (cached, retried) and
 // tests run offline against them, so nothing is downloaded while tests run. The versions are the
 // DefaultSdkProvider table of this Robolectric release; update both together. A test that asks
@@ -154,7 +159,8 @@ android {
         require(sentryDsn.matches(Regex("[A-Za-z0-9_.:/@-]*"))) { "Invalid Sentry DSN" }
         resValue("string", "diagnostics_dsn", sentryDsn)
         for ((resource, key) in listOf("sync_storage_bucket" to "bucket", "sync_project_id" to "project", "sync_app_id" to "app", "sync_api_key" to "api", "sync_web_client_id" to "web")) {
-            val value = clientString(key)
+            // A build without sync never carries the Firebase client configuration, even when one is supplied.
+            val value = if (syncEnabled) clientString(key) else ""
             require(value.matches(Regex("[A-Za-z0-9_.:/-]*"))) { "Invalid Firebase client configuration" }
             resValue("string", resource, value)
         }
@@ -192,7 +198,7 @@ android {
         sourceSets.getByName("androidTest").java.srcDir("src/androidTest$suffix/java")
     }
     if (youtubeEnabled) sourceSets.getByName("main").res.srcDir(youtubeResources)
-    else buildTypes.forEach { sourceSets.getByName(it.name).assets.srcDir(distributionLicenses) }
+    if (omittedLicenseComponents.isNotEmpty()) buildTypes.forEach { sourceSets.getByName(it.name).assets.srcDir(distributionLicenses) }
     buildFeatures { compose = true }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }
@@ -206,14 +212,16 @@ dependencies {
     implementation("androidx.car.app:app:1.7.0")
     implementation("androidx.car.app:app-projected:1.7.0")
     implementation("androidx.media:media:1.7.0")
-    implementation(platform("com.google.firebase:firebase-bom:34.8.0"))
-    implementation("com.google.firebase:firebase-auth")
-    implementation("com.google.firebase:firebase-firestore")
-    implementation("com.google.firebase:firebase-storage")
-    implementation("androidx.credentials:credentials:1.5.0")
-    implementation("androidx.credentials:credentials-play-services-auth:1.5.0")
-    implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.10.1")
+    if (syncEnabled) {
+        implementation(platform("com.google.firebase:firebase-bom:34.8.0"))
+        implementation("com.google.firebase:firebase-auth")
+        implementation("com.google.firebase:firebase-firestore")
+        implementation("com.google.firebase:firebase-storage")
+        implementation("androidx.credentials:credentials:1.5.0")
+        implementation("androidx.credentials:credentials-play-services-auth:1.5.0")
+        implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
+        implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.10.1")
+    }
     implementation(platform("androidx.compose:compose-bom:2026.06.01"))
     implementation("androidx.activity:activity-compose:1.10.1")
     implementation("androidx.compose.material3:material3")
