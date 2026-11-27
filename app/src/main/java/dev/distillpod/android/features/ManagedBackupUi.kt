@@ -88,7 +88,8 @@ private fun savedDate(at: Long) = DateTimeFormatter.ofPattern("d MMM yyyy · HH:
                         Icon(Icons.Default.Restore, null); Spacer(Modifier.width(8.dp)); Text("Restore a backup")
                     }
                 } ?: run {
-                    Text("Choose Drive, device storage or another provider in Android’s file picker. Select the account and folder there, separately from the Google account used for cloud sync. The file keeps dated backup history.")
+                    Text("Choose Drive, device storage or another provider in Android’s file picker. Select the account and folder there" +
+                        (if (dev.distillpod.android.sync.SyncBuild.ENABLED) ", separately from the Google account used for cloud sync" else "") + ". The file keeps dated backup history.")
                     Button(onClick = { managed(backups::create) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Create backup file") }
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
@@ -131,7 +132,9 @@ private fun savedDate(at: Long) = DateTimeFormatter.ofPattern("d MMM yyyy · HH:
             Text("Turning it off forgets the file on this phone. The file and its backups are kept.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         HorizontalDivider()
-        Text("On a new phone, connect this same file, choose a dated backup and review the restore preview before merging. Google sync sign-in does not connect your backup file. For Drive, use the account that owns the file.", style = MaterialTheme.typography.bodySmall)
+        Text("On a new phone, connect this same file, choose a dated backup and review the restore preview before merging. " +
+            (if (dev.distillpod.android.sync.SyncBuild.ENABLED) "Google sync sign-in does not connect your backup file. " else "") +
+            "For Drive, use the account that owns the file.", style = MaterialTheme.typography.bodySmall)
         Text("Have an older export?", style = MaterialTheme.typography.titleMedium)
         Text("Import a standalone DistillPod JSON backup. All file types are shown so Drive cannot hide it because of its file type.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         OutlinedButton(onClick = { older.launch(arrayOf("*/*")) }, enabled = !busy) { Text("Import older backup") }

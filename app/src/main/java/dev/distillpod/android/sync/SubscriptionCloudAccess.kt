@@ -7,7 +7,8 @@ import dev.distillpod.android.R
 internal object SubscriptionCloudAccess {
     @Volatile var instrumentation: Boolean = false
 
-    fun configured(context: Context): Boolean = !instrumentation &&
+    /** Always false in a build without sync (the Play preset), whatever resources it carries. */
+    fun configured(context: Context): Boolean = SyncBuild.ENABLED && !instrumentation &&
         listOf(R.string.sync_api_key, R.string.sync_web_client_id, R.string.sync_app_id, R.string.sync_project_id)
             .all { context.getString(it).isNotBlank() }
 }

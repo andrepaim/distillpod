@@ -3,7 +3,6 @@ package dev.distillpod.android
 import android.content.Context
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
-import com.google.firebase.firestore.FirebaseFirestoreException
 import dev.distillpod.android.data.*
 import dev.distillpod.android.sync.*
 import dev.distillpod.core.sync.*
@@ -31,14 +30,6 @@ class SubscriptionLocalRejectionTest {
         for(invalid in listOf(operation(SubscriptionSyncStore.key(later),valid+("unexpected" to "field")),operation("not a key",valid))) {
             try {commitPayload(invalid);fail()} catch(rejected:SyncOperationRejected) {assertTrue(rejected.cause is IllegalArgumentException)}
         }
-    }
-    @Test fun `only an invalid argument refusal of staged writes rejects a Firestore commit`() {
-        for(code in FirebaseFirestoreException.Code.values().filter {it!=FirebaseFirestoreException.Code.OK}) {
-            val error=FirebaseFirestoreException("synthetic",code)
-            assertEquals(code.name,code==FirebaseFirestoreException.Code.INVALID_ARGUMENT,firestoreWriteRejected(error,staged=true))
-            assertFalse(code.name,firestoreWriteRejected(error,staged=false))
-        }
-        assertFalse(firestoreWriteRejected(java.io.IOException("synthetic"),staged=true))
     }
 
     @Test fun `a refused upload of an attempt the cloud already recorded completes from its receipt`()=runBlocking {

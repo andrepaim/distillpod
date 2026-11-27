@@ -17,12 +17,13 @@
 <h2>ChatGPT connection</h2>
 <p>Open <strong>Settings → ChatGPT → Disconnect account</strong> in DistillPod to delete the stored sign-in tokens. Your conversations and data at OpenAI are managed in your OpenAI account, not by DistillPod.</p>
 <h2>Library sync account and synced data</h2>
-<p>If you turned on library sync, a sign-in account and your synced library records are stored in Google Firebase. To delete them:</p>
+<p><strong>DistillPod from Google Play has no library sync.</strong> It has no Google sign-in and creates no account of any kind, so there is no sync account or synced data to delete. Everything it keeps is on your phone and is deleted as described above.</p>
+<p>The version distributed from GitHub has optional library sync. If you turned it on there, a sign-in account and your synced library records are stored in Google Firebase. That version cannot yet delete them from inside the app. To delete them:</p>
 <ol>
 <li>Send an email to andrepaim@gmail.com from the Google account you used for sync, with the subject "Delete my DistillPod sync data".</li>
-<li>We delete the sign-in account and every synced record for it (subscriptions, listening progress, saved moments, queue and preferences) within 30 days and confirm by reply.</li>
+<li>We delete the sign-in account and every synced record for it (subscriptions, listening progress, completion, saved moments, queue and preferences, and the change history kept for retries) within 30 days and confirm by reply.</li>
 </ol>
-<p>Nothing is kept after deletion. Signing out in <strong>Settings → Sync</strong> stops sync but does not delete data already stored.</p>
+<p>Nothing is kept after deletion. Your library stays on your phones. Before you write, sign out in <strong>Settings → Sync</strong> on every phone that uses that account. A phone that is still signed in never uploads its library to the deleted account, but for up to an hour afterwards it could create an empty account record again; signing out first prevents that.</p>
 <p>To delete part of the data without deleting the account, unfollow a show or delete a saved moment in the app; the change is synced.</p>
 <h2>Diagnostics</h2>
 <p>Turn off <strong>Settings → Diagnostics</strong> to stop reports and delete those not yet sent. Reports already delivered contain no account identity and expire under Sentry's retention period.</p>

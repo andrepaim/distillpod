@@ -14,6 +14,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
+/** Firebase failure classification; runs only in a build with library sync (src/testSyncOn). */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk=[34])
 class SubscriptionSyncFailureTest {
@@ -46,6 +47,14 @@ class SubscriptionSyncFailureTest {
             val expected=if(code in setOf(FirebaseFirestoreException.Code.UNAVAILABLE,FirebaseFirestoreException.Code.DEADLINE_EXCEEDED))"offline" else "error"
             assertEquals(code.name,expected,syncFailureStatus(failure(code)))
         }
+    }
+    @Test fun `only an invalid argument refusal of staged writes rejects a Firestore commit`() {
+        for(code in FirebaseFirestoreException.Code.values().filter {it!=FirebaseFirestoreException.Code.OK}) {
+            val error=FirebaseFirestoreException("synthetic",code)
+            assertEquals(code.name,code==FirebaseFirestoreException.Code.INVALID_ARGUMENT,firestoreWriteRejected(error,staged=true))
+            assertFalse(code.name,firestoreWriteRejected(error,staged=false))
+        }
+        assertFalse(firestoreWriteRejected(java.io.IOException("synthetic"),staged=true))
     }
     @Test fun onlyStorageAuthorizationDenialRejectsUpload() {
         assertTrue(storageUploadRejected(com.google.firebase.storage.StorageException.fromExceptionAndHttpCode(null,403)!!))
