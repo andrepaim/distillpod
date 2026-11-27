@@ -244,9 +244,7 @@ class PlaybackAudioLoaderDeviceTest {
             }
             withContext(Dispatchers.Main) {
                 val sources = if (beforeOpen) ProgressiveMediaSource.Factory(factory) else
-                    dev.distillpod.android.video.VideocastMediaSourceFactory(context,
-                        dev.distillpod.android.video.YouTubeSource { _, _, _ -> error("Offline fixture") },
-                        media.active.audioOwnership, factory)
+                    dev.distillpod.android.video.VideocastMediaSourceFactory(context, null, media.active.audioOwnership, factory)
                 val engine = ExoPlayer.Builder(context).setMediaSourceFactory(sources).build()
                 engine.addListener(object : Player.Listener {
                     override fun onPlayerError(error: PlaybackException) { observedError.compareAndSet(null, error) }

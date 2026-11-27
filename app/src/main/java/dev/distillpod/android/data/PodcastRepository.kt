@@ -21,7 +21,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import dev.distillpod.core.YouTubeUrl
-import dev.distillpod.android.video.YouTubeSource
+import dev.distillpod.android.video.YouTubeSupport
+import dev.distillpod.android.video.YouTubeUnavailableException
+import dev.distillpod.android.video.YOUTUBE_LINK_UNSUPPORTED
+import dev.distillpod.android.video.cannotLoad
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
@@ -51,7 +54,7 @@ class PodcastRepository(private val db: AppDatabase, private val http: OkHttpCli
     private val directory: HttpUrl = "https://itunes.apple.com/search".toHttpUrl(),
     private val onSubscriptionChanged: () -> Unit = {},
     private val onFeedNeeded: (String) -> Unit = {},
-    private val youtube: YouTubeSource? = null,
+    private val youtube: YouTubeSupport? = null,
     private val upgradeOnce: suspend (String, suspend () -> Unit) -> Unit = { _, _ -> }) {
     private val dao = db.library()
     private val subscriptionSync = dev.distillpod.android.sync.SubscriptionSyncStore(db)
@@ -160,6 +163,11 @@ class PodcastRepository(private val db: AppDatabase, private val http: OkHttpCli
         }
     }
 
+    /** A build without YouTube sources refuses a new YouTube address before any request or write (#319). */
+    private fun requireNewSourceSupported(rawUrl: String) {
+        if (youtube.cannotLoad(rawUrl)) throw YouTubeUnavailableException(YOUTUBE_LINK_UNSUPPORTED)
+    }
+
     suspend fun follow(candidate: PodcastCandidate): String = withContext(Dispatchers.IO) {
         if (YouTubeUrl.source(candidate.feedUrl) != null) return@withContext subscribe(candidate.feedUrl)
         val url=publicHttpUrl(candidate.feedUrl).toString()
@@ -178,6 +186,7 @@ class PodcastRepository(private val db: AppDatabase, private val http: OkHttpCli
         val youtubeUrl = YouTubeUrl.source(rawUrl)
         val url = youtubeUrl ?: publicHttpUrl(rawUrl).toString()
         // Read a known show inside the write (#246) so a concurrent edit to its row survives the follow.
+        if (dao.podcastByUrl(url) == null) requireNewSourceSupported(url)
         val existing = db.withTransaction { dao.podcastByUrl(url)?.also { subscriptionSync.follow(it.copy(subscribed = true)) } }
         if (existing != null) {
             onSubscriptionChanged()
@@ -192,7 +201,8 @@ class PodcastRepository(private val db: AppDatabase, private val http: OkHttpCli
         val youtubeUrl = YouTubeUrl.source(rawUrl)
         val url = youtubeUrl ?: publicHttpUrl(rawUrl).toString()
         val existing = dao.podcastByUrl(url)
-        if (existing != null && dao.episodesForPodcast(existing.id).isNotEmpty()) return@withContext existing.id
+        if (existing != null && (dao.episodesForPodcast(existing.id).isNotEmpty() || youtube.cannotLoad(url))) return@withContext existing.id
+        requireNewSourceSupported(url)
         loadPodcast(url, youtubeUrl != null, follow = false)
     }
 
@@ -238,6 +248,8 @@ class PodcastRepository(private val db: AppDatabase, private val http: OkHttpCli
     suspend fun refresh(id: String) = withContext(Dispatchers.IO) {
         revalidateOnce()
         val podcast = dao.podcast(id) ?: return@withContext
+        // Restored from a backup into a build without YouTube sources: kept as it is, never fetched (#319).
+        if (youtube.cannotLoad(podcast.feedUrl)) throw YouTubeUnavailableException()
         try {
             YouTubeUrl.source(podcast.feedUrl)?.let { url ->
                 val feed = requireNotNull(youtube) { "YouTube support is unavailable" }.feed(id, url)
@@ -358,7 +370,7 @@ class PodcastRepository(private val db: AppDatabase, private val http: OkHttpCli
         val feeds = dev.distillpod.core.parseOpml(xml)
         var added = 0
         db.withTransaction {
-            feeds.forEach { feed ->
+            feeds.filterNot { youtube.cannotLoad(it.url) }.forEach { feed ->
                 val url = publicHttpUrl(feed.url).toString()
                 val old = dao.podcastByUrl(url)
                 if (old == null) {
@@ -372,7 +384,7 @@ class PodcastRepository(private val db: AppDatabase, private val http: OkHttpCli
     }
     /** One failing feed does not stop the others, but a stopped worker stops here instead of reporting success. */
     suspend fun refreshAll() {
-        for (podcast in dao.podcasts().filter { it.subscribed }) {
+        for (podcast in dao.podcasts().filter { it.subscribed && !youtube.cannotLoad(it.feedUrl) }) {
             try { refresh(podcast.id) }
             catch (_: Exception) { currentCoroutineContext().ensureActive() }
         }

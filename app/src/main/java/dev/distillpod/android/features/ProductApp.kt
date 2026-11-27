@@ -64,6 +64,8 @@ import dev.distillpod.android.DiagnosticsActivity
 import dev.distillpod.android.ai.AccountState
 import dev.distillpod.android.ai.resolveAiModel
 import dev.distillpod.android.data.*
+import dev.distillpod.android.video.cannotLoad
+import dev.distillpod.android.video.cannotPlay
 import dev.distillpod.android.playback.PlaybackState
 import dev.distillpod.android.ui.theme.extras
 import dev.distillpod.android.ui.theme.DistillTheme
@@ -302,6 +304,7 @@ private val LIBRARY_FILTERS = listOf(Triple("all", "Latest", "Latest"), Triple("
                         Icon(Icons.Default.Settings, "Show preparation settings")
                     }
                 }
+                if (vm.graph.youtube.cannotLoad(selected.feedUrl)) UnavailableSourceNotice(Modifier.padding(top = 12.dp))
                 if (attentionIds.isNotEmpty()) TextButton(onClick = { vm.open("preparation:attention:${selected.id}") }) {
                     Text(if (attentionIds.size == 1) "1 episode needs attention" else "${attentionIds.size} episodes need attention")
                 }
@@ -455,7 +458,8 @@ private val LIBRARY_FILTERS = listOf(Triple("all", "Latest", "Latest"), Triple("
                 Column(Modifier.fillMaxSize().then(if (fullscreen) Modifier else Modifier.verticalScroll(scroll).heightIn(min = maxHeight).padding(horizontal = 20.dp)),
                     horizontalAlignment = Alignment.CenterHorizontally) {
                     Box(if (fullscreen) Modifier.fillMaxSize() else Modifier.fillMaxWidth().padding(top = 12.dp), contentAlignment = Alignment.Center) {
-                        if (ep.mimeType?.startsWith("video/") == true) {
+                        // A build without YouTube sources offers no Video choice for a restored YouTube episode (#319).
+                        if (ep.mimeType?.startsWith("video/") == true && !vm.graph.youtube.cannotPlay(ep.audioUrl)) {
                             VideocastPlayer(vm.graph.playback, ep.id, title = ep.title, fullscreenExitRequest = fullscreenExitRequest,
                                 onFullscreen = { fullscreen = it; onFullscreen(it) },
                                 onCapture = vm::captureMomentInPlayer, captureBusy = "distill" in busy,
@@ -526,12 +530,14 @@ private val LIBRARY_FILTERS = listOf(Triple("all", "Latest", "Latest"), Triple("
     if (ep == null) { Empty("Episode unavailable", "Refresh the podcast or choose another saved episode."); return }
     val podcast = podcasts.firstOrNull { it.id == ep.podcastId }
     val detailStates by vm.episodeDetails.collectAsStateWithLifecycle()
-    val needsDetails = ep.needsSourceDetails()
+    val unavailable = vm.graph.youtube.cannotPlay(ep.audioUrl)
+    val needsDetails = !unavailable && ep.needsSourceDetails()
     LaunchedEffect(ep.id, needsDetails) { if (needsDetails) vm.loadEpisodeDetails(ep.id) }
     LaunchedEffect(ep.id) { vm.warmEpisodeStream(ep) }
-    val metadata = episodeMetadataText(ep, detailStates[ep.id])
+    val metadata = episodeMetadataText(ep, detailStates[ep.id], sourceDetails = !unavailable)
     EpisodeDetail(ep, podcast, metadata, listeningPosition(ep, player), remember(vm) { vm.episodeActions(openPlayer = true) },
         vm::open, { vm.loadEpisodeDetails(ep.id) }, Modifier.verticalScroll(rememberScrollState())) {
+        if (unavailable) UnavailableSourceNotice()
         EpisodeToolsGroup(vm, ep)
     }
 }

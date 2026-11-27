@@ -25,16 +25,17 @@ class AppGraph internal constructor(val context: Context, val scope: CoroutineSc
     val http = OkHttpClient.Builder().connectTimeout(20, TimeUnit.SECONDS).readTimeout(30, TimeUnit.SECONDS)
         .addInterceptor { it.proceed(it.request().newBuilder().header("User-Agent", "DistillPod/0.2 (Android)").build()) }.build()
     val syncAccount by lazy { dev.distillpod.android.sync.SubscriptionSyncAccount(this) }
-    val youtube = dev.distillpod.android.video.YouTubeSource(dev.distillpod.android.video.AndroidYouTubeExtractor(context) { name, reason, elapsed, operation ->
-        diagnostics.event(name, operation = operation, reason = reason, elapsedMs = elapsed)
-    }, dev.distillpod.android.video.HttpYouTubeMetadataFetcher(http)).apply { onStreamRefresh = { diagnostics.event("youtube.stream_refreshed", reason = "ready") } }
+    /** Null in a build without YouTube sources (#319). */
+    val youtube: dev.distillpod.android.video.YouTubeSupport? = dev.distillpod.android.video.YouTubeBuild.create(context, http, diagnostics)
     val podcasts = PodcastRepository(db, http, onSubscriptionChanged = { syncAccount.kick() }, onFeedNeeded = { jobs.refresh(it) }, youtube = youtube,
         upgradeOnce = settings::once)
     val portableSync by lazy {dev.distillpod.android.sync.PortableLibrarySync(db,changed={syncAccount.kick()})}
     val collectionSync by lazy {dev.distillpod.android.sync.CollectionSync(db,changed={syncAccount.kick()})}
     val activeFiles = ActiveFiles()
     val media = MediaRepository(context, db, settings, ResumableDownloader(http), activeFiles,
-        resolveAudio = { url -> if (dev.distillpod.core.YouTubeUrl.videoId(url) != null) youtube.streams(url).audio else url },
+        resolveAudio = { url -> if (dev.distillpod.core.YouTubeUrl.videoId(url) == null) url
+            else (youtube ?: throw dev.distillpod.android.video.YouTubeUnavailableException()).streams(url).audio },
+        youtube = youtube != null,
         onValidated = { diagnostics.event("videocast.download_validated", reason = "succeeded") })
     val account = AccountRepository(context, scope)
     val jobs = AppJobs(context)

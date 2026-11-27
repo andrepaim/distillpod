@@ -9,7 +9,7 @@ from pathlib import Path, PurePosixPath
 from docs_validation import check_links
 
 # Every full run executes these; documentation, draft and reused routes skip them all.
-FULL_JOBS = {'android_build', 'voice_build', 'firebase', 'native', 'emulator', 'emulator_part2'}
+FULL_JOBS = {'android_build', 'voice_build', 'play_build', 'firebase', 'native', 'emulator', 'emulator_part2'}
 # Only a reusable release call (build_release: true) in full mode builds the candidate.
 RELEASE_JOB = 'release_build'
 GATE_NEEDS = FULL_JOBS | {RELEASE_JOB, 'plan', 'security'}

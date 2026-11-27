@@ -79,7 +79,7 @@ class BulkAudioCleanupDeviceTest {
             val prepared = f.media.preparePlaybackItems(listOf(mediaItem(a, null))).single()
             withContext(Dispatchers.Main) {
                 val engine = ExoPlayer.Builder(context).setMediaSourceFactory(VideocastMediaSourceFactory(context,
-                    YouTubeSource { _, _, _ -> error("Offline fixture") }, f.media.active.audioOwnership)).build()
+                    null, f.media.active.audioOwnership)).build()
                 f.player = OwnedAudioPlayer(engine, f.media.active.audioOwnership, f.media.directory.absolutePath).also {
                     it.volume = 0f; it.setMediaItem(prepared); it.prepare(); it.play()
                 }

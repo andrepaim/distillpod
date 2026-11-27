@@ -212,7 +212,7 @@ class GateTests(unittest.TestCase):
             validate_gate(data, 'pull_request', {}, SHA)
 
     def test_every_parallel_job_is_required_and_none_may_be_missing_or_extra(self):
-        self.assertEqual({'android_build', 'voice_build', 'firebase', 'native', 'emulator',
+        self.assertEqual({'android_build', 'voice_build', 'play_build', 'firebase', 'native', 'emulator',
                           'emulator_part2'}, FULL_JOBS)
         for job in [*JOBS, RELEASE_JOB, 'plan', 'security']:
             data = results()

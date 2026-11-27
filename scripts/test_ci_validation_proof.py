@@ -35,7 +35,8 @@ class ProofTests(unittest.TestCase):
                     'repository':{'full_name':'owner/repo'},'head_repository':{'full_name':'owner/repo'}}
         self.jobs = [{'name':n,'conclusion':'success','steps':[{'name':'Verify validation source','conclusion':'success'}]} for n in [
             'Select validation and check documentation','Repository security / Secrets and personal data guard',
-            'Android build validation','Opt-in voice build validation','Firebase protocol and security rules',
+            'Android build validation','Opt-in voice build validation','Play distribution build validation',
+            'Firebase protocol and security rules',
             'Native bridge validation','Isolated Android acceptance','Isolated Android acceptance, part 2',
             'Kotlin, lint and APK']]
         self.jobs.append({'name':'Unsigned release build','conclusion':'skipped','steps':[]})
@@ -85,7 +86,7 @@ class ProofTests(unittest.TestCase):
         self.assertFalse(verify_evidence(self.repo.root,self.proof,self.run,self.jobs+self.jobs,'owner/repo'))
 
     def test_every_parallel_build_job_needs_success_and_its_source_guard(self):
-        for name in ['Opt-in voice build validation','Isolated Android acceptance, part 2',
+        for name in ['Opt-in voice build validation','Play distribution build validation','Isolated Android acceptance, part 2',
                      'Android build validation','Isolated Android acceptance']:
             index=[j['name'] for j in self.jobs].index(name)
             for change in [dict(conclusion='failure'),dict(conclusion='cancelled'),dict(conclusion='skipped'),
@@ -326,6 +327,6 @@ class LookupTests(unittest.TestCase):
         for event,inputs,verified in [('push',{},''),('pull_request',{},'123'),
                                       ('push',{'build_release':False},'123')]:
             with self.assertRaises(ValueError):validate_gate(data,event,inputs,SHA,verified)
-        for job in ['android_build','voice_build','firebase','native','emulator','emulator_part2','release_build']:
+        for job in ['android_build','voice_build','play_build','firebase','native','emulator','emulator_part2','release_build']:
             changed=copy.deepcopy(data);changed[job]['result']='failure'
             with self.assertRaises(ValueError):validate_gate(changed,'push',{},SHA,'123')

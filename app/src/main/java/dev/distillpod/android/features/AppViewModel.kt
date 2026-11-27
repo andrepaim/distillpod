@@ -244,7 +244,7 @@ class AppViewModel(val graph: AppGraph, private val saved: SavedStateHandle) : V
     fun warmEpisodeStream(ep: EpisodeEntity) {
         if (!streamNeedsResolving(ep.audioUrl, null)) return
         graph.scope.launch(Dispatchers.IO) {
-            if (streamNeedsResolving(ep.audioUrl, ep.localFile)) runCatching { graph.youtube.streams(ep.audioUrl) }
+            if (streamNeedsResolving(ep.audioUrl, ep.localFile)) runCatching { graph.youtube?.streams(ep.audioUrl) }
         }
     }
     fun refresh(id: String? = null) = action("refresh") {

@@ -146,6 +146,49 @@ Unit tests run Robolectric offline. The `android-all-instrumented` jar for each 
 
 Debug APK: `app/build/outputs/apk/debug/app-debug.apk`. Each developer/CI runner normally has its own debug key. Use signed release assets for upgrades to the personal-alpha installation.
 
+## Distribution switches
+
+Some features are allowed in the GitHub build but not by a store's policy. Each is a build-time
+switch, so a build without it contains none of its code, dependencies or resources; the source
+stays in the repository (#319).
+
+| Switch | Property | Default | Play | Off means |
+| --- | --- | --- | --- | --- |
+| YouTube sources | `distillpodYoutubeEnabled` | on | off | No `youtubedl-android`, no yt-dlp binary, no YouTube search, feed, stream or lookup code; see [videocasts](android/videocasts.md#builds-without-youtube-sources) |
+
+`-PdistillpodDistribution=play` selects the Play value of every switch; the default
+(`github`, or no property) keeps them all on and is today's build. An explicit switch property
+overrides the preset, for example `-PdistillpodDistribution=play -PdistillpodYoutubeEnabled=true`.
+An unknown distribution name fails the build. The task names do not change: the Play build is still
+`:app:assembleDebug`, `:app:testDebugUnitTest` and `:app:lintDebug`, with the property added.
+
+```sh
+./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug -PdistillpodDistribution=play
+python3 scripts/verify_distribution_apk.py --distribution play app/build/outputs/apk/debug/app-debug.apk
+```
+
+Gradle and Robolectric outputs are shared between the two configurations of a checkout; the
+property changes the source directories, so Gradle recompiles when it changes.
+
+A switch named `name` compiles `app/src/nameOn/java` or `app/src/nameOff/java` into the app, and
+`app/src/testNameOn|Off/java` and `app/src/androidTestNameOn|Off/java` into its tests. Shared code in
+`main` uses an interface or a small `...Build` object that both directories define: the On side holds
+the feature, the Off side its inert stand-in. Dependencies and generated resources of the feature are
+added in `app/build.gradle.kts` only when the switch is on. Tests of the feature itself belong in
+`testNameOn`; tests that the build without it offers and changes nothing belong in `testNameOff`;
+everything else stays in `test` and passes in both. Emulator suites run the default build only.
+
+To add a switch: name it in `distributionSwitchNames`, give `distributionPresets` its Play value,
+create its On and Off directories, and add its markers (packaged entries, dex strings and class
+names, notices) to `FEATURES` in `scripts/verify_distribution_apk.py`.
+`scripts/test_verify_distribution_apk.py` fails until the script and the Gradle presets agree.
+
+`scripts/verify_distribution_apk.py` reads the APK's entries, every dex string table (which holds
+each referenced class descriptor and string constant) and its packaged notices. For a switch that is
+off, any marker fails the check: an extractor binary or native library, a YouTube class, the
+YouTube search address, or a YouTube component in the notices. For a switch that is on, every marker must be present, so a renamed
+class cannot make the check pass vacuously. CI runs it on both the default and the Play APK.
+
 ## Native bridge checks
 
 With a host C++ toolchain and CMake 3.22.1 or later:
@@ -323,8 +366,9 @@ validation, these jobs run in parallel on standard hosted runners (#281):
 
 | Job (check name) | Timeout | Work | Artifacts |
 | --- | --- | --- | --- |
-| `android_build` (Android build validation) | 35 min | Script tests, ABI regressions, `:core:test`, default unit tests, lint and debug APK | `android-reports`, `distillpod-debug-test-build` |
+| `android_build` (Android build validation) | 35 min | Script tests, ABI regressions, `:core:test`, default unit tests, lint, debug APK and its distribution artifact check | `android-reports`, `distillpod-debug-test-build` |
 | `voice_build` (Opt-in voice build validation) | 30 min | Unit tests, lint and debug APK with `distillpodVoiceEnabled=true` | `android-voice-reports` |
+| `play_build` (Play distribution build validation) | 30 min | Unit tests, lint and debug APK with `distillpodDistribution=play`, then the [distribution artifact check](#distribution-switches) | `android-play-reports` |
 | `release_build` (Unsigned release build) | 30 min | Release calls only: `lintRelease`/`assembleRelease` with voice enabled and `--no-build-cache` | `distillpod-unsigned-release` (1 day), `android-release-reports` |
 | `firebase` (Firebase protocol and security rules) | 15 min | Firestore/Storage emulator suites | none |
 | `native` (Native bridge validation) | 15 min | Host CMake build and CTest | none |
@@ -349,7 +393,7 @@ count of both jobs with a previous run. Each emulator pays its own setup, boot
 and cold Gradle build, so the split divides test execution, not fixed cost.
 
 Only `android_build` and `emulator` save Gradle User Home caches, and only on
-pushes to main (the existing `cache-read-only` expression). `voice_build` and
+pushes to main (the existing `cache-read-only` expression). `voice_build`, `play_build` and
 `release_build` restore the `android_build` entry, and `emulator_part2` the
 `emulator` entry, by setting `GRADLE_BUILD_ACTION_CACHE_KEY_JOB`; they are always
 read-only, so a cache generation is still written by two jobs. The two Whisper

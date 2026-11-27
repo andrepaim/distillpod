@@ -44,6 +44,15 @@ class EpisodeMetadataTextTest {
         assertFalse(checked.retry)
     }
 
+    @Test fun `a build without YouTube sources never promises a YouTube lookup`() {
+        for (state in listOf(null, EpisodeDetailsState.LOADING, EpisodeDetailsState.FAILED)) {
+            val text = episodeMetadataText(video, state, now, brazil, Locale.ENGLISH, sourceDetails = false)
+            assertEquals("Publication date unavailable", text.date)
+            assertEquals("No description provided by the source.", text.note)
+            assertFalse(text.retry)
+        }
+    }
+
     @Test fun `known source values are shown as they are`() {
         val known = episodeMetadataText(video.copy(publishedAt = Instant.parse("2026-11-10T23:52:20Z").toEpochMilli(),
             description = "Original\n\ntext"), null, now, brazil, Locale.ENGLISH)
