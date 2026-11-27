@@ -4,7 +4,7 @@ Everything to paste into Google Play Console for DistillPod, in the order the co
 
 Nothing here has been submitted. The app as released today (0.38.1-alpha.1) cannot be submitted yet: see [Before the first upload](#before-the-first-upload).
 
-Placeholders the owner must fill are written `[LIKE THIS]`.
+Placeholders the owner must fill are written `[LIKE THIS]`. Developer name on the listing: Andre Paim Lemos. The work below is tracked in [#326](https://github.com/andrepaim/distillpod/issues/326).
 
 ## Positioning
 
@@ -16,17 +16,17 @@ These are changes to the app or decisions only the owner can make. Sources are l
 
 | # | What | Why | Kind |
 | --- | --- | --- | --- |
-| 1 | Remove YouTube stream extraction and download from the Play build | Play's Device and Network Abuse policy forbids using a service against its terms, and YouTube's terms forbid downloading and automated access. This is the most likely cause of rejection or later removal | App change, owner decision |
-| 2 | Remove the GitHub update check and APK download link from the Play build | A Play app "may not modify, replace, or update itself using any method other than Google Play's update mechanism" | App change |
-| 3 | Raise `targetSdk` to 36 | Required for new apps since 31 Aug 2026; `targetSdk` 35 is refused at upload | App change |
-| 4 | Build an Android App Bundle (`.aab`) signed with an upload key | New apps must be uploaded as bundles with Play App Signing | Build change |
+| 1 | Remove YouTube stream extraction and download from the Play build | Play's Device and Network Abuse policy forbids using a service against its terms, and YouTube's terms forbid downloading and automated access. This is the most likely cause of rejection or later removal | App change, owner decision, #319 |
+| 2 | Remove the GitHub update check and APK download link from the Play build | A Play app "may not modify, replace, or update itself using any method other than Google Play's update mechanism" | App change, #320 |
+| 3 | Raise `targetSdk` to 36 | Required for new apps since 31 Aug 2026; `targetSdk` 35 is refused at upload | App change, #321 |
+| 4 | Build an Android App Bundle (`.aab`) signed with an upload key | New apps must be uploaded as bundles with Play App Signing | Build change, #322 |
 | 5 | Decide the app signing key | Uploading the existing personal-alpha key (PEPK tool, only possible before the first open-testing or production release) keeps one identity across GitHub and Play. A Google-generated key means GitHub installs can never update from Play | Owner decision |
-| 6 | Account deletion for library sync, or leave sync out of the Play build | An app that lets users create an account needs an in-app deletion path and a web page for deletion requests. Cloud account erasure is not implemented | App change or owner decision |
-| 7 | A way to report an AI result from inside the app | Play's AI-Generated Content policy requires in-app reporting for apps that generate content with AI. Summaries alone may be exempt; episode chat and spoken answers probably are not | App change |
-| 8 | A privacy policy link inside the app that opens the hosted policy | Required in the app as well as on the listing | App change |
+| 6 | Account deletion for library sync, or leave sync out of the Play build | An app that lets users create an account needs an in-app deletion path and a web page for deletion requests. Cloud account erasure is not implemented | App change or owner decision, #323 |
+| 7 | A way to report an AI result from inside the app | Play's AI-Generated Content policy requires in-app reporting for apps that generate content with AI. Summaries alone may be exempt; episode chat and spoken answers probably are not | App change, #324 |
+| 8 | A privacy policy link inside the app that opens the hosted policy | Required in the app as well as on the listing | App change, #325 |
 | 9 | Reviewer access to the AI features | Reviewers expect working sign-in details. A ChatGPT account is the user's own; either supply a dedicated test account or rely on the note that playback, transcription and saving work without sign-in | Owner decision |
 | 10 | Foreground service declarations with one short video per type | `mediaPlayback`, `dataSync`, `mediaProcessing` and `microphone` each need a description and a video of the user starting the feature. Play describes `mediaProcessing` as media transcoding; on-device transcription may be questioned | Declarations, owner records videos |
-| 11 | Public contact email and developer name | Shown on the listing; a personal account also shows the legal name and country | Owner decision |
+| 11 | Public contact email and developer name | Decided: `andrepaim@gmail.com`, Andre Paim Lemos. A personal account also shows the legal name and country | Done |
 | 12 | Keep the app free and open source, or ask OpenAI first | OpenAI documents ChatGPT plan usage for open-source and locally hosted apps; paid or hosted apps go through an interest form. The documented sign-in redirect is a loopback address on a computer; mobile apps are not mentioned | Owner decision |
 
 The published GitHub alpha can continue unchanged next to a Play build.
@@ -188,7 +188,7 @@ The images are not committed to the repository. They are kept in `~/.local/share
 | --- | --- |
 | App category | Music & Audio |
 | Tags | Podcasts (choose from the console's list) |
-| Email | `[PUBLIC CONTACT EMAIL]` |
+| Email | `andrepaim@gmail.com` |
 | Website | `https://andrepaim.github.io/distillpod/` once the site is published, or the repository URL |
 | Phone | Leave empty |
 
