@@ -1,8 +1,8 @@
 <div align="center">
   <img src="branding/mark.svg" width="96" height="106" alt="DistillPod Ember Drop">
   <h1>DistillPod</h1>
-  <p><strong>Turn podcasts into ideas you can keep and use.</strong></p>
-  <p>Ask questions as you listen, save meaningful moments, and revisit insights with their original context.</p>
+  <p><strong>The AI podcast player that runs on your own ChatGPT account.</strong></p>
+  <p>Turn podcasts into ideas you can keep and use.</p>
   <p>
     <a href="https://github.com/andrepaim/distillpod/actions/workflows/ci.yml"><img src="https://github.com/andrepaim/distillpod/actions/workflows/ci.yml/badge.svg?branch=main" alt="Android CI"></a>
     <img src="https://img.shields.io/badge/Android-10%2B-2C2925" alt="Android 10 or later">
@@ -11,91 +11,83 @@
   <p><a href="https://github.com/andrepaim/distillpod/releases"><strong>Download the APK</strong></a> · <a href="docs/getting-started.md">Getting started</a> · <a href="docs/development.md">Build from source</a></p>
 </div>
 
+Sign in with ChatGPT inside DistillPod, and its AI features run on the ChatGPT plan you already have. There is no AI subscription to buy from DistillPod and no API key to create. Requests count against your plan's usage allowance.
+
+For example: you hear an idea worth keeping. Tap **Distill last 60 seconds**. DistillPod saves that moment right away and keeps playing. ChatGPT then reads the transcript around it and writes a short takeaway, with a quote when the passage has one.
+
 https://github.com/user-attachments/assets/55f197e4-b3f2-404e-a715-b3a08b107cbb
 
-A one-minute tour: save a moment with one tap, read its takeaway, ask the episode a question, and share the idea.
+A one-minute tour: save a moment with one tap, read the takeaway ChatGPT wrote, ask the episode a question, and share the idea.
 
-DistillPod is an Android podcast player for people who listen to learn. Capture an idea while it is fresh, ask for clarification, and build a collection of takeaways connected to the episodes they came from. Return to the original audio whenever you want to check the context or hear it again.
+## What your ChatGPT account adds
 
-## Highlights
+- **Takeaways from one tap.** Save the last 60 seconds from the player, a headphone gesture, Android Auto or the home-screen widget. The takeaway appears in **Saved** with the passage and its audio position. [Contextual distills →](docs/android/contextual-distills.md)
+- **Summary and chapters.** Get an overview of the whole episode with timestamped chapters you can jump to.
+- **Ask the episode.** Type a question in episode chat. Answers list **Source** timestamps; tap one to hear the passage.
+- **Explain a saved idea.** **Explain this idea** gives an explanation, a practical reflection and questions to look into. It uses the saved transcript and does not search the web.
+- **Share cards.** Turn a saved moment into a card image and a short caption. ChatGPT writes the words; the card is drawn on your phone in three styles (Quote, Big idea, Takeaways). [Share cards →](docs/android/social-share-cards.md)
+- **Podcast suggestions.** Describe your interests and ChatGPT suggests searches. DistillPod checks the podcast feeds it finds before showing them.
 
-### Listen to videocasts your way
+Each result is a request on your ChatGPT plan. A takeaway needs the transcript for that part of the episode; the summary and episode chat need the complete transcript.
 
-Find public YouTube playlists alongside podcast search results, or add a playlist/video link directly. Episodes start in audio mode; choose **Video** in the player to watch, then return to audio at the same position. Downloads retain audio for offline listening and local transcription. YouTube availability depends on the provider, and these sources remain local to this app version. [Videocast guide →](docs/android/videocasts.md)
+## How it works
 
-### Save the idea and keep listening
+1. **Follow a show.** Search the podcast directory, paste an RSS feed or a YouTube playlist link, or import an OPML file.
+2. **Connect ChatGPT.** Tap **Connect ChatGPT** on the Welcome screen, or open **Settings → ChatGPT**. Tap **Continue with ChatGPT**, sign in in your browser, and return to the app.
+3. **Listen and tap.** When something is worth keeping, tap **Distill last 60 seconds**. Open **Saved** to read the takeaway and replay the passage.
 
-Tap **Distill last 60 seconds** when something catches your attention. DistillPod saves the source moment immediately, then uses its surrounding context to prepare a concise takeaway and, when the source supports one, a quote. Playback continues, and the capture stays saved even if preparation or AI generation needs a retry.
-
-You can also save a moment from Android Auto or a headphone gesture. Enable **Previous track → Save moment** in **Settings → Playback & headphones**, then assign a gesture to Previous track in your headphone app. [Headphone setup →](docs/android/headphone-distill.md)
-
-### Ask about what you just heard
-
-Use **Ask about this** to pause the podcast, ask a spoken question, hear a short answer, and return to listening. A timer and live waveform show when your question is being recorded. The answer appears in a compact sheet, and **View last answer** lets you revisit it afterward.
-
-The voice preview is included in the 0.16.0 alpha APK. Add your own OpenAI API key in **Settings → Voice**. An optional **Next track → Ask about the podcast** shortcut supports headphones; supported Android Auto hosts offer native Ask controls. Headphone voice needs setup before locking the phone, and car/headset compatibility remains an alpha limitation. [Voice setup →](docs/android/voice-mode.md) · [Headphone voice →](docs/android/headphone-voice.md)
-
-### Understand the whole episode
-
-Get a summary and timestamped chapters, jump to a relevant passage, or ask questions in episode chat. Answers use transcript excerpts and references back to the source, so you can follow an idea beyond a short summary and replay the passage that prompted it.
-
-Saved moments retain their original audio position and source context. Revisit them in **Saved**, improve a takeaway as more context becomes available, or restore an earlier version. [Contextual distills →](docs/android/contextual-distills.md)
-
-### Put saved ideas to use
-
-Choose **Explain this idea** for an explanation, a practical reflection, and questions to investigate further. These explanations stay focused on the saved transcript.
-
-Turn a saved moment into a social post: a share card image and a short caption. Swipe the card between **Quote**, **Big idea** and **Takeaways**, and pick a look drawn from the podcast's artwork or one of two fixed palettes. DistillPod writes the words from the saved moment through your ChatGPT connection, draws the card on your phone, accepts changes in natural language, and shares the image through Android's sharing tools while copying the caption for you to paste. Posts and saved-idea explanations use the saved transcript only; neither searches the web. [Social sharing →](docs/android/social-share-cards.md)
-
-## The listening tools behind it
-
-| Feature | What you can do |
-| --- | --- |
-| Everyday playback | Search for shows, follow public RSS feeds, import OPML, download episodes, adjust speed, and listen in the background with a persistent queue |
-| Android Auto | Browse your library, resume playback, seek, and save moments from a compatible car display; voice is a preview for supported hosts |
-| Podcast suggestions | Request recommendations based on your interests, with real feeds checked before they appear |
-| Backup & Restore | Connect a Drive backup file once, save with one tap, and restore from a dated history with a preview before merging |
-| Optional library sync | Synchronize approved subscriptions, listening progress, completion and saved moments; opt into queue and supported preferences separately |
-
-[Android Auto →](docs/android/android-auto.md) · [Backups →](docs/android/drive-backup.md) · [Library sync →](docs/android/subscription-sync.md)
-
-## Get started
-
-1. Download `distillpod-<version>.apk` from the newest published alpha in [Releases](https://github.com/andrepaim/distillpod/releases).
-2. Open the APK on your phone and allow installation from your browser or file manager when Android asks. For an update, install over the existing app; **do not uninstall first**.
-3. Follow a show and play an episode. Content preparation starts automatically by default; download a local model in Settings if the app needs one.
-4. Connect ChatGPT in Settings to generate takeaways, summaries, episode answers and other AI results. Try **Distill last 60 seconds** while listening, then open **Saved**.
-5. For spoken questions, add your OpenAI API key in **Settings → Voice** and grant microphone access when requested. Use **Ask about this** in the player.
-
-Requires **Android 10+**; the APK includes ARM64 and x86_64. Bluetooth headset voice requires Android 12+. Published alpha APKs retain the signing identity needed for compatible in-place updates. CI debug artifacts use development signing keys; use a release APK to update your installed alpha.
+If a show has no suitable publisher transcript, download the Tiny or Base Whisper model once in **Settings → Transcript preparation**. DistillPod then transcribes episodes on your phone as you play them.
 
 [Full usage guide →](docs/getting-started.md) · [Troubleshooting →](docs/troubleshooting.md)
 
-## AI connections and episode content
+## What works without ChatGPT
 
-| Connection | Used for |
-| --- | --- |
-| ChatGPT account | Saved takeaways and quotes, summaries and chapters, written episode chat, explanations, recommendations and social posts; account/model eligibility and plan limits apply |
-| OpenAI project API key | Spoken questions and answers; uses the key's API allowance separately from the ChatGPT connection |
-| Google account, optional | Library sync; separate from ChatGPT, voice and the Drive backup file picker |
+DistillPod is a complete podcast player on its own. You can skip ChatGPT and still:
 
-You can listen and save source moments without an AI connection. AI-generated results need the relevant connection and episode text.
+- Search Apple's podcast directory, follow public RSS feeds and import OPML.
+- Add public YouTube channels, playlists or videos. Episodes start as audio; choose **Video** in the player to watch. [Videocasts →](docs/android/videocasts.md)
+- Download episodes for offline listening, keep an ordered queue, change speed, skip silence and set a sleep timer.
+- Listen with the screen locked, from Android Auto or from the home-screen widget. [Android Auto →](docs/android/android-auto.md)
+- Save moments. Without ChatGPT they keep their passage and audio position but get no takeaway. [Headphone capture →](docs/android/headphone-distill.md)
+- Back up the library to a file you choose, for example on Google Drive, and restore it on another phone. Optional Google library sync is separate from ChatGPT. [Backups →](docs/android/drive-backup.md) · [Library sync →](docs/android/subscription-sync.md)
 
-DistillPod prefers suitable publisher transcripts, can optionally look for an existing online transcript, and can prepare text locally on your phone with Whisper. Preparation starts automatically during playback unless you turn it off; local model downloads remain explicit. Full-episode summaries and chat need a complete transcript. Voice needs publisher or local text covering the current listening position. [Content preparation and controls →](docs/android/online-transcripts.md)
+Transcripts are made on the phone. DistillPod uses a suitable publisher transcript when the show provides one; otherwise Whisper transcribes the audio on your phone. Episode audio is not uploaded for transcription. An optional lookup for an existing online transcript is off by default and sends only the episode title. [Transcript sources →](docs/android/online-transcripts.md)
+
+## Limits to know first
+
+- **Your plan's allowance.** AI requests use your ChatGPT plan's usage allowance, and a retry uses more. OpenAI decides which accounts and models are eligible; **Settings → ChatGPT** lists the models your account offers. Testing so far used the owner's ChatGPT account. Other plans, including free accounts, have not been verified.
+- **Spoken questions need an API key.** **Ask about this** lets you ask a question out loud and hear a short answer. This voice preview is the one AI feature that does not use the ChatGPT sign-in: it needs an OpenAI API key that you add in **Settings → Voice**, and it uses that key's separate API allowance. Bluetooth headset voice needs Android 12 or later. [Voice setup →](docs/android/voice-mode.md) · [Headphone voice →](docs/android/headphone-voice.md)
+- **AI can be wrong.** Takeaways, summaries and answers can miss context or make mistakes. Each one links back to the source audio so you can check it.
+- **Text goes to OpenAI.** AI requests send the relevant transcript text, your question or your interests to OpenAI. Audio is not sent, except your spoken question when you use voice. [Privacy →](docs/privacy.md)
+- **Personal alpha.** It has been checked on a small number of phones and emulators, not on every phone, car or headset. [Implementation status →](docs/android/implementation-status.md)
+
+DistillPod is an independent open-source project. It is not affiliated with or endorsed by OpenAI. ChatGPT is a trademark of OpenAI.
+
+## Install
+
+1. Download `distillpod-<version>.apk` from the newest published alpha in [Releases](https://github.com/andrepaim/distillpod/releases).
+2. Open the APK on your phone and allow installation from your browser or file manager when Android asks. For an update, install over the existing app; **do not uninstall first**.
+3. Follow the steps in [How it works](#how-it-works).
+
+Requires **Android 10+**; the APK includes ARM64 and x86_64. Published alpha APKs include the voice preview and keep the signing identity needed for in-place updates. CI debug artifacts use development signing keys; use a release APK to update your installed alpha.
 
 ## Your data
 
-Your library, listening progress, queue, transcripts, saved moments and generated results are stored on your phone. Optional Firebase sync shares supported library records from approved public feeds. Full transcripts, analyses, episode chat, explanations and social posts stay local and can be transferred through Backup & Restore. Backups exclude account credentials, downloaded audio and model binaries.
+Your library, listening progress, queue, transcripts, saved moments and generated results are stored on your phone. There is no required DistillPod server.
 
-Requested AI features send relevant text, questions or interests to OpenAI. Voice also streams your spoken question and selected transcript context using your API key. Social posts send the saved excerpt with the show and episode titles; they make no web search. Local Whisper preparation does not upload episode audio for cloud transcription. Podcast search, feeds, artwork and downloads contact their respective providers.
+| Connection | Used for |
+| --- | --- |
+| ChatGPT account | Takeaways and quotes, summaries and chapters, episode chat, explanations, share cards and podcast suggestions |
+| OpenAI API key, optional | Spoken questions and answers (voice preview) |
+| Google account, optional | Library sync; separate from ChatGPT, voice and the backup file picker |
 
-ChatGPT credentials and the voice API key are encrypted on the phone. Account credentials are excluded from library backups and sync. There is no required DistillPod server. Library sync is optional. Cloud diagnostics are also optional and default off: enable them in Settings → Diagnostics to share sanitized technical events and error reports with Sentry. Reports exclude podcast content and credentials; no session replay is collected. [Privacy and data handling →](docs/privacy.md)
+The ChatGPT connection and the voice API key are encrypted on the phone and excluded from backups and sync. Optional library sync shares subscriptions from public feeds you approve, listening progress and saved moments; full transcripts, analyses, chat, explanations and share cards stay on the phone and move only through Backup & Restore. Backups exclude account credentials, downloaded audio and model binaries.
 
-## Personal alpha
+Podcast search, feeds, artwork and downloads contact their own providers. Cloud diagnostics are optional and off by default; when enabled in **Settings → Diagnostics**, they send sanitized technical events to Sentry, without podcast content or credentials. [Privacy and data handling →](docs/privacy.md)
 
-DistillPod has dated phone and emulator validation, and CI checks Kotlin tests, lint, native code, Firebase rules and isolated Android acceptance before publication. Those checks do not establish compatibility with every phone, car or headset. Broader Bluetooth/call interruptions, car microphones, TalkBack, sustained unplugged battery use and longer multilingual trials still need coverage.
+## Personal alpha status
 
-AI can miss context or make mistakes. Use the source references and audio replay to check its answers and takeaways. Sync does not replace independent backups; account switching and complete cloud account erasure remain unfinished. [Implementation status and evidence →](docs/android/implementation-status.md)
+DistillPod has dated phone and emulator validation, and CI checks Kotlin tests, lint, native code, Firebase rules and isolated Android acceptance before publication. Broader Bluetooth and call interruptions, car microphones, TalkBack, sustained unplugged battery use and longer multilingual trials still need coverage. Sync does not replace independent backups; account switching and complete cloud account erasure are not implemented. [Implementation status and evidence →](docs/android/implementation-status.md)
 
 ## Build from source
 
