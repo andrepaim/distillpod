@@ -1,4 +1,4 @@
-"""Fail closed unless a built APK contains exactly the features its distribution allows (#319, #320).
+"""Fail closed unless a built APK contains exactly the features its distribution allows (#319, #320, #323).
 
 A switch that is off must leave no trace a store review would find: no packaged binary or native
 library, no class, no endpoint or setting text in any dex file, and no third-party notice. A switch
@@ -42,6 +42,22 @@ FEATURES = {
         ],
         'forbidden_prefixes': ['https://api.github.com/'],
         'notices': [],
+    },
+    'sync': {
+        'entries': [],
+        'strings': [
+            'Ldev/distillpod/android/sync/SubscriptionSyncWorker;',
+            'Ldev/distillpod/android/sync/FirebaseSubscriptionCloud;',
+            'Ldev/distillpod/android/sync/FirebaseContentObjects;',
+            'Ldev/distillpod/android/features/PublicFeedReviewKt;',
+            'Lcom/google/firebase/auth/FirebaseAuth;',
+            'Lcom/google/firebase/firestore/FirebaseFirestore;',
+            'Landroidx/credentials/CredentialManager;',
+            'Lcom/google/android/libraries/identity/googleid/GoogleIdTokenCredential;',
+            'Connect Google & sync library',
+        ],
+        'forbidden_prefixes': ['Lcom/google/firebase/', 'Landroidx/credentials/', 'Lcom/google/android/libraries/identity/'],
+        'notices': ['firebase', 'credential manager'],
     },
 }
 PRESETS = {

@@ -21,7 +21,7 @@ These are changes to the app or decisions only the owner can make. Sources are l
 | 3 | Raise `targetSdk` to 36 | Required for new apps since 31 Aug 2026; `targetSdk` 35 is refused at upload | App change, #321 |
 | 4 | Build an Android App Bundle (`.aab`) signed with an upload key | New apps must be uploaded as bundles with Play App Signing | Build change, #322 |
 | 5 | Decide the app signing key | Uploading the existing personal-alpha key (PEPK tool, only possible before the first open-testing or production release) keeps one identity across GitHub and Play. A Google-generated key means GitHub installs can never update from Play | Owner decision |
-| 6 | Account deletion for library sync, or leave sync out of the Play build | An app that lets users create an account needs an in-app deletion path and a web page for deletion requests. Cloud account erasure is not implemented | App change or owner decision, #323 |
+| 6 | Account deletion for library sync, or leave sync out of the Play build | An app that lets users create an account needs an in-app deletion path and a web page for deletion requests. The deployed Firestore rules let no client delete its records, so in-app erasure needs a rules change. The Play build now leaves sync out (`distillpodSyncEnabled`, off in the Play preset) and creates no account; in-app deletion for the GitHub build waits for the owner to authorize the rules | Sync left out of Play, #323; erasure rules: owner decision |
 | 7 | A way to report an AI result from inside the app | Play's AI-Generated Content policy requires in-app reporting for apps that generate content with AI. Summaries alone may be exempt; episode chat and spoken answers probably are not | App change, #324 |
 | 8 | A privacy policy link inside the app that opens the hosted policy | Required in the app as well as on the listing | App change, #325 |
 | 9 | Reviewer access to the AI features | Reviewers expect working sign-in details. A ChatGPT account is the user's own; either supply a dedicated test account or rely on the note that playback, transcription and saving work without sign-in | Owner decision |
@@ -98,7 +98,7 @@ GOOD TO KNOW
 YOUR DATA
 • No DistillPod account and no DistillPod server. Your library, transcripts and results stay on your phone.
 • AI features send the transcript text they need, and your question, to OpenAI under your own account.
-• Library sync and diagnostics are optional and off until you turn them on.
+• No sign-in account is needed or created. Diagnostics are optional and off until you turn them on.
 • No ads.
 
 OPEN SOURCE
@@ -218,7 +218,7 @@ To reach an AI result quickly: download the Tiny model in Settings → Transcrip
 
 Every AI result has a Report this result action (in its menu or under the result). It shows the exact message and opens the reviewer's email app; the app itself sends nothing.
 
-The spoken-question preview additionally needs an OpenAI API key entered in Settings → Voice. Library sync (Settings → Sync) uses the reviewer's own Google account.
+The spoken-question preview additionally needs an OpenAI API key entered in Settings → Voice. This version has no library sync and no Google sign-in; Settings → Sync holds automatic backup to a file the user chooses.
 ```
 
 ### Content rating
@@ -235,29 +235,26 @@ No.
 
 ### Data safety
 
-Play counts as "collected" any data the app or its libraries send off the phone. The answers below take the cautious reading for text sent to OpenAI under the user's own account.
+Play counts as "collected" any data the app or its libraries send off the phone. The answers below take the cautious reading for text sent to OpenAI under the user's own account. They describe the Play build, which has no library sync (#323): no Google sign-in, no Firebase and no account. The GitHub build additionally sends the library sync data listed in the [privacy policy](../../site/privacy.html); it is not distributed through Play.
 
 | Question | Answer |
 | --- | --- |
 | Does the app collect or share any of the required user data types? | Yes |
-| Is all collected data encrypted in transit? | Yes (OpenAI, Firebase, Sentry and the podcast directory are HTTPS) |
-| Account creation | Yes, through OAuth (Google sign-in for optional library sync). If sync is left out of the Play build: no account creation |
-| Can users request deletion? | Yes: `https://andrepaim.github.io/distillpod/delete-account.html` |
+| Is all collected data encrypted in transit? | Yes (OpenAI, Sentry and the podcast directory are HTTPS) |
+| Account creation | No. The app has no account of its own and the Play build has no library sync or Google sign-in. Connecting ChatGPT signs in to the user's existing OpenAI account and creates nothing |
+| Can users request deletion? | Yes: `https://andrepaim.github.io/distillpod/delete-account.html` (data on the phone, ChatGPT tokens, diagnostics; it states that the Play build has no sync account) |
 
 | Data type | Collected | Shared | Optional | Purpose | Why |
 | --- | --- | --- | --- | --- | --- |
-| Personal info → Name | Yes | No | Yes | Account management | Google sign-in for library sync |
-| Personal info → Email address | Yes | No | Yes | Account management | Same |
-| Personal info → User IDs | Yes | No | Yes | Account management, App functionality | Sync account identifier |
-| App activity → App interactions | Yes | No | Yes | App functionality, Analytics | Synced listening progress and queue; optional usage statistics |
+| App activity → App interactions | Yes | No | Yes | Analytics | Optional usage statistics (Sentry), off by default |
 | App activity → In-app search history | Yes | No | No | App functionality | The podcast directory search text goes to Apple's directory. Processed ephemerally |
-| App activity → Other user-generated content | Yes | No | Yes | App functionality | Saved moments in sync; questions and transcript excerpts sent to OpenAI for AI features |
+| App activity → Other user-generated content | Yes | No | Yes | App functionality | Questions and transcript excerpts sent to OpenAI for AI features |
 | Audio → Voice or sound recordings | Yes | No | Yes | App functionality | Spoken question in the voice preview. Processed ephemerally |
 | App info and performance → Crash logs | Yes | No | Yes | Analytics | Optional diagnostics (Sentry), off by default |
 | App info and performance → Diagnostics | Yes | No | Yes | Analytics | Same |
 | Device or other IDs | Yes | No | Yes | Analytics | Random installation identifier in optional diagnostics |
 
-Not collected: location, contacts, photos, files, messages, calendar, financial or health data, web history, advertising ID. Text sent to OpenAI is not marked "shared" because it is sent at the user's request to the user's own account.
+Not collected: name, email address, user IDs (the Play build has no sign-in account), location, contacts, photos, files, messages, calendar, financial or health data, web history, advertising ID. Text sent to OpenAI is not marked "shared" because it is sent at the user's request to the user's own account.
 
 ### Other declarations
 
@@ -299,4 +296,4 @@ Checked on 2026-11-27. Pages without a revision date are marked undated.
 - AI-Generated Content: <https://support.google.com/googleplay/android-developer/answer/14094294>.
 - OpenAI brand use and sign-in: <https://openai.com/brand/>, <https://developers.openai.com/siwc/token-sharing-open-source>, <https://developers.openai.com/siwc/ui-ux-guidelines>.
 
-Not verified: whether Play will take over updates of copies installed from GitHub when the same signing key is uploaded; whether the owner's own account counts towards the 12 testers; how long identity verification takes; whether Google sign-in alone counts as account creation for the deletion rule (assumed yes).
+Not verified: whether Play will take over updates of copies installed from GitHub when the same signing key is uploaded; whether the owner's own account counts towards the 12 testers; how long identity verification takes; whether Google sign-in alone counts as account creation for the deletion rule (assumed yes, which is why the Play build leaves sync out).

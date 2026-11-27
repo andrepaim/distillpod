@@ -13,6 +13,14 @@ internal object DataProtectionGuidance {
     const val binding = "Connecting binds this library to its original Google account. Sign-out pauses sync but keeps that binding and local data; it does not delete cloud records or let this library switch accounts."
     const val expanded = "Queue and preference sync is an account-wide upgrade. There is no separate off switch afterward: Pause sync stops all sync on this phone, without deleting cloud records or undoing the upgrade."
     const val newPhone = "Your library works offline. On a new phone, sign in to sync with the same Google account, then use Restore from a backup to bring back transcripts and other text."
+    /** Without cloud sync (an unconfigured build, or the Play build without the sync switch) backup is the only copy. */
+    const val excludedBackupOnly = "Backup doesn't hold audio downloads, model binaries or account secrets. Set up sound, headphone shortcuts, automatic preparation, network/charging policy, storage and voice rewind again on each phone."
+    const val newPhoneBackupOnly = "Your library works offline. On a new phone, use Restore from a backup to bring back your library."
+
+    /** The complete "What's covered" sheet: account binding and sign-in text only where cloud sync exists. */
+    fun coverage(configured: Boolean, contentConfigured: Boolean, expandedScope: Boolean): List<String> =
+        if (configured) listOf(sync(true, contentConfigured, expandedScope), backup, excluded, newPhone, binding)
+        else listOf(sync(false, false, false), backup, excludedBackupOnly, newPhoneBackupOnly)
 
     fun sync(configured: Boolean, contentConfigured: Boolean, expandedScope: Boolean): String {
         if (!configured) return "Cloud sync is unavailable in this build. Automatic backup still keeps your whole library in a file you choose."

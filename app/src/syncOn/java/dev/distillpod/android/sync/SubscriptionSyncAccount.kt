@@ -64,7 +64,7 @@ class SubscriptionSyncAccount(private val graph:AppGraph) {
     init {
         if(mutable.value.configured) {
             auth.addAuthStateListener { current -> mutable.update { it.copy(connected=current.currentUser!=null,uid=current.currentUser?.uid.orEmpty(),email=current.currentUser?.email.orEmpty()) } }
-            WorkManager.getInstance(context).enqueueUniquePeriodicWork("subscription-sync-recovery",ExistingPeriodicWorkPolicy.KEEP,
+            WorkManager.getInstance(context).enqueueUniquePeriodicWork(SUBSCRIPTION_SYNC_RECOVERY_WORK,ExistingPeriodicWorkPolicy.KEEP,
                 PeriodicWorkRequestBuilder<SubscriptionSyncWorker>(15,TimeUnit.MINUTES).setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()).build())
         }
     }
@@ -183,6 +183,7 @@ class SubscriptionSyncAccount(private val graph:AppGraph) {
     }
 }
 private const val COMPACTION_BUDGET_MS=15_000L
+internal fun subscriptionSyncRequest():OneTimeWorkRequest=subscriptionSyncRequest(SubscriptionSyncWorker::class.java)
 class SubscriptionSyncWorker(context:Context,parameters:WorkerParameters):CoroutineWorker(context,parameters) {
     override suspend fun doWork():Result {
         val graph=applicationContext.appGraph

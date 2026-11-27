@@ -62,7 +62,8 @@ private data class SettingsRow(val title: String, val detail: String, val icon: 
 /** Settings home (#188, #203): three announced groups of ListItems with their current values. */
 @Composable internal fun SettingsOverview(connected:Boolean,voiceEnabled:Boolean,status:SettingsStatus=SettingsStatus(),open:(String)->Unit) {
     val library = listOf(
-        SettingsRow("Sync","Google account, automatic backup and restore",Icons.Default.Sync,"settings:sync",status.sync),
+        SettingsRow("Sync",if(dev.distillpod.android.sync.SyncBuild.ENABLED)"Google account, automatic backup and restore" else "Automatic backup and restore",
+            Icons.Default.Sync,"settings:sync",status.sync),
         SettingsRow("Library","Import, export and refresh subscriptions",Icons.Default.ImportExport,"settings:library",
             status.subscriptions?.let { if (it == 1) "1 show" else "$it shows" }))
     val listening = listOfNotNull(

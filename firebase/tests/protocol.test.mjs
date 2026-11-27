@@ -222,3 +222,25 @@ test('client batches delete the oldest compacted history and refuse a batch reac
   assert.deepEqual((await oldest(name)).map(d=>d.data().sequence),[11,12]);
  }
 });
+
+// Account erasure (#323). In-app deletion of a sync account needs rule changes that are not deployed:
+// with these rules an owner can neither delete nor empty the account head, current records or recent
+// history, so a client cannot erase its cloud library. Until rules allow erasure, the Play build ships
+// without sync. Change this test together with the erasure rules.
+test('an owner cannot erase their own sync account with these rules',async()=>{
+ for(const protocol of [3,4]) {
+  await env.clearFirestore();await seed('alice',protocol);const a=db('alice');
+  await commit(a);await commit(a,{id:'op2',key:'progress_episode1',payload:progress});
+  for(const path of ['','/entities/subscription_item1','/entities/progress_episode1','/changes/1','/changes/2','/receipts/op1','/receipts/op2'])
+   await assertFails(deleteDoc(doc(a,`users/alice${path}`)));
+  const batch=writeBatch(a);
+  for(const path of ['entities/subscription_item1','entities/progress_episode1','changes/1','changes/2','receipts/op1','receipts/op2'])batch.delete(doc(a,`users/alice/${path}`));
+  batch.delete(doc(a,'users/alice'));await assertFails(batch.commit());
+  // Retiring the account or emptying a record is refused too.
+  await assertFails(updateDoc(doc(a,'users/alice'),{active:false}));
+  await assertFails(updateDoc(doc(a,'users/alice'),{generation:'erased'}));
+  await assertFails(commit(a,{id:'op3',key:'progress_episode1',baseVersion:1,deleted:true}));
+  for(const path of ['','/entities/subscription_item1','/entities/progress_episode1','/changes/1','/changes/2','/receipts/op1','/receipts/op2'])
+   assert.equal((await getDocFromServer(doc(a,`users/alice${path}`))).exists(),true,path);
+ }
+});

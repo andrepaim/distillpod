@@ -166,12 +166,13 @@ Debug APK: `app/build/outputs/apk/debug/app-debug.apk`. Each developer/CI runner
 
 Some features are allowed in the GitHub build but not by a store's policy. Each is a build-time
 switch, so a build without it contains none of its code, dependencies or resources; the source
-stays in the repository (#319, #320).
+stays in the repository (#319, #320, #323).
 
 | Switch | Property | Default | Play | Off means |
 | --- | --- | --- | --- | --- |
 | YouTube sources | `distillpodYoutubeEnabled` | on | off | No `youtubedl-android`, no yt-dlp binary, no YouTube search, feed, stream or lookup code; see [videocasts](android/videocasts.md#builds-without-youtube-sources) |
 | Update check | `distillpodUpdateCheckEnabled` | on | off | No GitHub Releases request, no **Check for updates** setting, no notice; see [the update check](android/app-updates.md) |
+| Library sync | `distillpodSyncEnabled` | on | off | No Google sign-in, no Firebase Authentication, Firestore or Storage SDK, no Credential Manager, no sync worker or Settings › Sync account section, and no Firebase client configuration even when `distillpodFirebaseConfig` is given, so the build creates no account; see [builds without sync](android/subscription-sync.md#builds-without-sync) |
 
 `-PdistillpodDistribution=play` selects the Play value of every switch; the default
 (`github`, or no property) keeps them all on and is today's build. An explicit switch property
@@ -185,7 +186,11 @@ python3 scripts/verify_distribution_apk.py --distribution play app/build/outputs
 ```
 
 Gradle and Robolectric outputs are shared between the two configurations of a checkout; the
-property changes the source directories, so Gradle recompiles when it changes.
+property changes the source directories, so Gradle recompiles when it changes. Kotlin's incremental
+compilation has kept a class of a file that was moved into an `On` directory after switching to the
+Play build (seen once while adding the sync switch); the APK check and the `Off` tests catch that, and
+deleting `app/build/tmp/kotlin-classes` and `app/build/kotlin` before switching avoids it. CI builds each
+configuration from a clean checkout.
 
 A switch named `name` compiles `app/src/nameOn/java` or `app/src/nameOff/java` into the app, and
 `app/src/testNameOn|Off/java` and `app/src/androidTestNameOn|Off/java` into its tests. Shared code in
@@ -203,8 +208,10 @@ names, notices) to `FEATURES` in `scripts/verify_distribution_apk.py`.
 `scripts/verify_distribution_apk.py` reads the APK's entries, every dex string table (which holds
 each referenced class descriptor and string constant) and its packaged notices. For a switch that is
 off, any marker fails the check: an extractor binary or native library, a YouTube or update class,
-the YouTube search address, the GitHub Releases API address, the **Check for updates** title, or a
-YouTube component in the notices. For a switch that is on, every marker must be present, so a renamed
+the YouTube search address, the GitHub Releases API address, the **Check for updates** title, any
+Firebase, Credential Manager or Google Identity class, a sync transport, worker or feed-review class, the
+**Connect Google & sync library** button, or a YouTube, Firebase or Credential Manager component in the
+notices. For a switch that is on, every marker must be present, so a renamed
 class cannot make the check pass vacuously. CI runs it on both the default and the Play APK.
 
 ## Native bridge checks

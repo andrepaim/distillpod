@@ -2,7 +2,6 @@ package dev.distillpod.android
 
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
-import com.google.firebase.firestore.FirebaseFirestoreException
 import dev.distillpod.android.data.*
 import dev.distillpod.android.sync.*
 import dev.distillpod.core.sync.SyncOwner
@@ -31,7 +30,7 @@ class SubscriptionRejectedOperationTest {
             failure?.let { throw it }
             if(operation.entityKey in rejectedKeys) {
                 beforeRejection?.invoke()
-                throw SyncOperationRejected(FirebaseFirestoreException("synthetic",FirebaseFirestoreException.Code.PERMISSION_DENIED))
+                throw SyncOperationRejected(IllegalStateException("Synthetic rules refusal"))
             }
             return inner.commit(operation)
         }
@@ -109,14 +108,15 @@ class SubscriptionRejectedOperationTest {
     }
     @Test fun `unclassified permission denial still propagates and keeps the operation`()=fixture { db,store,cloud ->
         store.follow(first,true)
-        val denied=FirebaseFirestoreException("synthetic",FirebaseFirestoreException.Code.PERMISSION_DENIED);cloud.failure=denied
+        // Firestore's own codes are classified in SubscriptionSyncFailureTest; any unclassified failure propagates here.
+        val denied=IllegalStateException("Synthetic permission denial");cloud.failure=denied
         try{SubscriptionSyncCoordinator(db,cloud).run();fail("Failure must propagate")}catch(actual:Exception){assertSame(denied,actual)}
         assertEquals("error",db.sync().binding()!!.status);assertEquals(listOf(firstKey to "uploading"),states(db))
     }
     @Test fun `transient failure is not a rejection`()=fixture { db,store,cloud ->
         store.follow(first,true)
-        cloud.failure=FirebaseFirestoreException("synthetic",FirebaseFirestoreException.Code.UNAVAILABLE)
-        try{SubscriptionSyncCoordinator(db,cloud).run();fail("Failure must propagate")}catch(_:FirebaseFirestoreException){}
+        cloud.failure=java.io.IOException("Synthetic connection loss")
+        try{SubscriptionSyncCoordinator(db,cloud).run();fail("Failure must propagate")}catch(_:java.io.IOException){}
         assertEquals("offline",db.sync().binding()!!.status);assertEquals(listOf(firstKey to "uploading"),states(db))
         cloud.failure=null;assertTrue(SubscriptionSyncCoordinator(db,cloud).run())
     }

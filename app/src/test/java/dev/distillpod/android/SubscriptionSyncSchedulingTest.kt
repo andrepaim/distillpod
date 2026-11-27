@@ -133,7 +133,9 @@ class SubscriptionSyncSchedulingTest {
         while(!condition()) { org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();delay(20) }
     }
     private suspend fun awaitState(manager:WorkManager,id:UUID,state:WorkInfo.State)=until { manager.getWorkInfoById(id).get(5,TimeUnit.SECONDS)?.state==state }
-    private suspend fun schedule(manager:WorkManager,user:Boolean=false,active:Boolean=true)=scheduleSubscriptionWork(manager,user,active,::subscriptionSyncRequest)
+    /** The production request shape; the test factory runs it as [HeldWorker] whatever class it names. */
+    private fun request()=subscriptionSyncRequest(HeldWorker::class.java)
+    private suspend fun schedule(manager:WorkManager,user:Boolean=false,active:Boolean=true)=scheduleSubscriptionWork(manager,user,active,::request)
 
     @Test fun `kicks while enqueued keep the single pending run`()=work { manager ->
         assertEquals(SyncWorkAction.ENQUEUE,schedule(manager))
@@ -182,7 +184,7 @@ class SubscriptionSyncSchedulingTest {
             schedule(manager);val head=open(manager).single().id
             WorkManagerTestInitHelper.getTestDriver(context)!!.setAllConstraintsMet(head)
             // The decision saw RUNNING; the head finished before the follow-up was enqueued.
-            enqueueSubscriptionWork(manager,SyncWorkAction.FOLLOW_UP,::subscriptionSyncRequest)
+            enqueueSubscriptionWork(manager,SyncWorkAction.FOLLOW_UP,::request)
             assertEquals(listOf(ENQUEUED),open(manager).map { it.state })
             manager.cancelUniqueWork(SUBSCRIPTION_SYNC_WORK).result.get(5,TimeUnit.SECONDS)
         }

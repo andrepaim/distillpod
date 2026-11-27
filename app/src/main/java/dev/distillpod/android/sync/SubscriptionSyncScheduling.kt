@@ -14,6 +14,8 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
 internal const val SUBSCRIPTION_SYNC_WORK="subscription-sync"
+/** The periodic catch-up run a configured build keeps scheduled. */
+internal const val SUBSCRIPTION_SYNC_RECOVERY_WORK="subscription-sync-recovery"
 
 internal enum class SyncWorkAction { ENQUEUE, KEEP, FOLLOW_UP, REPLACE, SKIP }
 internal data class SyncWorkSnapshot(val state:WorkInfo.State,val runAttemptCount:Int=0,val nextScheduleTimeMillis:Long=Long.MAX_VALUE)
@@ -57,7 +59,8 @@ internal suspend fun enqueueSubscriptionWork(manager:WorkManager,action:SyncWork
     return action
 }
 
-internal fun subscriptionSyncRequest():OneTimeWorkRequest=OneTimeWorkRequestBuilder<SubscriptionSyncWorker>()
+/** One sync run of [worker], which only a build with sync has: it waits for a network and backs off exponentially. */
+internal fun subscriptionSyncRequest(worker:Class<out ListenableWorker>):OneTimeWorkRequest=OneTimeWorkRequest.Builder(worker)
     .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
     .setBackoffCriteria(BackoffPolicy.EXPONENTIAL,30,TimeUnit.SECONDS).build()
 
