@@ -150,15 +150,16 @@ Debug APK: `app/build/outputs/apk/debug/app-debug.apk`. Each developer/CI runner
 
 Some features are allowed in the GitHub build but not by a store's policy. Each is a build-time
 switch, so a build without it contains none of its code, dependencies or resources; the source
-stays in the repository (#319).
+stays in the repository (#319, #320).
 
 | Switch | Property | Default | Play | Off means |
 | --- | --- | --- | --- | --- |
 | YouTube sources | `distillpodYoutubeEnabled` | on | off | No `youtubedl-android`, no yt-dlp binary, no YouTube search, feed, stream or lookup code; see [videocasts](android/videocasts.md#builds-without-youtube-sources) |
+| Update check | `distillpodUpdateCheckEnabled` | on | off | No GitHub Releases request, no **Check for updates** setting, no notice; see [the update check](android/app-updates.md) |
 
 `-PdistillpodDistribution=play` selects the Play value of every switch; the default
 (`github`, or no property) keeps them all on and is today's build. An explicit switch property
-overrides the preset, for example `-PdistillpodDistribution=play -PdistillpodYoutubeEnabled=true`.
+overrides the preset, for example `-PdistillpodDistribution=play -PdistillpodUpdateCheckEnabled=true`.
 An unknown distribution name fails the build. The task names do not change: the Play build is still
 `:app:assembleDebug`, `:app:testDebugUnitTest` and `:app:lintDebug`, with the property added.
 
@@ -185,8 +186,9 @@ names, notices) to `FEATURES` in `scripts/verify_distribution_apk.py`.
 
 `scripts/verify_distribution_apk.py` reads the APK's entries, every dex string table (which holds
 each referenced class descriptor and string constant) and its packaged notices. For a switch that is
-off, any marker fails the check: an extractor binary or native library, a YouTube class, the
-YouTube search address, or a YouTube component in the notices. For a switch that is on, every marker must be present, so a renamed
+off, any marker fails the check: an extractor binary or native library, a YouTube or update class,
+the YouTube search address, the GitHub Releases API address, the **Check for updates** title, or a
+YouTube component in the notices. For a switch that is on, every marker must be present, so a renamed
 class cannot make the check pass vacuously. CI runs it on both the default and the Play APK.
 
 ## Native bridge checks

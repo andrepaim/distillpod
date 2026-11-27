@@ -24,6 +24,17 @@ A failed or oversized request is an error, never "up to date". The background jo
 
 ## Builds and tests
 
+Only GitHub builds contain the update check. It is a build-time
+[distribution switch](../development.md#distribution-switches), `distillpodUpdateCheckEnabled`, on by
+default and off in the Play preset (`-PdistillpodDistribution=play`), because a Google Play app may
+only be updated by Play (#320). A build without it has no **Check for updates** setting, no update
+card or **Update available** row, no notice and no scheduled job, and never requests
+`api.github.com`: `ReleaseFeed`, `UpdateChecker`, the worker, the notice and the About section live in
+`app/src/updateCheckOn`. At startup it cancels a daily check left by an earlier GitHub build, which
+WorkManager can do without the worker's class. `UpdateCheckOffTest` covers this; the
+[distribution artifact check](../development.md#distribution-switches) fails if the release list
+address, the worker or the setting's title is in the Play APK.
+
 Only non-debuggable builds schedule the daily check, so debug, emulator and CI builds never contact GitHub on their own. The manual check works in every build.
 
 The result, the last check time, the switch and the last announced version code are stored in the device's settings. They are not part of backups or library sync.

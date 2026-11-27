@@ -1,4 +1,4 @@
-"""The distribution artifact check finds every switched feature and cannot pass vacuously (#319)."""
+"""The distribution artifact check finds every switched feature and cannot pass vacuously (#319, #320)."""
 import contextlib
 import io
 import struct
@@ -102,14 +102,14 @@ class DistributionApkTest(unittest.TestCase):
 
     def test_github_fails_when_a_feature_marker_disappears(self):
         with tempfile.TemporaryDirectory() as directory:
-            status, errors = run(apk(directory, []), '--distribution', 'github')
+            status, errors = run(apk(directory, ['youtube']), '--distribution', 'github')
             self.assertEqual(1, status)
-            self.assertIn('youtube: missing', errors)
+            self.assertIn('updateCheck: missing', errors)
 
     def test_a_single_switch_can_be_overridden(self):
         with tempfile.TemporaryDirectory() as directory:
-            path = apk(directory, ['youtube'])
-            self.assertEqual(0, run(path, '--distribution', 'play', '--switch', 'youtube=true')[0])
+            path = apk(directory, ['updateCheck'])
+            self.assertEqual(0, run(path, '--distribution', 'play', '--switch', 'updateCheck=true')[0])
             self.assertEqual(1, run(path, '--distribution', 'play', '--switch', 'nonsense=true')[0])
 
     def test_presets_match_the_gradle_switches(self):

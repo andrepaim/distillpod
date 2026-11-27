@@ -295,21 +295,19 @@ class AppViewModel(val graph: AppGraph, private val saved: SavedStateHandle) : V
         when (key) {
             // Queued transcripts take the new charging requirement too, not only those queued later (#301).
             "wifi", "charging" -> graph.jobs.configureNetworkPolicy()
-            "updateChecks" -> dev.distillpod.android.work.UpdateJobs.configure(graph.context, value)
+            "updateChecks" -> dev.distillpod.android.UpdateCheckBuild.configure(graph.context, value)
             else -> graph.jobs.configureRefresh()
         }
     }
-    /** Device-local update state; a stored release the installed build has caught up with is not offered. */
-    val updates = graph.settings.updates.map { state -> state.copy(available = state.available?.takeIf { it.versionCode > graph.installedVersionCode }) }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, UpdateState())
-    fun checkForUpdates() = action("update-check") {
-        val update = try { graph.updateChecker.check() } catch (_: java.io.IOException) {
-            messages.send("Couldn't reach GitHub to check for updates. Try again later."); return@action
-        }
-        if (update == null) messages.send("You have the latest version.")
-        // Seen here, so the daily check does not announce the same version again.
-        else graph.updateChecker.announce(update)
-    }
+    /**
+     * Device-local update state; a stored release the installed build has caught up with is not offered.
+     * A build without the update check (#320) never offers one.
+     */
+    val updates = graph.settings.updates.map { state ->
+        if (!dev.distillpod.android.UpdateCheckBuild.ENABLED) UpdateState(enabled = false)
+        else state.copy(available = state.available?.takeIf { it.versionCode > graph.installedVersionCode })
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, UpdateState(enabled = dev.distillpod.android.UpdateCheckBuild.ENABLED))
+    fun checkForUpdates() = action("update-check") { dev.distillpod.android.UpdateCheckBuild.check(graph)?.let { messages.send(it) } }
     fun text(key: String, value: String) = action("settings") { graph.settings.text(key, value) }
     /** Waiting transcripts without saved chunks go on when the newly selected model is already downloaded (#225). */
     fun selectModel(id: String) = action("settings") { graph.settings.text("model", id); graph.transcription.resumeSelectedModel() }

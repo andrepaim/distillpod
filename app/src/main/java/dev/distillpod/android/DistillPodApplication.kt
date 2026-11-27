@@ -43,7 +43,6 @@ class AppGraph internal constructor(val context: Context, val scope: CoroutineSc
     val downloadNetwork = dev.distillpod.android.work.DownloadNetwork.system(context)
     /** The installed build's version code; a private phone build can be ahead of the newest release. */
     val installedVersionCode: Long get() = context.packageManager.getPackageInfo(context.packageName, 0).longVersionCode
-    val updateChecker by lazy { UpdateChecker(ReleaseFeed(http)::newest, settings, installedVersionCode) }
     val posts by lazy { PostRepository(db) }
     val socialResults by lazy { SocialResultRepository(db) { id, attempt -> dev.distillpod.android.work.SocialPostJobs.enqueue(context, id, attempt) } }
     val postAssets by lazy { dev.distillpod.android.sharing.PostAssets(java.io.File(context.filesDir, "post-images")) }
@@ -123,7 +122,7 @@ class AppGraph internal constructor(val context: Context, val scope: CoroutineSc
                     StartupStep("network_policy") { jobs.configureNetworkPolicy() },
                     StartupStep("refresh") { jobs.configureRefresh() },
                     StartupStep("backups") { dev.distillpod.android.work.BackupJobs.configure(context, managedBackups.connected.first()) },
-                    StartupStep("update_checks") { dev.distillpod.android.work.UpdateJobs.configure(context, settings.updates.first().enabled) },
+                    StartupStep("update_checks") { UpdateCheckBuild.configure(context, settings.updates.first().enabled) },
                     StartupStep("blocked_transcripts") { transcription.resumeBlocked() },
                     StartupStep("transcription") { transcription.recover() }),
                 afterReady = listOf(

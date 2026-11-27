@@ -1,4 +1,4 @@
-"""Fail closed unless a built APK contains exactly the features its distribution allows (#319).
+"""Fail closed unless a built APK contains exactly the features its distribution allows (#319, #320).
 
 A switch that is off must leave no trace a store review would find: no packaged binary or native
 library, no class, no endpoint or setting text in any dex file, and no third-party notice. A switch
@@ -31,6 +31,17 @@ FEATURES = {
         ],
         'forbidden_prefixes': ['Lcom/yausername/'],
         'notices': ['youtubedl-android', 'yt-dlp'],
+    },
+    'updateCheck': {
+        'entries': [],
+        'strings': [
+            'Ldev/distillpod/android/data/ReleaseFeed;',
+            'Ldev/distillpod/android/work/UpdateCheckWorker;',
+            'https://api.github.com/repos/andrepaim/distillpod/releases?per_page=10',
+            'Check for updates',
+        ],
+        'forbidden_prefixes': ['https://api.github.com/'],
+        'notices': [],
     },
 }
 PRESETS = {

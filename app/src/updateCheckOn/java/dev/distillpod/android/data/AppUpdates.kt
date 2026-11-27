@@ -9,22 +9,6 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
 
-/** A published DistillPod APK newer than the installed app. Links are project release URLs. */
-data class AvailableUpdate(val versionName: String, val versionCode: Long, val pageUrl: String, val apkUrl: String, val summary: String) {
-    fun json(): String = JSONObject().put("versionName", versionName).put("versionCode", versionCode)
-        .put("pageUrl", pageUrl).put("apkUrl", apkUrl).put("summary", summary).toString()
-
-    companion object {
-        fun parse(raw: String?): AvailableUpdate? = runCatching {
-            val j = JSONObject(raw ?: return null)
-            AvailableUpdate(j.getString("versionName"), j.getLong("versionCode"), j.getString("pageUrl"), j.getString("apkUrl"), j.optString("summary"))
-        }.getOrNull()
-    }
-}
-
-/** What the About screen shows: whether daily checks run, the last result and when it was fetched. */
-data class UpdateState(val enabled: Boolean = true, val available: AvailableUpdate? = null, val checkedAt: Long = 0)
-
 /**
  * Reads the project's GitHub Releases, prereleases included, without an account. Only the release list and
  * the small build-info.json of a few releases are fetched; the APK itself is downloaded by the browser.

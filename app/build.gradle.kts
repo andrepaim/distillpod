@@ -28,17 +28,17 @@ fun clientString(key: String): String = when(key) {
     else -> ""
 }
 ksp { arg("room.schemaLocation", "$projectDir/schemas") }
-// Distribution switches (#319): features a store's policy can refuse, chosen at build time.
+// Distribution switches (#319, #320): features a store's policy can refuse, chosen at build time.
 // Each switch is the property distillpod<Name>Enabled. Without one, the distribution preset decides:
 // -PdistillpodDistribution=play turns off what the Play build must not contain; the default (github)
 // keeps everything on. A switch compiles src/<name>On or src/<name>Off and the matching test<Name>On|Off
 // and androidTest<Name>On|Off directories, so a feature that is off leaves no code in the artifact; its
 // dependencies and resources are added below only when it is on. To add a switch, name it here, give the
 // presets its value and create its On and Off directories. See docs/development.md#distribution-switches.
-val distributionSwitchNames = listOf("youtube")
+val distributionSwitchNames = listOf("youtube", "updateCheck")
 val distributionPresets = mapOf(
     "github" to emptyMap(),
-    "play" to mapOf("youtube" to false),
+    "play" to mapOf("youtube" to false, "updateCheck" to false),
 )
 val distribution = providers.gradleProperty("distillpodDistribution").getOrElse("github")
 val distributionPreset = requireNotNull(distributionPresets[distribution]) {

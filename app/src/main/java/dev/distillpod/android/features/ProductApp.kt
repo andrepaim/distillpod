@@ -908,9 +908,7 @@ internal class QueueUndo(val snackbar: SnackbarHostState, val enqueue: (String, 
         SettingsGroupCard { SetupLink("Setup guide", onClick = { vm.open(SetupGuideRoute) }) }
         val updates by vm.updates.collectAsState()
         val busy by vm.busy.collectAsState()
-        AppUpdatesSection(updates, "update-check" in busy, System.currentTimeMillis(), { vm.flag("updateChecks", it) }, vm::checkForUpdates) { url ->
-            if (dev.distillpod.android.data.ReleaseFeed.isProjectRelease(url)) runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url))) }
-        }
+        dev.distillpod.android.UpdateCheckBuild.AboutSection(updates, "update-check" in busy, { vm.flag("updateChecks", it) }, vm::checkForUpdates)
         LicenseAndSources(version)
         TextButton(onClick = { context.startActivity(Intent(context, DiagnosticsActivity::class.java)) }) { Text("Developer checks") }
         }
