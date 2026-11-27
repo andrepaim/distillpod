@@ -209,7 +209,7 @@ names, notices) to `FEATURES` in `scripts/verify_distribution_apk.py`.
 each referenced class descriptor and string constant) and its packaged notices. For a switch that is
 off, any marker fails the check: an extractor binary or native library, a YouTube or update class,
 the YouTube search address, the GitHub Releases API address, the **Check for updates** title, any
-Firebase, Credential Manager or Google Identity class, a sync transport, worker or feed-review class, the
+Firebase, Credential Manager, Google Identity or Play services class, a sync transport, worker or feed-review class, the
 **Connect Google & sync library** button, or a YouTube, Firebase or Credential Manager component in the
 notices. For a switch that is on, every marker must be present, so a renamed
 class cannot make the check pass vacuously. CI runs it on both the default and the Play APK.

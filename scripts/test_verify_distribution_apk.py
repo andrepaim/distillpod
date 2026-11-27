@@ -96,7 +96,8 @@ class DistributionApkTest(unittest.TestCase):
     def test_play_fails_on_any_firebase_sign_in_or_credential_class(self):
         for leaked in ['Lcom/google/firebase/FirebaseApp;', 'Lcom/google/firebase/storage/FirebaseStorage;',
                        'Landroidx/credentials/GetCredentialRequest;',
-                       'Lcom/google/android/libraries/identity/googleid/GetSignInWithGoogleOption;']:
+                       'Lcom/google/android/libraries/identity/googleid/GetSignInWithGoogleOption;',
+                       'Lcom/google/android/gms/auth/api/identity/Identity;']:
             with self.subTest(leaked=leaked), tempfile.TemporaryDirectory() as directory:
                 status, errors = run(apk(directory, [], [leaked]), '--distribution', 'play')
                 self.assertEqual(1, status)

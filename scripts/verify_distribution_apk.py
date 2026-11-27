@@ -56,7 +56,8 @@ FEATURES = {
             'Lcom/google/android/libraries/identity/googleid/GoogleIdTokenCredential;',
             'Connect Google & sync library',
         ],
-        'forbidden_prefixes': ['Lcom/google/firebase/', 'Landroidx/credentials/', 'Lcom/google/android/libraries/identity/'],
+        'forbidden_prefixes': ['Lcom/google/firebase/', 'Landroidx/credentials/', 'Lcom/google/android/libraries/identity/',
+                               'Lcom/google/android/gms/'],
         'notices': ['firebase', 'credential manager'],
     },
 }
