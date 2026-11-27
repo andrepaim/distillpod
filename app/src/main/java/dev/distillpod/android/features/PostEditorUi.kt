@@ -256,6 +256,7 @@ internal class PostActions(
 
 @Composable private fun PostMenu(result: SocialResult, card: CardContent?, active: Boolean, actions: PostActions, edit: () -> Unit, delete: () -> Unit) {
     var open by remember { mutableStateOf(false) }
+    var reporting by remember { mutableStateOf<AiResultReport?>(null) }
     val artifact = result.artifact
     Box {
         IconButton(onClick = { open = true }) { Icon(Icons.Default.MoreVert, "More post actions") }
@@ -273,9 +274,11 @@ internal class PostActions(
                 else if (!active) entry("Edit discussion", onClick = edit)
             }
             if (!active && result.previous != null) entry("Undo last change", onClick = actions.undo)
+            if (artifact != null) entry("Report this result", onClick = { reporting = postReport(result) })
             entry("Delete post", onClick = delete)
         }
     }
+    reporting?.let { ReportResultDialog(it, onDismiss = { reporting = null }) }
 }
 
 /** A loaded cover, possibly none; null while the stored cover is still being read. */

@@ -153,6 +153,8 @@ internal fun VoiceSessionContent(state: VoiceState, running: Boolean, onDone: ()
         if (state.phase == "Preparing") Text("Checking this moment. Wait for the tone before speaking.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (state.phase == "Answering") Text("Microphone off · Spoken answer", color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (state.answer.isNotBlank()) VoiceAnswerTranscript(state.answer)
+        // Only a finished answer: a report of half-spoken words would not be the result.
+        if (state.answer.isNotBlank() && !state.active && !running) ReportResultButton({ voiceReport(state.answer) })
         state.error?.let {
             Text(it, color = MaterialTheme.colorScheme.error)
             // Only a denied microphone is fixed in app settings; retrying alone cannot bring the prompt back.

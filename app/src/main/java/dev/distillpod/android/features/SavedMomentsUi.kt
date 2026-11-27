@@ -304,6 +304,8 @@ private val contextStates = setOf("needs_context", "unclear_source")
         confirmButton = { TextButton(onClick = { confirmDelete = false; actions.delete() }) { Text("Delete", color = MaterialTheme.colorScheme.error) } },
         dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } },
     )
+    var reporting by remember(capture.id) { mutableStateOf(false) }
+    if (reporting) ReportResultDialog(momentReport(capture), onDismiss = { reporting = false })
     Box {
         IconButton(onClick = { open = true }) { Icon(Icons.Default.MoreVert, "More actions for this moment") }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
@@ -320,6 +322,8 @@ private val contextStates = setOf("needs_context", "unclear_source")
                 entry(if (explanation?.state == "succeeded") "Read explanation" else "Explain this idea", Icons.Default.Lightbulb, onClick = actions.explain)
             if (!working && ep != null && capture.insight != null)
                 entry("Improve this distill", Icons.Default.AutoFixHigh, detail = "Uses two ChatGPT requests. The current result is kept meanwhile.", onClick = actions.improve)
+            if (capture.insight != null || capture.quote != null)
+                entry("Report this result", Icons.Default.Flag, onClick = { reporting = true })
             HorizontalDivider()
             DropdownMenuItem(text = { Text("Delete saved moment", color = MaterialTheme.colorScheme.error) },
                 leadingIcon = { Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error) },
