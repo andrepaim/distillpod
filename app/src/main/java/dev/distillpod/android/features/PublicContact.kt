@@ -10,6 +10,9 @@ import dev.distillpod.android.ui.theme.TextButton
 /** The hosted privacy policy; the same address is given on the Google Play listing (#325). */
 internal const val PrivacyPolicyUrl = "https://andrepaim.github.io/distillpod/privacy.html"
 
+/** The project's public contact address, also given on the store listing and in the privacy policy; AI result reports go here (#324). */
+internal const val ReportEmail = "andrepaim@gmail.com"
+
 /**
  * Opens the hosted privacy policy, styled like [LearnMoreLink] so it sits beside the consent text it qualifies.
  * [onOpen] is normally [AppViewModel.openLink], which explains a phone with no browser instead of crashing.

@@ -61,7 +61,7 @@ The owner's first S22 phone trial captured a question, played an answer and resu
 
 ### Phone voice interface
 
-The player offers **Ask** and, after an interaction, **View last answer**. API key management and the optional three-second rewind are in **Settings → Voice**. A first Ask without a key opens those settings. Key encryption and namespaces are unchanged, so an existing phone key is retained.
+The player offers **Ask** and, after an interaction, **View last answer**; a finished answer's sheet offers **Report this result** (see [privacy](../privacy.md#reporting-an-ai-result)). Headphone and car questions have no answer text on their own screens; report them from **View last answer** on the phone. API key management and the optional three-second rewind are in **Settings → Voice**. A first Ask without a key opens those settings. Key encryption and namespaces are unchanged, so an existing phone key is retained.
 
 Asking opens a modal sheet over the paused player. Preparing shows a progress indicator and a reminder to wait for the tone. Listening shows a timer and a waveform computed from the actual PCM microphone RMS; silence produces a quiet baseline. **Done** finishes the question explicitly; automatic end-of-speech still works. The connection closes microphone input before switching to Answering. Manual completion disables VAD and processes its ordered acknowledgement before committing, avoiding duplicate commits when VAD already completed the same utterance.
 

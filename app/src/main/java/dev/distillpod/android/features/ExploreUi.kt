@@ -48,6 +48,7 @@ import dev.distillpod.android.ui.theme.TextButton
                         context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, vm.explanationText(id)), "Share explanation"))
                     } }) { Text("Share") }
                 }
+                ReportResultButton({ explanationReport(row) })
             }
             else -> {
                 row.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
@@ -109,6 +110,7 @@ import dev.distillpod.android.ui.theme.TextButton
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(onClick = onFollow) { Text("Follow") }
             TextButton(onClick = onDismiss) { Text("Dismiss") }
+            ReportResultButton({ suggestionReport(suggestion) })
         }
     } }
 }

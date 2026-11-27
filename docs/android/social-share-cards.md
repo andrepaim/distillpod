@@ -30,7 +30,7 @@ The previous design could not deliver that:
 3. The result shows the card, the caption beneath it, **Share** as the main action and **Change** as the secondary one.
 4. Three **styles** are available by swiping the card: **Quote**, **Big idea**, **Takeaways**. Three **looks** are available as swatches under the card: **Cover**, **Ember**, **Signal**. The chosen style and look are remembered for that post. Switching never makes an AI request.
 5. **Share** sends the card as a 1080×1350 PNG with the caption as the share text, and also copies the caption to the clipboard with the message "Caption copied. Paste it in the app you choose." Image-sharing apps commonly drop the share text.
-6. Overflow menu: **Copy caption**, **Save image**, **Share as Story (9:16)**, **Edit caption**, **Undo last change** (when available), **Delete post**.
+6. Overflow menu: **Copy caption**, **Save image**, **Share as Story (9:16)**, **Edit caption**, **Undo last change** (when available), **Report this result**, **Delete post**.
 7. **Change** takes one natural-language instruction and regenerates the words, keeping the chosen style and look. The previous version stays behind Undo.
 
 The lesson from the first two rounds stands: nothing is configured before a finished result exists. Styles and looks are alternatives to a finished card, never a setup step.
