@@ -819,7 +819,7 @@ internal class QueueUndo(val snackbar: SnackbarHostState, val enqueue: (String, 
 }
 
 @OptIn(ExperimentalLayoutApi::class)
-@Composable private fun SettingsPage(vm: AppViewModel, prefs: Preferences, account: AccountState, models: List<ModelEntity>, episodes: List<EpisodeEntity>, section:String="overview") {
+@Composable internal fun SettingsPage(vm: AppViewModel, prefs: Preferences, account: AccountState, models: List<ModelEntity>, episodes: List<EpisodeEntity>, section:String="overview") {
     val context = LocalContext.current
     val version = remember(context) { context.packageManager.getPackageInfo(context.packageName, 0).versionName.orEmpty() }
     if(section=="overview") {SettingsOverview(account.connected,context.resources.getBoolean(dev.distillpod.android.R.bool.voice_enabled),rememberSettingsStatus(vm,prefs,version),vm::open);return}
@@ -834,8 +834,11 @@ internal class QueueUndo(val snackbar: SnackbarHostState, val enqueue: (String, 
         if(section=="ai") {
         Text(if (account.connected) "Connected" else "Not connected", color = if (account.connected) MaterialTheme.extras.success else MaterialTheme.colorScheme.onSurfaceVariant)
         Text(account.message, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        ShortExplanation("AI actions send selected text to OpenAI and use your plan allowance.", "AI data use",
-            listOf("AI actions send selected transcript text, questions or interests to OpenAI. Suggestions share followed-show titles only if you select that option. Audio transcription runs on your phone. Requests use your plan allowance."))
+        Column {
+            ShortExplanation("AI actions send selected text to OpenAI and use your plan allowance.", "AI data use",
+                listOf("AI actions send selected transcript text, questions or interests to OpenAI. Suggestions share followed-show titles only if you select that option. Audio transcription runs on your phone. Requests use your plan allowance."))
+            PrivacyPolicyLink(vm::openLink)
+        }
         if (account.busy) { LinearProgressIndicator(Modifier.fillMaxWidth()); OutlinedButton(onClick = { vm.graph.account.cancel() }) { Text("Cancel sign-in") } }
         else {
             Button(onClick = { vm.graph.account.connect() }) { Text(if (account.connected) "Reconnect ChatGPT" else "Continue with ChatGPT") }
@@ -910,6 +913,7 @@ internal class QueueUndo(val snackbar: SnackbarHostState, val enqueue: (String, 
         val busy by vm.busy.collectAsState()
         dev.distillpod.android.UpdateCheckBuild.AboutSection(updates, "update-check" in busy, { vm.flag("updateChecks", it) }, vm::checkForUpdates)
         LicenseAndSources(version)
+        PrivacyPolicyLink(vm::openLink)
         TextButton(onClick = { context.startActivity(Intent(context, DiagnosticsActivity::class.java)) }) { Text("Developer checks") }
         }
     }

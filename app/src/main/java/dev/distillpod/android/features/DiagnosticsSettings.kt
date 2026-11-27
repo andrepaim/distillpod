@@ -28,6 +28,7 @@ import dev.distillpod.android.ui.theme.OutlinedButton
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
         Text("Help investigate problems",style=MaterialTheme.typography.headlineSmall)
         Text("Send technical events and error reports to Sentry, including app version, operation stages and network state. Audio, transcripts, questions, answers and credentials are excluded.")
+        PrivacyPolicyLink(vm::openLink)
         LabeledSettingSwitch("Share diagnostics",checked=enabled,enabled=!busy && diagnostics.configured,onCheckedChange={allow ->
                 busy=true;scope.launch { withContext(Dispatchers.IO){diagnostics.consent(allow)};enabled=diagnostics.enabled;busy=false }
             })

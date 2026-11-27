@@ -95,6 +95,7 @@ private fun objects(json: String): List<JSONObject> = runCatching { val a = JSON
             Text("Summary", style = MaterialTheme.typography.titleMedium)
             SelectionContainer { Text(row.summary) }
             row.model?.let { Text("Generated with $it · verify important details against the audio.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            ReportResultButton({ analysisReport(row) })
             Text("Chapters", style = MaterialTheme.typography.titleMedium)
             val chapters = objects(row.chaptersJson)
             if (chapters.isEmpty()) Text("No chapter boundaries were identified.", color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -148,6 +149,7 @@ private fun objects(json: String): List<JSONObject> = runCatching { val a = JSON
                             val sources = runCatching { val a = JSONArray(message.sourcesJson); (0 until a.length()).map { a.getLong(it) }.distinct() }.getOrDefault(emptyList())
                             sources.forEach { at -> TextButton(onClick = { vm.play(ep.id, at); vm.open("player") }) { Text("Source · ${timestamp(at)}") } }
                         }
+                        if (message.role == "assistant" && message.state == "succeeded" && message.text.isNotBlank()) ReportResultButton({ chatReport(message) })
                         if (!current) Text("This message used an older transcript. Source links are disabled.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.tertiary)
                         message.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
                         if (message.role == "assistant" && message.state !in listOf("queued", "running", "succeeded")) TextButton(onClick = { vm.retryReply(message.id) }, enabled = ready && account.connected && !running) { Text("Retry reply") }

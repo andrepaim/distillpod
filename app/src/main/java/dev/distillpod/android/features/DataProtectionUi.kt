@@ -25,7 +25,10 @@ import dev.distillpod.android.ui.theme.extras
     val state by account.state.collectAsStateWithLifecycle()
     val fullScope by account.fullScope.collectAsStateWithLifecycle(initialValue = null)
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        SyncCoverageInfo(state.configured, account.contentConfigured, fullScope != null)
+        Column {
+            SyncCoverageInfo(state.configured, account.contentConfigured, fullScope != null)
+            PrivacyPolicyLink(vm::openLink)
+        }
         // A build without Firebase says so once in the line above instead of showing an empty account section.
         if (state.configured) {
             SyncSectionTitle("Cloud sync")

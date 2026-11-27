@@ -1,0 +1,60 @@
+{
+ "screenshots": [
+  {
+   "id": "player",
+   "img": "player.png",
+   "head": "The AI podcast player that runs on your ChatGPT account",
+   "head_size": 70,
+   "sub": "Sign in once. Summaries, answers and saved takeaways use the plan you already have.",
+   "phone_w": 640
+  },
+  {
+   "id": "takeaway",
+   "img": "saved-moment.png",
+   "label": "Capture",
+   "head": "One tap saves the last 60 seconds",
+   "sub": "ChatGPT writes the takeaway, linked to the passage it came from."
+  },
+  {
+   "id": "summary",
+   "img": "summary.png",
+   "label": "Understand",
+   "head": "Summary and chapters for an episode",
+   "sub": "Written from the transcript. Jump to any chapter."
+  },
+  {
+   "id": "ask",
+   "img": "ask-top.png",
+   "label": "Ask",
+   "head": "Ask the episode",
+   "sub": "Answers come from the transcript, with sources you can replay."
+  },
+  {
+   "id": "share",
+   "img": "post.png",
+   "label": "Share",
+   "head": "Turn a saved idea into a share card",
+   "sub": "ChatGPT writes the words. The card is drawn on your phone."
+  },
+  {
+   "id": "transcript",
+   "img": "transcript.png",
+   "label": "Private",
+   "head": "Transcribed on your phone",
+   "sub": "Episode audio is not uploaded for transcription."
+  },
+  {
+   "id": "connect",
+   "img": "chatgpt.png",
+   "label": "Connect",
+   "head": "Sign in with ChatGPT. No API key to create.",
+   "sub": "AI requests use your plan's allowance. Plan limits apply."
+  }
+ ],
+ "feature": {
+  "img": "saved-moment.png",
+  "head": "The AI podcast player that runs on your ChatGPT account",
+  "sub": "Summaries, answers and saved takeaways on the plan you already have."
+ },
+ "icon": "../../branding/icon-512.png"
+}

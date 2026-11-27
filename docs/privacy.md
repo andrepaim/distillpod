@@ -2,6 +2,8 @@
 
 DistillPod keeps its library, queue, listening position, transcripts, saved excerpts and generated text in its private Android storage. ChatGPT credentials are encrypted with a key held by Android Keystore. Optional Firebase sign-in uses Firebase's SDK-managed app-private credential storage. Android application backup is disabled; neither provider's credentials enter library exports or library sync. This is a personal-alpha implementation; the repository's validation reports are not an independent security audit.
 
+The published privacy policy, <https://andrepaim.github.io/distillpod/privacy.html>, opens in the browser from **Settings → About DistillPod → Privacy policy**. The same **Privacy policy** link sits next to each consent: connecting ChatGPT (Settings → ChatGPT), library sync (Settings → Sync) and diagnostics (Settings → Privacy & diagnostics).
+
 ## Current Spark-only deployment
 
 The selected deployment has billing disabled. Sync is optional and requires a Firebase-configured build; ordinary source/debug builds have no production Firebase configuration. Google sign-in and feed review are required before library data is shared. Queue and portable preferences can synchronize through Firestore without enabling Cloud Storage. Transcripts and other finished text remain local; their experimental Storage adapter is disabled in builds. Automatic backup to a file you choose keeps transcripts and other text.
@@ -37,6 +39,10 @@ Whisper transcription runs locally on the phone. Requested AI operations send se
 Library backups contain readable personal library data: subscription and episode metadata, progress, queue, transcripts, saved moments and stored generated text, plus language/model choices. Drive backup uses a file chosen once in Android’s document picker and is updated daily by a background job when the library changed; the selected provider manages cloud sync. Managed backups are ZIP histories containing readable library data, social-post cover thumbnails and images from earlier infographic posts, with no passphrase encryption. Image-bearing snapshots use a bounded binary wrapper; older JSON snapshots remain readable. Persistent access to the user-selected file is stored only on that installation. Verified recovery copies stay in private app storage. They exclude account credentials, downloaded audio, model binaries and device-private file paths. OPML contains subscription titles and feed addresses. Choose destinations carefully and share exports only deliberately.
 
 Do not include personal backups, feeds containing access tokens, recordings, account data or private screenshots in issue reports. A minimal reproduction on a development emulator is preferable. Repeated AI requests may consume additional plan allowance.
+
+### Reporting an AI result
+
+Each screen that shows text written by the model has **Report this result**: a saved moment's takeaway and quote (**More actions**), episode insights (summary, chapters and suggested ad ranges), each Ask this episode answer, Explain this idea explanations, share posts (the post's **⋮** menu), Find new voices suggestions and the voice preview's finished spoken answer. A report is an email to the public contact address, `andrepaim@gmail.com`, sent only by you from your own email app. Before that app opens, DistillPod shows the exact message, and you can untick **Include the result text** to remove the reported text. The message contains the feature name, the model name when the result recorded one, the app version and, unless removed, the reported result text. It never contains other transcript text, your question, episode audio, account identity, tokens or installation identifiers. DistillPod itself sends nothing. On a phone without an email app, the address and message are shown for you to copy instead.
 
 ### Social post drafts
 
