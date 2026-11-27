@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DistillPod privacy policy</title>
+<link rel="icon" href="mark.svg">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header><a class="brand" href="./"><img src="mark.svg" alt="" width="28" height="31">DistillPod</a></header>
+<main>
+<h1>DistillPod privacy policy</h1>
+<p>Effective date: 27 November 2026</p>
+<p>DistillPod is an Android podcast player published by Andre Paim Lemos ("we"). It is an independent open-source project: <a href="https://github.com/andrepaim/distillpod">https://github.com/andrepaim/distillpod</a>. This policy describes what the app stores, what it sends off your phone, to whom, and what you can do about it.</p>
+<p>Contact: andrepaim@gmail.com, or open an issue at <a href="https://github.com/andrepaim/distillpod/issues">https://github.com/andrepaim/distillpod/issues</a>.</p>
+<h2>Summary</h2>
+<ul>
+<li>DistillPod has no server of its own and no DistillPod account. Your library, listening progress, queue, transcripts, saved moments and AI results are stored on your phone.</li>
+<li>Transcripts are made on your phone. Episode audio is not uploaded for transcription.</li>
+<li>AI features run through <strong>your own ChatGPT account</strong>. When you use one, the text it needs is sent to OpenAI under your account.</li>
+<li>Library sync, cloud diagnostics and usage statistics are optional and off until you turn them on.</li>
+<li>DistillPod shows no ads, does not sell data and does not use an advertising ID.</li>
+</ul>
+<h2>Data stored on your phone</h2>
+<p>Subscriptions, episode details, listening position, queue, downloads, transcripts, saved moments, summaries, chapters, episode chat, explanations, share posts and settings are kept in the app's private storage. Your ChatGPT sign-in tokens, and your OpenAI API key if you add one for voice, are encrypted with a key held by Android Keystore. Android's automatic app backup is disabled for DistillPod.</p>
+<p>Uninstalling the app, or clearing its storage in Android settings, deletes all of this.</p>
+<h2>Data sent off your phone</h2>
+<p>DistillPod sends data only to the services below, and only for the purpose stated.</p>
+<div class="scroll"><table>
+<thead>
+<tr>
+<th>When</th>
+<th>What is sent</th>
+<th>To whom</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>You search for a podcast</td>
+<td>The search text</td>
+<td>Apple (iTunes podcast directory)</td>
+</tr>
+<tr>
+<td>You follow, refresh, play or download a show</td>
+<td>Requests for the feed, artwork and audio or video. The host sees your network address, as with any podcast app</td>
+<td>The podcast's own hosts; YouTube for YouTube sources</td>
+</tr>
+<tr>
+<td>You download a transcription model</td>
+<td>A request for the model file</td>
+<td>Hugging Face</td>
+</tr>
+<tr>
+<td>You connect ChatGPT</td>
+<td>You sign in on OpenAI's page. DistillPod receives sign-in tokens and your account identifier, not your password</td>
+<td>OpenAI</td>
+</tr>
+<tr>
+<td>You use an AI feature (saved takeaway, summary and chapters, episode chat, explanation, share post, podcast suggestions)</td>
+<td>The transcript text the feature needs, your question or instruction, show and episode titles, and for suggestions your stated interests or the titles of shows you follow</td>
+<td>OpenAI, under your ChatGPT account</td>
+</tr>
+<tr>
+<td>You ask a spoken question (optional voice feature, needs your own OpenAI API key)</td>
+<td>Your recorded question and the transcript text around your listening position</td>
+<td>OpenAI, under your API key</td>
+</tr>
+<tr>
+<td>You turn on "look for an existing transcript" (off by default)</td>
+<td>The episode title</td>
+<td>PodcastTranscript.ai</td>
+</tr>
+<tr>
+<td>You turn on library sync (off by default)</td>
+<td>Your Google account identity (to sign in), the public feeds you approve, listening progress, completion, saved moments with their quotes and takeaways, and, if you choose, your queue and preferences</td>
+<td>Google Firebase (Authentication and Firestore, São Paulo region)</td>
+</tr>
+<tr>
+<td>You connect a backup file</td>
+<td>The backup file is written through Android's file picker to the location you chose, for example Google Drive</td>
+<td>The storage provider you chose</td>
+</tr>
+<tr>
+<td>You turn on cloud diagnostics or usage statistics (off by default)</td>
+<td>Technical events and error reports: app version, device model, Android version, event names, timings and counts. No podcast content, transcripts, questions or credentials</td>
+<td>Sentry</td>
+</tr>
+</tbody>
+</table></div>
+<p>The microphone is used only while you record a spoken question. Recordings are not kept after the answer.</p>
+<p>Content sent to OpenAI is handled under OpenAI's terms and privacy policy and the settings of your own OpenAI account. Data held by the other services is handled under their policies.</p>
+<h2>What we can access</h2>
+<p>We cannot see your library, transcripts, AI requests or ChatGPT account: they do not pass through any system we operate.</p>
+<p>If you turn on library sync, the records listed above are stored in a Firebase project that we administer. They are protected by per-user access rules and by Google's encryption in transit and at rest, but they are not end-to-end encrypted, so the project administrator can technically access them. We do not use them for any purpose other than providing sync.</p>
+<p>If you turn on diagnostics, we can read the technical events and error reports your phone sends to Sentry. We use them only to find and fix faults.</p>
+<h2>Retention and deletion</h2>
+<ul>
+<li><strong>On your phone:</strong> kept until you delete it in the app, clear the app's storage or uninstall.</li>
+<li><strong>ChatGPT connection:</strong> disconnect in Settings → ChatGPT to delete the stored tokens. Your history with OpenAI is managed in your OpenAI account.</li>
+<li><strong>Library sync:</strong> signing out stops sync and keeps your library on the phone. To delete the synced records and the sign-in account held in Firebase, write to the contact address above from the Google account you used; we delete them within 30 days.</li>
+<li><strong>Diagnostics:</strong> turning the setting off deletes reports not yet sent. Reports already delivered stay with Sentry until its retention period ends; they contain no account identity.</li>
+</ul>
+<h2>Children</h2>
+<p>DistillPod is not directed to children under 13 and we do not knowingly collect data from them.</p>
+<h2>Changes</h2>
+<p>We will update this page when the app's data handling changes and change the effective date above. The history of this file is public in the project's repository.</p>
+<p>DistillPod is not affiliated with, sponsored by or endorsed by OpenAI. ChatGPT is a trademark of OpenAI.</p>
+</main>
+<footer><a href="./">DistillPod</a> · <a href="privacy.html">Privacy policy</a> · <a href="delete-account.html">Delete your data</a> · <a href="https://github.com/andrepaim/distillpod">Source</a></footer>
+</body>
+</html>
