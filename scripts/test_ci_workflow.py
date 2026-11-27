@@ -191,13 +191,33 @@ class WorkflowSafetyTest(unittest.TestCase):
     def test_every_sdk_install_retries_and_the_system_image_precedes_the_emulator(self):
         self.assertNotRegex(TEXT, r'run: sdkmanager')
         for job in ['android_build', 'voice_build', 'play_build', RELEASE_JOB, 'emulator', 'emulator_part2']:
-            self.assertIn("run: scripts/sdk-install.sh 'platforms;android-35' 'build-tools;35.0.0' "
+            self.assertIn("run: scripts/sdk-install.sh 'platforms;android-36' 'build-tools;35.0.0' "
                           "'ndk;27.2.12479018' 'cmake;3.22.1'", JOBS[job])
         for job in ['emulator', 'emulator_part2']:
             body = JOBS[job]
-            install = body.index("'system-images;android-35;google_apis;x86_64'")
+            install = body.index("'system-images;android-36;google_apis;x86_64'")
             self.assertLess(install, body.index('uses: ReactiveCircus/android-emulator-runner@'))
             self.assertIn("'build-tools;37.0.0' platform-tools emulator", body)
+
+    def test_the_build_and_emulators_use_the_target_sdk(self):
+        build = (ROOT / 'app/build.gradle.kts').read_text()
+        compile_sdk = re.search(r'^    compileSdk = (\d+)$', build, re.M).group(1)
+        target_sdk = re.search(r'^        targetSdk = (\d+)$', build, re.M).group(1)
+        self.assertEqual('36', compile_sdk)
+        self.assertEqual(compile_sdk, target_sdk)
+        self.assertNotIn('android-35', TEXT)
+        # Target-gated Android 16 behaviour only takes effect on an Android 16 system image.
+        for job in ['emulator', 'emulator_part2']:
+            self.assertIn(f'          api-level: {target_sdk}\n', JOBS[job])
+            self.assertIn(f"'system-images;android-{target_sdk};google_apis;x86_64'", JOBS[job])
+
+    def test_unit_test_jobs_provide_the_java_21_runtime_robolectric_sdk_36_needs(self):
+        # Robolectric refuses SDK 36 below Java 21; the build itself stays on JDK 17 (the default JAVA_HOME).
+        for job in ['android_build', 'voice_build', 'play_build']:
+            body = JOBS[job]
+            self.assertIn(':app:testDebugUnitTest', body)
+            self.assertIn("          java-version: |\n            21\n            17\n", body)
+            self.assertIn('-Porg.gradle.java.installations.fromEnv=JAVA_HOME_21_X64', body)
 
 
 @unittest.skipUnless(os.name == 'posix' and shutil.which('bash'), 'Unix shell fixture')

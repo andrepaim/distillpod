@@ -39,6 +39,16 @@ class RobolectricOfflineTest(unittest.TestCase):
     def test_no_unused_sdk_jar_is_downloaded(self):
         self.assertEqual(set(), resolved_levels() - requested_levels())
 
+    def test_unit_tests_run_on_the_java_version_each_resolved_sdk_requires(self):
+        # DefaultSdkProvider refuses SDK 36 ("Android SDK 36 requires Java 21") on an older JVM,
+        # while the build itself stays on JDK 17. Only the test JVM moves.
+        launcher = re.search(r"tasks\.withType<Test>\(\)\.configureEach \{[^}]*?javaLauncher = javaToolchains\.launcherFor "
+                             r"\{ languageVersion = JavaLanguageVersion\.of\((\d+)\) \}", BUILD)
+        if max(resolved_levels()) < 36:
+            return
+        self.assertIsNotNone(launcher, "SDK 36 needs the app's Test tasks to run on a Java 21 launcher")
+        self.assertGreaterEqual(int(launcher.group(1)), 21)
+
 
 if __name__ == "__main__":
     unittest.main()

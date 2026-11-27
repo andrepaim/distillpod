@@ -123,9 +123,9 @@ if (!youtubeEnabled) tasks.named("preBuild").configure { dependsOn(prepareDistri
 // DefaultSdkProvider table of this Robolectric release; update both together. A test that asks
 // for an SDK level not listed here fails with "Unable to locate dependency": add the level.
 // Tests without @Config(sdk) run on targetSdk.
-val robolectricVersion = "4.14.1"
+val robolectricVersion = "4.16.1"
 val robolectricAndroidAll = mapOf(30 to "11-robolectric-6757853", 32 to "12.1-robolectric-8229987",
-    34 to "14-robolectric-10818077", 35 to "15-robolectric-12650502").map { (sdk, version) ->
+    34 to "14-robolectric-10818077", 35 to "15-robolectric-13954326", 36 to "16-robolectric-13921718").map { (sdk, version) ->
     // One configuration per level: in a shared one, Gradle would keep only the newest version.
     configurations.create("robolectricAndroidAll$sdk") { isCanBeConsumed = false; isTransitive = false }.also {
         dependencies.add(it.name, "org.robolectric:android-all-instrumented:$version-i7")
@@ -134,13 +134,15 @@ val robolectricAndroidAll = mapOf(30 to "11-robolectric-6757853", 32 to "12.1-ro
 val robolectricJars = layout.buildDirectory.dir("robolectric/android-all")
 val prepareRobolectricJars by tasks.registering(Sync::class) { from(robolectricAndroidAll); into(robolectricJars) }
 tasks.withType<Test>().configureEach {
+    // Robolectric runs SDK 36 only on Java 21 or later; compilation stays on JDK 17.
+    javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(21) }
     inputs.files(prepareRobolectricJars).withPropertyName("robolectricAndroidAll").withPathSensitivity(PathSensitivity.NAME_ONLY)
     systemProperty("robolectric.offline", "true")
     systemProperty("robolectric.dependency.dir", robolectricJars.get().asFile.absolutePath)
 }
 android {
     namespace = "dev.distillpod.android"
-    compileSdk = 35
+    compileSdk = 36
     ndkVersion = "27.2.12479018"
     externalNativeBuild { cmake { path = file("src/main/cpp/CMakeLists.txt"); version = "3.22.1" } }
     defaultConfig {
@@ -163,7 +165,7 @@ android {
         manifestPlaceholders["automotiveDescriptor"] = if (voiceEnabled) "@xml/automotive_voice_desc" else "@xml/automotive_app_desc"
         applicationId = "dev.distillpod.android"
         minSdk = 29
-        targetSdk = 35
+        targetSdk = 36
         testInstrumentationRunner = "dev.distillpod.android.IsolatedTestRunner"
         versionCode = providers.gradleProperty("distillpodVersionCode").get().toInt()
         versionName = providers.gradleProperty("distillpodVersionName").get()

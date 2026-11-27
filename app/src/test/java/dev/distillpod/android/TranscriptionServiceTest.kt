@@ -67,4 +67,26 @@ class TranscriptionServiceTest {
             assertEquals(ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROCESSING, controller.get().foregroundServiceType)
         } finally { controller.destroy() }
     }
+
+    @Test @Config(sdk = [36]) fun `Android 16 keeps the media processing type and the wake lock`() {
+        assertEquals(36, android.os.Build.VERSION.SDK_INT)
+        val controller = Robolectric.buildService(TranscriptionService::class.java).create()
+        try {
+            assertTrue(TranscriptionService.isRunning)
+            assertEquals(ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROCESSING, controller.get().foregroundServiceType)
+            assertTrue(ShadowPowerManager.getLatestWakeLock().isHeld)
+        } finally { controller.destroy() }
+    }
+
+    @Test @Config(sdk = [36]) fun `Android 16 WorkManager fallback keeps media processing for inference and data sync otherwise`() {
+        androidx.work.testing.WorkManagerTestInitHelper.initializeTestWorkManager(context,
+            androidx.work.Configuration.Builder().setExecutor(androidx.work.testing.SynchronousExecutor()).build())
+        try {
+            val id = java.util.UUID.randomUUID()
+            assertEquals(ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROCESSING,
+                dev.distillpod.android.work.workForeground(context, id, "Preparing transcript", media = true).foregroundServiceType)
+            assertEquals(ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC,
+                dev.distillpod.android.work.workForeground(context, id, "Downloading").foregroundServiceType)
+        } finally { androidx.work.testing.WorkManagerTestInitHelper.closeWorkDatabase() }
+    }
 }
