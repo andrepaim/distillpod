@@ -36,6 +36,7 @@ import coil.compose.AsyncImage
 import dev.distillpod.android.data.PodcastCandidate
 import dev.distillpod.android.data.PodcastEntity
 import dev.distillpod.core.YouTubeUrl
+import dev.distillpod.android.video.YOUTUBE_LINK_UNSUPPORTED
 import dev.distillpod.android.ui.theme.extras
 import dev.distillpod.android.ui.theme.Button
 import dev.distillpod.android.ui.theme.OutlinedButton
@@ -49,7 +50,8 @@ import dev.distillpod.android.ui.theme.TextButton
     val library by vm.librarySearch.collectAsStateWithLifecycle()
     SearchScreen(query, state, recent, podcasts, busy, vm::query,
         { term -> vm.query(term); vm.search() }, vm::clearSearches, vm::subscribe,
-        { vm.open("podcast:$it") }, { vm.open("recommendations") }, vm::retrySearch, library, vm::open, vm::browsePodcast)
+        { vm.open("podcast:$it") }, { vm.open("recommendations") }, vm::retrySearch, library, vm::open, vm::browsePodcast,
+        youtube = vm.graph.youtube != null)
 }
 
 private val SEARCH_FORMATS = listOf("All", "Audio", "Video")
@@ -71,8 +73,10 @@ private val topics = listOf(SearchTopic("Technology", Icons.Default.Memory), Sea
     onQuery: (String) -> Unit, onSearch: (String) -> Unit, onClearRecent: () -> Unit, onFollow: (String) -> Unit,
     onOpenPodcast: (String) -> Unit, onExplore: () -> Unit, onRetryProvider: (String) -> Unit = {},
     library: LibrarySearchState = LibrarySearchState(), onOpenRoute: (String) -> Unit = {},
-    onBrowse: (String) -> Unit = {}) {
-    var format by rememberSaveable { mutableStateOf("All") }
+    onBrowse: (String) -> Unit = {}, youtube: Boolean = true) {
+    // Without YouTube sources (#319) there is nothing to tell apart: no format choice.
+    var chosenFormat by rememberSaveable { mutableStateOf("All") }
+    val format = if (youtube) chosenFormat else "All"
     fun accepts(provider: String) = format == "All" || (provider == "youtube") == (format == "Video")
     val librarySections = remember(library.matches, format) { librarySections(library.matches, format) }
     // Sections showing all their rows, for the current library search only.
@@ -117,9 +121,9 @@ private val topics = listOf(SearchTopic("Technology", Icons.Default.Memory), Sea
                     },
                     modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Search your library and podcasts" })
             }
-            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().testTag("search-format")) {
+            if (youtube) SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().testTag("search-format")) {
                 SEARCH_FORMATS.forEachIndexed { index, option ->
-                    SegmentedButton(selected = format == option, onClick = { format = option }, shape = SegmentedButtonDefaults.itemShape(index, SEARCH_FORMATS.size),
+                    SegmentedButton(selected = format == option, onClick = { chosenFormat = option }, shape = SegmentedButtonDefaults.itemShape(index, SEARCH_FORMATS.size),
                         icon = {}, label = { Text(option, maxLines = 1) })
                 }
             }
@@ -151,7 +155,7 @@ private val topics = listOf(SearchTopic("Technology", Icons.Default.Memory), Sea
                     items(displayed.results.drop(1), key = { it.feedUrl }) { candidate -> SearchResult(candidate, existing(candidate), false, adding,
                         "subscribe:${candidate.feedUrl}" in busy, { preview = candidate }, { follow(candidate) }, onOpenPodcast) }
                 }
-                library.terms != null -> item(key = DIRECTORY_PROMPT_KEY) { DirectorySearchPrompt(query, !adding) { submit(query) } }
+                library.terms != null -> item(key = DIRECTORY_PROMPT_KEY) { DirectorySearchPrompt(query, !adding, youtube) { submit(query) } }
                 else -> {
                     if (recent.isNotEmpty()) {
                         item { SectionHeading("Recent searches", action = "Clear", onAction = onClearRecent) }
@@ -236,11 +240,16 @@ private val topics = listOf(SearchTopic("Technology", Icons.Default.Memory), Sea
         Column(Modifier.fillMaxWidth().imePadding().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Icon(Icons.Default.RssFeed, null, tint = MaterialTheme.colorScheme.secondary)
             Text("Add a podcast feed", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
-            Text("Paste a public RSS feed, YouTube channel, playlist or video link.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            OutlinedTextField(rssDraft, { rssDraft = it.take(2048) }, label = { Text("RSS or YouTube URL") }, modifier = Modifier.fillMaxWidth().testTag("Feed address"), maxLines = 3)
-            Button(onClick = { rss = false; onQuery(rssDraft.trim()); onFollow(rssDraft.trim()) }, enabled = isFeedAddress(rssDraft) && !adding,
+            Text(if (youtube) "Paste a public RSS feed, YouTube channel, playlist or video link." else "Paste a public RSS feed link.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            OutlinedTextField(rssDraft, { rssDraft = it.take(2048) }, label = { Text(if (youtube) "RSS or YouTube URL" else "RSS feed URL") },
+                modifier = Modifier.fillMaxWidth().testTag("Feed address"), maxLines = 3)
+            val refused = !youtube && YouTubeUrl.source(rssDraft) != null
+            if (refused) Text(YOUTUBE_LINK_UNSUPPORTED, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
+            val addable = isFeedAddress(rssDraft) && !adding && !refused
+            Button(onClick = { rss = false; onQuery(rssDraft.trim()); onFollow(rssDraft.trim()) }, enabled = addable,
                 modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) { Text("Add feed") }
-            OutlinedButton(onClick = { rss = false; onQuery(rssDraft.trim()); onBrowse(rssDraft.trim()) }, enabled = isFeedAddress(rssDraft) && !adding,
+            OutlinedButton(onClick = { rss = false; onQuery(rssDraft.trim()); onBrowse(rssDraft.trim()) }, enabled = addable,
                 modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) { Text("Browse episodes") }
         }
     }

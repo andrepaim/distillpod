@@ -40,7 +40,7 @@ class DraftRoutingTest(unittest.TestCase):
 
     def test_draft_never_satisfies_required_gate(self):
         data = results('draft')
-        for job in ['android_build', 'voice_build', 'native', 'firebase', 'emulator', 'emulator_part2']:
+        for job in ['android_build', 'voice_build', 'play_build', 'native', 'firebase', 'emulator', 'emulator_part2']:
             data[job]['result'] = 'skipped'
         with self.assertRaisesRegex(ValueError, 'Draft.*incomplete'):
             validate_gate(data, 'pull_request', {}, SHA)

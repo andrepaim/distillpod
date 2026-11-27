@@ -11,6 +11,7 @@ import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import dev.distillpod.android.PlaybackService
 import dev.distillpod.android.data.*
+import dev.distillpod.android.video.cannotPlay
 import java.io.File
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.*
@@ -119,7 +120,8 @@ internal fun preserveVideoItem(ep: EpisodeEntity, podcast: PodcastEntity?, curre
 class PlaybackRepository(private val context: Context, private val db: AppDatabase, private val scope: CoroutineScope,
     private val prepareVideo: suspend (String) -> Unit = { url ->
         val streams = runInterruptible(Dispatchers.IO) {
-            (context.applicationContext as dev.distillpod.android.DistillPodApplication).graph.youtube.streams(url)
+            ((context.applicationContext as dev.distillpod.android.DistillPodApplication).graph.youtube
+                ?: throw dev.distillpod.android.video.YouTubeUnavailableException()).streams(url)
         }
         require(streams.video != null) { "No compatible video is available for this episode" }
     }) {
@@ -187,8 +189,14 @@ class PlaybackRepository(private val context: Context, private val db: AppDataba
             }
         }
     }
+    /** A build without YouTube sources never queues or plays a restored YouTube episode (#319). */
+    private fun requirePlayable(ep: EpisodeEntity) {
+        if ((context.applicationContext as dev.distillpod.android.DistillPodApplication).graph.youtube.cannotPlay(ep.audioUrl))
+            throw dev.distillpod.android.video.YouTubeUnavailableException()
+    }
     suspend fun play(id: String, positionMs: Long? = null) {
         val ep = db.library().episode(id) ?: error("Episode is unavailable")
+        requirePlayable(ep)
         val controller = controller()
         val all = db.library().episodes().associateBy { it.id }
         val podcasts = db.library().podcasts().associateBy { it.id }
@@ -219,6 +227,7 @@ class PlaybackRepository(private val context: Context, private val db: AppDataba
     suspend fun speed(value: Float) { require(value in 0.5f..3f); val c = controller(); withContext(Dispatchers.Main) { c.setPlaybackSpeed(value) } }
     suspend fun enqueue(id: String, next: Boolean = false) {
         val ep = db.library().episode(id) ?: throw IllegalArgumentException("Episode is unavailable")
+        requirePlayable(ep)
         val item = mediaItem(ep, db.library().podcast(ep.podcastId))
         val c = controller()
         withContext(Dispatchers.Main) { enqueueMediaItem(c, item, next) }

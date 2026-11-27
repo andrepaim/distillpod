@@ -25,8 +25,10 @@ internal fun EpisodeEntity.needsSourceDetails(): Boolean =
 internal data class EpisodeMetadataText(val date: String, val description: String?, val note: String?, val retry: Boolean)
 
 internal fun episodeMetadataText(episode: EpisodeEntity, state: EpisodeDetailsState?, now: Long = System.currentTimeMillis(),
-    zone: ZoneId = ZoneId.systemDefault(), locale: Locale = Locale.getDefault()): EpisodeMetadataText {
-    val pending = episode.needsSourceDetails()
+    zone: ZoneId = ZoneId.systemDefault(), locale: Locale = Locale.getDefault(),
+    /** False in a build without YouTube sources, which never looks a video up (#319). */
+    sourceDetails: Boolean = true): EpisodeMetadataText {
+    val pending = sourceDetails && episode.needsSourceDetails()
     val checking = pending && (state == null || state == EpisodeDetailsState.LOADING)
     val failed = pending && state == EpisodeDetailsState.FAILED
     val date = when {

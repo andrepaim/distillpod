@@ -9,9 +9,6 @@ import androidx.media3.datasource.TransferListener
 import java.io.EOFException
 import java.io.IOException
 
-// Some audio CDN responses reject 5 MiB ranges even when 1 MiB ranges succeed.
-internal const val YOUTUBE_RANGE_BYTES = 1024L * 1024
-
 /** YouTube's CDN requires bounded ranges, including the first request and after a seek. */
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 internal class BoundedRangeDataSource(

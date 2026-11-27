@@ -11,6 +11,8 @@ import dev.distillpod.android.work.TranscriptionService
 import dev.distillpod.android.work.withNetworkType
 import dev.distillpod.core.*
 import dev.distillpod.android.diagnostics.DiagnosticCorrelation
+import dev.distillpod.android.video.YouTubeUnavailableException
+import dev.distillpod.android.video.cannotPlay
 import java.io.File
 import java.util.UUID
 import java.util.concurrent.Executors
@@ -137,6 +139,7 @@ class TranscriptionRepository internal constructor(private val graph: AppGraph,
     suspend fun prepareAutomatically(id: String) = controls.withLock {
         if (!graph.settings.flow.first().transcribeOnPlayback) return@withLock
         val ep = dao.episode(id) ?: return@withLock // Diagnostic clips are not library episodes.
+        if (graph.youtube.cannotPlay(ep.audioUrl)) return@withLock
         // Download completion updates the audio fingerprint before the active chunk adopts it.
         // A streaming-to-file playback transition must not replace that in-flight revision.
         if (running[id]?.isActive == true) return@withLock
@@ -167,6 +170,8 @@ class TranscriptionRepository internal constructor(private val graph: AppGraph,
 
     private suspend fun prepareInternal(id: String, forceLocal: Boolean, allowOnline: Boolean, requested: Boolean) {
         val ep = dao.episode(id) ?: error("Episode is unavailable")
+        // Before any transcript row or work changes: the episode stays as it was restored (#319).
+        if (graph.youtube.cannotPlay(ep.audioUrl)) throw YouTubeUnavailableException()
         val prefs = graph.settings.flow.first()
         val old = dao.transcript(id)
         val replacingOnline = forceLocal || old?.let { it.replaceOnline && it.state !in listOf("ready", "stale") } == true

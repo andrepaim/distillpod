@@ -25,16 +25,17 @@ class AppGraph internal constructor(val context: Context, val scope: CoroutineSc
     val http = OkHttpClient.Builder().connectTimeout(20, TimeUnit.SECONDS).readTimeout(30, TimeUnit.SECONDS)
         .addInterceptor { it.proceed(it.request().newBuilder().header("User-Agent", "DistillPod/0.2 (Android)").build()) }.build()
     val syncAccount by lazy { dev.distillpod.android.sync.SubscriptionSyncAccount(this) }
-    val youtube = dev.distillpod.android.video.YouTubeSource(dev.distillpod.android.video.AndroidYouTubeExtractor(context) { name, reason, elapsed, operation ->
-        diagnostics.event(name, operation = operation, reason = reason, elapsedMs = elapsed)
-    }, dev.distillpod.android.video.HttpYouTubeMetadataFetcher(http)).apply { onStreamRefresh = { diagnostics.event("youtube.stream_refreshed", reason = "ready") } }
+    /** Null in a build without YouTube sources (#319). */
+    val youtube: dev.distillpod.android.video.YouTubeSupport? = dev.distillpod.android.video.YouTubeBuild.create(context, http, diagnostics)
     val podcasts = PodcastRepository(db, http, onSubscriptionChanged = { syncAccount.kick() }, onFeedNeeded = { jobs.refresh(it) }, youtube = youtube,
         upgradeOnce = settings::once)
     val portableSync by lazy {dev.distillpod.android.sync.PortableLibrarySync(db,changed={syncAccount.kick()})}
     val collectionSync by lazy {dev.distillpod.android.sync.CollectionSync(db,changed={syncAccount.kick()})}
     val activeFiles = ActiveFiles()
     val media = MediaRepository(context, db, settings, ResumableDownloader(http), activeFiles,
-        resolveAudio = { url -> if (dev.distillpod.core.YouTubeUrl.videoId(url) != null) youtube.streams(url).audio else url },
+        resolveAudio = { url -> if (dev.distillpod.core.YouTubeUrl.videoId(url) == null) url
+            else (youtube ?: throw dev.distillpod.android.video.YouTubeUnavailableException()).streams(url).audio },
+        youtube = youtube != null,
         onValidated = { diagnostics.event("videocast.download_validated", reason = "succeeded") })
     val account = AccountRepository(context, scope)
     val jobs = AppJobs(context)
@@ -42,7 +43,6 @@ class AppGraph internal constructor(val context: Context, val scope: CoroutineSc
     val downloadNetwork = dev.distillpod.android.work.DownloadNetwork.system(context)
     /** The installed build's version code; a private phone build can be ahead of the newest release. */
     val installedVersionCode: Long get() = context.packageManager.getPackageInfo(context.packageName, 0).longVersionCode
-    val updateChecker by lazy { UpdateChecker(ReleaseFeed(http)::newest, settings, installedVersionCode) }
     val posts by lazy { PostRepository(db) }
     val socialResults by lazy { SocialResultRepository(db) { id, attempt -> dev.distillpod.android.work.SocialPostJobs.enqueue(context, id, attempt) } }
     val postAssets by lazy { dev.distillpod.android.sharing.PostAssets(java.io.File(context.filesDir, "post-images")) }
@@ -122,7 +122,7 @@ class AppGraph internal constructor(val context: Context, val scope: CoroutineSc
                     StartupStep("network_policy") { jobs.configureNetworkPolicy() },
                     StartupStep("refresh") { jobs.configureRefresh() },
                     StartupStep("backups") { dev.distillpod.android.work.BackupJobs.configure(context, managedBackups.connected.first()) },
-                    StartupStep("update_checks") { dev.distillpod.android.work.UpdateJobs.configure(context, settings.updates.first().enabled) },
+                    StartupStep("update_checks") { UpdateCheckBuild.configure(context, settings.updates.first().enabled) },
                     StartupStep("blocked_transcripts") { transcription.resumeBlocked() },
                     StartupStep("transcription") { transcription.recover() }),
                 afterReady = listOf(

@@ -57,6 +57,51 @@ not change that protocol or the deployed Firebase rules. Local backups and OPML 
 canonical URLs; restoring YouTube sources requires a build with this feature. RSS sync keeps
 its existing behavior.
 
+## Builds without YouTube sources
+
+Google Play does not accept an app that extracts or downloads YouTube streams, so YouTube sources
+are a build-time [distribution switch](../development.md#distribution-switches) (#319). The
+default build, and every GitHub release, keeps them on. `-PdistillpodYoutubeEnabled=false`, or the
+Play preset `-PdistillpodDistribution=play`, builds without them. The code stays in the repository;
+only the build leaves it out.
+
+A build without YouTube sources contains:
+
+- no `youtubedl-android` dependency, so none of its classes and none of its native libraries
+  (`libpython.so`, `libpython.zip.so`, `libqjs.so`);
+- no yt-dlp binary: `prepareYoutubeExtractor` is not run and `res/raw/ytdlp.bin` is not packaged;
+- no YouTube extraction, feed or stream code. `YouTubeSource`, the extractor, the stream data
+  sources and their tests live in `app/src/youtubeOn` and `app/src/testYoutubeOn`; the app graph's
+  `youtube` is null (`app/src/youtubeOff`);
+- third-party notices and a source manifest without youtubedl-android, yt-dlp and EJS.
+  `prepareDistributionLicenses` filters the copies packaged in the APK; the repository's
+  `THIRD_PARTY_NOTICES.md` and the GitHub release manifest are unchanged.
+
+What a user of that build sees:
+
+- Search asks only the podcast directory and has no **All/Audio/Video** choice. The add-feed sheet
+  asks for an RSS feed. A pasted YouTube channel, playlist or video link is refused with "YouTube
+  links are not supported in this version of DistillPod.", before any request or library change.
+  OPML import skips YouTube addresses.
+- The player has no **Video** choice.
+- Settings and onboarding have no YouTube wording (onboarding never had any).
+
+YouTube shows can still arrive in such a build's library through a restored backup. Library sync
+never carries them (see above), so a backup is the only route. They stay in the library with their
+episodes, progress, saved moments and transcripts, and are never changed: the show and episode
+pages say "YouTube videos are not available in this version of DistillPod. They stay in your library
+unchanged." A background refresh passes over them, and a manual refresh, Download, Transcribe, Play
+and Add to queue answer with that message before anything is written. The episode page makes no
+YouTube lookup. If a restored queue reaches one, the player stops with the message without opening
+any address. A backup of that library contains them exactly as restored, so a GitHub build can
+restore them again. Show and episode artwork are ordinary image addresses and still load, like any
+other show's artwork.
+
+`YouTubeSourcesOffTest` covers the absent classes and binary, directory-only search, refused links
+and OPML entries, and a restored show that stays inert and round-trips through backup.
+`scripts/verify_distribution_apk.py` checks the built APK; see the
+[development guide](../development.md#distribution-switches).
+
 ## Reliability improvements
 
 Extraction has a 40-second total deadline including its single transient retry, bounded subprocess concurrency and request-specific cancellation. Cache locks cover memory operations only; requests for the same video share in-flight work. A rejected initial CDN URL triggers one cache invalidation and fresh resolution. Repeated rejection remains an error. Audio/video source changes carry the queue and starting position in one controller command, including changes while an earlier timeline is preparing. Video failures request an audio fallback once; audio failure remains visible.

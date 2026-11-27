@@ -12,6 +12,7 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.work.*
 import dev.distillpod.android.MainActivity
 import dev.distillpod.android.appGraph
+import dev.distillpod.android.updateChecker
 import dev.distillpod.android.data.AvailableUpdate
 import kotlinx.coroutines.flow.first
 import java.io.IOException
@@ -23,14 +24,15 @@ class UpdateCheckWorker(context: Context, params: WorkerParameters) : CoroutineW
         val graph = applicationContext.appGraph
         if (!graph.settings.updates.first().enabled) return Result.success()
         // Offline or rate-limited: the next daily run tries again; retrying sooner would only add requests.
-        val update = try { graph.updateChecker.check() } catch (_: IOException) { return Result.success() }
-        if (update != null && graph.updateChecker.announce(update)) UpdateNotice.post(applicationContext, update)
+        val checker = graph.updateChecker
+        val update = try { checker.check() } catch (_: IOException) { return Result.success() }
+        if (update != null && checker.announce(update)) UpdateNotice.post(applicationContext, update)
         return Result.success()
     }
 }
 
 object UpdateJobs {
-    private const val NAME = "update-check"
+    private const val NAME = dev.distillpod.android.data.UPDATE_CHECK_WORK
 
     /** Debug and test builds never check on their own; their manual check in About still works. */
     fun configure(context: Context, enabled: Boolean) {
@@ -46,7 +48,7 @@ object UpdateJobs {
 object UpdateNotice {
     const val CHANNEL = "updates"
     /** Extra on [MainActivity] intents that opens Settings › About. */
-    const val OPEN_ABOUT = "openAbout"
+    const val OPEN_ABOUT = dev.distillpod.android.data.OPEN_ABOUT_EXTRA
     private const val NOTIFICATION_ID = 8401
 
     fun post(context: Context, update: AvailableUpdate) {
