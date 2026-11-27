@@ -125,8 +125,9 @@ local-link and diff checks; they do not require Android or phone execution.
 
 ## Tools
 
-- JDK 17
-- Android SDK platform 35 and Build Tools 35.0.0
+- JDK 17 for the build
+- A Java 21 runtime for the app's unit tests (Robolectric runs SDK 36 only on Java 21; see below)
+- Android SDK platform 36 and Build Tools 35.0.0
 - NDK 27.2.12479018
 - Android SDK CMake 3.22.1
 - Python 3 for test-result and release validation scripts
@@ -135,12 +136,27 @@ local-link and diff checks; they do not require Android or phone execution.
 Clone recursively, or run `git submodule update --init --recursive` after cloning. The whisper.cpp revision is recorded in Git; do not replace it with an arbitrary newer checkout. Point `ANDROID_HOME` to your SDK, or create an ignored `local.properties` with `sdk.dir=/path/to/sdk`.
 
 ```sh
-sdkmanager 'platforms;android-35' 'build-tools;35.0.0' 'ndk;27.2.12479018' 'cmake;3.22.1'
+sdkmanager 'platforms;android-36' 'build-tools;35.0.0' 'ndk;27.2.12479018' 'cmake;3.22.1'
 ./gradlew :core:test :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
 python3 -m unittest discover -s scripts -p 'test_*.py'
 ```
 
-Unit tests run Robolectric offline. The `android-all-instrumented` jar for each SDK level the tests use is an ordinary Gradle dependency of `app` (one `robolectricAndroidAll<level>` configuration per level), resolved through Gradle's cache and copied to `app/build/robolectric/android-all`; Robolectric reads only that directory and downloads nothing while tests run. A test that requests a level missing from the table fails with `Unable to locate dependency`. When adding a `@Config(sdk)` level or upgrading Robolectric, take the versions from that release's `DefaultSdkProvider`; `scripts/test_robolectric_offline.py` checks that the table in `app/build.gradle.kts` matches the levels the tests request (classes without a class-level `sdk` run on `targetSdk`).
+The app's `Test` tasks select a Java 21 launcher through Gradle toolchains; compilation, lint and packaging stay on the JDK 17 that runs Gradle. Gradle finds a Java 21 installation in the usual locations (for example `/usr/lib/jvm`); otherwise name it with `-Porg.gradle.java.installations.paths=/path/to/java-21` or the same key in `~/.gradle/gradle.properties`. A runtime without `javac` is enough. Without one, `:app:testDebugUnitTest` fails with "No matching toolchains found"; tasks that do not run unit tests are unaffected. CI installs Temurin 21 beside 17 and passes `-Porg.gradle.java.installations.fromEnv=JAVA_HOME_21_X64`.
+
+Unit tests run Robolectric offline. The `android-all-instrumented` jar for each SDK level the tests use is an ordinary Gradle dependency of `app` (one `robolectricAndroidAll<level>` configuration per level), resolved through Gradle's cache and copied to `app/build/robolectric/android-all`; Robolectric reads only that directory and downloads nothing while tests run. A test that requests a level missing from the table fails with `Unable to locate dependency`. When adding a `@Config(sdk)` level or upgrading Robolectric, take the versions from that release's `DefaultSdkProvider`; `scripts/test_robolectric_offline.py` checks that the table in `app/build.gradle.kts` matches the levels the tests request (classes without a class-level `sdk` run on `targetSdk`, now 36) and that SDK 36 has its Java 21 test launcher.
+
+## Target SDK 36 (Android 16)
+
+Both builds compile against and target API 36, which Google Play requires (#321). The behaviour changes that targeting 36 brings, and how the app meets them:
+
+- **Edge to edge:** the opt-out no longer applies on Android 16. The app never used it (`TargetSdkManifestTest` checks the resources), so its windows were already edge to edge on Android 15 while targeting 35; `MainActivity` calls `enableEdgeToEdge`.
+- **Predictive back:** for apps targeting 36, `onBackPressed` is not called and `KEYCODE_BACK` is not dispatched on Android 16. The app already opts in (`android:enableOnBackInvokedCallback="true"`) and handles Back only through Compose `BackHandler`, dialogs and sheets; `PredictiveBackDeviceTest` covers it on the emulator.
+- **Large screens:** on displays at least 600dp wide, Android 16 ignores orientation, resizability and aspect-ratio requests. The manifest declares none (`TargetSdkManifestTest` checks the merged manifest, libraries included). The one runtime request, `SCREEN_ORIENTATION_SENSOR_LANDSCAPE` when a videocast enters full screen, is ignored there: the video stays full screen in the current orientation and Back still leaves it. Phones narrower than 600dp keep the forced landscape.
+- **Foreground services and jobs:** the Android 16 job runtime quotas (jobs started while visible or beside a foreground service) apply to every app on Android 16 whatever it targets, so targeting 36 does not change them. Playback (`mediaPlayback`), transcription (`mediaProcessing` on Android 15+, `dataSync` before, in `TranscriptionService` and the WorkManager fallback), downloads (`dataSync`) and voice (`microphone`) keep their types and refused-start recovery; `TranscriptionServiceTest` checks the types on SDK 36.
+- **Network:** local network protection is opt-in on Android 16 and does not cover loopback; the ChatGPT sign-in listener binds only `127.0.0.1`. `android:usesCleartextTraffic="true"` still applies to cleartext podcast feeds; the platform ignores it from target 38, when a network security configuration will be needed.
+- **Not used by the app:** `elegantTextHeight`, `scheduleAtFixedRate`, `MediaStore.getVersion`, body-sensor permissions, Bluetooth bond APIs and the opt-in `intentMatchingFlags`.
+
+CI's emulator jobs use the API 36 `google_apis` x86_64 image so that the target-gated behaviour is exercised.
 
 `gradle.properties` gives the Gradle daemon a 4 GB heap with at most four workers; the Kotlin daemon inherits the same limit. At 2 GB, release packaging and a cold debug build (dex merging alongside lint) ran out of heap.
 

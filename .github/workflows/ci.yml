@@ -121,7 +121,10 @@ jobs:
       - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: temurin
-          java-version: '17'
+          # JDK 17 (listed last) stays JAVA_HOME for the build; Robolectric's SDK 36 runs on 21.
+          java-version: |
+            21
+            17
       - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
         with:
           log-accepted-android-sdk-licenses: false
@@ -129,7 +132,7 @@ jobs:
         with:
           cache-read-only: ${{ github.event_name != 'push' || github.ref != 'refs/heads/main' || inputs.build_release == true }}
       - name: Install pinned native tools
-        run: scripts/sdk-install.sh 'platforms;android-35' 'build-tools;35.0.0' 'ndk;27.2.12479018' 'cmake;3.22.1'
+        run: scripts/sdk-install.sh 'platforms;android-36' 'build-tools;35.0.0' 'ndk;27.2.12479018' 'cmake;3.22.1'
       - name: Validate release tooling
         run: |
           python3 -m unittest discover -s scripts -p 'test_*.py'
@@ -140,7 +143,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           python3 scripts/fetch_youtube_extractor.py --output app/build/generated/youtube/res/raw/ytdlp.bin
-          ./gradlew --no-daemon --stacktrace :core:test :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
+          ./gradlew --no-daemon --stacktrace :core:test :app:testDebugUnitTest :app:lintDebug :app:assembleDebug -Porg.gradle.java.installations.fromEnv=JAVA_HOME_21_X64
       - name: Stage default debug APK
         run: install -D -m 0444 app/build/outputs/apk/debug/app-debug.apk "$RUNNER_TEMP/distillpod-default-debug/app-debug.apk"
       - name: Verify validation source
@@ -179,7 +182,10 @@ jobs:
       - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: temurin
-          java-version: '17'
+          # JDK 17 (listed last) stays JAVA_HOME for the build; Robolectric's SDK 36 runs on 21.
+          java-version: |
+            21
+            17
       - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
         with:
           log-accepted-android-sdk-licenses: false
@@ -188,13 +194,13 @@ jobs:
           # Always read-only: writing would race android_build for the same cache key.
           cache-read-only: true
       - name: Install pinned native tools
-        run: scripts/sdk-install.sh 'platforms;android-35' 'build-tools;35.0.0' 'ndk;27.2.12479018' 'cmake;3.22.1'
+        run: scripts/sdk-install.sh 'platforms;android-36' 'build-tools;35.0.0' 'ndk;27.2.12479018' 'cmake;3.22.1'
       - name: Validate opt-in voice configuration
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           python3 scripts/fetch_youtube_extractor.py --output app/build/generated/youtube/res/raw/ytdlp.bin
-          ./gradlew --no-daemon --stacktrace :app:testDebugUnitTest :app:lintDebug :app:assembleDebug -PdistillpodVoiceEnabled=true
+          ./gradlew --no-daemon --stacktrace :app:testDebugUnitTest :app:lintDebug :app:assembleDebug -PdistillpodVoiceEnabled=true -Porg.gradle.java.installations.fromEnv=JAVA_HOME_21_X64
       - name: Verify validation source
         run: python3 scripts/ci_validation_proof.py check-source
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -231,7 +237,7 @@ jobs:
         with:
           cache-read-only: ${{ github.event_name != 'push' || github.ref != 'refs/heads/main' || inputs.build_release == true }}
       - name: Install pinned native tools
-        run: scripts/sdk-install.sh 'platforms;android-35' 'build-tools;35.0.0' 'ndk;27.2.12479018' 'cmake;3.22.1'
+        run: scripts/sdk-install.sh 'platforms;android-36' 'build-tools;35.0.0' 'ndk;27.2.12479018' 'cmake;3.22.1'
       - name: Fetch pinned YouTube extractor
         env:
           GH_TOKEN: ${{ github.token }}
@@ -344,7 +350,7 @@ jobs:
       - name: Install pinned SDK packages and emulator system image
         # build-tools 37.0.0, platform-tools and emulator are what the emulator action installs;
         # installed here, its own installs are no-ops and every download is retried.
-        run: scripts/sdk-install.sh 'platforms;android-35' 'build-tools;35.0.0' 'ndk;27.2.12479018' 'cmake;3.22.1' 'build-tools;37.0.0' platform-tools emulator 'system-images;android-35;google_apis;x86_64'
+        run: scripts/sdk-install.sh 'platforms;android-36' 'build-tools;35.0.0' 'ndk;27.2.12479018' 'cmake;3.22.1' 'build-tools;37.0.0' platform-tools emulator 'system-images;android-36;google_apis;x86_64'
       - name: Enable emulator acceleration
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -352,7 +358,7 @@ jobs:
           sudo udevadm trigger --name-match=kvm
       - uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         with:
-          api-level: 35
+          api-level: 36
           target: google_apis
           arch: x86_64
           disable-animations: true
@@ -438,7 +444,7 @@ jobs:
       - name: Install pinned SDK packages and emulator system image
         # build-tools 37.0.0, platform-tools and emulator are what the emulator action installs;
         # installed here, its own installs are no-ops and every download is retried.
-        run: scripts/sdk-install.sh 'platforms;android-35' 'build-tools;35.0.0' 'ndk;27.2.12479018' 'cmake;3.22.1' 'build-tools;37.0.0' platform-tools emulator 'system-images;android-35;google_apis;x86_64'
+        run: scripts/sdk-install.sh 'platforms;android-36' 'build-tools;35.0.0' 'ndk;27.2.12479018' 'cmake;3.22.1' 'build-tools;37.0.0' platform-tools emulator 'system-images;android-36;google_apis;x86_64'
       - name: Enable emulator acceleration
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -446,7 +452,7 @@ jobs:
           sudo udevadm trigger --name-match=kvm
       - uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         with:
-          api-level: 35
+          api-level: 36
           target: google_apis
           arch: x86_64
           disable-animations: true

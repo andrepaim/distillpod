@@ -97,7 +97,7 @@ cd distillpod
 ./gradlew :core:test :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
 ```
 
-Use JDK 17, Android SDK 35, Build Tools 35.0.0, NDK 27.2.12479018 and CMake 3.22.1. Set `ANDROID_HOME` or create an ignored `local.properties`.
+Use JDK 17 (and a Java 21 runtime for the app's unit tests), Android SDK 36, Build Tools 35.0.0, NDK 27.2.12479018 and CMake 3.22.1. Set `ANDROID_HOME` or create an ignored `local.properties`.
 
 Ordinary source/debug builds keep voice disabled; add `-PdistillpodVoiceEnabled=true` to enable the preview. They also omit production Firebase configuration. See [development instructions](docs/development.md) for configured builds, tests and emulator checks, and [release instructions](docs/releases.md) for signing and publication.
 
