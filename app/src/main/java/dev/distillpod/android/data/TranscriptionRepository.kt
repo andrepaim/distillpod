@@ -59,6 +59,8 @@ private class QueuedWaits {
 internal const val QUEUED_BEHIND = "queued_behind"
 /** A queued revision waits for Android to lift its background network block before fetching its audio (#312). */
 internal const val NETWORK_BLOCKED = "network_blocked"
+/** The waits [transcriptionWaitReason] reports: the app checks them itself, so a refresh replaces or clears them (#336). */
+private val POLICY_WAITS = setOf("charging_required", "battery_low", "wifi_required", "offline")
 
 /**
  * The order one transcription session takes queued revisions in (#299): revisions the user asked for
@@ -274,7 +276,8 @@ class TranscriptionRepository internal constructor(private val graph: AppGraph,
             graph.diagnostics.failure("startup", error)
         }
     }
-    suspend fun resumeQueued() { pending().firstOrNull()?.let { dispatch(it) } }
+    /** The app is shown: waits that ended while it was in the background are no longer shown (#336). */
+    suspend fun resumeQueued() { refreshWaits(); pending().firstOrNull()?.let { dispatch(it) } }
     private suspend fun pending() = transcriptQueueOrder(dao.transcripts().filter { it.state in listOf("queued", "processing") }, requested)
     private suspend fun dispatch(row: TranscriptEntity) {
         if (!TranscriptionService.start(graph.context)) { enqueue(row, nextStart(row) ?: 0, refused = true); return }
@@ -299,6 +302,26 @@ class TranscriptionRepository internal constructor(private val graph: AppGraph,
             }
         }
         return next
+    }
+    /**
+     * Recomputes the wait each queued revision shows (#336) after a settings change, when a chunk starts or
+     * ends, and when the app is shown. A power or network wait is replaced by the current one, or cleared:
+     * behind the transcript being prepared if there is one, else waiting to start. Another wait is kept: being
+     * behind is shown from the live progress of the transcript ahead, and a refused start or a network block
+     * (#301, #312) ends only when the revision runs. An unchanged wait is neither shown anew nor logged again.
+     */
+    private suspend fun refreshWaits() = controls.withLock { refreshWaitsLocked() }
+    private suspend fun refreshWaitsLocked() {
+        val prefs = graph.settings.flow.first()
+        for (row in pending()) {
+            if (running.containsKey(row.episodeId)) continue
+            val ep = dao.episode(row.episodeId) ?: continue
+            val old = shownWaits.value[row.revision]
+            if (old == NETWORK_BLOCKED) continue
+            val reason = transcriptionWaitReason(graph.context, prefs, transcriptionNeedsNetwork(ep, row))
+                ?: if (old !in POLICY_WAITS) old else if (running.keys.any { it != row.episodeId }) QUEUED_BEHIND else "scheduled"
+            if (reason != null && reason != old) lifecycle("transcription.queued", row.revision, reason = reason, correlation = correlation(row.revision))
+        }
     }
     internal suspend fun pausePending(message: String) {
         for (row in pending()) {
@@ -352,6 +375,8 @@ class TranscriptionRepository internal constructor(private val graph: AppGraph,
                 manager.updateWork(request).get()
             }
         }
+        // The requests follow the settings; so does the wait each row shows (#336).
+        refreshWaitsLocked()
     } } }
 
     private fun revisionTag(row: TranscriptEntity) = "transcript-revision:${row.episodeId}:${row.revision}"
@@ -396,7 +421,11 @@ class TranscriptionRepository internal constructor(private val graph: AppGraph,
         val job = currentCoroutineContext().job
         running[id] = job
         // Show automation observes transcript state changes, not each chunk (#140).
-        try { processChunk(id, revision, execution) } finally { running.remove(id, job) }
+        try { processChunk(id, revision, execution) } finally {
+            running.remove(id, job)
+            // The slot is free: the queued rows show what they wait for now (#336).
+            withContext(NonCancellable) { refreshWaits() }
+        }
     }
 
     private suspend fun processChunk(id: String, revision: String, execution: TranscriptExecution): TranscriptOutcome {
@@ -413,6 +442,8 @@ class TranscriptionRepository internal constructor(private val graph: AppGraph,
             if (dao.beginTranscriptProcessing(id, revision) != 1) return@withLock null
             lifecycle("transcription.started",revision,attempt=run,correlation=correlation(revision,run))
             live.update {it+(id to TranscriptProgress(revision,run,TranscriptStage.STARTING,current.processedMs,current.durationMs))}
+            // This one takes the slot: a queued row whose power or network wait ended now waits behind it (#336).
+            refreshWaitsLocked()
             current
         } ?: return TranscriptOutcome.COMPLETED
         var lastDiagnosticStage: TranscriptStage? = null

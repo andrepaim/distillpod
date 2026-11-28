@@ -103,7 +103,10 @@ class TranscriptionQueuedDiagnosticsTest {
             ReflectionHelpers.setField(graph, "diagnostics", restarted)
             val restartedBarrier = DiagnosticBarrierProbe(restarted)
             graph.reconcileJournal()
-            TranscriptionRepository(graph).recover()
+            val repository = TranscriptionRepository(graph)
+            // Startup applies the settings to queued requests first, which refreshes their waits too (#336).
+            repository.configureNetworkPolicy()
+            repository.recover()
             restartedBarrier.awaitIdle()
             val added = restarted.queue.files().filter { it.name !in before }.map { it.readText() }
                 .filterNot { Regex(""""body"\s*:\s*"(app.started|diagnostics.health)"""").containsMatchIn(it) }
@@ -130,6 +133,63 @@ class TranscriptionQueuedDiagnosticsTest {
             val reasons = queued(diagnostics, barrier).getValue(revision)
             assertEquals(3, reasons.size)
             assertNotEquals("charging_required", reasons.last())
+        }
+    }
+
+    /** The routine lines added since [before] (file names), other than the start and health lines. */
+    private fun added(diagnostics: Diagnostics, barrier: DiagnosticBarrierProbe, before: Set<String>): List<String> {
+        barrier.awaitIdle()
+        return diagnostics.queue.files().filter { it.name !in before }.map { it.readText() }
+            .filterNot { Regex(""""body"\s*:\s*"(app.started|diagnostics.health)"""").containsMatchIn(it) }
+            .map { "${Regex(""""body"\s*:\s*"([^"]+)"""").find(it)?.groupValues?.get(1)} ${attribute(it, "reason")}" }
+    }
+
+    /** #336: a settings change refreshes the wait each queued row shows; only a wait that changed is reported, once. */
+    @Test fun `a settings change logs each changed wait once and an unchanged one not at all`() = runBlocking<Unit> {
+        fixture { graph, diagnostics, barrier ->
+            val dao = graph.db.library()
+            for (n in 1..3) graph.transcription.prepare(episode(n).id)
+            sessionPass(graph)
+            val revisions = (1..3).map { dao.transcript(episode(it).id)!!.revision }
+            assertEquals(revisions.associateWith { listOf("charging_required") }, queued(diagnostics, barrier))
+            barrier.awaitIdle()
+            var before = diagnostics.queue.files().map { it.name }.toSet()
+            // The charger comes first, so the Wi-Fi setting changes no wait: nothing is written at all.
+            graph.settings.flag("wifi", true)
+            graph.transcription.configureNetworkPolicy()
+            graph.transcription.configureNetworkPolicy()
+            assertEquals(emptyList<String>(), added(diagnostics, barrier, before))
+            before = diagnostics.queue.files().map { it.name }.toSet()
+            graph.settings.flag("charging", false)
+            graph.transcription.configureNetworkPolicy()
+            graph.transcription.configureNetworkPolicy() // Applying the same settings again changes nothing.
+            val lines = added(diagnostics, barrier, before)
+            assertEquals(lines.toString(), 3, lines.size)
+            val reasons = queued(diagnostics, barrier)
+            for (revision in revisions) {
+                assertEquals(2, reasons.getValue(revision).size)
+                assertNotEquals("charging_required", reasons.getValue(revision).last())
+            }
+            assertEquals(emptyMap<String, List<String>>(), raw(diagnostics, barrier, "transcription.queued"))
+        }
+    }
+
+    /** #336: the wait of the rows behind a transcript is refreshed at each of its chunks, but not reported again. */
+    @Test fun `chunk boundaries do not log the unchanged wait of the transcripts behind`() = runBlocking<Unit> {
+        fixture { graph, diagnostics, barrier ->
+            val dao = graph.db.library()
+            graph.settings.flag("charging", false)
+            graph.transcription.prepare(episode(1).id)
+            graph.transcription.prepare(episode(2).id)
+            val first = dao.transcript(episode(1).id)!!.revision
+            val behind = dao.transcript(episode(2).id)!!.revision
+            repeat(3) {
+                // A stopped chunk goes back to the queue, as a WorkManager stop does.
+                try { graph.transcription.process(episode(1).id, first, TranscriptExecution({ true }, {}, false)) }
+                catch (_: CancellationException) {}
+                graph.transcription.nextForeground()
+            }
+            assertEquals(1, queued(diagnostics, barrier).getValue(behind).size)
         }
     }
 

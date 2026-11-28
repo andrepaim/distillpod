@@ -56,6 +56,7 @@ import dev.distillpod.android.data.NETWORK_BLOCKED
 import dev.distillpod.android.data.QUEUED_BEHIND
 import dev.distillpod.android.data.SegmentEntity
 import dev.distillpod.android.data.TranscriptEntity
+import dev.distillpod.android.data.TranscriptProgress
 import dev.distillpod.android.data.TranscriptStage
 import dev.distillpod.android.data.whisperModels
 import dev.distillpod.android.ui.theme.DistillSpacing
@@ -63,6 +64,7 @@ import dev.distillpod.android.ui.theme.DistillType
 import dev.distillpod.android.ui.theme.Button
 import dev.distillpod.android.ui.theme.OutlinedButton
 import dev.distillpod.android.ui.theme.TextButton
+import kotlinx.coroutines.delay
 
 /**
  * The transcript preparation state that [TranscriptTools] shows, shared with the episode page's
@@ -95,12 +97,56 @@ import dev.distillpod.android.ui.theme.TextButton
         stage == TranscriptStage.TRANSCRIBING && worked <= saved)
 }
 
+/** The transcript being prepared while a queued one waits behind it (#336): its episode title and overall progress, when known. */
+@Immutable internal data class TranscriptAhead(val title: String?, val percent: Int?)
+
+/** Waits a queued transcript shows even while another is prepared: power, network, or Android's network block (#336). */
+private val BLOCKING_WAITS = setOf("charging_required", "battery_low", "wifi_required", "offline", NETWORK_BLOCKED)
+
+/**
+ * The wait a queued transcript shows (#336), from its recorded [wait]: its own power or network wait first,
+ * else behind the transcript being [preparing], else what it recorded, but never behind one that is not.
+ */
+internal fun shownWait(wait: String?, preparing: Boolean): String? = when {
+    wait in BLOCKING_WAITS -> wait
+    preparing -> QUEUED_BEHIND
+    wait == QUEUED_BEHIND -> null
+    else -> wait
+}
+
+/** The transcript being prepared while [episodeId] waits (#336): another episode's live chunk, not one back in the queue. */
+internal fun transcriptAhead(progress: Map<String, TranscriptProgress>, episodeId: String): Map.Entry<String, TranscriptProgress>? =
+    progress.entries.firstOrNull { it.key != episodeId && it.value.stage != TranscriptStage.QUEUED }
+
+/**
+ * The overall progress of the transcript being prepared, as its own row shows it, from [live] progress and its
+ * saved [row]; null while it looks for an online or publisher transcript, or without a duration.
+ */
+internal fun aheadPercent(live: TranscriptProgress, row: TranscriptEntity?): Int? {
+    if (live.stage in listOf(TranscriptStage.ONLINE, TranscriptStage.PUBLISHER)) return null
+    val saved = row?.takeIf { it.revision == live.revision }
+    val duration = live.durationMs.takeIf { it > 0 } ?: saved?.durationMs ?: 0
+    if (duration <= 0) return null
+    return ((maxOf(live.workedMs, saved?.processedMs ?: 0).toFloat() / duration).coerceIn(0f, 0.999f) * 100).toInt()
+}
+
+/** An episode title shortened to [max] characters at a word, for a status sentence (#336). */
+internal fun shortTitle(title: String, max: Int = 40): String {
+    val plain = title.trim().replace(Regex("\\s+"), " ")
+    if (plain.length <= max) return plain
+    val cut = plain.take(max - 1)
+    val word = cut.lastIndexOf(' ').takeIf { it >= max / 2 }?.let { cut.take(it) } ?: cut
+    return word.trimEnd(' ', ',', ';', ':', '.', '-', '–', '—') + "…"
+}
+
+private fun TranscriptAhead?.percentSuffix() = this?.percent?.let { " ($it%)" } ?: ""
+
 /**
  * The transcript row's short status on the episode page (proposal 5.2): [TranscriptTools]' phase text, shortened.
- * [wait] is a queued transcript's recorded wait reason (#299).
+ * [wait] is a queued transcript's wait reason (#299), as [shownWait] gives it; [ahead] is what is prepared first (#336).
  */
 internal fun transcriptShortStatus(state: String?, source: String?, stage: TranscriptStage?, percent: Int, downloadPercent: Int?,
-    preparesOnPlay: Boolean, wait: String? = null): String = when (stage) {
+    preparesOnPlay: Boolean, wait: String? = null, ahead: TranscriptAhead? = null): String = when (stage) {
     TranscriptStage.ONLINE -> "Looking for an online transcript"
     TranscriptStage.PUBLISHER -> "Loading publisher transcript"
     TranscriptStage.DOWNLOADING -> downloadPercent?.let { "Downloading audio · $it%" } ?: "Downloading audio"
@@ -112,7 +158,7 @@ internal fun transcriptShortStatus(state: String?, source: String?, stage: Trans
     else -> when (state) {
         "ready" -> when (source) { "publisher" -> "Ready · publisher"; "online" -> "Ready · online"; else -> "Ready · on this phone" }
         "queued" -> when (wait) {
-            QUEUED_BEHIND -> "Queued · after another transcript"
+            QUEUED_BEHIND -> "Queued · after another transcript${ahead.percentSuffix()}"
             "charging_required" -> "Queued · waiting for a charger"
             "battery_low" -> "Queued · battery low"
             "wifi_required" -> "Queued · waiting for Wi-Fi"
@@ -131,9 +177,14 @@ internal fun transcriptShortStatus(state: String?, source: String?, stage: Trans
     }
 }
 
-/** Transcript tools' status for a queued transcript: what it waits for, from its recorded wait reason (#299). */
-internal fun queuedStatus(wait: String?): String = when (wait) {
-    QUEUED_BEHIND -> "Queued · another transcript is being prepared first. Transcripts are prepared one at a time."
+/**
+ * Transcript tools' status for a queued transcript: what it waits for (#299), from its wait as [shownWait] gives
+ * it, naming the transcript [ahead] and its progress when known (#336).
+ */
+internal fun queuedStatus(wait: String?, ahead: TranscriptAhead? = null): String = when (wait) {
+    QUEUED_BEHIND -> ahead?.title?.takeIf { it.isNotBlank() }
+        ?.let { "Queued · \"${shortTitle(it)}\" is being prepared first${ahead.percentSuffix()}. Transcripts are prepared one at a time." }
+        ?: "Queued · another transcript is being prepared first. Transcripts are prepared one at a time."
     "charging_required" -> "Queued · waiting for a charger because \"Only transcribe while charging\" is on"
     "battery_low" -> "Queued · battery low. Continues when the phone is charging or the battery recovers."
     "wifi_required" -> "Queued · waiting for Wi-Fi because \"Wi-Fi / unmetered downloads only\" is on"
@@ -142,6 +193,9 @@ internal fun queuedStatus(wait: String?): String = when (wait) {
     NETWORK_BLOCKED -> "Queued · Android is blocking DistillPod's network in the background. The audio download continues when Android allows it, or when you open DistillPod."
     else -> "Queued · waiting for Android to start transcription"
 }
+
+/** How long a queued transcript keeps naming the one prepared first after its chunk ends, before the next one starts (#336). */
+private const val AHEAD_GRACE_MS = 2_000L
 
 /** A transcription model's short name: "Tiny", "Base". */
 internal fun modelName(id: String) = whisperModels.firstOrNull { it.id == id }?.title?.substringBefore(" ·") ?: id
@@ -231,7 +285,22 @@ private fun downloadLabel(state: TranscriptToolState) = state.waiting?.download?
     val progress by vm.graph.transcription.progress.collectAsStateWithLifecycle()
     val live = progress[ep.id]?.takeIf { it.revision == row?.revision }
     val waits by vm.graph.transcription.waitReasons.collectAsStateWithLifecycle()
-    val wait = row?.takeIf { it.state == "queued" }?.let { waits[it.revision] }
+    val queued = row?.state == "queued"
+    // What is prepared first (#336), from its live chunk: no polling, and its progress follows while this is shown.
+    val aheadNow = if (queued) transcriptAhead(progress, ep.id)?.let { (id, chunk) ->
+        id to aheadPercent(chunk, transcripts.firstOrNull { it.episodeId == id })
+    } else null
+    // Between two chunks nothing is prepared for a moment: keep the last one briefly instead of flickering.
+    var aheadHeld by remember(ep.id) { mutableStateOf<Pair<String, Int?>?>(null) }
+    SideEffect { if (aheadNow != null) aheadHeld = aheadNow }
+    LaunchedEffect(ep.id, aheadNow == null) { if (aheadNow == null) { delay(AHEAD_GRACE_MS); aheadHeld = null } }
+    val aheadShown = aheadNow ?: aheadHeld?.takeIf { queued }
+    val aheadId = aheadShown?.first
+    val aheadTitle by produceState<Pair<String, String?>?>(null, aheadId) {
+        value = aheadId?.let { id -> id to vm.graph.db.library().episode(id)?.title }
+    }
+    val ahead = aheadShown?.let { (id, percent) -> TranscriptAhead(aheadTitle?.takeIf { it.first == id }?.second, percent) }
+    val wait = row?.takeIf { queued }?.let { shownWait(waits[it.revision], ahead != null) }
     val running = row?.state in listOf("queued", "processing")
     val duration = live?.durationMs?.takeIf { it > 0 } ?: row?.durationMs ?: 0
     val saved = row?.processedMs ?: 0
@@ -259,7 +328,7 @@ private fun downloadLabel(state: TranscriptToolState) = state.waiting?.download?
             "online" -> "Online transcript · PodcastTranscript.ai · segment timings"
             else -> "On-device transcript · ${row.model} · segment timings"
         }
-        "queued" -> queuedStatus(wait)
+        "queued" -> queuedStatus(wait, ahead)
         "processing" -> "Preparing on this phone · ${timestamp(row.processedMs)} completed"
         "waiting_model" -> when {
             waiting?.prepareWith != null && waiting.prepareWith != row.model -> "${modelName(waiting.prepareWith)} is ready · prepare the transcript with it"
@@ -274,7 +343,7 @@ private fun downloadLabel(state: TranscriptToolState) = state.waiting?.download?
         "failed" -> "Preparation could not finish · completed chunks are saved"
         else -> if (prefs.transcribeOnPlayback) "A transcript will be prepared when you play this episode. Audio stays on your phone." else "Prepare a transcript to browse text and capture insights. Audio stays on your phone."
     }
-    val shortStatus = transcriptShortStatus(row?.state, row?.source, stage, (fraction * 100).toInt(), downloadPercent, prefs.transcribeOnPlayback, wait)
+    val shortStatus = transcriptShortStatus(row?.state, row?.source, stage, (fraction * 100).toInt(), downloadPercent, prefs.transcribeOnPlayback, wait, ahead)
     val chunk = if (running) "${timestamp(saved)} saved${if (live != null && live.chunkEndMs > live.chunkStartMs) " · current chunk ${timestamp(live.chunkStartMs)}–${timestamp(live.chunkEndMs)}" else ""}" else null
     return TranscriptToolState(row, effective, running, duration, saved, worked, fraction, stage, statusText, shortStatus, chunk,
         "transcript:${ep.id}" in busy, waiting, replacing)
