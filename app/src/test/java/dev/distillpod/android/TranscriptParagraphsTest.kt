@@ -1,6 +1,8 @@
 package dev.distillpod.android
 
 import dev.distillpod.android.data.SegmentEntity
+import dev.distillpod.android.data.TranscriptEntity
+import dev.distillpod.android.data.TranscriptProgress
 import dev.distillpod.android.data.TranscriptStage
 import dev.distillpod.android.features.*
 import org.junit.Assert.assertEquals
@@ -132,5 +134,65 @@ class TranscriptParagraphsTest {
         }
         // A wait never replaces a stage in progress.
         assertEquals("Transcribing · 42%", transcriptShortStatus("processing", "whisper", TranscriptStage.TRANSCRIBING, 42, null, false, "queued_behind"))
+    }
+
+    /** #336: a transcript queued behind another names it and says how far along it is. */
+    @Test fun `a transcript queued behind another names it and its progress`() {
+        val ahead = TranscriptAhead("Rest and effort", 62)
+        assertEquals("Queued · after another transcript (62%)",
+            transcriptShortStatus("queued", "whisper", TranscriptStage.QUEUED, 30, null, false, "queued_behind", ahead))
+        assertEquals("Queued · \"Rest and effort\" is being prepared first (62%). Transcripts are prepared one at a time.",
+            queuedStatus("queued_behind", ahead))
+        // Progress unknown (no duration yet, or an online lookup).
+        assertEquals("Queued · after another transcript",
+            transcriptShortStatus("queued", "whisper", null, 0, null, false, "queued_behind", TranscriptAhead("Rest and effort", null)))
+        assertEquals("Queued · \"Rest and effort\" is being prepared first. Transcripts are prepared one at a time.",
+            queuedStatus("queued_behind", TranscriptAhead("Rest and effort", null)))
+        // The transcript ahead is not known: the sentence from before.
+        for (unknown in listOf(null, TranscriptAhead(null, 62), TranscriptAhead(" ", 62)))
+            assertEquals("Queued · another transcript is being prepared first. Transcripts are prepared one at a time.",
+                queuedStatus("queued_behind", unknown))
+        // Another wait never names the transcript ahead.
+        assertEquals("Queued · waiting for a charger", transcriptShortStatus("queued", "whisper", null, 0, null, false, "charging_required", ahead))
+        assertEquals("Queued · waiting for a charger because \"Only transcribe while charging\" is on", queuedStatus("charging_required", ahead))
+    }
+
+    @Test fun `a long episode title is shortened at a word`() {
+        assertEquals("Rest and effort", shortTitle("  Rest and\neffort "))
+        assertEquals("How sleep shapes memory, with a…", shortTitle("How sleep shapes memory, with a neuroscientist who studies dreams"))
+        assertEquals("The long conversation, part one…", shortTitle("The long conversation, part one: everything we know so far"))
+        assertEquals(40, shortTitle("x".repeat(80)).length)
+        assertEquals("x".repeat(40), shortTitle("x".repeat(40)))
+    }
+
+    /** #336: a power or network wait comes first; otherwise a transcript waits behind the one being prepared, if any. */
+    @Test fun `the shown wait follows the transcript being prepared`() {
+        for (blocker in listOf("charging_required", "battery_low", "wifi_required", "offline", "network_blocked")) {
+            assertEquals(blocker, shownWait(blocker, preparing = true))
+            assertEquals(blocker, shownWait(blocker, preparing = false))
+        }
+        for (wait in listOf(null, "scheduled", "queued_behind", "restricted")) assertEquals("queued_behind", shownWait(wait, preparing = true))
+        assertNull(shownWait("queued_behind", preparing = false))
+        assertNull(shownWait(null, preparing = false))
+        assertEquals("scheduled", shownWait("scheduled", preparing = false))
+        assertEquals("restricted", shownWait("restricted", preparing = false))
+    }
+
+    @Test fun `the transcript ahead is the live chunk of another episode`() {
+        fun live(stage: TranscriptStage, worked: Long = 372_000, duration: Long = 600_000) = TranscriptProgress("r1", "run", stage, worked, duration)
+        val progress = mapOf("mine" to live(TranscriptStage.QUEUED), "back" to live(TranscriptStage.QUEUED), "other" to live(TranscriptStage.DECODING))
+        assertEquals("other", transcriptAhead(progress, "mine")?.key)
+        assertNull(transcriptAhead(progress - "other", "mine"))
+        assertNull(transcriptAhead(mapOf("mine" to live(TranscriptStage.TRANSCRIBING)), "mine"))
+        val saved = TranscriptEntity("other", "r1", "audio", "tiny", "auto", state = "processing", processedMs = 390_000, durationMs = 600_000)
+        assertEquals(62, aheadPercent(live(TranscriptStage.STARTING), null))
+        // Its saved chunks count while the live estimate restarts at a new chunk, as on its own row.
+        assertEquals(65, aheadPercent(live(TranscriptStage.DECODING), saved))
+        assertEquals(62, aheadPercent(live(TranscriptStage.DECODING), saved.copy(revision = "older")))
+        assertEquals(99, aheadPercent(live(TranscriptStage.SAVING, worked = 600_000), null))
+        assertEquals(65, aheadPercent(live(TranscriptStage.STARTING, duration = 0), saved))
+        assertNull(aheadPercent(live(TranscriptStage.STARTING, duration = 0), null))
+        assertNull(aheadPercent(live(TranscriptStage.ONLINE), saved))
+        assertNull(aheadPercent(live(TranscriptStage.PUBLISHER), saved))
     }
 }
